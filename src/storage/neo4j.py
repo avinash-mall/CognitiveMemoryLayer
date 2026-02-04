@@ -1,0 +1,421 @@
+"""Neo4j knowledge graph store for semantic memory."""
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+from neo4j import AsyncGraphDatabase
+
+from .base import GraphStoreBase
+from ..core.config import get_settings
+
+
+@dataclass
+class GraphNode:
+    """Graph node (entity) representation."""
+
+    id: str
+    entity: str
+    entity_type: str
+    properties: Dict[str, Any]
+    tenant_id: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass
+class GraphEdge:
+    """Graph edge (relation) representation."""
+
+    id: str
+    source_id: str
+    target_id: str
+    predicate: str
+    properties: Dict[str, Any]
+    confidence: float
+    created_at: datetime
+
+
+def _sanitize_rel_type(predicate: str) -> str:
+    """Sanitize predicate for Neo4j relationship type (alphanumeric + underscore only)."""
+    return "".join(c if c.isalnum() or c == "_" else "_" for c in predicate.upper().replace(" ", "_"))
+
+
+class Neo4jGraphStore(GraphStoreBase):
+    """
+    Neo4j-based knowledge graph for semantic memory.
+    Stores entities as nodes and relations as edges.
+    """
+
+    def __init__(self, driver: Optional[Any] = None):
+        if driver is not None:
+            self.driver = driver
+        else:
+            settings = get_settings()
+            self.driver = AsyncGraphDatabase.driver(
+                settings.database.neo4j_url,
+                auth=(settings.database.neo4j_user, settings.database.neo4j_password),
+            )
+
+    async def close(self) -> None:
+        await self.driver.close()
+
+    async def merge_node(
+        self,
+        tenant_id: str,
+        user_id: str,
+        entity: str,
+        entity_type: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Create or update a node. Uses MERGE to avoid duplicates."""
+        properties = properties or {}
+        now = datetime.utcnow().isoformat()
+
+        query = """
+        MERGE (n:Entity {
+            tenant_id: $tenant_id,
+            user_id: $user_id,
+            entity: $entity,
+            entity_type: $entity_type
+        })
+        ON CREATE SET
+            n.created_at = $now,
+            n.updated_at = $now,
+            n += $properties
+        ON MATCH SET
+            n.updated_at = $now,
+            n += $properties
+        RETURN elementId(n) AS node_id
+        """
+
+        async with self.driver.session() as session:
+            result = await session.run(
+                query,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                entity=entity,
+                entity_type=entity_type,
+                properties=properties,
+                now=now,
+            )
+            record = await result.single()
+            return record["node_id"] if record else ""
+
+    async def merge_edge(
+        self,
+        tenant_id: str,
+        user_id: str,
+        subject: str,
+        predicate: str,
+        object: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Create or update an edge between two nodes. Creates nodes if they don't exist."""
+        properties = properties or {}
+        rel_type = _sanitize_rel_type(predicate) or "RELATED_TO"
+        confidence = properties.get("confidence", 0.8)
+        now = datetime.utcnow().isoformat()
+
+        query = f"""
+        MERGE (s:Entity {{
+            tenant_id: $tenant_id,
+            user_id: $user_id,
+            entity: $subject
+        }})
+        ON CREATE SET s.created_at = $now, s.entity_type = 'UNKNOWN'
+
+        MERGE (o:Entity {{
+            tenant_id: $tenant_id,
+            user_id: $user_id,
+            entity: $object
+        }})
+        ON CREATE SET o.created_at = $now, o.entity_type = 'UNKNOWN'
+
+        MERGE (s)-[r:{rel_type}]->(o)
+        ON CREATE SET
+            r.created_at = $now,
+            r.updated_at = $now,
+            r.confidence = $confidence,
+            r += $properties
+        ON MATCH SET
+            r.updated_at = $now,
+            r.access_count = coalesce(r.access_count, 0) + 1,
+            r += $properties
+
+        RETURN elementId(r) AS edge_id
+        """
+
+        async with self.driver.session() as session:
+            result = await session.run(
+                query,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                subject=subject,
+                object=object,
+                properties=properties,
+                confidence=confidence,
+                now=now,
+            )
+            record = await result.single()
+            return record["edge_id"] if record else ""
+
+    async def get_neighbors(
+        self,
+        tenant_id: str,
+        user_id: str,
+        entity: str,
+        max_depth: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """Get neighboring nodes up to max_depth hops."""
+        fallback_query = f"""
+        MATCH path = (start:Entity {{
+            tenant_id: $tenant_id,
+            user_id: $user_id,
+            entity: $entity
+        }})-[*1..{max_depth}]-(neighbor:Entity)
+        WHERE neighbor.tenant_id = $tenant_id AND neighbor.user_id = $user_id
+        RETURN DISTINCT neighbor.entity AS entity,
+               neighbor.entity_type AS entity_type,
+               properties(neighbor) AS properties
+        LIMIT 100
+        """
+
+        async with self.driver.session() as session:
+            try:
+                apoc_query = """
+                MATCH (start:Entity {
+                    tenant_id: $tenant_id,
+                    user_id: $user_id,
+                    entity: $entity
+                })
+                CALL apoc.path.subgraphNodes(start, {
+                    maxLevel: $max_depth,
+                    relationshipFilter: null,
+                    labelFilter: '+Entity'
+                }) YIELD node
+                WHERE node.tenant_id = $tenant_id AND node.user_id = $user_id
+                RETURN node.entity AS entity,
+                       node.entity_type AS entity_type,
+                       properties(node) AS properties
+                """
+                result = await session.run(
+                    apoc_query,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    entity=entity,
+                    max_depth=max_depth,
+                )
+            except Exception:
+                result = await session.run(
+                    fallback_query,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    entity=entity,
+                )
+            records = await result.data()
+            return list(records) if records else []
+
+    async def personalized_pagerank(
+        self,
+        tenant_id: str,
+        user_id: str,
+        seed_entities: List[str],
+        top_k: int = 20,
+        damping: float = 0.85,
+    ) -> List[Dict[str, Any]]:
+        """Run Personalized PageRank from seed entities. Falls back to multi-hop if GDS unavailable."""
+        fallback_query = """
+        MATCH (seed:Entity)
+        WHERE seed.tenant_id = $tenant_id
+          AND seed.user_id = $user_id
+          AND seed.entity IN $seeds
+
+        MATCH path = (seed)-[*1..3]-(related:Entity)
+        WHERE related.tenant_id = $tenant_id AND related.user_id = $user_id
+
+        WITH related,
+             min(length(path)) AS min_distance,
+             count(path) AS path_count
+
+        RETURN related.entity AS entity,
+               related.entity_type AS entity_type,
+               1.0 / (min_distance + 1) * path_count AS score,
+               properties(related) AS properties
+        ORDER BY score DESC
+        LIMIT $top_k
+        """
+
+        async with self.driver.session() as session:
+            try:
+                gds_query = """
+                MATCH (source:Entity)
+                WHERE source.tenant_id = $tenant_id
+                  AND source.user_id = $user_id
+                  AND source.entity IN $seeds
+
+                CALL gds.pageRank.stream({
+                    nodeQuery: 'MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.user_id = $user_id RETURN id(n) AS id',
+                    relationshipQuery: 'MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id AND n1.user_id = $user_id RETURN id(n1) AS source, id(n2) AS target',
+                    dampingFactor: $damping,
+                    sourceNodes: collect(source)
+                })
+                YIELD nodeId, score
+
+                MATCH (n:Entity) WHERE id(n) = nodeId
+                RETURN n.entity AS entity,
+                       n.entity_type AS entity_type,
+                       score,
+                       properties(n) AS properties
+                ORDER BY score DESC
+                LIMIT $top_k
+                """
+                result = await session.run(
+                    gds_query,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    seeds=seed_entities,
+                    damping=damping,
+                    top_k=top_k,
+                )
+            except Exception:
+                result = await session.run(
+                    fallback_query,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    seeds=seed_entities,
+                    top_k=top_k,
+                )
+            records = await result.data()
+            return list(records) if records else []
+
+    async def get_entity_facts(
+        self,
+        tenant_id: str,
+        user_id: str,
+        entity: str,
+    ) -> List[Dict[str, Any]]:
+        """Get all facts (relations) about an entity."""
+        query = """
+        MATCH (e:Entity {
+            tenant_id: $tenant_id,
+            user_id: $user_id,
+            entity: $entity
+        })-[r]-(other:Entity)
+        RETURN type(r) AS predicate,
+               CASE
+                   WHEN startNode(r) = e THEN 'outgoing'
+                   ELSE 'incoming'
+               END AS direction,
+               other.entity AS related_entity,
+               other.entity_type AS related_type,
+               properties(r) AS relation_properties
+        """
+
+        async with self.driver.session() as session:
+            result = await session.run(
+                query,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                entity=entity,
+            )
+            records = await result.data()
+            return list(records) if records else []
+
+    async def search_by_pattern(
+        self,
+        tenant_id: str,
+        user_id: str,
+        subject: Optional[str] = None,
+        predicate: Optional[str] = None,
+        object: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Tuple[str, str, str, Dict]]:
+        """Search for triples matching a pattern. None values are wildcards."""
+        conditions = ["s.tenant_id = $tenant_id", "s.user_id = $user_id"]
+        params: Dict[str, Any] = {"tenant_id": tenant_id, "user_id": user_id, "limit": limit}
+
+        if subject:
+            conditions.append("s.entity = $subject")
+            params["subject"] = subject
+        if object:
+            conditions.append("o.entity = $object")
+            params["object"] = object
+
+        rel_pattern = "[r]" if not predicate else f"[r:{_sanitize_rel_type(predicate)}]"
+        query = f"""
+        MATCH (s:Entity)-{rel_pattern}->(o:Entity)
+        WHERE {' AND '.join(conditions)}
+        RETURN s.entity AS subject,
+               type(r) AS predicate,
+               o.entity AS object,
+               properties(r) AS properties
+        LIMIT $limit
+        """
+
+        async with self.driver.session() as session:
+            result = await session.run(query, **params)
+            records = await result.data()
+            return [
+                (r["subject"], r["predicate"], r["object"], r.get("properties") or {})
+                for r in (records or [])
+            ]
+
+    async def delete_entity(
+        self,
+        tenant_id: str,
+        user_id: str,
+        entity: str,
+        cascade: bool = True,
+    ) -> int:
+        """Delete an entity node (and optionally its edges)."""
+        if cascade:
+            query = """
+            MATCH (n:Entity {
+                tenant_id: $tenant_id,
+                user_id: $user_id,
+                entity: $entity
+            })
+            DETACH DELETE n
+            RETURN count(n) AS deleted_count
+            """
+        else:
+            query = """
+            MATCH (n:Entity {
+                tenant_id: $tenant_id,
+                user_id: $user_id,
+                entity: $entity
+            })
+            DELETE n
+            RETURN count(n) AS deleted_count
+            """
+
+        async with self.driver.session() as session:
+            result = await session.run(
+                query,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                entity=entity,
+            )
+            record = await result.single()
+            return record["deleted_count"] if record else 0
+
+
+async def initialize_graph_schema(store: Neo4jGraphStore) -> None:
+    """Initialize Neo4j constraints and indexes."""
+    async with store.driver.session() as session:
+        await session.run("""
+            CREATE CONSTRAINT entity_unique IF NOT EXISTS
+            FOR (n:Entity)
+            REQUIRE (n.tenant_id, n.user_id, n.entity) IS UNIQUE
+        """)
+        await session.run("""
+            CREATE INDEX entity_type_idx IF NOT EXISTS
+            FOR (n:Entity)
+            ON (n.tenant_id, n.user_id, n.entity_type)
+        """)
+        await session.run("""
+            CREATE INDEX entity_time_idx IF NOT EXISTS
+            FOR (n:Entity)
+            ON (n.tenant_id, n.user_id, n.updated_at)
+        """)

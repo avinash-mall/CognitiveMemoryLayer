@@ -1,0 +1,56 @@
+[tool.poetry]
+name = "cognitive-memory-layer"
+version = "0.1.0"
+description = "Neuro-inspired memory system for LLMs with event sourcing and CQRS"
+authors = []
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.32.0" }
+pydantic = "^2.0"
+sqlalchemy = { extras = ["asyncio"], version = "^2.0" }
+asyncpg = "^0.30.0"
+pgvector = "^0.3.0"
+neo4j = "^5.0"
+redis = "^5.0"
+celery = "^5.4"
+openai = "^1.0"
+sentence-transformers = "^3.0"
+tiktoken = "^0.8"
+python-dotenv = "^1.0"
+pydantic-settings = "^2.0"
+structlog = "^24.0"
+prometheus-client = "^0.21"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.24"
+pytest-cov = "^5.0"
+black = "^24.0"
+ruff = "^0.8"
+mypy = "^1.0"
+httpx = "^0.28"
+factory-boy = "^3.3"
+faker = "^33.0"
+alembic = "^1.14"
+testcontainers = "^4.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

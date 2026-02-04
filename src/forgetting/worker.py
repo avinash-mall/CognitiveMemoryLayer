@@ -1,0 +1,214 @@
+"""Forgetting worker and scheduler."""
+import asyncio
+from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Optional
+from uuid import UUID
+
+from ..core.enums import MemoryStatus
+from ..storage.postgres import PostgresMemoryStore
+from ..utils.llm import LLMClient
+
+from .actions import (
+    ForgettingAction,
+    ForgettingOperation,
+    ForgettingPolicyEngine,
+    ForgettingResult,
+)
+from .executor import ForgettingExecutor
+from .interference import InterferenceDetector, InterferenceResult
+from .scorer import RelevanceScorer, ScorerConfig
+
+
+@dataclass
+class ForgettingReport:
+    """Report from a forgetting run."""
+
+    tenant_id: str
+    user_id: str
+    started_at: datetime
+    completed_at: datetime
+    memories_scanned: int
+    memories_scored: int
+    result: ForgettingResult
+    duplicates_found: int = 0
+    duplicates_resolved: int = 0
+    elapsed_seconds: float = 0.0
+
+
+class ForgettingWorker:
+    """Orchestrates the active forgetting process."""
+
+    def __init__(
+        self,
+        store: PostgresMemoryStore,
+        scorer_config: Optional[ScorerConfig] = None,
+        archive_store: Optional[PostgresMemoryStore] = None,
+        compression_llm_client: Optional[LLMClient] = None,
+        compression_max_chars: int = 100,
+    ) -> None:
+        self.store = store
+        self.scorer = RelevanceScorer(scorer_config)
+        self.policy = ForgettingPolicyEngine(
+            compression_max_chars=compression_max_chars,
+        )
+        self.executor = ForgettingExecutor(
+            store,
+            archive_store,
+            compression_llm_client=compression_llm_client,
+            compression_max_chars=compression_max_chars,
+        )
+        self.interference = InterferenceDetector()
+
+    async def run_forgetting(
+        self,
+        tenant_id: str,
+        user_id: str,
+        max_memories: int = 5000,
+        dry_run: bool = False,
+    ) -> ForgettingReport:
+        """Run forgetting process for a user."""
+        started = datetime.now(timezone.utc)
+        memories = await self.store.scan(
+            tenant_id,
+            user_id,
+            filters={"status": MemoryStatus.ACTIVE.value},
+            limit=max_memories,
+        )
+
+        if not memories:
+            return ForgettingReport(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                started_at=started,
+                completed_at=datetime.now(timezone.utc),
+                memories_scanned=0,
+                memories_scored=0,
+                result=ForgettingResult(0, 0),
+            )
+
+        dep_counts = await self._get_dependency_counts(
+            tenant_id, user_id, memories
+        )
+        scores = self.scorer.score_batch(memories, dep_counts)
+        operations = self.policy.plan_operations(scores)
+
+        duplicates = self.interference.detect_duplicates(memories)
+        dup_operations = self._plan_duplicate_resolution(duplicates)
+        operations.extend(dup_operations)
+
+        result = await self.executor.execute(operations, dry_run=dry_run)
+        completed = datetime.now(timezone.utc)
+
+        return ForgettingReport(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            started_at=started,
+            completed_at=completed,
+            memories_scanned=len(memories),
+            memories_scored=len(scores),
+            result=result,
+            duplicates_found=len(duplicates),
+            duplicates_resolved=len(dup_operations),
+            elapsed_seconds=(completed - started).total_seconds(),
+        )
+
+    async def _get_dependency_counts(
+        self,
+        tenant_id: str,
+        user_id: str,
+        memories: List,
+    ) -> Dict[str, int]:
+        """Count how many other memories reference each memory."""
+        counts: Dict[str, int] = {}
+        for mem in memories:
+            mem_id = str(mem.id)
+            counts[mem_id] = 0
+            for other in memories:
+                if other.id == mem.id:
+                    continue
+                if other.supersedes_id and str(other.supersedes_id) == mem_id:
+                    counts[mem_id] += 1
+                refs = other.metadata.get("evidence_refs", [])
+                if mem_id in refs:
+                    counts[mem_id] += 1
+        return counts
+
+    def _plan_duplicate_resolution(
+        self,
+        duplicates: List[InterferenceResult],
+    ) -> List[ForgettingOperation]:
+        """Plan operations to resolve duplicates (keep one, delete other)."""
+        operations: List[ForgettingOperation] = []
+        resolved_ids: set[str] = set()
+
+        for dup in duplicates:
+            if dup.memory_id in resolved_ids or dup.interfering_memory_id in resolved_ids:
+                continue
+            to_delete = (
+                dup.interfering_memory_id
+                if dup.recommendation == "keep_newer"
+                else dup.memory_id
+            )
+            if dup.recommendation == "keep_higher_confidence":
+                to_delete = dup.interfering_memory_id
+            operations.append(
+                ForgettingOperation(
+                    action=ForgettingAction.DELETE,
+                    memory_id=UUID(to_delete),
+                    reason=f"Duplicate of {dup.memory_id if to_delete == dup.interfering_memory_id else dup.interfering_memory_id}",
+                )
+            )
+            resolved_ids.add(to_delete)
+        return operations
+
+
+class ForgettingScheduler:
+    """Schedules and manages forgetting runs."""
+
+    def __init__(
+        self,
+        worker: ForgettingWorker,
+        interval_hours: float = 24.0,
+    ) -> None:
+        self.worker = worker
+        self.interval = timedelta(hours=interval_hours)
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._user_last_run: Dict[str, datetime] = {}
+
+    async def start(self) -> None:
+        """Start the scheduler."""
+        self._running = True
+        self._task = asyncio.create_task(self._scheduler_loop())
+
+    async def stop(self) -> None:
+        """Stop the scheduler."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+    async def schedule_user(
+        self,
+        tenant_id: str,
+        user_id: str,
+        force: bool = False,
+    ) -> Optional[ForgettingReport]:
+        """Schedule forgetting for a user; returns report if run."""
+        key = f"{tenant_id}:{user_id}"
+        now = datetime.now(timezone.utc)
+        last_run = self._user_last_run.get(key)
+        if force or not last_run or (now - last_run) >= self.interval:
+            report = await self.worker.run_forgetting(tenant_id, user_id)
+            self._user_last_run[key] = now
+            return report
+        return None
+
+    async def _scheduler_loop(self) -> None:
+        """Background scheduler loop."""
+        while self._running:
+            await asyncio.sleep(self.interval.total_seconds())
