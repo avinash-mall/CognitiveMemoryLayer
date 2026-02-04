@@ -1,0 +1,22 @@
+# Minimal deps for Phase 1 Docker build and test (no torch/sentence-transformers)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.0
+pydantic-settings>=2.0
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.30.0
+pgvector>=0.3.0
+neo4j>=5.0
+redis>=5.0
+celery>=5.4
+openai>=1.0
+python-dotenv>=1.0
+structlog>=24.0
+prometheus-client>=0.21
+# Test
+pytest>=8.0
+pytest-asyncio>=0.24
+pytest-cov>=5.0
+httpx>=0.28
+alembic>=1.14
+testcontainers>=4.6
