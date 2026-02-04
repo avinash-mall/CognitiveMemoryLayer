@@ -4,7 +4,7 @@ A production-ready, neuro-inspired memory system for Large Language Models (LLMs
 
 [![Tests](https://img.shields.io/badge/tests-138%20passed-brightgreen)](./tests)
 [![Python](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](./LICENSE)
 
 ## Table of Contents
 
@@ -682,7 +682,7 @@ CognitiveMemoryLayer/
 
 ## License
 
-MIT License - See [LICENSE](./LICENSE) for details.
+GNU General Public License v3.0 (GPL-3.0) - See [LICENSE](./LICENSE) for details.
 
 ---
 
