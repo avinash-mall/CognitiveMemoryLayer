@@ -1,0 +1,113 @@
+# Phase 1: PostgreSQL (pgvector), Neo4j, Redis, and app test runner
+# Optional: vLLM (Llama 3.2 1B) for LLM-based compression in Phase 8 forgetting
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: memory
+      POSTGRES_PASSWORD: memory
+      POSTGRES_DB: memory
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+
+  # vLLM with Llama 3.2 1B (OpenAI-compatible API). Optional; for LLM-based compression.
+  # Set LLM__VLLM_BASE_URL=http://vllm:8000/v1 when running app in same compose.
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8000:8000"
+    command: ["--model", "unslop/Llama-3.2-1B-Instruct"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - vllm
+
+  # vLLM on CPU (no GPU). Use for CI or machines without GPU. Slower; needs more RAM.
+  # Run: docker compose --profile vllm-cpu up -d vllm-cpu
+  # Then: docker compose --profile vllm-cpu run --rm -e LLM__VLLM_BASE_URL=http://vllm-cpu:8000/v1 app pytest tests/integration/test_phase8_vllm_compression.py -v
+  vllm-cpu:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8001:8000"
+    environment:
+      VLLM_TARGET_DEVICE: cpu
+    command: ["--model", "unslop/Llama-3.2-1B-Instruct"]
+    profiles:
+      - vllm-cpu
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
+      DATABASE__NEO4J_URL: bolt://neo4j:7687
+      DATABASE__NEO4J_USER: neo4j
+      DATABASE__NEO4J_PASSWORD: password
+      DATABASE__REDIS_URL: redis://redis:6379
+      # Optional: LLM__PROVIDER=vllm and LLM__VLLM_BASE_URL=http://vllm:8000/v1 when vllm profile is used
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && pytest tests -v --tb=short"
+
+  # API server (Phase 9). Run: docker compose up api (after building)
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
+      DATABASE__NEO4J_URL: bolt://neo4j:7687
+      DATABASE__NEO4J_USER: neo4j
+      DATABASE__NEO4J_PASSWORD: password
+      DATABASE__REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: sh -c "alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
