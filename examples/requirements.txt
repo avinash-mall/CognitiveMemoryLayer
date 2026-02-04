@@ -1,0 +1,18 @@
+# Requirements for Cognitive Memory Layer Examples
+# Install with: pip install -r examples/requirements.txt
+
+# HTTP client (required for all examples)
+httpx>=0.28.0
+
+# OpenAI integration
+openai>=1.0
+
+# Anthropic Claude integration
+anthropic>=0.18.0
+
+# LangChain integration
+langchain>=0.1.0
+langchain-openai>=0.1.0
+
+# Optional: for better async support
+anyio>=4.0.0
