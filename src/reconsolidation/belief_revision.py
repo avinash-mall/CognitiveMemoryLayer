@@ -53,7 +53,7 @@ class BeliefRevisionEngine:
         old_memory: MemoryRecord,
         new_info_type: MemoryType,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         evidence_id: Optional[str] = None,
     ) -> RevisionPlan:
         """Create a revision plan based on conflict analysis."""
@@ -61,22 +61,22 @@ class BeliefRevisionEngine:
             return self._plan_reinforcement(old_memory, conflict)
         if conflict.conflict_type == ConflictType.TEMPORAL_CHANGE:
             return self._plan_time_slice(
-                old_memory, conflict, new_info_type, tenant_id, user_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.CORRECTION:
             return self._plan_correction(
-                old_memory, conflict, new_info_type, tenant_id, user_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.DIRECT_CONTRADICTION:
             return self._plan_contradiction_resolution(
-                old_memory, conflict, new_info_type, tenant_id, user_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.REFINEMENT:
             return self._plan_refinement(
-                old_memory, conflict, new_info_type, tenant_id, user_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
             )
         return self._plan_hypothesis(
-            old_memory, conflict, tenant_id, user_id, evidence_id
+            old_memory, conflict, tenant_id, scope_id, evidence_id
         )
 
     def _plan_reinforcement(
@@ -110,7 +110,7 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
         """Plan time-slice for temporal changes."""
@@ -133,7 +133,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        user_id=user_id,
+                        scope=old_memory.scope,
+                        scope_id=scope_id,
                         type=new_type,
                         text=conflict.new_statement,
                         key=old_memory.key,
@@ -161,7 +162,7 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
         """Plan correction when user explicitly corrects."""
@@ -187,7 +188,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        user_id=user_id,
+                        scope=old_memory.scope,
+                        scope_id=scope_id,
                         type=new_type,
                         text=conflict.new_statement,
                         key=old_memory.key,
@@ -212,7 +214,7 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
         """Plan resolution for direct contradictions."""
@@ -222,11 +224,11 @@ class BeliefRevisionEngine:
         new_confidence = conflict.confidence
         if old_is_user_confirmed and old_memory.confidence > new_confidence:
             return self._plan_hypothesis(
-                old_memory, conflict, tenant_id, user_id, evidence_id
+                old_memory, conflict, tenant_id, scope_id, evidence_id
             )
         if conflict.is_superseding or new_confidence > old_memory.confidence:
             return self._plan_time_slice(
-                old_memory, conflict, new_type, tenant_id, user_id, evidence_id
+                old_memory, conflict, new_type, tenant_id, scope_id, evidence_id
             )
         return RevisionPlan(
             strategy=RevisionStrategy.ADD_HYPOTHESIS,
@@ -248,7 +250,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        user_id=user_id,
+                        scope=old_memory.scope,
+                        scope_id=scope_id,
                         type=MemoryType.HYPOTHESIS,
                         text=conflict.new_statement,
                         confidence=max(0.3, new_confidence - 0.2),
@@ -275,7 +278,7 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
         """Plan refinement when new info adds to existing."""
@@ -295,7 +298,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        user_id=user_id,
+                        scope=old_memory.scope,
+                        scope_id=scope_id,
                         type=new_type,
                         text=conflict.new_statement,
                         confidence=conflict.confidence,
@@ -321,7 +325,7 @@ class BeliefRevisionEngine:
         old_memory: MemoryRecord,
         conflict: ConflictResult,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
         """Plan adding new info as hypothesis (uncertain)."""
@@ -332,7 +336,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        user_id=user_id,
+                        scope=old_memory.scope,
+                        scope_id=scope_id,
                         type=MemoryType.HYPOTHESIS,
                         text=conflict.new_statement,
                         confidence=min(0.5, conflict.confidence),

@@ -561,13 +561,13 @@ curl http://localhost:8000/api/v1/health
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "X-API-Key: demo-key-123" \
-  -d '{"user_id": "user-001", "content": "User prefers vegetarian food and lives in Paris."}'
+  -d '{"scope": "session", "scope_id": "session-001", "content": "User prefers vegetarian food and lives in Paris."}'
 
 # Retrieve memories
 curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "X-API-Key: demo-key-123" \
-  -d '{"user_id": "user-001", "query": "dietary preferences", "format": "llm_context"}'
+  -d '{"scope": "session", "scope_id": "session-001", "query": "dietary preferences", "format": "llm_context"}'
 ```
 
 ### Run Tests
@@ -608,7 +608,10 @@ See [ProjectPlan/UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md) for
 | `/api/v1/memory/read` | POST | Retrieve relevant memories |
 | `/api/v1/memory/update` | POST | Update or provide feedback |
 | `/api/v1/memory/forget` | POST | Forget memories |
-| `/api/v1/memory/stats/{user_id}` | GET | Get memory statistics |
+| `/api/v1/memory/stats/{scope}/{scope_id}` | GET | Get memory statistics |
+| `/api/v1/session/create` | POST | Create a new memory session |
+| `/api/v1/session/{session_id}/write` | POST | Write to session memory |
+| `/api/v1/session/{session_id}/read` | POST | Read from session memory |
 | `/api/v1/health` | GET | Health check |
 
 **Interactive Docs**: http://localhost:8000/docs

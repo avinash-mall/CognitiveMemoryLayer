@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemorySource, MemoryType
+from src.core.enums import MemoryScope, MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
 from src.forgetting.worker import ForgettingWorker
 from src.storage.postgres import PostgresMemoryStore
@@ -39,6 +39,8 @@ async def test_forgetting_dry_run_does_not_modify(pg_session_factory):
     await store.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
+            scope=MemoryScope.USER,
+            scope_id=user_id,
             user_id=user_id,
             type=MemoryType.EPISODIC_EVENT,
             text="Old low-value memory to forget.",
@@ -72,6 +74,8 @@ async def test_forgetting_decay_reduces_confidence(pg_session_factory):
     rec = await store.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
+            scope=MemoryScope.USER,
+            scope_id=user_id,
             user_id=user_id,
             type=MemoryType.EPISODIC_EVENT,
             text="Temporary memory.",

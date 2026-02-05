@@ -5,18 +5,36 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from ..core.enums import MemoryType
+from ..core.enums import MemoryScope, MemoryType
 
 
 class WriteMemoryRequest(BaseModel):
     """Request to store a memory."""
 
-    user_id: str
+    scope: MemoryScope
+    scope_id: str
     content: str
     memory_type: Optional[MemoryType] = None
+    namespace: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     turn_id: Optional[str] = None
     agent_id: Optional[str] = None
+
+
+class CreateSessionRequest(BaseModel):
+    """Request to create a new memory session."""
+
+    name: Optional[str] = None
+    ttl_hours: Optional[int] = 24
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CreateSessionResponse(BaseModel):
+    """Response from session creation."""
+
+    session_id: str
+    created_at: datetime
+    expires_at: Optional[datetime] = None
 
 
 class WriteMemoryResponse(BaseModel):
@@ -31,7 +49,8 @@ class WriteMemoryResponse(BaseModel):
 class ReadMemoryRequest(BaseModel):
     """Request to retrieve memories."""
 
-    user_id: str
+    scope: MemoryScope
+    scope_id: str
     query: str
     max_results: int = Field(default=10, le=50)
     memory_types: Optional[List[MemoryType]] = None
@@ -52,6 +71,16 @@ class MemoryItem(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SessionContextResponse(BaseModel):
+    """Full session context for LLM injection."""
+
+    session_id: str
+    messages: List[MemoryItem] = Field(default_factory=list)
+    tool_results: List[MemoryItem] = Field(default_factory=list)
+    scratch_pad: List[MemoryItem] = Field(default_factory=list)
+    context_string: str = ""
+
+
 class ReadMemoryResponse(BaseModel):
     """Response from read operation."""
 
@@ -69,7 +98,8 @@ class UpdateMemoryRequest(BaseModel):
     """Request to update a memory."""
 
     memory_id: UUID
-    user_id: str
+    scope: MemoryScope
+    scope_id: str
     text: Optional[str] = None
     confidence: Optional[float] = None
     importance: Optional[float] = None
@@ -89,7 +119,8 @@ class UpdateMemoryResponse(BaseModel):
 class ForgetRequest(BaseModel):
     """Request to forget memories."""
 
-    user_id: str
+    scope: MemoryScope
+    scope_id: str
     memory_ids: Optional[List[UUID]] = None
     query: Optional[str] = None
     before: Optional[datetime] = None
@@ -105,9 +136,10 @@ class ForgetResponse(BaseModel):
 
 
 class MemoryStats(BaseModel):
-    """Memory statistics for a user."""
+    """Memory statistics for a scope."""
 
-    user_id: str
+    scope: MemoryScope
+    scope_id: str
     total_memories: int
     active_memories: int
     silent_memories: int

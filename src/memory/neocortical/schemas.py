@@ -43,7 +43,7 @@ class SemanticFact:
 
     id: str
     tenant_id: str
-    user_id: str
+    scope_id: str
     category: FactCategory
     key: str
     subject: str

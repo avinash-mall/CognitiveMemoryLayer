@@ -35,11 +35,21 @@ from memory_client import CognitiveMemoryClient
 
 client = CognitiveMemoryClient(api_key="demo-key-123")
 
-# Store a memory
-client.write("user-123", "User prefers vegetarian food", memory_type="preference")
+# Store a memory with explicit scope
+client.write(
+    scope="session",
+    scope_id="session-123",
+    content="User prefers vegetarian food",
+    memory_type="preference"
+)
 
 # Retrieve memories
-result = client.read("user-123", "dietary preferences", format="llm_context")
+result = client.read(
+    scope="session",
+    scope_id="session-123",
+    query="dietary preferences",
+    format="llm_context"
+)
 print(result.llm_context)
 ```
 
@@ -127,7 +137,7 @@ from langchain_openai import ChatOpenAI
 from langchain.chains import ConversationChain
 from langchain_integration import CognitiveMemory
 
-memory = CognitiveMemory(user_id="user-123")
+memory = CognitiveMemory(scope="session", scope_id="session-123")
 llm = ChatOpenAI()
 chain = ConversationChain(llm=llm, memory=memory)
 
@@ -150,6 +160,18 @@ Asynchronous patterns for high-performance applications:
 python examples/async_usage.py
 ```
 
+## Memory Scopes
+
+The API uses a scope-based system for organizing memories:
+
+| Scope | Use Case | Example |
+|-------|----------|---------|
+| `session` | Single conversation session | `session-abc123` |
+| `agent` | Agent-specific context | `code-reviewer-agent` |
+| `namespace` | Project or team level | `project-acme` |
+| `global` | Shared across all contexts | `global-knowledge` |
+| `user` | User-specific memories | `user-12345` |
+
 ## Memory Types
 
 When storing memories, use the appropriate type:
@@ -169,7 +191,8 @@ When storing memories, use the appropriate type:
 ### Write Memory
 ```python
 client.write(
-    user_id="user-123",
+    scope="session",
+    scope_id="session-123",
     content="User prefers morning meetings",
     memory_type="preference",  # optional
     metadata={"source": "calendar"}  # optional
@@ -179,7 +202,8 @@ client.write(
 ### Read Memory
 ```python
 result = client.read(
-    user_id="user-123",
+    scope="session",
+    scope_id="session-123",
     query="meeting preferences",
     max_results=10,
     format="llm_context"  # or "packet"
@@ -190,7 +214,8 @@ print(result.llm_context)  # Ready for LLM system prompt
 ### Update Memory
 ```python
 client.update(
-    user_id="user-123",
+    scope="session",
+    scope_id="session-123",
     memory_id="uuid-here",
     feedback="correct"  # or "incorrect", "outdated"
 )
@@ -199,7 +224,8 @@ client.update(
 ### Forget Memory
 ```python
 client.forget(
-    user_id="user-123",
+    scope="session",
+    scope_id="session-123",
     query="old address",
     action="delete"  # or "archive"
 )
@@ -207,7 +233,7 @@ client.forget(
 
 ### Get Stats
 ```python
-stats = client.stats("user-123")
+stats = client.stats("session", "session-123")
 print(f"Total: {stats.total_memories}")
 ```
 
@@ -280,7 +306,7 @@ docker compose -f docker/docker-compose.yml up api
 Make sure to include the `X-API-Key` header. Default key is `demo-key-123`.
 
 ### "No memories found"
-- Check the user_id is correct
+- Check the scope and scope_id are correct
 - Verify memories were stored successfully
 - Try a broader query
 
