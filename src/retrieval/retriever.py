@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from ..core.enums import MemorySource, MemoryType
+from ..core.enums import MemoryScope, MemorySource, MemoryType
 from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
@@ -40,7 +40,7 @@ class HybridRetriever:
     async def retrieve(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         plan: RetrievalPlan,
     ) -> List[RetrievedMemory]:
         """Execute a retrieval plan and return results."""
@@ -51,7 +51,7 @@ class HybridRetriever:
             ]
             group_results = await asyncio.gather(
                 *[
-                    self._execute_step(tenant_id, user_id, step)
+                    self._execute_step(tenant_id, scope_id, step)
                     for step in group_steps
                 ],
                 return_exceptions=True,
@@ -68,20 +68,20 @@ class HybridRetriever:
     async def _execute_step(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         step: RetrievalStep,
     ) -> RetrievalResult:
         """Execute a single retrieval step."""
         start = datetime.utcnow()
         try:
             if step.source == RetrievalSource.FACTS:
-                items = await self._retrieve_facts(tenant_id, user_id, step)
+                items = await self._retrieve_facts(tenant_id, scope_id, step)
             elif step.source == RetrievalSource.VECTOR:
-                items = await self._retrieve_vector(tenant_id, user_id, step)
+                items = await self._retrieve_vector(tenant_id, scope_id, step)
             elif step.source == RetrievalSource.GRAPH:
-                items = await self._retrieve_graph(tenant_id, user_id, step)
+                items = await self._retrieve_graph(tenant_id, scope_id, step)
             elif step.source == RetrievalSource.CACHE:
-                items = await self._retrieve_cache(tenant_id, user_id, step)
+                items = await self._retrieve_cache(tenant_id, scope_id, step)
             else:
                 items = []
             elapsed = (datetime.utcnow() - start).total_seconds() * 1000
@@ -104,13 +104,13 @@ class HybridRetriever:
     async def _retrieve_facts(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
         """Retrieve from semantic fact store."""
         results: List[Dict[str, Any]] = []
         if step.key:
-            fact = await self.neocortical.get_fact(tenant_id, user_id, step.key)
+            fact = await self.neocortical.get_fact(tenant_id, scope_id, step.key)
             if fact:
                 results.append({
                     "type": "fact",
@@ -124,7 +124,7 @@ class HybridRetriever:
                 })
         if step.query:
             facts = await self.neocortical.text_search(
-                tenant_id, user_id, step.query, limit=step.top_k
+                tenant_id, scope_id, step.query, limit=step.top_k
             )
             for f in facts:
                 results.append({
@@ -142,7 +142,7 @@ class HybridRetriever:
     async def _retrieve_vector(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
         """Retrieve via vector similarity search."""
@@ -155,7 +155,7 @@ class HybridRetriever:
                 filters["type"] = step.memory_types
         records = await self.hippocampal.search(
             tenant_id,
-            user_id,
+            scope_id,
             query=step.query or "",
             top_k=step.top_k,
             filters=filters,
@@ -176,14 +176,14 @@ class HybridRetriever:
     async def _retrieve_graph(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
         """Retrieve via knowledge graph PPR."""
         if not step.seeds:
             return []
         results = await self.neocortical.multi_hop_query(
-            tenant_id, user_id, seed_entities=step.seeds, max_hops=3
+            tenant_id, scope_id, seed_entities=step.seeds, max_hops=3
         )
         return [
             {
@@ -200,13 +200,13 @@ class HybridRetriever:
     async def _retrieve_cache(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
         """Retrieve from hot cache."""
         if not self.cache:
             return []
-        cache_key = f"hot:{tenant_id}:{user_id}"
+        cache_key = f"hot:{tenant_id}:{scope_id}"
         try:
             cached = await self.cache.get(cache_key)
         except Exception:
@@ -266,7 +266,8 @@ class HybridRetriever:
         return MemoryRecord(
             id=UUID(fid) if fid else uuid4(),
             tenant_id=getattr(fact, "tenant_id", ""),
-            user_id=getattr(fact, "user_id", ""),
+            scope=MemoryScope.SESSION,
+            scope_id=getattr(fact, "scope_id", ""),
             type=MemoryType.SEMANTIC_FACT,
             text=text,
             key=getattr(fact, "key", None),
@@ -287,7 +288,8 @@ class HybridRetriever:
         return MemoryRecord(
             id=uuid4(),
             tenant_id=item.get("tenant_id", ""),
-            user_id=item.get("user_id", ""),
+            scope=MemoryScope.SESSION,
+            scope_id=item.get("scope_id", ""),
             type=mtype,
             text=item.get("text", ""),
             key=item.get("key"),

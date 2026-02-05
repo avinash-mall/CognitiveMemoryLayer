@@ -9,11 +9,11 @@ Usage:
     
     client = CognitiveMemoryClient(api_key="demo-key-123")
     
-    # Store a memory
-    result = client.write("user-123", "User prefers vegetarian food")
+    # Store a memory (scope-based)
+    result = client.write("session", "session-123", "User prefers vegetarian food")
     
     # Retrieve memories
-    memories = client.read("user-123", "What food does the user like?")
+    memories = client.read("session", "session-123", "What food does the user like?")
 """
 
 import httpx
@@ -59,8 +59,9 @@ class MemoryWriteResult:
 
 @dataclass 
 class MemoryStats:
-    """Memory statistics for a user."""
-    user_id: str
+    """Memory statistics for a scope."""
+    scope: str
+    scope_id: str
     total_memories: int
     active_memories: int
     by_type: Dict[str, int]
@@ -71,17 +72,23 @@ class CognitiveMemoryClient:
     """
     Python client for the Cognitive Memory Layer API.
     
+    Memory Scopes:
+        - session: Session-specific memory (most common for agents)
+        - agent: Agent-specific memory (shared across sessions)
+        - namespace: Namespace-scoped memory (for organizational grouping)
+        - global: Global memory (tenant-wide)
+    
     Example:
         client = CognitiveMemoryClient(
             base_url="http://localhost:8000",
             api_key="demo-key-123"
         )
         
-        # Write memory
-        client.write("user-123", "The user lives in Paris")
+        # Write memory to a session
+        client.write("session", "session-123", "The user lives in Paris")
         
         # Read memory with LLM-ready context
-        result = client.read("user-123", "Where does the user live?", format="llm_context")
+        result = client.read("session", "session-123", "Where does the user live?", format="llm_context")
         print(result.llm_context)
     """
     
@@ -129,36 +136,42 @@ class CognitiveMemoryClient:
     
     def write(
         self,
-        user_id: str,
+        scope: str,
+        scope_id: str,
         content: str,
         memory_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         turn_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
+        namespace: Optional[str] = None
     ) -> MemoryWriteResult:
         """
         Store new information in memory.
         
         Args:
-            user_id: Unique identifier for the user
+            scope: Memory scope ("session", "agent", "namespace", "global")
+            scope_id: Identifier for the scope (e.g., session ID, agent ID)
             content: The information to store
             memory_type: Type of memory (episodic_event, semantic_fact, preference, etc.)
             metadata: Additional metadata to store
             turn_id: Conversation turn identifier
             agent_id: Agent that created this memory
+            namespace: Optional namespace for grouping
             
         Returns:
             MemoryWriteResult with success status and memory_id
             
         Example:
             result = client.write(
-                user_id="user-123",
+                scope="session",
+                scope_id="session-123",
                 content="User mentioned they are allergic to peanuts",
                 memory_type="constraint"
             )
         """
         payload = {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "content": content
         }
         if memory_type:
@@ -169,6 +182,8 @@ class CognitiveMemoryClient:
             payload["turn_id"] = turn_id
         if agent_id:
             payload["agent_id"] = agent_id
+        if namespace:
+            payload["namespace"] = namespace
             
         data = self._request("POST", "/memory/write", json=payload)
         return MemoryWriteResult(
@@ -180,7 +195,8 @@ class CognitiveMemoryClient:
     
     def read(
         self,
-        user_id: str,
+        scope: str,
+        scope_id: str,
         query: str,
         max_results: int = 10,
         memory_types: Optional[List[str]] = None,
@@ -192,7 +208,8 @@ class CognitiveMemoryClient:
         Retrieve relevant memories for a query.
         
         Args:
-            user_id: Unique identifier for the user
+            scope: Memory scope ("session", "agent", "namespace", "global")
+            scope_id: Identifier for the scope
             query: Natural language query
             max_results: Maximum number of memories to return
             memory_types: Filter by specific memory types
@@ -206,7 +223,8 @@ class CognitiveMemoryClient:
         Example:
             # Get memories as LLM-ready context
             result = client.read(
-                user_id="user-123",
+                scope="session",
+                scope_id="session-123",
                 query="What are the user's dietary restrictions?",
                 memory_types=["preference", "constraint"],
                 format="llm_context"
@@ -214,7 +232,8 @@ class CognitiveMemoryClient:
             print(result.llm_context)
         """
         payload = {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "query": query,
             "max_results": max_results,
             "format": format
@@ -252,7 +271,8 @@ class CognitiveMemoryClient:
     
     def update(
         self,
-        user_id: str,
+        scope: str,
+        scope_id: str,
         memory_id: str,
         text: Optional[str] = None,
         confidence: Optional[float] = None,
@@ -262,7 +282,8 @@ class CognitiveMemoryClient:
         Update an existing memory or provide feedback.
         
         Args:
-            user_id: Unique identifier for the user
+            scope: Memory scope
+            scope_id: Identifier for the scope
             memory_id: UUID of the memory to update
             text: New text content
             confidence: New confidence score (0-1)
@@ -274,13 +295,15 @@ class CognitiveMemoryClient:
         Example:
             # Mark a memory as incorrect
             client.update(
-                user_id="user-123",
+                scope="session",
+                scope_id="session-123",
                 memory_id="550e8400-e29b-41d4-a716-446655440000",
                 feedback="incorrect"
             )
         """
         payload = {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "memory_id": memory_id
         }
         if text:
@@ -294,7 +317,8 @@ class CognitiveMemoryClient:
     
     def forget(
         self,
-        user_id: str,
+        scope: str,
+        scope_id: str,
         memory_ids: Optional[List[str]] = None,
         query: Optional[str] = None,
         before: Optional[datetime] = None,
@@ -304,7 +328,8 @@ class CognitiveMemoryClient:
         Forget (delete/archive/silence) memories.
         
         Args:
-            user_id: Unique identifier for the user
+            scope: Memory scope
+            scope_id: Identifier for the scope
             memory_ids: Specific memory UUIDs to forget
             query: Natural language query to find memories to forget
             before: Forget memories older than this date
@@ -316,13 +341,15 @@ class CognitiveMemoryClient:
         Example:
             # Forget old address information
             client.forget(
-                user_id="user-123",
+                scope="session",
+                scope_id="session-123",
                 query="old address",
                 action="archive"
             )
         """
         payload = {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "action": action
         }
         if memory_ids:
@@ -334,24 +361,46 @@ class CognitiveMemoryClient:
             
         return self._request("POST", "/memory/forget", json=payload)
     
-    def stats(self, user_id: str) -> MemoryStats:
+    def stats(self, scope: str, scope_id: str) -> MemoryStats:
         """
-        Get memory statistics for a user.
+        Get memory statistics for a scope.
         
         Args:
-            user_id: Unique identifier for the user
+            scope: Memory scope
+            scope_id: Identifier for the scope
             
         Returns:
             MemoryStats with counts and averages
         """
-        data = self._request("GET", f"/memory/stats/{user_id}")
+        data = self._request("GET", f"/memory/stats/{scope}/{scope_id}")
         return MemoryStats(
-            user_id=data["user_id"],
+            scope=data["scope"],
+            scope_id=data["scope_id"],
             total_memories=data["total_memories"],
             active_memories=data["active_memories"],
             by_type=data.get("by_type", {}),
             avg_confidence=data.get("avg_confidence", 0.0)
         )
+    
+    # Convenience methods for session-based memory
+    def session_write(
+        self,
+        session_id: str,
+        content: str,
+        memory_type: Optional[str] = None,
+        **kwargs
+    ) -> MemoryWriteResult:
+        """Convenience method to write to session memory."""
+        return self.write("session", session_id, content, memory_type, **kwargs)
+    
+    def session_read(
+        self,
+        session_id: str,
+        query: str,
+        **kwargs
+    ) -> MemoryReadResult:
+        """Convenience method to read from session memory."""
+        return self.read("session", session_id, query, **kwargs)
     
     def close(self):
         """Close the HTTP client."""
@@ -371,8 +420,8 @@ class AsyncCognitiveMemoryClient:
     
     Example:
         async with AsyncCognitiveMemoryClient() as client:
-            result = await client.write("user-123", "User likes jazz music")
-            memories = await client.read("user-123", "music preferences")
+            result = await client.write("session", "sess-123", "User likes jazz music")
+            memories = await client.read("session", "sess-123", "music preferences")
     """
     
     def __init__(
@@ -408,12 +457,13 @@ class AsyncCognitiveMemoryClient:
     
     async def write(
         self,
-        user_id: str,
+        scope: str,
+        scope_id: str,
         content: str,
         memory_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> MemoryWriteResult:
-        payload = {"user_id": user_id, "content": content}
+        payload = {"scope": scope, "scope_id": scope_id, "content": content}
         if memory_type:
             payload["memory_type"] = memory_type
         if metadata:
@@ -429,13 +479,15 @@ class AsyncCognitiveMemoryClient:
     
     async def read(
         self,
-        user_id: str,
+        scope: str,
+        scope_id: str,
         query: str,
         max_results: int = 10,
         format: str = "packet"
     ) -> MemoryReadResult:
         payload = {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "query": query,
             "max_results": max_results,
             "format": format
@@ -484,14 +536,16 @@ if __name__ == "__main__":
         
         # Write a test memory
         result = client.write(
-            user_id="test-user",
+            scope="session",
+            scope_id="test-session",
             content="This is a test memory from the Python client"
         )
         print(f"Write result: {result}")
         
         # Read it back
         memories = client.read(
-            user_id="test-user",
+            scope="session",
+            scope_id="test-session",
             query="test memory",
             format="llm_context"
         )

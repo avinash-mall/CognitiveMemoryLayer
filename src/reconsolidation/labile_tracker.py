@@ -20,10 +20,10 @@ class LabileMemory:
 
 @dataclass
 class LabileSession:
-    """Tracks labile memories for a user session."""
+    """Tracks labile memories for a scope session."""
 
     tenant_id: str
-    user_id: str
+    scope_id: str
     turn_id: str
 
     memories: Dict[UUID, LabileMemory] = field(default_factory=dict)
@@ -46,26 +46,26 @@ class LabileStateTracker:
     def __init__(
         self,
         labile_duration_seconds: float = 300,  # 5 minutes
-        max_sessions_per_user: int = 10,
+        max_sessions_per_scope: int = 10,
     ):
         self.labile_duration = timedelta(seconds=labile_duration_seconds)
-        self.max_sessions = max_sessions_per_user
+        self.max_sessions = max_sessions_per_scope
 
-        # Sessions indexed by (tenant_id, user_id, turn_id)
+        # Sessions indexed by (tenant_id, scope_id, turn_id)
         self._sessions: Dict[str, LabileSession] = {}
-        self._user_sessions: Dict[str, List[str]] = {}  # user -> [session_keys]
+        self._scope_sessions: Dict[str, List[str]] = {}  # scope -> [session_keys]
         self._lock = asyncio.Lock()
 
-    def _session_key(self, tenant_id: str, user_id: str, turn_id: str) -> str:
-        return f"{tenant_id}:{user_id}:{turn_id}"
+    def _session_key(self, tenant_id: str, scope_id: str, turn_id: str) -> str:
+        return f"{tenant_id}:{scope_id}:{turn_id}"
 
-    def _user_key(self, tenant_id: str, user_id: str) -> str:
-        return f"{tenant_id}:{user_id}"
+    def _scope_key(self, tenant_id: str, scope_id: str) -> str:
+        return f"{tenant_id}:{scope_id}"
 
     async def mark_labile(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         turn_id: str,
         memory_ids: List[UUID],
         query: str,
@@ -75,14 +75,14 @@ class LabileStateTracker:
     ) -> LabileSession:
         """Mark memories as labile after retrieval."""
         async with self._lock:
-            session_key = self._session_key(tenant_id, user_id, turn_id)
-            user_key = self._user_key(tenant_id, user_id)
+            session_key = self._session_key(tenant_id, scope_id, turn_id)
+            scope_key = self._scope_key(tenant_id, scope_id)
             now = datetime.utcnow()
             expires = now + self.labile_duration
 
             session = LabileSession(
                 tenant_id=tenant_id,
-                user_id=user_id,
+                scope_id=scope_id,
                 turn_id=turn_id,
                 query=query,
                 retrieved_texts=retrieved_texts,
@@ -100,29 +100,29 @@ class LabileStateTracker:
 
             self._sessions[session_key] = session
 
-            if user_key not in self._user_sessions:
-                self._user_sessions[user_key] = []
-            self._user_sessions[user_key].append(session_key)
+            if scope_key not in self._scope_sessions:
+                self._scope_sessions[scope_key] = []
+            self._scope_sessions[scope_key].append(session_key)
 
-            await self._cleanup_old_sessions(user_key)
+            await self._cleanup_old_sessions(scope_key)
 
             return session
 
     async def get_labile_memories(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         turn_id: Optional[str] = None,
     ) -> List[LabileMemory]:
-        """Get all currently labile memories for a user."""
+        """Get all currently labile memories for a scope."""
         async with self._lock:
-            user_key = self._user_key(tenant_id, user_id)
+            scope_key = self._scope_key(tenant_id, scope_id)
             now = datetime.utcnow()
             labile = []
-            session_keys = self._user_sessions.get(user_key, [])
+            session_keys = self._scope_sessions.get(scope_key, [])
 
             for sk in session_keys:
-                if turn_id and sk != self._session_key(tenant_id, user_id, turn_id):
+                if turn_id and sk != self._session_key(tenant_id, scope_id, turn_id):
                     continue
                 session = self._sessions.get(sk)
                 if not session:
@@ -135,23 +135,23 @@ class LabileStateTracker:
     async def get_session(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         turn_id: str,
     ) -> Optional[LabileSession]:
         """Get a specific session."""
-        session_key = self._session_key(tenant_id, user_id, turn_id)
+        session_key = self._session_key(tenant_id, scope_id, turn_id)
         return self._sessions.get(session_key)
 
     async def release_labile(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         turn_id: str,
         memory_ids: Optional[List[UUID]] = None,
     ) -> None:
         """Release memories from labile state. Called after reconsolidation is complete."""
         async with self._lock:
-            session_key = self._session_key(tenant_id, user_id, turn_id)
+            session_key = self._session_key(tenant_id, scope_id, turn_id)
             session = self._sessions.get(session_key)
             if not session:
                 return
@@ -162,15 +162,15 @@ class LabileStateTracker:
                 session.memories.clear()
             if not session.memories:
                 del self._sessions[session_key]
-                user_key = self._user_key(tenant_id, user_id)
-                if user_key in self._user_sessions:
-                    self._user_sessions[user_key] = [
-                        k for k in self._user_sessions[user_key] if k != session_key
+                scope_key = self._scope_key(tenant_id, scope_id)
+                if scope_key in self._scope_sessions:
+                    self._scope_sessions[scope_key] = [
+                        k for k in self._scope_sessions[scope_key] if k != session_key
                     ]
 
-    async def _cleanup_old_sessions(self, user_key: str) -> None:
-        """Remove old sessions for a user."""
-        sessions = self._user_sessions.get(user_key, [])
+    async def _cleanup_old_sessions(self, scope_key: str) -> None:
+        """Remove old sessions for a scope."""
+        sessions = self._scope_sessions.get(scope_key, [])
         if len(sessions) <= self.max_sessions:
             return
         now = datetime.utcnow()
@@ -187,11 +187,11 @@ class LabileStateTracker:
                 to_remove.append(sk)
         for sk in to_remove:
             self._sessions.pop(sk, None)
-            if user_key in self._user_sessions:
-                self._user_sessions[user_key] = [
-                    k for k in self._user_sessions[user_key] if k != sk
+            if scope_key in self._scope_sessions:
+                self._scope_sessions[scope_key] = [
+                    k for k in self._scope_sessions[scope_key] if k != sk
                 ]
-        sessions = self._user_sessions.get(user_key, [])
+        sessions = self._scope_sessions.get(scope_key, [])
         while len(sessions) > self.max_sessions:
             oldest_key = sessions.pop(0)
             self._sessions.pop(oldest_key, None)

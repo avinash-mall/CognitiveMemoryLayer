@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemorySource, MemoryType
+from src.core.enums import MemoryScope, MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
 from src.storage.postgres import PostgresMemoryStore
 from src.reconsolidation.service import ReconsolidationService
@@ -40,6 +40,8 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     created = await store.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
+            scope=MemoryScope.USER,
+            scope_id=user_id,
             user_id=user_id,
             type=MemoryType.PREFERENCE,
             text="I prefer coffee.",

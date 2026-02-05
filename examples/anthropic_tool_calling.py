@@ -29,7 +29,7 @@ from memory_client import CognitiveMemoryClient
 MEMORY_TOOLS = [
     {
         "name": "memory_write",
-        "description": "Store new information in the user's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them.",
+        "description": "Store new information in the session's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -48,7 +48,7 @@ MEMORY_TOOLS = [
     },
     {
         "name": "memory_read",
-        "description": "Retrieve relevant memories about the user to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
+        "description": "Retrieve relevant memories to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -118,13 +118,16 @@ class ClaudeMemoryAssistant:
     
     def __init__(
         self,
-        user_id: str,
+        session_id: str,
         anthropic_api_key: Optional[str] = None,
         memory_api_url: str = "http://localhost:8000",
         memory_api_key: str = "demo-key-123",
-        model: str = "claude-sonnet-4-20250514"
+        model: str = "claude-sonnet-4-20250514",
+        scope: str = "session"
     ):
-        self.user_id = user_id
+        self.session_id = session_id
+        self.scope = scope
+        self.scope_id = session_id
         self.model = model
         
         # Initialize Anthropic client
@@ -158,7 +161,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
         try:
             if tool_name == "memory_write":
                 result = self.memory.write(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     content=tool_input["content"],
                     memory_type=tool_input.get("memory_type")
                 )
@@ -169,7 +173,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
             
             elif tool_name == "memory_read":
                 result = self.memory.read(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     query=tool_input["query"],
                     memory_types=tool_input.get("memory_types"),
                     format="llm_context"
@@ -178,7 +183,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
             
             elif tool_name == "memory_update":
                 result = self.memory.update(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     memory_id=tool_input["memory_id"],
                     feedback=tool_input["feedback"]
                 )
@@ -186,7 +192,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
             
             elif tool_name == "memory_forget":
                 result = self.memory.forget(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     query=tool_input["query"],
                     action=tool_input.get("action", "archive")
                 )
@@ -282,10 +289,11 @@ def main():
         print("  export ANTHROPIC_API_KEY=sk-ant-...")
         return
     
-    # Create assistant
+    # Create assistant with session scope
     assistant = ClaudeMemoryAssistant(
-        user_id="claude-demo-user",
-        model="claude-sonnet-4-20250514"  # or claude-3-opus-20240229
+        session_id="claude-demo-session",
+        model="claude-sonnet-4-20250514",  # or claude-3-opus-20240229
+        scope="session"
     )
     
     try:
@@ -318,8 +326,9 @@ def example_conversation():
     print("\n--- Example Conversation with Claude ---\n")
     
     assistant = ClaudeMemoryAssistant(
-        user_id="claude-example-user",
-        model="claude-sonnet-4-20250514"
+        session_id="claude-example-session",
+        model="claude-sonnet-4-20250514",
+        scope="session"
     )
     
     conversations = [

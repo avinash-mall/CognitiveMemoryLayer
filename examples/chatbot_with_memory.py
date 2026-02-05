@@ -50,27 +50,31 @@ class MemoryPoweredChatbot:
     
     def __init__(
         self,
-        user_id: str,
+        session_id: str,
         llm_api_key: Optional[str] = None,
         memory_api_url: str = "http://localhost:8000",
         memory_api_key: str = "demo-key-123",
         llm_model: str = "gpt-4o-mini",
         auto_remember: bool = True,
-        memory_context_tokens: int = 1500
+        memory_context_tokens: int = 1500,
+        scope: str = "session"
     ):
         """
         Initialize the chatbot.
         
         Args:
-            user_id: Unique identifier for the user
+            session_id: Unique identifier for the session (used as scope_id)
             llm_api_key: OpenAI API key (or set OPENAI_API_KEY env var)
             memory_api_url: URL of the Cognitive Memory Layer API
             memory_api_key: API key for memory service
             llm_model: LLM model to use
             auto_remember: Automatically extract and store memorable info
             memory_context_tokens: Max tokens for memory context
+            scope: Memory scope to use (session, agent, namespace, global)
         """
-        self.user_id = user_id
+        self.session_id = session_id
+        self.scope = scope
+        self.scope_id = session_id
         self.llm_model = llm_model
         self.auto_remember = auto_remember
         self.memory_context_tokens = memory_context_tokens
@@ -109,7 +113,8 @@ Be conversational and helpful. If you don't know something about the user, it's 
             info = message[10:].strip()
             if info:
                 result = self.memory.write(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     content=info,
                     memory_type="semantic_fact"
                 )
@@ -120,7 +125,8 @@ Be conversational and helpful. If you don't know something about the user, it's 
             query = message[8:].strip()
             if query:
                 result = self.memory.forget(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     query=query,
                     action="delete"
                 )
@@ -129,8 +135,8 @@ Be conversational and helpful. If you don't know something about the user, it's 
             return "Usage: !forget <query>"
         
         elif message == "!stats":
-            stats = self.memory.stats(self.user_id)
-            return f"""📊 Memory Statistics for {self.user_id}:
+            stats = self.memory.stats(self.scope, self.scope_id)
+            return f"""📊 Memory Statistics for {self.scope}/{self.scope_id}:
 - Total memories: {stats.total_memories}
 - Active memories: {stats.active_memories}
 - Average confidence: {stats.avg_confidence:.0%}
@@ -140,7 +146,8 @@ Be conversational and helpful. If you don't know something about the user, it's 
             query = message[8:].strip()
             if query:
                 result = self.memory.read(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     query=query,
                     max_results=5
                 )
@@ -171,7 +178,8 @@ Be conversational and helpful. If you don't know something about the user, it's 
         """Retrieve relevant memory context for the current message."""
         try:
             result = self.memory.read(
-                user_id=self.user_id,
+                scope=self.scope,
+                scope_id=self.scope_id,
                 query=message,
                 max_results=10,
                 format="llm_context"
@@ -281,7 +289,8 @@ Only extract clear, factual information. Don't make assumptions."""
             for content, memory_type in memories_to_store:
                 try:
                     self.memory.write(
-                        user_id=self.user_id,
+                        scope=self.scope,
+                        scope_id=self.scope_id,
                         content=content,
                         memory_type=memory_type
                     )
@@ -316,10 +325,11 @@ Type 'quit' to exit.
         print("  export OPENAI_API_KEY=sk-...")
         return
     
-    # Create chatbot
+    # Create chatbot with session scope
     chatbot = MemoryPoweredChatbot(
-        user_id="chatbot-demo-user",
-        auto_remember=True
+        session_id="chatbot-demo-session",
+        auto_remember=True,
+        scope="session"
     )
     
     try:

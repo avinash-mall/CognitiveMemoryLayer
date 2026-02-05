@@ -63,7 +63,7 @@ class ReconsolidationService:
     async def process_turn(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         turn_id: str,
         user_message: str,
         assistant_response: str,
@@ -77,7 +77,7 @@ class ReconsolidationService:
         if retrieved_memories:
             await self.labile_tracker.mark_labile(
                 tenant_id,
-                user_id,
+                scope_id,
                 turn_id,
                 memory_ids=[m.id for m in retrieved_memories],
                 query=user_message,
@@ -94,7 +94,7 @@ class ReconsolidationService:
 
         if not new_facts:
             await self.labile_tracker.release_labile(
-                tenant_id, user_id, turn_id
+                tenant_id, scope_id, turn_id
             )
             elapsed = (datetime.utcnow() - start).total_seconds() * 1000
             return ReconsolidationResult(
@@ -124,7 +124,7 @@ class ReconsolidationService:
                     old_memory=memory,
                     new_info_type=mem_type,
                     tenant_id=tenant_id,
-                    user_id=user_id,
+                    scope_id=scope_id,
                     evidence_id=turn_id,
                 )
 
@@ -137,7 +137,7 @@ class ReconsolidationService:
                         "success": result,
                     })
 
-        await self.labile_tracker.release_labile(tenant_id, user_id, turn_id)
+        await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
         elapsed = (datetime.utcnow() - start).total_seconds() * 1000
 
         return ReconsolidationResult(

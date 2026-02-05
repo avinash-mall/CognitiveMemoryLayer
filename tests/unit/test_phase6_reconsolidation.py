@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemorySource, MemoryType
+from src.core.enums import MemoryScope, MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance
 from src.reconsolidation.labile_tracker import (
     LabileMemory,
@@ -27,6 +27,8 @@ def _make_memory(text: str, key: str | None = None) -> MemoryRecord:
     return MemoryRecord(
         id=uuid4(),
         tenant_id="t",
+        scope=MemoryScope.USER,
+        scope_id="u",
         user_id="u",
         type=MemoryType.PREFERENCE,
         text=text,

@@ -6,13 +6,14 @@
 2. [Quick Start](#quick-start)
 3. [LLM Tool Calling Interface](#llm-tool-calling-interface)
 4. [API Reference](#api-reference)
-5. [Memory Types](#memory-types)
-6. [Authentication](#authentication)
-7. [Response Formats](#response-formats)
-8. [Best Practices for LLM Integration](#best-practices-for-llm-integration)
-9. [Setup and Deployment](#setup-and-deployment)
-10. [Configuration Reference](#configuration-reference)
-11. [Advanced Features](#advanced-features)
+5. [Memory Scopes](#memory-scopes)
+6. [Memory Types](#memory-types)
+7. [Authentication](#authentication)
+8. [Response Formats](#response-formats)
+9. [Best Practices for LLM Integration](#best-practices-for-llm-integration)
+10. [Setup and Deployment](#setup-and-deployment)
+11. [Configuration Reference](#configuration-reference)
+12. [Advanced Features](#advanced-features)
 
 ---
 
@@ -73,7 +74,8 @@ curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "X-API-Key: demo-key-123" \
   -d '{
-    "user_id": "user-001",
+    "scope": "session",
+    "scope_id": "demo-session-001",
     "content": "The user prefers vegetarian food and lives in Paris."
   }'
 ```
@@ -85,7 +87,8 @@ curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "X-API-Key: demo-key-123" \
   -d '{
-    "user_id": "user-001",
+    "scope": "session",
+    "scope_id": "demo-session-001",
     "query": "What are the user dietary preferences?"
   }'
 ```
@@ -105,13 +108,18 @@ Store new information in long-term memory.
 ```json
 {
   "name": "memory_write",
-  "description": "Store new information in the user's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them. The system automatically filters trivial information.",
+  "description": "Store new information in long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant. The system automatically filters trivial information.",
   "parameters": {
     "type": "object",
     "properties": {
-      "user_id": {
+      "scope": {
         "type": "string",
-        "description": "Unique identifier for the user"
+        "enum": ["session", "agent", "namespace", "global", "user"],
+        "description": "Memory scope: 'session' for conversation, 'agent' for agent-specific, 'namespace' for project/team, 'global' for shared, 'user' for user-specific"
+      },
+      "scope_id": {
+        "type": "string",
+        "description": "Unique identifier within the scope (e.g., session ID, agent name)"
       },
       "content": {
         "type": "string",
@@ -127,7 +135,7 @@ Store new information in long-term memory.
         "description": "Optional additional context (e.g., source, category)"
       }
     },
-    "required": ["user_id", "content"]
+    "required": ["scope", "scope_id", "content"]
   }
 }
 ```
@@ -137,7 +145,8 @@ Store new information in long-term memory.
 {
   "name": "memory_write",
   "arguments": {
-    "user_id": "user-123",
+    "scope": "session",
+    "scope_id": "session-abc123",
     "content": "User is allergic to peanuts and requires all food recommendations to avoid peanut ingredients.",
     "memory_type": "constraint"
   }
@@ -151,13 +160,18 @@ Retrieve relevant memories for a query.
 ```json
 {
   "name": "memory_read",
-  "description": "Retrieve relevant memories about the user to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
+  "description": "Retrieve relevant memories to inform your response. Use this before answering questions about preferences, history, or personal information.",
   "parameters": {
     "type": "object",
     "properties": {
-      "user_id": {
+      "scope": {
         "type": "string",
-        "description": "Unique identifier for the user"
+        "enum": ["session", "agent", "namespace", "global", "user"],
+        "description": "Memory scope to query"
+      },
+      "scope_id": {
+        "type": "string",
+        "description": "Unique identifier within the scope"
       },
       "query": {
         "type": "string",
@@ -183,7 +197,7 @@ Retrieve relevant memories for a query.
         "default": "packet"
       }
     },
-    "required": ["user_id", "query"]
+    "required": ["scope", "scope_id", "query"]
   }
 }
 ```
@@ -193,7 +207,8 @@ Retrieve relevant memories for a query.
 {
   "name": "memory_read",
   "arguments": {
-    "user_id": "user-123",
+    "scope": "session",
+    "scope_id": "session-abc123",
     "query": "What dietary restrictions does the user have?",
     "memory_types": ["preference", "constraint"],
     "format": "llm_context"
@@ -212,9 +227,14 @@ Update or provide feedback on an existing memory.
   "parameters": {
     "type": "object",
     "properties": {
-      "user_id": {
+      "scope": {
         "type": "string",
-        "description": "Unique identifier for the user"
+        "enum": ["session", "agent", "namespace", "global", "user"],
+        "description": "Memory scope"
+      },
+      "scope_id": {
+        "type": "string",
+        "description": "Unique identifier within the scope"
       },
       "memory_id": {
         "type": "string",
@@ -236,7 +256,7 @@ Update or provide feedback on an existing memory.
         "description": "Feedback type: 'correct' reinforces the memory, 'incorrect' marks it invalid, 'outdated' adds a validity end date"
       }
     },
-    "required": ["user_id", "memory_id"]
+    "required": ["scope", "scope_id", "memory_id"]
   }
 }
 ```
@@ -246,7 +266,8 @@ Update or provide feedback on an existing memory.
 {
   "name": "memory_update",
   "arguments": {
-    "user_id": "user-123",
+    "scope": "session",
+    "scope_id": "session-abc123",
     "memory_id": "550e8400-e29b-41d4-a716-446655440000",
     "feedback": "incorrect"
   }
@@ -264,9 +285,14 @@ Remove or silence memories.
   "parameters": {
     "type": "object",
     "properties": {
-      "user_id": {
+      "scope": {
         "type": "string",
-        "description": "Unique identifier for the user"
+        "enum": ["session", "agent", "namespace", "global", "user"],
+        "description": "Memory scope"
+      },
+      "scope_id": {
+        "type": "string",
+        "description": "Unique identifier within the scope"
       },
       "memory_ids": {
         "type": "array",
@@ -289,7 +315,7 @@ Remove or silence memories.
         "default": "delete"
       }
     },
-    "required": ["user_id"]
+    "required": ["scope", "scope_id"]
   }
 }
 ```
@@ -299,7 +325,8 @@ Remove or silence memories.
 {
   "name": "memory_forget",
   "arguments": {
-    "user_id": "user-123",
+    "scope": "session",
+    "scope_id": "session-abc123",
     "query": "old address information",
     "action": "archive"
   }
@@ -308,21 +335,26 @@ Remove or silence memories.
 
 #### 5. memory_stats
 
-Get statistics about a user's memories.
+Get statistics about memories.
 
 ```json
 {
   "name": "memory_stats",
-  "description": "Get statistics about a user's stored memories. Useful for understanding memory usage and health.",
+  "description": "Get statistics about stored memories. Useful for understanding memory usage and health.",
   "parameters": {
     "type": "object",
     "properties": {
-      "user_id": {
+      "scope": {
         "type": "string",
-        "description": "Unique identifier for the user"
+        "enum": ["session", "agent", "namespace", "global", "user"],
+        "description": "Memory scope"
+      },
+      "scope_id": {
+        "type": "string",
+        "description": "Unique identifier within the scope"
       }
     },
-    "required": ["user_id"]
+    "required": ["scope", "scope_id"]
   }
 }
 ```
@@ -350,7 +382,8 @@ Store new information in memory.
 **Request Body:**
 ```json
 {
-  "user_id": "string (required)",
+  "scope": "session|agent|namespace|global|user (required)",
+  "scope_id": "string (required)",
   "content": "string (required)",
   "memory_type": "episodic_event|semantic_fact|preference|task_state|procedure|constraint|hypothesis (optional)",
   "metadata": { "key": "value" },
@@ -387,7 +420,8 @@ Retrieve relevant memories.
 **Request Body:**
 ```json
 {
-  "user_id": "string (required)",
+  "scope": "session|agent|namespace|global|user (required)",
+  "scope_id": "string (required)",
   "query": "string (required)",
   "max_results": 10,
   "memory_types": ["semantic_fact", "preference"],
@@ -445,7 +479,8 @@ Update an existing memory.
 **Request Body:**
 ```json
 {
-  "user_id": "string (required)",
+  "scope": "session|agent|namespace|global|user (required)",
+  "scope_id": "string (required)",
   "memory_id": "uuid (required)",
   "text": "Updated memory text (optional)",
   "confidence": 0.9,
@@ -483,7 +518,8 @@ Forget memories.
 **Request Body:**
 ```json
 {
-  "user_id": "string (required)",
+  "scope": "session|agent|namespace|global|user (required)",
+  "scope_id": "string (required)",
   "memory_ids": ["uuid1", "uuid2"],
   "query": "old address",
   "before": "2023-01-01T00:00:00Z",
@@ -502,7 +538,7 @@ Forget memories.
 
 ---
 
-#### GET /memory/stats/{user_id}
+#### GET /memory/stats/{scope}/{scope_id}
 
 Get memory statistics.
 
@@ -512,7 +548,8 @@ Get memory statistics.
 **Response:**
 ```json
 {
-  "user_id": "user-123",
+  "scope": "session",
+  "scope_id": "session-abc123",
   "total_memories": 150,
   "active_memories": 120,
   "silent_memories": 20,
@@ -532,6 +569,20 @@ Get memory statistics.
 
 ---
 
+#### Session Convenience Endpoints
+
+For session-scoped operations, convenience endpoints are available:
+
+**POST /session/{session_id}/context**
+
+Get full session context for LLM injection.
+
+**POST /session/{session_id}/ingest**
+
+Ingest a conversation turn (message + optional tool results).
+
+---
+
 #### GET /health
 
 Health check endpoint.
@@ -543,6 +594,27 @@ Health check endpoint.
   "timestamp": "2024-06-15T14:30:00Z"
 }
 ```
+
+---
+
+## Memory Scopes
+
+The API uses a scope-based system for organizing memories, replacing the traditional user_id approach:
+
+| Scope | Description | Use Case |
+|-------|-------------|----------|
+| `session` | Single conversation session | Conversation context, turn-by-turn memory |
+| `agent` | Agent-specific context | Agent-level preferences, tool history |
+| `namespace` | Project or team level | Shared project knowledge, team context |
+| `global` | Shared across all contexts | Universal facts, shared procedures |
+| `user` | User-specific memories | User preferences across sessions |
+
+### Scope Hierarchy
+
+Memories can be queried across scope levels when appropriate:
+- Session-level queries can optionally include agent and namespace context
+- Agent-level queries can include namespace context
+- Global scope is accessible from all other scopes
 
 ---
 
@@ -601,7 +673,6 @@ The system uses API key authentication via the `X-API-Key` header.
 ```
 X-API-Key: demo-key-123
 X-Tenant-ID: optional-tenant-id
-X-User-ID: optional-user-override
 ```
 
 ### Permissions
@@ -617,7 +688,7 @@ X-User-ID: optional-user-override
 The system supports multi-tenant isolation:
 - Each API key is associated with a `tenant_id`
 - All operations are scoped to the tenant
-- Users cannot access other tenants' data
+- Scopes cannot access other tenants' data
 
 ---
 
@@ -680,17 +751,18 @@ This format is ideal for injecting into system prompts or context windows.
 
 ```python
 # Pseudo-code for conversation flow
-async def handle_message(user_id: str, message: str):
+async def handle_message(scope: str, scope_id: str, message: str):
     # First, read relevant context
     context = await memory_read(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         query=message,
         format="llm_context"
     )
     
     # Include in system prompt
     system_prompt = f"""
-    You are a helpful assistant. Here is what you know about the user:
+    You are a helpful assistant. Here is what you know:
     
     {context.llm_context}
     
@@ -718,7 +790,8 @@ async def handle_message(user_id: str, message: str):
 # After extracting important info from conversation
 if contains_personal_info(message):
     await memory_write(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         content=extracted_fact,
         memory_type="semantic_fact"
     )
@@ -729,7 +802,7 @@ if contains_personal_info(message):
 When memory read returns warnings about conflicts:
 
 ```python
-context = await memory_read(user_id, query, format="packet")
+context = await memory_read(scope, scope_id, query, format="packet")
 
 if context.warnings:
     # Ask user for clarification
@@ -748,19 +821,22 @@ When users confirm or correct information:
 ```python
 # User confirms: "Yes, that's correct!"
 await memory_update(
-    user_id=user_id,
+    scope=scope,
+    scope_id=scope_id,
     memory_id=retrieved_memory_id,
     feedback="correct"
 )
 
 # User corrects: "No, I actually live in London now"
 await memory_update(
-    user_id=user_id,
+    scope=scope,
+    scope_id=scope_id,
     memory_id=old_memory_id,
     feedback="outdated"
 )
 await memory_write(
-    user_id=user_id,
+    scope=scope,
+    scope_id=scope_id,
     content="User lives in London",
     memory_type="semantic_fact"
 )
@@ -772,7 +848,8 @@ Always check for constraints before generating responses:
 
 ```python
 context = await memory_read(
-    user_id=user_id,
+    scope=scope,
+    scope_id=scope_id,
     query=current_topic,
     memory_types=["constraint"],
     format="packet"
@@ -847,7 +924,7 @@ curl http://localhost:8000/api/v1/health
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "X-API-Key: demo-key-123" \
-  -d '{"user_id": "test", "content": "Test memory"}'
+  -d '{"scope": "session", "scope_id": "test-session", "content": "Test memory"}'
 ```
 
 ### Local Development Setup
@@ -990,7 +1067,7 @@ The consolidation engine runs periodically to:
 
 **Trigger manually (admin):**
 ```bash
-curl -X POST http://localhost:8000/api/v1/admin/consolidate/user-123 \
+curl -X POST http://localhost:8000/api/v1/admin/consolidate/session/session-123 \
   -H "X-API-Key: admin-key-456"
 ```
 
@@ -1004,7 +1081,7 @@ The forgetting system:
 
 **Trigger manually (admin):**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admin/forget/user-123?dry_run=true" \
+curl -X POST "http://localhost:8000/api/v1/admin/forget/session/session-123?dry_run=true" \
   -H "X-API-Key: admin-key-456"
 ```
 
@@ -1030,9 +1107,9 @@ Available at `/metrics`:
 
 ### GDPR Compliance
 
-Delete all user data:
+Delete all data for a scope:
 ```bash
-curl -X DELETE http://localhost:8000/api/v1/admin/user/user-123 \
+curl -X DELETE http://localhost:8000/api/v1/admin/scope/session/session-123 \
   -H "X-API-Key: admin-key-456"
 ```
 
@@ -1052,7 +1129,7 @@ curl -X DELETE http://localhost:8000/api/v1/admin/user/user-123 \
 - Lower `MEMORY__WRITE_GATE_THRESHOLD` (not recommended for production)
 
 **3. Empty retrieval results**
-- Verify memories exist for the user
+- Verify memories exist for the scope
 - Check the query is semantically related to stored content
 - Ensure embeddings are being generated (check OpenAI key)
 
@@ -1092,5 +1169,6 @@ The Cognitive Memory Layer provides LLMs with a sophisticated memory system that
 4. **Use `memory_forget` for explicit deletion** requests
 5. **Request `format: "llm_context"`** for easy system prompt injection
 6. **Respect `constraints`** - they are safety-critical rules
+7. **Use appropriate scopes** - session for conversations, agent for agent context, etc.
 
 For questions or issues, refer to the project documentation in the `ProjectPlan` folder.
