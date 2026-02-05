@@ -53,7 +53,7 @@ class MemoryPoweredChatbot:
         session_id: str,
         llm_api_key: Optional[str] = None,
         memory_api_url: str = "http://localhost:8000",
-        memory_api_key: str = "demo-key-123",
+        memory_api_key: Optional[str] = None,
         llm_model: str = "gpt-4o-mini",
         auto_remember: bool = True,
         memory_context_tokens: int = 1500,
@@ -66,7 +66,7 @@ class MemoryPoweredChatbot:
             session_id: Unique identifier for the session (used as scope_id)
             llm_api_key: OpenAI API key (or set OPENAI_API_KEY env var)
             memory_api_url: URL of the Cognitive Memory Layer API
-            memory_api_key: API key for memory service
+            memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
             llm_model: LLM model to use
             auto_remember: Automatically extract and store memorable info
             memory_context_tokens: Max tokens for memory context
@@ -83,7 +83,7 @@ class MemoryPoweredChatbot:
         self.llm = OpenAI(api_key=llm_api_key or os.getenv("OPENAI_API_KEY"))
         self.memory = CognitiveMemoryClient(
             base_url=memory_api_url,
-            api_key=memory_api_key
+            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", "")
         )
         
         # Conversation history (current session only)

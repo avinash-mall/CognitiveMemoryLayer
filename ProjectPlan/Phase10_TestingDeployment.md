@@ -852,17 +852,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    environment: staging
-    
-    steps:
-      - name: Deploy to staging
-        run: |
-          echo "Deploying to staging environment"
-          # Add deployment commands here
+  # deploy-staging: Omitted from CI until a staging environment is configured.
+  # Add a job that uses the built image (e.g. kubectl, helm, or cloud CLI) when ready.
 ```
 
 ---

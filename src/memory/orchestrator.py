@@ -347,6 +347,16 @@ class MemoryOrchestrator:
             scope_id,
             filters={"status": MemoryStatus.ACTIVE.value},
         )
+        silent = await self.hippocampal.store.count(
+            tenant_id,
+            scope_id,
+            filters={"status": MemoryStatus.SILENT.value},
+        )
+        archived = await self.hippocampal.store.count(
+            tenant_id,
+            scope_id,
+            filters={"status": MemoryStatus.ARCHIVED.value},
+        )
 
         by_type: Dict[str, int] = {}
         records = await self.hippocampal.store.scan(
@@ -363,8 +373,8 @@ class MemoryOrchestrator:
         return {
             "total_memories": total,
             "active_memories": active,
-            "silent_memories": 0,
-            "archived_memories": 0,
+            "silent_memories": silent,
+            "archived_memories": archived,
             "by_type": by_type,
             "avg_confidence": sum(confidences) / len(confidences) if confidences else 0.0,
             "avg_importance": sum(importances) / len(importances) if importances else 0.0,

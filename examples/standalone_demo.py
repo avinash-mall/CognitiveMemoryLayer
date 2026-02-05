@@ -18,14 +18,15 @@ Prerequisites:
        pip install httpx
 """
 
+import os
 import httpx
 import json
 from datetime import datetime
 
 
-# API Configuration
+# API Configuration (set AUTH__API_KEY in environment)
 BASE_URL = "http://localhost:8000/api/v1"
-API_KEY = "demo-key-123"
+API_KEY = os.environ.get("AUTH__API_KEY", "")
 HEADERS = {
     "Content-Type": "application/json",
     "X-API-Key": API_KEY
@@ -307,14 +308,13 @@ def demo_curl_examples():
         ("Health Check", "curl http://localhost:8000/api/v1/health"),
         ("Write Memory", '''curl -X POST http://localhost:8000/api/v1/memory/write \\
   -H "Content-Type: application/json" \\
-  -H "X-API-Key: demo-key-123" \\
+  -H "X-API-Key: $AUTH__API_KEY" \\
   -d '{"scope": "session", "scope_id": "test-session", "content": "User likes pizza"}\''''),
         ("Read Memory", '''curl -X POST http://localhost:8000/api/v1/memory/read \\
   -H "Content-Type: application/json" \\
-  -H "X-API-Key: demo-key-123" \\
+  -H "X-API-Key: $AUTH__API_KEY" \\
   -d '{"scope": "session", "scope_id": "test-session", "query": "food preferences", "format": "llm_context"}\''''),
-        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats/session/test-session \\
-  -H "X-API-Key: demo-key-123"'''),
+        ("Get Stats", "curl http://localhost:8000/api/v1/memory/stats/session/test-session -H \"X-API-Key: $AUTH__API_KEY\""),
     ]
     
     for name, cmd in commands:
@@ -329,8 +329,10 @@ def main():
     print("   Cognitive Memory Layer - Standalone Demo")
     print("=" * 60)
     print("\nThis demo shows the memory API without requiring LLM API keys.")
-    print("Press Ctrl+C to skip to the next section.\n")
-    
+    print("Set AUTH__API_KEY in your environment before running.\n")
+    if not API_KEY:
+        print("Error: AUTH__API_KEY is not set. Set it and run again.")
+        return
     try:
         # Check health first
         if not demo_health_check():

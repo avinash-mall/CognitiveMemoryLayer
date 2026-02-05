@@ -128,15 +128,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    # Optional: add "environment: staging" when GitHub environment is configured
-
-    steps:
-      - name: Deploy to staging
-        run: |
-          echo "Deploying to staging environment"
-          echo "Image: ghcr.io/${{ github.repository }}:${{ github.sha }}"
-          # Add deployment commands here (e.g. kubectl, helm, or cloud CLI)
