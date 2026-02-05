@@ -1,5 +1,6 @@
 """
-Basic Usage Example - Cognitive Memory Layer
+Basic Usage Example - Cognitive Memory Layer.
+Set AUTH__API_KEY in your environment before running.
 
 This example demonstrates the fundamental operations:
 1. Storing memories
@@ -16,14 +17,15 @@ Prerequisites:
        pip install httpx
 """
 
+import os
 from memory_client import CognitiveMemoryClient
 
 
 def main():
-    # Initialize the client
+    # Initialize the client (uses AUTH__API_KEY from env if api_key not passed)
     client = CognitiveMemoryClient(
         base_url="http://localhost:8000",
-        api_key="demo-key-123"
+        api_key=os.environ.get("AUTH__API_KEY", "")
     )
     
     # Use session scope with a session ID

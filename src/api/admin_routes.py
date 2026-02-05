@@ -54,15 +54,3 @@ async def trigger_forgetting(
     }
 
 
-@admin_router.delete("/user/{user_id}")
-async def delete_user_memory(
-    user_id: str,
-    auth: AuthContext = Depends(require_admin_permission),
-    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
-):
-    """Delete all memory for a user (GDPR compliance)."""
-    affected = await orchestrator.delete_all_for_user(
-        tenant_id=auth.tenant_id,
-        user_id=user_id,
-    )
-    return {"status": "deleted", "user_id": user_id, "affected_count": affected}

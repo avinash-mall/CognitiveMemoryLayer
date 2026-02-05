@@ -121,7 +121,7 @@ class ClaudeMemoryAssistant:
         session_id: str,
         anthropic_api_key: Optional[str] = None,
         memory_api_url: str = "http://localhost:8000",
-        memory_api_key: str = "demo-key-123",
+        memory_api_key: Optional[str] = None,
         model: str = "claude-sonnet-4-20250514",
         scope: str = "session"
     ):
@@ -136,7 +136,7 @@ class ClaudeMemoryAssistant:
         # Initialize memory client
         self.memory = CognitiveMemoryClient(
             base_url=memory_api_url,
-            api_key=memory_api_key
+            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", "")
         )
         
         # Conversation history

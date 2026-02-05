@@ -72,20 +72,21 @@ curl http://localhost:8000/api/v1/health
 ```bash
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-key-123" \
+  -H "X-API-Key: $AUTH__API_KEY" \
   -d '{
     "scope": "session",
     "scope_id": "demo-session-001",
     "content": "The user prefers vegetarian food and lives in Paris."
   }'
 ```
+(Set `AUTH__API_KEY` in your environment or use a key you configured.)
 
 ### 4. Retrieve Memories
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-key-123" \
+  -H "X-API-Key: $AUTH__API_KEY" \
   -d '{
     "scope": "session",
     "scope_id": "demo-session-001",
@@ -661,24 +662,28 @@ Memories can be queried across scope levels when appropriate:
 
 ## Authentication
 
-### API Keys
+### API Keys (config-based)
 
-The system uses API key authentication via the `X-API-Key` header.
+The system uses API key authentication via the `X-API-Key` header. Keys are loaded from environment variables (no hardcoded keys).
 
-**Built-in Keys (for development):**
-- `demo-key-123` - Standard read/write access
-- `admin-key-456` - Full admin access
+**Environment variables:**
+- `AUTH__API_KEY` – API key for read/write access (optional; if unset, no key is valid)
+- `AUTH__ADMIN_API_KEY` – API key with admin permission (optional)
+- `AUTH__DEFAULT_TENANT_ID` – Default tenant for authenticated requests (default: `default`)
 
 **Headers:**
 ```
-X-API-Key: demo-key-123
+X-API-Key: <your-api-key>
 X-Tenant-ID: optional-tenant-id
+X-User-ID: optional-user-id override
 ```
+
+**Example (development):** Set `AUTH__API_KEY=your-dev-key` and optionally `AUTH__ADMIN_API_KEY=your-admin-key` in `.env` or the shell before starting the API.
 
 ### Permissions
 
-| Permission | demo-key-123 | admin-key-456 |
-|------------|--------------|---------------|
+| Permission | Standard key (AUTH__API_KEY) | Admin key (AUTH__ADMIN_API_KEY) |
+|------------|------------------------------|----------------------------------|
 | Read | ✓ | ✓ |
 | Write | ✓ | ✓ |
 | Admin | ✗ | ✓ |
@@ -686,7 +691,7 @@ X-Tenant-ID: optional-tenant-id
 ### Multi-Tenancy
 
 The system supports multi-tenant isolation:
-- Each API key is associated with a `tenant_id`
+- Each API key is associated with a default `tenant_id` (from config)
 - All operations are scoped to the tenant
 - Scopes cannot access other tenants' data
 
@@ -750,7 +755,7 @@ This format is ideal for injecting into system prompts or context windows.
 - Starting a new conversation session
 
 ```python
-# Pseudo-code for conversation flow
+# Example conversation flow (matches POST /api/v1/memory/read)
 async def handle_message(scope: str, scope_id: str, message: str):
     # First, read relevant context
     context = await memory_read(
@@ -920,10 +925,10 @@ docker compose -f docker/docker-compose.yml up api
 # Check health
 curl http://localhost:8000/api/v1/health
 
-# Test write
+# Test write (set AUTH__API_KEY in env first)
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-key-123" \
+  -H "X-API-Key: YOUR_API_KEY" \
   -d '{"scope": "session", "scope_id": "test-session", "content": "Test memory"}'
 ```
 
@@ -1067,9 +1072,10 @@ The consolidation engine runs periodically to:
 
 **Trigger manually (admin):**
 ```bash
-curl -X POST http://localhost:8000/api/v1/admin/consolidate/session/session-123 \
-  -H "X-API-Key: admin-key-456"
+curl -X POST "http://localhost:8000/api/v1/admin/consolidate/SCOPE_ID" \
+  -H "X-API-Key: YOUR_ADMIN_API_KEY"
 ```
+(Use the scope_id that identifies the memory space, e.g. a session or user identifier.)
 
 ### Active Forgetting
 
@@ -1081,8 +1087,8 @@ The forgetting system:
 
 **Trigger manually (admin):**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admin/forget/session/session-123?dry_run=true" \
-  -H "X-API-Key: admin-key-456"
+curl -X POST "http://localhost:8000/api/v1/admin/forget/SCOPE_ID?dry_run=true" \
+  -H "X-API-Key: YOUR_ADMIN_API_KEY"
 ```
 
 ### Celery Background Tasks
@@ -1107,11 +1113,7 @@ Available at `/metrics`:
 
 ### GDPR Compliance
 
-Delete all data for a scope:
-```bash
-curl -X DELETE http://localhost:8000/api/v1/admin/scope/session/session-123 \
-  -H "X-API-Key: admin-key-456"
-```
+To delete all memories for a scope, use the memory forget endpoint with the desired scope/scope_id, or implement a dedicated GDPR endpoint that calls `orchestrator.delete_all_for_scope(tenant_id, scope_id)`. The admin API exposes consolidation and forgetting triggers only.
 
 ---
 
@@ -1121,7 +1123,7 @@ curl -X DELETE http://localhost:8000/api/v1/admin/scope/session/session-123 \
 
 **1. "API key required" error**
 - Ensure `X-API-Key` header is present
-- Use `demo-key-123` for development
+- Set `AUTH__API_KEY` in your environment (or `.env`) and use that value as the header
 
 **2. "No significant information to store"**
 - The Write Gate filtered the content as low importance

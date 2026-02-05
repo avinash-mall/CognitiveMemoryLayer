@@ -24,7 +24,7 @@ class MemoryStoreBase(ABC):
     async def get_by_key(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         key: str,
     ) -> Optional[MemoryRecord]:
         """Get a record by its unique key (for facts/preferences)."""
@@ -49,7 +49,7 @@ class MemoryStoreBase(ABC):
     async def vector_search(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         embedding: List[float],
         top_k: int = 10,
         filters: Optional[Dict[str, Any]] = None,
@@ -62,7 +62,7 @@ class MemoryStoreBase(ABC):
     async def scan(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
         order_by: Optional[str] = None,
         limit: int = 100,
@@ -75,7 +75,7 @@ class MemoryStoreBase(ABC):
     async def count(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
     ) -> int:
         """Count records matching filters."""
@@ -89,7 +89,7 @@ class GraphStoreBase(ABC):
     async def merge_node(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         entity: str,
         entity_type: str,
         properties: Optional[Dict[str, Any]] = None,
@@ -101,7 +101,7 @@ class GraphStoreBase(ABC):
     async def merge_edge(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         subject: str,
         predicate: str,
         object: str,
@@ -114,7 +114,7 @@ class GraphStoreBase(ABC):
     async def get_neighbors(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         entity: str,
         max_depth: int = 2,
     ) -> List[Dict[str, Any]]:
@@ -125,7 +125,7 @@ class GraphStoreBase(ABC):
     async def personalized_pagerank(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         seed_entities: List[str],
         top_k: int = 20,
         damping: float = 0.85,

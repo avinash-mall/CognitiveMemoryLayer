@@ -459,7 +459,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
-| AuthService (API key validation) | ✅ | `src/api/auth.py` – demo-key-123, admin-key-456 |
+| API key authentication (config-based) | ✅ | `src/api/auth.py` – keys from env (AUTH__API_KEY, AUTH__ADMIN_API_KEY) |
 | AuthContext, get_auth_context | ✅ | `src/api/auth.py` |
 | require_write_permission, require_admin_permission | ✅ | `src/api/auth.py` |
 
@@ -472,14 +472,14 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | POST /memory/read (format: packet, llm_context) | ✅ | `src/api/routes.py` |
 | POST /memory/update (with feedback) | ✅ | `src/api/routes.py` |
 | POST /memory/forget | ✅ | `src/api/routes.py` |
-| GET /memory/stats/{user_id} | ✅ | `src/api/routes.py` |
+| GET /memory/stats/{scope}/{scope_id} | ✅ | `src/api/routes.py` |
 | GET /health | ✅ | `src/api/routes.py` |
 
 ### Task 9.4: Memory Orchestrator ✅
 
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
-| MemoryOrchestrator | ✅ | `src/memory/orchestrator.py` – write, read, update, forget, get_stats, delete_all_for_user |
+| MemoryOrchestrator | ✅ | `src/memory/orchestrator.py` – write, read, update, forget, get_stats, delete_all_for_scope |
 | Coordinates short-term, hippocampal, neocortical, retrieval, reconsolidation, consolidation, forgetting | ✅ | Factory `create(db_manager)` wires all deps |
 
 ### Task 9.5: Admin Routes ✅
@@ -488,11 +488,10 @@ This document tracks what has been implemented against the plan in the `ProjectP
 |-------------|--------|------------------|
 | POST /admin/consolidate/{user_id} | ✅ | `src/api/admin_routes.py` |
 | POST /admin/forget/{user_id} (dry_run) | ✅ | `src/api/admin_routes.py` |
-| DELETE /admin/user/{user_id} (GDPR) | ✅ | `src/api/admin_routes.py` |
 
 ### Phase 9 Tests
 
-- **Unit:** `tests/unit/test_phase9_api.py` – AuthService, schemas
+- **Unit:** `tests/unit/test_phase9_api.py` – Auth config (_build_api_keys), schemas
 - **Integration:** `tests/integration/test_phase9_api_flow.py` – health, auth required for write/read/stats
 
 ### Phase 9 Deliverables Checklist (from plan)
@@ -500,7 +499,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 - [x] FastAPI application factory with lifespan
 - [x] RequestLoggingMiddleware with timing
 - [x] RateLimitMiddleware with per-tenant limits
-- [x] AuthService with API key validation
+- [x] Config-based API key validation (AUTH__API_KEY, AUTH__ADMIN_API_KEY)
 - [x] Auth dependencies (get_auth_context, require_write, etc.)
 - [x] Request/Response Pydantic models
 - [x] /memory/write endpoint
@@ -559,7 +558,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | GitHub Actions CI | ✅ | `.github/workflows/ci.yml` – lint (ruff, black), test (postgres, neo4j, redis) |
 | Test coverage reporting | ✅ | pytest --cov=src --cov-report=xml; codecov-action (optional) |
 | Docker image build and push | ✅ | build job on main: buildx, push to ghcr.io (latest + sha) |
-| Staging deployment job | ✅ | deploy-staging job on main (placeholder for deployment commands) |
+| Docker image build/push on main | ✅ | ghcr.io (latest + sha); no deploy job (add when staging env exists) |
 
 ### Task 10.6: Logging & Observability ✅
 
@@ -583,7 +582,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 - [x] Linting (ruff, black) in CI
 - [x] Test coverage reporting (pytest-cov, codecov optional)
 - [x] Docker image build and push (ghcr.io on main)
-- [x] Staging deployment job (placeholder)
+- [x] CI: lint, test, build and push image (deploy job omitted until staging configured)
 - [x] Structured logging configuration
 - [x] Prometheus metrics (/metrics, counters in routes)
 - [x] Health check endpoints (existing)
@@ -656,5 +655,5 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 - Phase 6 adds reconsolidation: `LabileStateTracker`, `ConflictDetector`, `BeliefRevisionEngine`, `ReconsolidationService`; `PostgresMemoryStore.update()` supports `valid_to` and `metadata` for revision patches.
 - Phase 7 adds consolidation: `ConsolidationScheduler`, `EpisodeSampler`, `SemanticClusterer`, `GistExtractor`, `SchemaAligner`, `ConsolidationMigrator`, `ConsolidationWorker`; `PostgresMemoryStore.scan()` supports `since` filter for time-window sampling.
 - Phase 8 adds active forgetting: `RelevanceScorer`, `ForgettingPolicyEngine`, `ForgettingExecutor`, `InterferenceDetector`, `ForgettingWorker`, `ForgettingScheduler`; `PostgresMemoryStore.update()` supports `entities` and `relations` for compress. Optional: LLM-based compression via `summarize_for_compression` and `VLLMClient` (vLLM + Llama 3.2 1B in Docker); dependency check before delete via `count_references_to`; Celery task `run_forgetting_task` and beat schedule.
-- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats/{user_id}`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`, `/user/{id}` (GDPR delete); API key auth (X-API-Key), multi-tenancy (X-Tenant-ID); Docker `api` service: `uvicorn src.api.app:app --host 0.0.0.0 --port 8000`.
-- Phase 10 adds: conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings); E2E tests in `tests/e2e/test_api_flows.py`; integration test setup with testcontainers (`tests/integration/conftest.py`); multi-stage Dockerfile (`docker/Dockerfile`); GitHub Actions CI with lint, test (coverage + codecov), build/push to ghcr.io, deploy-staging placeholder; API healthcheck in docker-compose; `src/utils/logging_config.py` for structured logging; `src/utils/metrics.py` for Prometheus (MEMORY_WRITES, MEMORY_READS, RETRIEVAL_LATENCY, MEMORY_COUNT) and `/metrics` endpoint.
+- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats/{scope}/{scope_id}`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`; API key auth from config (AUTH__API_KEY, AUTH__ADMIN_API_KEY), multi-tenancy (X-Tenant-ID); Docker `api` service: `uvicorn src.api.app:app --host 0.0.0.0 --port 8000`.
+- Phase 10 adds: conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings); E2E tests in `tests/e2e/test_api_flows.py`; integration test setup with testcontainers (`tests/integration/conftest.py`); multi-stage Dockerfile (`docker/Dockerfile`); GitHub Actions CI with lint, test (coverage + codecov), build/push to ghcr.io; API healthcheck in docker-compose; `src/utils/logging_config.py` for structured logging; `src/utils/metrics.py` for Prometheus (MEMORY_WRITES, MEMORY_READS, RETRIEVAL_LATENCY, MEMORY_COUNT) and `/metrics` endpoint.
