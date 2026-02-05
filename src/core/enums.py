@@ -2,16 +2,37 @@
 from enum import Enum
 
 
+class MemoryScope(str, Enum):
+    """Scope of a memory record (replaces rigid user_id requirement)."""
+
+    SESSION = "session"  # Conversation/interaction context
+    AGENT = "agent"  # Persistent memory for an agent
+    NAMESPACE = "namespace"  # Organized knowledge domains
+    GLOBAL = "global"  # Shared across entire tenant
+    USER = "user"  # Optional user personalization
+
+
 class MemoryType(str, Enum):
     """Type of memory record."""
 
+    # Existing
     EPISODIC_EVENT = "episodic_event"
     SEMANTIC_FACT = "semantic_fact"
-    PREFERENCE = "preference"
-    TASK_STATE = "task_state"
     PROCEDURE = "procedure"
     CONSTRAINT = "constraint"
     HYPOTHESIS = "hypothesis"
+    # Generalized (was user-specific)
+    PREFERENCE = "preference"
+    TASK_STATE = "task_state"
+    # General-purpose types
+    CONVERSATION = "conversation"  # Chat message/turn
+    MESSAGE = "message"  # Single message
+    TOOL_RESULT = "tool_result"  # Output from tool execution
+    REASONING_STEP = "reasoning_step"  # Chain-of-thought step
+    SCRATCH = "scratch"  # Temporary working memory
+    KNOWLEDGE = "knowledge"  # General world knowledge
+    OBSERVATION = "observation"  # Agent observations
+    PLAN = "plan"  # Agent plans/goals
 
 
 class MemoryStatus(str, Enum):

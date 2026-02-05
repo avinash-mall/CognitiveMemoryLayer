@@ -47,7 +47,7 @@ class ShortTermMemory:
     async def ingest_turn(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         text: str,
         turn_id: Optional[str] = None,
         role: str = "user",
@@ -61,10 +61,10 @@ class ShortTermMemory:
         3. Return chunks ready for potential encoding
         """
         tokens_added = await self.sensory.ingest(
-            tenant_id, user_id, text, turn_id, role
+            tenant_id, scope_id, text, turn_id, role
         )
         new_chunks = await self.working.process_input(
-            tenant_id, user_id, text, turn_id, role
+            tenant_id, scope_id, text, turn_id, role
         )
         chunks_for_encoding = [
             c for c in new_chunks
@@ -80,35 +80,35 @@ class ShortTermMemory:
     async def get_immediate_context(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         include_sensory: bool = True,
         max_working_chunks: int = 5,
     ) -> Dict[str, Any]:
         """Get immediate context for the current conversation."""
         result = {
             "working_memory": await self.working.get_current_context(
-                tenant_id, user_id, max_working_chunks
+                tenant_id, scope_id, max_working_chunks
             ),
         }
         if include_sensory:
             result["recent_text"] = await self.sensory.get_recent_text(
-                tenant_id, user_id, max_tokens=200
+                tenant_id, scope_id, max_tokens=200
             )
         return result
 
     async def get_encodable_chunks(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
     ) -> List[SemanticChunk]:
         """Get all chunks that should be encoded into long-term memory."""
         return await self.working.get_chunks_for_encoding(
             tenant_id,
-            user_id,
+            scope_id,
             min_salience=self.config.min_salience_for_encoding,
         )
 
-    async def clear(self, tenant_id: str, user_id: str) -> None:
-        """Clear all short-term memory for user."""
-        await self.sensory.clear_user(tenant_id, user_id)
-        await self.working.clear_user(tenant_id, user_id)
+    async def clear(self, tenant_id: str, scope_id: str) -> None:
+        """Clear all short-term memory for scope."""
+        await self.sensory.clear_user(tenant_id, scope_id)
+        await self.working.clear_user(tenant_id, scope_id)

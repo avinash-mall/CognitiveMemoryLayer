@@ -37,7 +37,7 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_write",
-            "description": "Store new information in the user's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them. The system automatically filters trivial information.",
+            "description": "Store new information in the session's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them. The system automatically filters trivial information.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -59,7 +59,7 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_read",
-            "description": "Retrieve relevant memories about the user to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
+            "description": "Retrieve relevant memories to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -139,13 +139,16 @@ class MemoryEnabledAssistant:
     
     def __init__(
         self,
-        user_id: str,
+        session_id: str,
         openai_api_key: Optional[str] = None,
         memory_api_url: str = "http://localhost:8000",
         memory_api_key: str = "demo-key-123",
-        model: str = "gpt-4o-mini"
+        model: str = "gpt-4o-mini",
+        scope: str = "session"
     ):
-        self.user_id = user_id
+        self.session_id = session_id
+        self.scope = scope
+        self.scope_id = session_id
         self.model = model
         
         # Initialize OpenAI client
@@ -181,7 +184,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
         try:
             if tool_name == "memory_write":
                 result = self.memory.write(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     content=arguments["content"],
                     memory_type=arguments.get("memory_type")
                 )
@@ -192,7 +196,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
             
             elif tool_name == "memory_read":
                 result = self.memory.read(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     query=arguments["query"],
                     memory_types=arguments.get("memory_types"),
                     format="llm_context"
@@ -201,7 +206,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
             
             elif tool_name == "memory_update":
                 result = self.memory.update(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     memory_id=arguments["memory_id"],
                     feedback=arguments["feedback"]
                 )
@@ -209,7 +215,8 @@ Be natural and conversational. Don't mention the memory system explicitly unless
             
             elif tool_name == "memory_forget":
                 result = self.memory.forget(
-                    user_id=self.user_id,
+                    scope=self.scope,
+                    scope_id=self.scope_id,
                     query=arguments["query"],
                     action=arguments.get("action", "archive")
                 )
@@ -304,10 +311,11 @@ def main():
         print("  export OPENAI_API_KEY=sk-...")
         return
     
-    # Create assistant with a consistent user ID
+    # Create assistant with session scope
     assistant = MemoryEnabledAssistant(
-        user_id="openai-demo-user",
-        model="gpt-4o-mini"  # or "gpt-4o" for better reasoning
+        session_id="openai-demo-session",
+        model="gpt-4o-mini",  # or "gpt-4o" for better reasoning
+        scope="session"
     )
     
     try:
@@ -339,8 +347,9 @@ def example_programmatic():
     """Example showing programmatic usage of the assistant."""
     
     assistant = MemoryEnabledAssistant(
-        user_id="demo-user-programmatic",
-        model="gpt-4o-mini"
+        session_id="demo-programmatic-session",
+        model="gpt-4o-mini",
+        scope="session"
     )
     
     # Simulate a conversation

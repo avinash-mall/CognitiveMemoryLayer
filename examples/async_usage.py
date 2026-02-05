@@ -27,7 +27,8 @@ async def demo_basic_async():
         
         # Write a memory
         result = await client.write(
-            user_id="async-demo-user",
+            scope="session",
+            scope_id="async-demo-session",
             content="User prefers async programming patterns.",
             memory_type="preference"
         )
@@ -35,7 +36,8 @@ async def demo_basic_async():
         
         # Read memories
         memories = await client.read(
-            user_id="async-demo-user",
+            scope="session",
+            scope_id="async-demo-session",
             query="programming preferences",
             format="llm_context"
         )
@@ -48,7 +50,8 @@ async def demo_concurrent_writes():
     """Demonstrate concurrent memory writes."""
     print("\n--- Concurrent Writes ---\n")
     
-    user_id = "concurrent-demo-user"
+    scope = "session"
+    scope_id = "concurrent-demo-session"
     
     memories_to_store = [
         ("User's favorite color is blue", "preference"),
@@ -61,7 +64,7 @@ async def demo_concurrent_writes():
     async with AsyncCognitiveMemoryClient() as client:
         # Create all write tasks
         tasks = [
-            client.write(user_id=user_id, content=content, memory_type=mtype)
+            client.write(scope=scope, scope_id=scope_id, content=content, memory_type=mtype)
             for content, mtype in memories_to_store
         ]
         
@@ -78,7 +81,8 @@ async def demo_concurrent_reads():
     """Demonstrate concurrent memory reads."""
     print("\n--- Concurrent Reads ---\n")
     
-    user_id = "concurrent-demo-user"
+    scope = "session"
+    scope_id = "concurrent-demo-session"
     
     queries = [
         "What is the user's job?",
@@ -90,7 +94,7 @@ async def demo_concurrent_reads():
     async with AsyncCognitiveMemoryClient() as client:
         # Create all read tasks
         tasks = [
-            client.read(user_id=user_id, query=q, format="packet")
+            client.read(scope=scope, scope_id=scope_id, query=q, format="packet")
             for q in queries
         ]
         
@@ -111,40 +115,43 @@ async def demo_pipeline():
     print("\n--- Processing Pipeline ---\n")
     
     async with AsyncCognitiveMemoryClient() as client:
-        # Simulate processing multiple users
-        users = ["user-1", "user-2", "user-3"]
+        # Simulate processing multiple sessions
+        sessions = ["session-1", "session-2", "session-3"]
         
-        async def process_user(user_id: str):
-            """Process a single user: write and read."""
+        async def process_session(session_id: str):
+            """Process a single session: write and read."""
             # Write some data
             await client.write(
-                user_id=user_id,
-                content=f"This is a test memory for {user_id}",
+                scope="session",
+                scope_id=session_id,
+                content=f"This is a test memory for {session_id}",
                 memory_type="episodic_event"
             )
             
             # Read it back
             result = await client.read(
-                user_id=user_id,
+                scope="session",
+                scope_id=session_id,
                 query="test memory"
             )
             
-            return user_id, result.total_count
+            return session_id, result.total_count
         
-        # Process all users concurrently
-        print(f"Processing {len(users)} users concurrently...")
-        tasks = [process_user(uid) for uid in users]
+        # Process all sessions concurrently
+        print(f"Processing {len(sessions)} sessions concurrently...")
+        tasks = [process_session(sid) for sid in sessions]
         results = await asyncio.gather(*tasks)
         
-        for user_id, count in results:
-            print(f"  {user_id}: {count} memories")
+        for session_id, count in results:
+            print(f"  {session_id}: {count} memories")
 
 
 async def demo_batch_processing():
     """Demonstrate batch processing patterns."""
     print("\n--- Batch Processing ---\n")
     
-    user_id = "batch-demo-user"
+    scope = "session"
+    scope_id = "batch-demo-session"
     
     # Large batch of items to process
     items = [f"Memory item {i}: Important information #{i}" for i in range(20)]
@@ -160,7 +167,7 @@ async def demo_batch_processing():
             
             # Create tasks for this batch
             tasks = [
-                client.write(user_id=user_id, content=item)
+                client.write(scope=scope, scope_id=scope_id, content=item)
                 for item in batch
             ]
             
@@ -171,7 +178,7 @@ async def demo_batch_processing():
             print(f"  Batch {i // batch_size + 1}: {success}/{len(batch)} stored")
         
         # Verify total stored
-        stats_response = await client._request("GET", f"/memory/stats/{user_id}")
+        stats_response = await client._request("GET", f"/memory/stats/session/{scope_id}")
         print(f"\nTotal memories stored: {stats_response.get('total_memories', 0)}")
 
 
