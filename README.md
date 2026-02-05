@@ -377,6 +377,7 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 | Biological Concept | Implementation | Location |
 |-------------------|----------------|----------|
 | Labile state tracking | `LabileStateTracker` | `src/reconsolidation/labile_tracker.py` |
+| Fact extraction | `LLMFactExtractor` (same LLM as summarization) | `src/extraction/fact_extractor.py` |
 | Conflict detection | `ConflictDetector` (heuristics + LLM) | `src/reconsolidation/conflict_detector.py` |
 | Belief revision strategies | `BeliefRevisionEngine` with 6 strategies | `src/reconsolidation/belief_revision.py` |
 | A.U.D.N. operations | Mem0-inspired Add/Update/Delete/No-op | `ReconsolidationService` |
