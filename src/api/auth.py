@@ -1,4 +1,4 @@
-"""API authentication and authorization."""
+"""API authentication and authorization (config-based, no hardcoded keys)."""
 from dataclasses import dataclass
 from typing import Optional
 
@@ -22,51 +22,28 @@ class AuthContext:
     can_admin: bool = False
 
 
-class AuthService:
-    """
-    Handles authentication and authorization.
-    In production, integrate with proper auth system.
-    """
-
-    def __init__(self):
-        self._api_keys: dict = {}
-        self._load_keys()
-
-    def _load_keys(self):
-        """Load API keys from config/database."""
-        self._api_keys = {
-            "demo-key-123": AuthContext(
-                tenant_id="demo",
-                can_read=True,
-                can_write=True,
-                can_admin=False,
-                api_key="demo-key-123",
-            ),
-            "admin-key-456": AuthContext(
-                tenant_id="admin",
-                can_read=True,
-                can_write=True,
-                can_admin=True,
-                api_key="admin-key-456",
-            ),
-        }
-
-    def validate_key(self, api_key: str) -> Optional[AuthContext]:
-        """Validate API key and return context."""
-        return self._api_keys.get(api_key)
-
-    def check_permission(self, context: AuthContext, permission: str) -> bool:
-        """Check if context has permission."""
-        if permission == "read":
-            return context.can_read
-        if permission == "write":
-            return context.can_write
-        if permission == "admin":
-            return context.can_admin
-        return False
-
-
-_auth_service = AuthService()
+def _build_api_keys() -> dict:
+    """Build API key map from settings (env: AUTH__API_KEY, AUTH__ADMIN_API_KEY, AUTH__DEFAULT_TENANT_ID)."""
+    settings = get_settings()
+    auth = settings.auth
+    keys: dict = {}
+    if auth.api_key:
+        keys[auth.api_key] = AuthContext(
+            tenant_id=auth.default_tenant_id,
+            can_read=True,
+            can_write=True,
+            can_admin=False,
+            api_key=auth.api_key,
+        )
+    if auth.admin_api_key and auth.admin_api_key != auth.api_key:
+        keys[auth.admin_api_key] = AuthContext(
+            tenant_id=auth.default_tenant_id,
+            can_read=True,
+            can_write=True,
+            can_admin=True,
+            api_key=auth.admin_api_key,
+        )
+    return keys
 
 
 async def get_auth_context(
@@ -78,7 +55,8 @@ async def get_auth_context(
     if not api_key:
         raise HTTPException(status_code=401, detail="API key required")
 
-    context = _auth_service.validate_key(api_key)
+    api_keys = _build_api_keys()
+    context = api_keys.get(api_key)
     if not context:
         raise HTTPException(status_code=401, detail="Invalid API key")
 

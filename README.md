@@ -558,16 +558,19 @@ docker compose -f docker/docker-compose.yml up api
 # Test the API
 curl http://localhost:8000/api/v1/health
 
+# Set API key (required for write/read). Use AUTH__API_KEY in .env or export it.
+# export AUTH__API_KEY=your-secret-key
+
 # Store a memory
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-key-123" \
+  -H "X-API-Key: $AUTH__API_KEY" \
   -d '{"scope": "session", "scope_id": "session-001", "content": "User prefers vegetarian food and lives in Paris."}'
 
 # Retrieve memories
 curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: demo-key-123" \
+  -H "X-API-Key: $AUTH__API_KEY" \
   -d '{"scope": "session", "scope_id": "session-001", "query": "dietary preferences", "format": "llm_context"}'
 ```
 
@@ -614,6 +617,8 @@ See [ProjectPlan/UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md) for
 | `/api/v1/session/{session_id}/write` | POST | Write to session memory |
 | `/api/v1/session/{session_id}/read` | POST | Read from session memory |
 | `/api/v1/health` | GET | Health check |
+
+**Authentication:** Set `AUTH__API_KEY` (and optionally `AUTH__ADMIN_API_KEY`) in your environment; pass the key in the `X-API-Key` header. See [UsageDocumentation](./ProjectPlan/UsageDocumentation.md#authentication).
 
 **Interactive Docs**: http://localhost:8000/docs
 

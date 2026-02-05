@@ -18,7 +18,13 @@ Before running any examples:
    pip install httpx openai anthropic langchain langchain-openai
    ```
 
-3. **Set API keys** (for LLM examples):
+3. **Set the memory API key** (required for all examples that call the API):
+   ```bash
+   export AUTH__API_KEY=your-secret-key
+   ```
+   The API has no default keys; you must set `AUTH__API_KEY` (and optionally `AUTH__ADMIN_API_KEY` for admin endpoints).
+
+4. **Set LLM API keys** (for LLM-based examples only):
    ```bash
    export OPENAI_API_KEY=sk-...
    export ANTHROPIC_API_KEY=sk-ant-...
@@ -33,7 +39,7 @@ A reusable Python client for the Cognitive Memory Layer API. Used by other examp
 ```python
 from memory_client import CognitiveMemoryClient
 
-client = CognitiveMemoryClient(api_key="demo-key-123")
+client = CognitiveMemoryClient(api_key="your-api-key")  # or os.environ.get("AUTH__API_KEY")
 
 # Store a memory with explicit scope
 client.write(
@@ -303,7 +309,7 @@ docker compose -f docker/docker-compose.yml up api
 ```
 
 ### "API key required"
-Make sure to include the `X-API-Key` header. Default key is `demo-key-123`.
+Set `AUTH__API_KEY` in your environment (or `.env`) and pass it as the `X-API-Key` header. There are no default keys; you must configure at least one key.
 
 ### "No memories found"
 - Check the scope and scope_id are correct

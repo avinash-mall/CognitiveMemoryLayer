@@ -120,7 +120,7 @@ class TestEventLogSchema:
     def test_event_log_minimal(self):
         e = EventLog(
             tenant_id="t1",
-            user_id="u1",
+            scope_id="s1",
             event_type="turn",
             payload={"message": "hello"},
         )
@@ -132,7 +132,7 @@ class TestEventLogSchema:
     def test_event_log_with_operation(self):
         e = EventLog(
             tenant_id="t1",
-            user_id="u1",
+            scope_id="s1",
             event_type="memory_op",
             operation=OperationType.ADD,
             payload={"op": "add"},

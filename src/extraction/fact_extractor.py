@@ -28,11 +28,13 @@ class ExtractedFact:
 class FactExtractor:
     """
     Extracts facts from conversation text for reconsolidation.
-    Default no-op; use LLMFactExtractor for LLM-based extraction.
+    Base implementation is an intentional no-op (returns []); use LLMFactExtractor
+    for LLM-based extraction. The no-op is useful when extraction is disabled
+    or for tests that do not need fact extraction.
     """
 
     async def extract(self, text: str) -> List[ExtractedFact]:
-        """Extract facts from text. Default: no extraction."""
+        """Extract facts from text. Base: no extraction (no-op)."""
         return []
 
 

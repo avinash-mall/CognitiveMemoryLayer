@@ -5,13 +5,16 @@ A simple client for interacting with the Cognitive Memory Layer REST API.
 This client can be used directly or integrated with LLM tool calling.
 
 Usage:
+    Set AUTH__API_KEY in your environment, or pass api_key when creating the client.
+
     from memory_client import CognitiveMemoryClient
-    
-    client = CognitiveMemoryClient(api_key="demo-key-123")
-    
+    import os
+
+    client = CognitiveMemoryClient(api_key=os.environ.get("AUTH__API_KEY", "your-key"))
+
     # Store a memory (scope-based)
     result = client.write("session", "session-123", "User prefers vegetarian food")
-    
+
     # Retrieve memories
     memories = client.read("session", "session-123", "What food does the user like?")
 """
@@ -79,38 +82,36 @@ class CognitiveMemoryClient:
         - global: Global memory (tenant-wide)
     
     Example:
+        import os
         client = CognitiveMemoryClient(
             base_url="http://localhost:8000",
-            api_key="demo-key-123"
+            api_key=os.environ.get("AUTH__API_KEY", "")
         )
-        
-        # Write memory to a session
         client.write("session", "session-123", "The user lives in Paris")
-        
-        # Read memory with LLM-ready context
         result = client.read("session", "session-123", "Where does the user live?", format="llm_context")
         print(result.llm_context)
     """
-    
+
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
-        api_key: str = "demo-key-123",
+        api_key: Optional[str] = None,
         timeout: float = 30.0
     ):
         """
         Initialize the memory client.
-        
+
         Args:
             base_url: API server URL
-            api_key: API authentication key
+            api_key: API key (default: AUTH__API_KEY from environment)
             timeout: Request timeout in seconds
         """
+        import os
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = api_key if api_key is not None else os.environ.get("AUTH__API_KEY", "")
         self.timeout = timeout
         self._client = httpx.Client(timeout=timeout)
-    
+
     def _headers(self) -> Dict[str, str]:
         """Get request headers with authentication."""
         return {
@@ -427,11 +428,12 @@ class AsyncCognitiveMemoryClient:
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
-        api_key: str = "demo-key-123",
+        api_key: Optional[str] = None,
         timeout: float = 30.0
     ):
+        import os
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = api_key if api_key is not None else os.environ.get("AUTH__API_KEY", "")
         self.timeout = timeout
         self._client = httpx.AsyncClient(timeout=timeout)
     
@@ -527,8 +529,12 @@ class AsyncCognitiveMemoryClient:
 
 
 if __name__ == "__main__":
-    # Quick test
-    client = CognitiveMemoryClient()
+    import os
+    api_key = os.environ.get("AUTH__API_KEY", "")
+    if not api_key:
+        print("Set AUTH__API_KEY in your environment to run this test.")
+        exit(1)
+    client = CognitiveMemoryClient(api_key=api_key)
     
     try:
         health = client.health()

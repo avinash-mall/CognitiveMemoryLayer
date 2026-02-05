@@ -53,7 +53,7 @@ class CognitiveMemory(BaseChatMemory):
     scope_id: str
     memory_client: Optional[CognitiveMemoryClient] = None
     api_url: str = "http://localhost:8000"
-    api_key: str = "demo-key-123"
+    api_key: str = ""  # Default: set AUTH__API_KEY in env or pass when constructing
     
     # Control what gets stored
     auto_store: bool = True
@@ -76,9 +76,11 @@ class CognitiveMemory(BaseChatMemory):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.memory_client is None:
+            import os
+            key = self.api_key or os.environ.get("AUTH__API_KEY", "")
             self.memory_client = CognitiveMemoryClient(
                 base_url=self.api_url,
-                api_key=self.api_key
+                api_key=key
             )
     
     @property
@@ -213,27 +215,28 @@ def create_memory_chain(
     scope: str = "session",
     llm_model: str = "gpt-4o-mini",
     memory_api_url: str = "http://localhost:8000",
-    memory_api_key: str = "demo-key-123"
+    memory_api_key: Optional[str] = None
 ) -> ConversationChain:
     """
     Create a LangChain conversation chain with cognitive memory.
-    
+
     Args:
         scope_id: Unique identifier for the memory scope (e.g., session ID)
         scope: Memory scope type (session, agent, namespace, global)
         llm_model: OpenAI model to use
         memory_api_url: Cognitive Memory Layer API URL
-        memory_api_key: API key for memory service
-        
+        memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
+
     Returns:
         A ConversationChain with persistent memory
     """
-    # Create memory
+    import os
+    key = memory_api_key or os.environ.get("AUTH__API_KEY", "")
     memory = CognitiveMemory(
         scope=scope,
         scope_id=scope_id,
         api_url=memory_api_url,
-        api_key=memory_api_key,
+        api_key=key,
         auto_store=True,
         store_human=True,
         store_ai=False
