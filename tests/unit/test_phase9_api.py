@@ -6,8 +6,7 @@ from fastapi.testclient import TestClient
 
 from src.api.auth import (
     AuthContext,
-    AuthService,
-    get_auth_context,
+    _build_api_keys,
     api_key_header,
 )
 from src.api.middleware import RateLimitMiddleware, RequestLoggingMiddleware
@@ -16,46 +15,53 @@ from src.api.schemas import (
     ReadMemoryRequest,
     MemoryItem,
 )
+from src.core.enums import MemoryScope
 
 
-class TestAuthService:
-    """Tests for AuthService."""
+class TestAuthConfig:
+    """Tests for config-based auth (_build_api_keys)."""
 
-    def test_validate_key_valid(self):
-        svc = AuthService()
-        ctx = svc.validate_key("demo-key-123")
-        assert ctx is not None
-        assert ctx.tenant_id == "demo"
-        assert ctx.can_write
+    def test_build_api_keys_empty_when_no_config(self, monkeypatch):
+        monkeypatch.setenv("AUTH__API_KEY", "")
+        monkeypatch.setenv("AUTH__ADMIN_API_KEY", "")
+        from src.core.config import get_settings
+        get_settings.cache_clear()
+        keys = _build_api_keys()
+        assert keys == {}
 
-    def test_validate_key_invalid(self):
-        svc = AuthService()
-        assert svc.validate_key("invalid-key") is None
-
-    def test_validate_key_admin(self):
-        svc = AuthService()
-        ctx = svc.validate_key("admin-key-456")
-        assert ctx is not None
-        assert ctx.can_admin
-
-    def test_check_permission(self):
-        svc = AuthService()
-        ctx = svc.validate_key("demo-key-123")
-        assert svc.check_permission(ctx, "read")
-        assert svc.check_permission(ctx, "write")
-        assert not svc.check_permission(ctx, "admin")
+    def test_build_api_keys_from_config(self, monkeypatch):
+        monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
+        monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
+        monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "demo")
+        from src.core.config import get_settings
+        get_settings.cache_clear()
+        keys = _build_api_keys()
+        assert "demo-key-123" in keys
+        assert keys["demo-key-123"].tenant_id == "demo"
+        assert keys["demo-key-123"].can_write
+        assert not keys["demo-key-123"].can_admin
+        assert "admin-key-456" in keys
+        assert keys["admin-key-456"].can_admin
 
 
 class TestSchemas:
     """Tests for API schemas."""
 
     def test_write_memory_request(self):
-        req = WriteMemoryRequest(user_id="u1", content="Hello")
-        assert req.user_id == "u1"
+        req = WriteMemoryRequest(
+            scope=MemoryScope.SESSION,
+            scope_id="s1",
+            content="Hello",
+        )
+        assert req.scope_id == "s1"
         assert req.content == "Hello"
         assert req.metadata == {}
 
     def test_read_memory_request_defaults(self):
-        req = ReadMemoryRequest(user_id="u1", query="test")
+        req = ReadMemoryRequest(
+            scope=MemoryScope.SESSION,
+            scope_id="s1",
+            query="test",
+        )
         assert req.max_results == 10
         assert req.format == "packet"
