@@ -24,7 +24,7 @@ class SemanticFactStore:
     async def upsert_fact(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         key: str,
         value: Any,
         confidence: float = 0.8,
@@ -35,20 +35,20 @@ class SemanticFactStore:
         async with self.session_factory() as session:
             category, predicate = self._parse_key(key)
             schema = self._get_schema(key)
-            existing = await self._get_existing_fact(session, tenant_id, user_id, key)
+            existing = await self._get_existing_fact(session, tenant_id, scope_id, key)
 
             if existing:
                 return await self._update_fact(
                     session, existing, value, confidence, evidence_ids, schema, valid_from
                 )
             return await self._create_fact(
-                session, tenant_id, user_id, key, category, predicate, value, confidence, evidence_ids, valid_from
+                session, tenant_id, scope_id, key, category, predicate, value, confidence, evidence_ids, valid_from
             )
 
     async def get_fact(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         key: str,
         include_historical: bool = False,
     ) -> Optional[SemanticFact]:
@@ -57,7 +57,7 @@ class SemanticFactStore:
             q = select(SemanticFactModel).where(
                 and_(
                     SemanticFactModel.tenant_id == tenant_id,
-                    SemanticFactModel.user_id == user_id,
+                    SemanticFactModel.scope_id == scope_id,
                     SemanticFactModel.key == key,
                 )
             )
@@ -71,7 +71,7 @@ class SemanticFactStore:
     async def get_facts_by_category(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         category: FactCategory,
         current_only: bool = True,
     ) -> List[SemanticFact]:
@@ -80,7 +80,7 @@ class SemanticFactStore:
             q = select(SemanticFactModel).where(
                 and_(
                     SemanticFactModel.tenant_id == tenant_id,
-                    SemanticFactModel.user_id == user_id,
+                    SemanticFactModel.scope_id == scope_id,
                     SemanticFactModel.category == category.value,
                 )
             )
@@ -90,11 +90,11 @@ class SemanticFactStore:
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]
 
-    async def get_user_profile(self, tenant_id: str, user_id: str) -> Dict[str, Any]:
-        """Get complete user profile as structured dict by category."""
+    async def get_scope_profile(self, tenant_id: str, scope_id: str) -> Dict[str, Any]:
+        """Get complete profile as structured dict by category."""
         profile: Dict[str, Any] = {}
         for category in FactCategory:
-            facts = await self.get_facts_by_category(tenant_id, user_id, category)
+            facts = await self.get_facts_by_category(tenant_id, scope_id, category)
             if facts:
                 profile[category.value] = {f.predicate: f.value for f in facts}
         return profile
@@ -102,7 +102,7 @@ class SemanticFactStore:
     async def search_facts(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         query: str,
         limit: int = 20,
     ) -> List[SemanticFact]:
@@ -113,7 +113,7 @@ class SemanticFactStore:
                 .where(
                     and_(
                         SemanticFactModel.tenant_id == tenant_id,
-                        SemanticFactModel.user_id == user_id,
+                        SemanticFactModel.scope_id == scope_id,
                         SemanticFactModel.is_current.is_(True),
                         (
                             SemanticFactModel.key.ilike(f"%{query}%")
@@ -132,7 +132,7 @@ class SemanticFactStore:
     async def invalidate_fact(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         key: str,
         reason: str = "superseded",
     ) -> bool:
@@ -144,7 +144,7 @@ class SemanticFactStore:
                 .where(
                     and_(
                         SemanticFactModel.tenant_id == tenant_id,
-                        SemanticFactModel.user_id == user_id,
+                        SemanticFactModel.scope_id == scope_id,
                         SemanticFactModel.key == key,
                         SemanticFactModel.is_current.is_(True),
                     )
@@ -159,14 +159,14 @@ class SemanticFactStore:
         self,
         session: AsyncSession,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         key: str,
     ) -> Optional[SemanticFact]:
         """Get existing current fact."""
         q = select(SemanticFactModel).where(
             and_(
                 SemanticFactModel.tenant_id == tenant_id,
-                SemanticFactModel.user_id == user_id,
+                SemanticFactModel.scope_id == scope_id,
                 SemanticFactModel.key == key,
                 SemanticFactModel.is_current.is_(True),
             )
@@ -206,7 +206,7 @@ class SemanticFactStore:
             new_fact = SemanticFact(
                 id=str(uuid4()),
                 tenant_id=existing.tenant_id,
-                user_id=existing.user_id,
+                scope_id=existing.scope_id,
                 category=existing.category,
                 key=existing.key,
                 subject=existing.subject,
@@ -228,7 +228,7 @@ class SemanticFactStore:
         self,
         session: AsyncSession,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         key: str,
         category: FactCategory,
         predicate: str,
@@ -241,7 +241,7 @@ class SemanticFactStore:
         fact = SemanticFact(
             id=str(uuid4()),
             tenant_id=tenant_id,
-            user_id=user_id,
+            scope_id=scope_id,
             category=category,
             key=key,
             subject="user",
@@ -266,7 +266,7 @@ class SemanticFactStore:
         model = SemanticFactModel(
             id=UUID(fact.id),
             tenant_id=fact.tenant_id,
-            user_id=fact.user_id,
+            scope_id=fact.scope_id,
             category=fact.category.value,
             key=fact.key,
             subject=fact.subject,
@@ -323,7 +323,7 @@ class SemanticFactStore:
         return SemanticFact(
             id=str(model.id),
             tenant_id=model.tenant_id,
-            user_id=model.user_id,
+            scope_id=model.scope_id,
             category=FactCategory(model.category),
             key=model.key,
             subject=model.subject,

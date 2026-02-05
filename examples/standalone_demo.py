@@ -70,39 +70,46 @@ def demo_write_memories():
     """Demonstrate writing different types of memories."""
     print_section("Writing Memories")
     
-    user_id = "standalone-demo-user"
+    # Using scope-based identifiers
+    scope = "session"
+    scope_id = "standalone-demo-session"
     
     # Example memories to store
     memories = [
         {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "content": "User's name is John Smith and he is 35 years old.",
             "memory_type": "semantic_fact",
             "metadata": {"source": "user_introduction"}
         },
         {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "content": "User prefers dark mode in all applications.",
             "memory_type": "preference"
         },
         {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "content": "User is severely allergic to penicillin - this is critical medical information.",
             "memory_type": "constraint"
         },
         {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "content": "On 2024-01-20, user mentioned starting a new job at Google.",
             "memory_type": "episodic_event"
         },
         {
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "content": "User seems interested in machine learning based on questions asked.",
             "memory_type": "hypothesis"
         }
     ]
     
-    print(f"Storing {len(memories)} memories for user '{user_id}'...\n")
+    print(f"Storing {len(memories)} memories for scope '{scope}/{scope_id}'...\n")
     
     for i, memory in enumerate(memories, 1):
         response = httpx.post(
@@ -118,10 +125,10 @@ def demo_write_memories():
         else:
             print(f"{i}. ✗ Failed: {response.text}")
     
-    return user_id
+    return scope, scope_id
 
 
-def demo_read_memories(user_id: str):
+def demo_read_memories(scope: str, scope_id: str):
     """Demonstrate reading memories with different queries."""
     print_section("Reading Memories")
     
@@ -152,7 +159,8 @@ def demo_read_memories(user_id: str):
             f"{BASE_URL}/memory/read",
             headers=HEADERS,
             json={
-                "user_id": user_id,
+                "scope": scope,
+                "scope_id": scope_id,
                 "query": q["query"],
                 "max_results": 5,
                 "format": "packet"
@@ -172,7 +180,7 @@ def demo_read_memories(user_id: str):
         print()
 
 
-def demo_llm_context_format(user_id: str):
+def demo_llm_context_format(scope: str, scope_id: str):
     """Demonstrate the LLM-ready context format."""
     print_section("LLM Context Format")
     
@@ -182,7 +190,8 @@ def demo_llm_context_format(user_id: str):
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
         json={
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "query": "Tell me everything about the user",
             "max_results": 10,
             "format": "llm_context"  # This is the key!
@@ -197,7 +206,7 @@ def demo_llm_context_format(user_id: str):
         print("-" * 50)
 
 
-def demo_update_memory(user_id: str):
+def demo_update_memory(scope: str, scope_id: str):
     """Demonstrate updating memories with feedback."""
     print_section("Updating Memories")
     
@@ -206,7 +215,8 @@ def demo_update_memory(user_id: str):
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
         json={
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "query": "machine learning interest",
             "max_results": 1
         }
@@ -227,7 +237,8 @@ def demo_update_memory(user_id: str):
             f"{BASE_URL}/memory/update",
             headers=HEADERS,
             json={
-                "user_id": user_id,
+                "scope": scope,
+                "scope_id": scope_id,
                 "memory_id": memory_id,
                 "feedback": "correct"
             }
@@ -241,18 +252,18 @@ def demo_update_memory(user_id: str):
         print("No hypothesis found to update")
 
 
-def demo_memory_stats(user_id: str):
+def demo_memory_stats(scope: str, scope_id: str):
     """Demonstrate memory statistics."""
     print_section("Memory Statistics")
     
     response = httpx.get(
-        f"{BASE_URL}/memory/stats/{user_id}",
+        f"{BASE_URL}/memory/stats/{scope}/{scope_id}",
         headers=HEADERS
     )
     
     if response.status_code == 200:
         stats = response.json()
-        print(f"Statistics for user '{user_id}':")
+        print(f"Statistics for scope '{scope}/{scope_id}':")
         print(f"  Total memories:  {stats['total_memories']}")
         print(f"  Active memories: {stats['active_memories']}")
         print(f"  Avg confidence:  {stats['avg_confidence']:.0%}")
@@ -262,7 +273,7 @@ def demo_memory_stats(user_id: str):
         print(f"Error: {response.text}")
 
 
-def demo_forget_memory(user_id: str):
+def demo_forget_memory(scope: str, scope_id: str):
     """Demonstrate forgetting memories."""
     print_section("Forgetting Memories")
     
@@ -272,7 +283,8 @@ def demo_forget_memory(user_id: str):
         f"{BASE_URL}/memory/forget",
         headers=HEADERS,
         json={
-            "user_id": user_id,
+            "scope": scope,
+            "scope_id": scope_id,
             "query": "new job at Google",
             "action": "archive"  # or "delete" for permanent removal
         }
@@ -296,12 +308,12 @@ def demo_curl_examples():
         ("Write Memory", '''curl -X POST http://localhost:8000/api/v1/memory/write \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: demo-key-123" \\
-  -d '{"user_id": "test-user", "content": "User likes pizza"}\''''),
+  -d '{"scope": "session", "scope_id": "test-session", "content": "User likes pizza"}\''''),
         ("Read Memory", '''curl -X POST http://localhost:8000/api/v1/memory/read \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: demo-key-123" \\
-  -d '{"user_id": "test-user", "query": "food preferences", "format": "llm_context"}\''''),
-        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats/test-user \\
+  -d '{"scope": "session", "scope_id": "test-session", "query": "food preferences", "format": "llm_context"}\''''),
+        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats/session/test-session \\
   -H "X-API-Key: demo-key-123"'''),
     ]
     
@@ -325,22 +337,22 @@ def main():
             return
         
         input("Press Enter to continue with write demo...")
-        user_id = demo_write_memories()
+        scope, scope_id = demo_write_memories()
         
         input("Press Enter to continue with read demo...")
-        demo_read_memories(user_id)
+        demo_read_memories(scope, scope_id)
         
         input("Press Enter to continue with LLM context demo...")
-        demo_llm_context_format(user_id)
+        demo_llm_context_format(scope, scope_id)
         
         input("Press Enter to continue with update demo...")
-        demo_update_memory(user_id)
+        demo_update_memory(scope, scope_id)
         
         input("Press Enter to continue with stats demo...")
-        demo_memory_stats(user_id)
+        demo_memory_stats(scope, scope_id)
         
         input("Press Enter to continue with forget demo...")
-        demo_forget_memory(user_id)
+        demo_forget_memory(scope, scope_id)
         
         input("Press Enter to see curl examples...")
         demo_curl_examples()

@@ -1,4 +1,4 @@
-"""Working memory manager: per-user state and chunk processing."""
+"""Working memory manager: per-scope state and chunk processing."""
 from typing import Dict, List, Optional
 
 import asyncio
@@ -10,7 +10,7 @@ from .models import SemanticChunk, WorkingMemoryState
 
 class WorkingMemoryManager:
     """
-    Manages working memory states per user.
+    Manages working memory states per scope.
 
     Responsibilities:
     1. Process sensory buffer into chunks
@@ -35,17 +35,17 @@ class WorkingMemoryManager:
             self.chunker = RuleBasedChunker()
             self._use_llm = False
 
-    def _get_key(self, tenant_id: str, user_id: str) -> str:
-        return f"{tenant_id}:{user_id}"
+    def _get_key(self, tenant_id: str, scope_id: str) -> str:
+        return f"{tenant_id}:{scope_id}"
 
-    async def get_state(self, tenant_id: str, user_id: str) -> WorkingMemoryState:
-        """Get or create working memory state for user."""
-        key = self._get_key(tenant_id, user_id)
+    async def get_state(self, tenant_id: str, scope_id: str) -> WorkingMemoryState:
+        """Get or create working memory state for scope."""
+        key = self._get_key(tenant_id, scope_id)
         async with self._lock:
             if key not in self._states:
                 self._states[key] = WorkingMemoryState(
                     tenant_id=tenant_id,
-                    user_id=user_id,
+                    user_id=scope_id,  # Internal model still uses user_id field name
                     max_chunks=self.max_chunks,
                 )
             return self._states[key]
@@ -53,7 +53,7 @@ class WorkingMemoryManager:
     async def process_input(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         text: str,
         turn_id: Optional[str] = None,
         role: str = "user",
@@ -64,7 +64,7 @@ class WorkingMemoryManager:
         Returns:
             New chunks added to working memory
         """
-        state = await self.get_state(tenant_id, user_id)
+        state = await self.get_state(tenant_id, scope_id)
         context = state.chunks[-5:] if state.chunks else None
 
         if self._use_llm:
@@ -85,21 +85,21 @@ class WorkingMemoryManager:
     async def get_chunks_for_encoding(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         min_salience: float = 0.4,
     ) -> List[SemanticChunk]:
         """Get chunks that should be encoded into long-term memory."""
-        state = await self.get_state(tenant_id, user_id)
+        state = await self.get_state(tenant_id, scope_id)
         return [c for c in state.chunks if c.salience >= min_salience]
 
     async def get_current_context(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         max_chunks: int = 5,
     ) -> str:
         """Get formatted current context for LLM prompts."""
-        state = await self.get_state(tenant_id, user_id)
+        state = await self.get_state(tenant_id, scope_id)
         recent = sorted(
             state.chunks,
             key=lambda c: c.timestamp,
@@ -108,18 +108,18 @@ class WorkingMemoryManager:
         lines = [f"- [{c.chunk_type.value}] {c.text}" for c in reversed(recent)]
         return "\n".join(lines)
 
-    async def clear_user(self, tenant_id: str, user_id: str) -> None:
-        """Clear working memory for user."""
-        key = self._get_key(tenant_id, user_id)
+    async def clear_user(self, tenant_id: str, scope_id: str) -> None:
+        """Clear working memory for scope."""
+        key = self._get_key(tenant_id, scope_id)
         async with self._lock:
             if key in self._states:
                 del self._states[key]
 
     async def get_stats(
-        self, tenant_id: str, user_id: str
+        self, tenant_id: str, scope_id: str
     ) -> Dict[str, object]:
         """Get working memory statistics."""
-        state = await self.get_state(tenant_id, user_id)
+        state = await self.get_state(tenant_id, scope_id)
         avg_salience = (
             sum(c.salience for c in state.chunks) / len(state.chunks)
             if state.chunks

@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import MemorySource, MemoryStatus, MemoryType, OperationType
+from .enums import MemoryScope, MemorySource, MemoryStatus, MemoryType, OperationType
 
 
 class Provenance(BaseModel):
@@ -45,8 +45,10 @@ class MemoryRecord(BaseModel):
     # Identity
     id: UUID = Field(default_factory=uuid4)
     tenant_id: str
-    user_id: str
+    scope: MemoryScope
+    scope_id: str  # session_id, agent_id, namespace_id, etc.
     agent_id: Optional[str] = None
+    namespace: Optional[str] = None
 
     # Type and content
     type: MemoryType
@@ -93,8 +95,10 @@ class MemoryRecordCreate(BaseModel):
     """Schema for creating a new memory."""
 
     tenant_id: str
-    user_id: str
+    scope: MemoryScope
+    scope_id: str
     agent_id: Optional[str] = None
+    namespace: Optional[str] = None
     type: MemoryType
     text: str
     key: Optional[str] = None
@@ -113,7 +117,7 @@ class EventLog(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     tenant_id: str
-    user_id: str
+    scope_id: str
     agent_id: Optional[str] = None
 
     event_type: str  # "turn", "memory_op", "consolidation", etc.

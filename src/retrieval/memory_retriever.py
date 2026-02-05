@@ -31,7 +31,7 @@ class MemoryRetriever:
     async def retrieve(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         query: str,
         max_results: int = 20,
         return_packet: bool = True,
@@ -39,7 +39,7 @@ class MemoryRetriever:
         """Retrieve relevant memories for a query."""
         analysis = await self.classifier.classify(query)
         plan = self.planner.plan(analysis)
-        raw_results = await self.retriever.retrieve(tenant_id, user_id, plan)
+        raw_results = await self.retriever.retrieve(tenant_id, scope_id, plan)
         reranked = self.reranker.rerank(raw_results, query, max_results=max_results)
         if return_packet:
             return self.packet_builder.build(reranked, query)
@@ -48,11 +48,11 @@ class MemoryRetriever:
     async def retrieve_for_llm(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         query: str,
         max_tokens: int = 2000,
         format: str = "markdown",
     ) -> str:
         """Retrieve and format memories for LLM context."""
-        packet = await self.retrieve(tenant_id, user_id, query)
+        packet = await self.retrieve(tenant_id, scope_id, query)
         return self.packet_builder.to_llm_context(packet, max_tokens, format)

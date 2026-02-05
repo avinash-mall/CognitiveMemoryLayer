@@ -16,7 +16,7 @@ def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.enums import MemoryStatus, MemoryType
+from ..core.enums import MemoryScope, MemoryStatus, MemoryType
 from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
 from .base import MemoryStoreBase
 from .models import MemoryRecordModel
@@ -31,7 +31,8 @@ class PostgresMemoryStore(MemoryStoreBase):
 
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
         content_hash = self._hash_content(
-            record.text, record.tenant_id, record.user_id
+            record.text, record.tenant_id,
+            scope=record.scope.value, scope_id=record.scope_id,
         )
         async with self.session_factory() as session:
             existing = await session.execute(
@@ -57,8 +58,10 @@ class PostgresMemoryStore(MemoryStoreBase):
             now_naive = _naive_utc(datetime.now(timezone.utc))
             model = MemoryRecordModel(
                 tenant_id=record.tenant_id,
-                user_id=record.user_id,
                 agent_id=record.agent_id,
+                scope=record.scope.value,
+                scope_id=record.scope_id,
+                namespace=record.namespace,
                 type=record.type.value,
                 text=record.text,
                 key=record.key,
@@ -87,14 +90,14 @@ class PostgresMemoryStore(MemoryStoreBase):
             return self._to_schema(model) if model else None
 
     async def get_by_key(
-        self, tenant_id: str, user_id: str, key: str
+        self, tenant_id: str, scope_id: str, key: str
     ) -> Optional[MemoryRecord]:
         async with self.session_factory() as session:
             r = await session.execute(
                 select(MemoryRecordModel).where(
                     and_(
                         MemoryRecordModel.tenant_id == tenant_id,
-                        MemoryRecordModel.user_id == user_id,
+                        MemoryRecordModel.scope_id == scope_id,
                         MemoryRecordModel.key == key,
                         MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
                     )
@@ -154,13 +157,18 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def vector_search(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         embedding: List[float],
         top_k: int = 10,
         filters: Optional[Dict[str, Any]] = None,
         min_similarity: float = 0.0,
     ) -> List[MemoryRecord]:
         async with self.session_factory() as session:
+            base = and_(
+                MemoryRecordModel.tenant_id == tenant_id,
+                MemoryRecordModel.scope_id == scope_id,
+                MemoryRecordModel.embedding.isnot(None),
+            )
             q = select(
                 MemoryRecordModel,
                 (
@@ -169,10 +177,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                 ).label("similarity"),
             ).where(
                 and_(
-                    MemoryRecordModel.tenant_id == tenant_id,
-                    MemoryRecordModel.user_id == user_id,
+                    base,
                     MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
-                    MemoryRecordModel.embedding.isnot(None),
                 )
             )
             if filters:
@@ -206,7 +212,7 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def scan(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
         order_by: Optional[str] = None,
         limit: int = 100,
@@ -216,7 +222,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             q = select(MemoryRecordModel).where(
                 and_(
                     MemoryRecordModel.tenant_id == tenant_id,
-                    MemoryRecordModel.user_id == user_id,
+                    MemoryRecordModel.scope_id == scope_id,
                 )
             )
             if filters:
@@ -248,14 +254,14 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def count(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
     ) -> int:
         async with self.session_factory() as session:
             q = select(func.count(MemoryRecordModel.id)).where(
                 and_(
                     MemoryRecordModel.tenant_id == tenant_id,
-                    MemoryRecordModel.user_id == user_id,
+                    MemoryRecordModel.scope_id == scope_id,
                 )
             )
             if filters and "status" in filters:
@@ -274,10 +280,12 @@ class PostgresMemoryStore(MemoryStoreBase):
         if not record:
             return 0
         refs = 0
-        # Scan same tenant/user; limit to avoid huge scans
+        scope_id = record.scope_id
+        if not scope_id:
+            return 0
         others = await self.scan(
             record.tenant_id,
-            record.user_id,
+            scope_id,
             limit=5000,
         )
         mid_str = str(record_id)
@@ -291,8 +299,14 @@ class PostgresMemoryStore(MemoryStoreBase):
                 refs += 1
         return refs
 
-    def _hash_content(self, text: str, tenant_id: str, user_id: str) -> str:
-        content = f"{tenant_id}:{user_id}:{text.lower().strip()}"
+    def _hash_content(
+        self,
+        text: str,
+        tenant_id: str,
+        scope: str,
+        scope_id: str,
+    ) -> str:
+        content = f"{tenant_id}:{scope}:{scope_id}:{text.lower().strip()}"
         return hashlib.sha256(content.encode()).hexdigest()
 
     def _to_schema(self, model: Optional[MemoryRecordModel]) -> Optional[MemoryRecord]:
@@ -302,11 +316,19 @@ class PostgresMemoryStore(MemoryStoreBase):
             mem_type = MemoryType(model.type)
         except ValueError:
             mem_type = MemoryType.EPISODIC_EVENT
+        scope_val = getattr(model, "scope", None) or "session"
+        scope_id_val = getattr(model, "scope_id", None) or ""
+        try:
+            scope_enum = MemoryScope(scope_val)
+        except ValueError:
+            scope_enum = MemoryScope.SESSION
         return MemoryRecord(
             id=model.id,
             tenant_id=model.tenant_id,
-            user_id=model.user_id,
+            scope=scope_enum,
+            scope_id=scope_id_val,
             agent_id=model.agent_id,
+            namespace=getattr(model, "namespace", None),
             type=mem_type,
             text=model.text,
             key=model.key,
