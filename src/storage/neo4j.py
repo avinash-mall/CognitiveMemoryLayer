@@ -18,7 +18,7 @@ class GraphNode:
     entity_type: str
     properties: Dict[str, Any]
     tenant_id: str
-    user_id: str
+    scope_id: str
     created_at: datetime
     updated_at: datetime
 
@@ -45,6 +45,9 @@ class Neo4jGraphStore(GraphStoreBase):
     """
     Neo4j-based knowledge graph for semantic memory.
     Stores entities as nodes and relations as edges.
+    
+    Note: The scope_id parameter is used as the identity key in the graph.
+    Graph data is partitioned by tenant_id and scope_id.
     """
 
     def __init__(self, driver: Optional[Any] = None):
@@ -63,19 +66,22 @@ class Neo4jGraphStore(GraphStoreBase):
     async def merge_node(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         entity: str,
         entity_type: str,
         properties: Optional[Dict[str, Any]] = None,
+        namespace: Optional[str] = None,
     ) -> str:
         """Create or update a node. Uses MERGE to avoid duplicates."""
         properties = properties or {}
+        if namespace is not None:
+            properties["namespace"] = namespace
         now = datetime.utcnow().isoformat()
 
         query = """
         MERGE (n:Entity {
             tenant_id: $tenant_id,
-            user_id: $user_id,
+            scope_id: $scope_id,
             entity: $entity,
             entity_type: $entity_type
         })
@@ -93,7 +99,7 @@ class Neo4jGraphStore(GraphStoreBase):
             result = await session.run(
                 query,
                 tenant_id=tenant_id,
-                user_id=user_id,
+                scope_id=scope_id,
                 entity=entity,
                 entity_type=entity_type,
                 properties=properties,
@@ -105,14 +111,17 @@ class Neo4jGraphStore(GraphStoreBase):
     async def merge_edge(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         subject: str,
         predicate: str,
         object: str,
         properties: Optional[Dict[str, Any]] = None,
+        namespace: Optional[str] = None,
     ) -> str:
         """Create or update an edge between two nodes. Creates nodes if they don't exist."""
         properties = properties or {}
+        if namespace is not None:
+            properties["namespace"] = namespace
         rel_type = _sanitize_rel_type(predicate) or "RELATED_TO"
         confidence = properties.get("confidence", 0.8)
         now = datetime.utcnow().isoformat()
@@ -120,14 +129,14 @@ class Neo4jGraphStore(GraphStoreBase):
         query = f"""
         MERGE (s:Entity {{
             tenant_id: $tenant_id,
-            user_id: $user_id,
+            scope_id: $scope_id,
             entity: $subject
         }})
         ON CREATE SET s.created_at = $now, s.entity_type = 'UNKNOWN'
 
         MERGE (o:Entity {{
             tenant_id: $tenant_id,
-            user_id: $user_id,
+            scope_id: $scope_id,
             entity: $object
         }})
         ON CREATE SET o.created_at = $now, o.entity_type = 'UNKNOWN'
@@ -150,7 +159,7 @@ class Neo4jGraphStore(GraphStoreBase):
             result = await session.run(
                 query,
                 tenant_id=tenant_id,
-                user_id=user_id,
+                scope_id=scope_id,
                 subject=subject,
                 object=object,
                 properties=properties,
@@ -163,7 +172,7 @@ class Neo4jGraphStore(GraphStoreBase):
     async def get_neighbors(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         entity: str,
         max_depth: int = 2,
     ) -> List[Dict[str, Any]]:
@@ -171,10 +180,10 @@ class Neo4jGraphStore(GraphStoreBase):
         fallback_query = f"""
         MATCH path = (start:Entity {{
             tenant_id: $tenant_id,
-            user_id: $user_id,
+            scope_id: $scope_id,
             entity: $entity
         }})-[*1..{max_depth}]-(neighbor:Entity)
-        WHERE neighbor.tenant_id = $tenant_id AND neighbor.user_id = $user_id
+        WHERE neighbor.tenant_id = $tenant_id AND neighbor.scope_id = $scope_id
         RETURN DISTINCT neighbor.entity AS entity,
                neighbor.entity_type AS entity_type,
                properties(neighbor) AS properties
@@ -186,7 +195,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 apoc_query = """
                 MATCH (start:Entity {
                     tenant_id: $tenant_id,
-                    user_id: $user_id,
+                    scope_id: $scope_id,
                     entity: $entity
                 })
                 CALL apoc.path.subgraphNodes(start, {
@@ -194,7 +203,7 @@ class Neo4jGraphStore(GraphStoreBase):
                     relationshipFilter: null,
                     labelFilter: '+Entity'
                 }) YIELD node
-                WHERE node.tenant_id = $tenant_id AND node.user_id = $user_id
+                WHERE node.tenant_id = $tenant_id AND node.scope_id = $scope_id
                 RETURN node.entity AS entity,
                        node.entity_type AS entity_type,
                        properties(node) AS properties
@@ -202,7 +211,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 result = await session.run(
                     apoc_query,
                     tenant_id=tenant_id,
-                    user_id=user_id,
+                    scope_id=scope_id,
                     entity=entity,
                     max_depth=max_depth,
                 )
@@ -210,7 +219,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 result = await session.run(
                     fallback_query,
                     tenant_id=tenant_id,
-                    user_id=user_id,
+                    scope_id=scope_id,
                     entity=entity,
                 )
             records = await result.data()
@@ -219,7 +228,7 @@ class Neo4jGraphStore(GraphStoreBase):
     async def personalized_pagerank(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         seed_entities: List[str],
         top_k: int = 20,
         damping: float = 0.85,
@@ -228,11 +237,11 @@ class Neo4jGraphStore(GraphStoreBase):
         fallback_query = """
         MATCH (seed:Entity)
         WHERE seed.tenant_id = $tenant_id
-          AND seed.user_id = $user_id
+          AND seed.scope_id = $scope_id
           AND seed.entity IN $seeds
 
         MATCH path = (seed)-[*1..3]-(related:Entity)
-        WHERE related.tenant_id = $tenant_id AND related.user_id = $user_id
+        WHERE related.tenant_id = $tenant_id AND related.scope_id = $scope_id
 
         WITH related,
              min(length(path)) AS min_distance,
@@ -251,12 +260,12 @@ class Neo4jGraphStore(GraphStoreBase):
                 gds_query = """
                 MATCH (source:Entity)
                 WHERE source.tenant_id = $tenant_id
-                  AND source.user_id = $user_id
+                  AND source.scope_id = $scope_id
                   AND source.entity IN $seeds
 
                 CALL gds.pageRank.stream({
-                    nodeQuery: 'MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.user_id = $user_id RETURN id(n) AS id',
-                    relationshipQuery: 'MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id AND n1.user_id = $user_id RETURN id(n1) AS source, id(n2) AS target',
+                    nodeQuery: 'MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.scope_id = $scope_id RETURN id(n) AS id',
+                    relationshipQuery: 'MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id AND n1.scope_id = $scope_id RETURN id(n1) AS source, id(n2) AS target',
                     dampingFactor: $damping,
                     sourceNodes: collect(source)
                 })
@@ -273,7 +282,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 result = await session.run(
                     gds_query,
                     tenant_id=tenant_id,
-                    user_id=user_id,
+                    scope_id=scope_id,
                     seeds=seed_entities,
                     damping=damping,
                     top_k=top_k,
@@ -282,7 +291,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 result = await session.run(
                     fallback_query,
                     tenant_id=tenant_id,
-                    user_id=user_id,
+                    scope_id=scope_id,
                     seeds=seed_entities,
                     top_k=top_k,
                 )
@@ -292,14 +301,14 @@ class Neo4jGraphStore(GraphStoreBase):
     async def get_entity_facts(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         entity: str,
     ) -> List[Dict[str, Any]]:
         """Get all facts (relations) about an entity."""
         query = """
         MATCH (e:Entity {
             tenant_id: $tenant_id,
-            user_id: $user_id,
+            scope_id: $scope_id,
             entity: $entity
         })-[r]-(other:Entity)
         RETURN type(r) AS predicate,
@@ -316,7 +325,7 @@ class Neo4jGraphStore(GraphStoreBase):
             result = await session.run(
                 query,
                 tenant_id=tenant_id,
-                user_id=user_id,
+                scope_id=scope_id,
                 entity=entity,
             )
             records = await result.data()
@@ -325,15 +334,15 @@ class Neo4jGraphStore(GraphStoreBase):
     async def search_by_pattern(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         subject: Optional[str] = None,
         predicate: Optional[str] = None,
         object: Optional[str] = None,
         limit: int = 50,
     ) -> List[Tuple[str, str, str, Dict]]:
         """Search for triples matching a pattern. None values are wildcards."""
-        conditions = ["s.tenant_id = $tenant_id", "s.user_id = $user_id"]
-        params: Dict[str, Any] = {"tenant_id": tenant_id, "user_id": user_id, "limit": limit}
+        conditions = ["s.tenant_id = $tenant_id", "s.scope_id = $scope_id"]
+        params: Dict[str, Any] = {"tenant_id": tenant_id, "scope_id": scope_id, "limit": limit}
 
         if subject:
             conditions.append("s.entity = $subject")
@@ -364,7 +373,7 @@ class Neo4jGraphStore(GraphStoreBase):
     async def delete_entity(
         self,
         tenant_id: str,
-        user_id: str,
+        scope_id: str,
         entity: str,
         cascade: bool = True,
     ) -> int:
@@ -373,7 +382,7 @@ class Neo4jGraphStore(GraphStoreBase):
             query = """
             MATCH (n:Entity {
                 tenant_id: $tenant_id,
-                user_id: $user_id,
+                scope_id: $scope_id,
                 entity: $entity
             })
             DETACH DELETE n
@@ -383,7 +392,7 @@ class Neo4jGraphStore(GraphStoreBase):
             query = """
             MATCH (n:Entity {
                 tenant_id: $tenant_id,
-                user_id: $user_id,
+                scope_id: $scope_id,
                 entity: $entity
             })
             DELETE n
@@ -394,7 +403,7 @@ class Neo4jGraphStore(GraphStoreBase):
             result = await session.run(
                 query,
                 tenant_id=tenant_id,
-                user_id=user_id,
+                scope_id=scope_id,
                 entity=entity,
             )
             record = await result.single()
@@ -407,15 +416,15 @@ async def initialize_graph_schema(store: Neo4jGraphStore) -> None:
         await session.run("""
             CREATE CONSTRAINT entity_unique IF NOT EXISTS
             FOR (n:Entity)
-            REQUIRE (n.tenant_id, n.user_id, n.entity) IS UNIQUE
+            REQUIRE (n.tenant_id, n.scope_id, n.entity) IS UNIQUE
         """)
         await session.run("""
             CREATE INDEX entity_type_idx IF NOT EXISTS
             FOR (n:Entity)
-            ON (n.tenant_id, n.user_id, n.entity_type)
+            ON (n.tenant_id, n.scope_id, n.entity_type)
         """)
         await session.run("""
             CREATE INDEX entity_time_idx IF NOT EXISTS
             FOR (n:Entity)
-            ON (n.tenant_id, n.user_id, n.updated_at)
+            ON (n.tenant_id, n.scope_id, n.updated_at)
         """)

@@ -37,11 +37,13 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 def sample_memory_record():
     """Sample memory record for testing."""
     from src.core.schemas import MemoryRecord, Provenance
-    from src.core.enums import MemoryType, MemorySource, MemoryStatus
+    from src.core.enums import MemoryScope, MemoryType, MemorySource, MemoryStatus
 
     return MemoryRecord(
         id=uuid4(),
         tenant_id="test-tenant",
+        scope=MemoryScope.USER,
+        scope_id="test-user",
         user_id="test-user",
         type=MemoryType.EPISODIC_EVENT,
         text="Test memory content",

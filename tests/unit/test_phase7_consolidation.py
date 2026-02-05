@@ -11,7 +11,7 @@ from src.consolidation.triggers import (
     TriggerType,
 )
 from src.consolidation.clusterer import EpisodeCluster, SemanticClusterer
-from src.core.enums import MemorySource, MemoryType
+from src.core.enums import MemoryScope, MemorySource, MemoryType
 from src.core.schemas import EntityMention, MemoryRecord, Provenance
 
 
@@ -25,6 +25,8 @@ def _make_record(
     return MemoryRecord(
         id=uuid4(),
         tenant_id="t",
+        scope=MemoryScope.USER,
+        scope_id="u",
         user_id="u",
         type=MemoryType.EPISODIC_EVENT,
         text=text,

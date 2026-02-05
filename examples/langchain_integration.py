@@ -42,14 +42,15 @@ class CognitiveMemory(BaseChatMemory):
         from langchain_openai import ChatOpenAI
         from langchain.chains import ConversationChain
         
-        memory = CognitiveMemory(user_id="user-123")
+        memory = CognitiveMemory(scope="session", scope_id="session-123")
         llm = ChatOpenAI()
         chain = ConversationChain(llm=llm, memory=memory)
         
         response = chain.predict(input="My name is Alice")
     """
     
-    user_id: str
+    scope: str = "session"
+    scope_id: str
     memory_client: Optional[CognitiveMemoryClient] = None
     api_url: str = "http://localhost:8000"
     api_key: str = "demo-key-123"
@@ -100,7 +101,8 @@ class CognitiveMemory(BaseChatMemory):
         try:
             # Retrieve relevant memories
             result = self.memory_client.read(
-                user_id=self.user_id,
+                scope=self.scope,
+                scope_id=self.scope_id,
                 query=query,
                 max_results=self.max_retrieval_results,
                 format=self.retrieval_format
@@ -135,7 +137,8 @@ class CognitiveMemory(BaseChatMemory):
                 human_input = inputs.get(self.input_key, "")
                 if human_input:
                     self.memory_client.write(
-                        user_id=self.user_id,
+                        scope=self.scope,
+                        scope_id=self.scope_id,
                         content=f"User said: {human_input}",
                         memory_type="episodic_event"
                     )
@@ -145,7 +148,8 @@ class CognitiveMemory(BaseChatMemory):
                 ai_output = outputs.get(self.output_key, "")
                 if ai_output:
                     self.memory_client.write(
-                        user_id=self.user_id,
+                        scope=self.scope,
+                        scope_id=self.scope_id,
                         content=f"Assistant responded about: {ai_output[:200]}",
                         memory_type="episodic_event"
                     )
@@ -154,10 +158,11 @@ class CognitiveMemory(BaseChatMemory):
             print(f"Warning: Could not save to memory: {e}")
     
     def clear(self) -> None:
-        """Clear all memories for this user."""
+        """Clear all memories for this scope."""
         try:
             self.memory_client.forget(
-                user_id=self.user_id,
+                scope=self.scope,
+                scope_id=self.scope_id,
                 query="*",
                 action="delete"
             )
@@ -181,7 +186,8 @@ class CognitiveMemory(BaseChatMemory):
         
         try:
             self.memory_client.write(
-                user_id=self.user_id,
+                scope=self.scope,
+                scope_id=self.scope_id,
                 content=content,
                 memory_type=memory_type
             )
@@ -203,7 +209,8 @@ Assistant:"""
 
 
 def create_memory_chain(
-    user_id: str,
+    scope_id: str,
+    scope: str = "session",
     llm_model: str = "gpt-4o-mini",
     memory_api_url: str = "http://localhost:8000",
     memory_api_key: str = "demo-key-123"
@@ -212,7 +219,8 @@ def create_memory_chain(
     Create a LangChain conversation chain with cognitive memory.
     
     Args:
-        user_id: Unique user identifier
+        scope_id: Unique identifier for the memory scope (e.g., session ID)
+        scope: Memory scope type (session, agent, namespace, global)
         llm_model: OpenAI model to use
         memory_api_url: Cognitive Memory Layer API URL
         memory_api_key: API key for memory service
@@ -222,7 +230,8 @@ def create_memory_chain(
     """
     # Create memory
     memory = CognitiveMemory(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         api_url=memory_api_url,
         api_key=memory_api_key,
         auto_store=True,
@@ -259,7 +268,8 @@ def main():
     # Create a chain with memory
     print("\nCreating conversation chain with persistent memory...")
     chain = create_memory_chain(
-        user_id="langchain-demo-user",
+        scope_id="langchain-demo-session",
+        scope="session",
         llm_model="gpt-4o-mini"
     )
     
@@ -293,7 +303,8 @@ def example_direct_usage():
     print("\n--- Direct Usage Example ---\n")
     
     memory = CognitiveMemory(
-        user_id="direct-usage-demo",
+        scope="session",
+        scope_id="direct-usage-demo-session",
         auto_store=True
     )
     

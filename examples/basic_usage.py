@@ -26,7 +26,9 @@ def main():
         api_key="demo-key-123"
     )
     
-    user_id = "example-user-001"
+    # Use session scope with a session ID
+    scope = "session"
+    scope_id = "example-session-001"
     
     print("=" * 60)
     print("Cognitive Memory Layer - Basic Usage Example")
@@ -40,7 +42,8 @@ def main():
     
     # Store a semantic fact
     result = client.write(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         content="The user's name is Alice and she works as a software engineer at TechCorp.",
         memory_type="semantic_fact"
     )
@@ -48,7 +51,8 @@ def main():
     
     # Store a preference
     result = client.write(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         content="User prefers Python over JavaScript for backend development.",
         memory_type="preference"
     )
@@ -56,7 +60,8 @@ def main():
     
     # Store a constraint (important - never auto-forgotten)
     result = client.write(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         content="User is allergic to shellfish - never recommend seafood restaurants with shellfish.",
         memory_type="constraint"
     )
@@ -64,7 +69,8 @@ def main():
     
     # Store an episodic event
     result = client.write(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         content="On 2024-01-15, user mentioned they are planning to learn Rust this year.",
         memory_type="episodic_event"
     )
@@ -72,7 +78,8 @@ def main():
     
     # Store a hypothesis (uncertain, needs confirmation)
     result = client.write(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         content="User might be interested in machine learning based on their questions about PyTorch.",
         memory_type="hypothesis"
     )
@@ -86,7 +93,8 @@ def main():
     
     # Basic retrieval
     result = client.read(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         query="What programming languages does the user like?"
     )
     print(f"\nQuery: 'What programming languages does the user like?'")
@@ -96,7 +104,8 @@ def main():
     
     # Retrieve with LLM-ready context
     result = client.read(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         query="Tell me about the user",
         format="llm_context"
     )
@@ -111,7 +120,8 @@ def main():
     
     # Filter by memory type
     result = client.read(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         query="dietary restrictions",
         memory_types=["constraint", "preference"]
     )
@@ -127,7 +137,7 @@ def main():
     print("-" * 40)
     
     # Get a memory to update
-    result = client.read(user_id=user_id, query="machine learning hypothesis")
+    result = client.read(scope=scope, scope_id=scope_id, query="machine learning hypothesis")
     
     if result.memories:
         memory_id = result.memories[0].id
@@ -135,7 +145,8 @@ def main():
         
         # Confirm the hypothesis (increases confidence)
         update_result = client.update(
-            user_id=user_id,
+            scope=scope,
+            scope_id=scope_id,
             memory_id=memory_id,
             feedback="correct"
         )
@@ -147,8 +158,8 @@ def main():
     print("\n4. MEMORY STATISTICS")
     print("-" * 40)
     
-    stats = client.stats(user_id)
-    print(f"User: {stats.user_id}")
+    stats = client.stats(scope, scope_id)
+    print(f"Scope: {stats.scope}/{stats.scope_id}")
     print(f"Total memories: {stats.total_memories}")
     print(f"Active memories: {stats.active_memories}")
     print(f"Average confidence: {stats.avg_confidence:.0%}")
@@ -162,7 +173,8 @@ def main():
     
     # Archive old memories (soft delete, can be recovered)
     result = client.forget(
-        user_id=user_id,
+        scope=scope,
+        scope_id=scope_id,
         query="planning to learn Rust",
         action="archive"
     )

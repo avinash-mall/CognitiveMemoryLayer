@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from src.consolidation.worker import ConsolidationWorker
-from src.core.enums import MemorySource, MemoryType
+from src.core.enums import MemoryScope, MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
 from src.memory.neocortical.fact_store import SemanticFactStore
 from src.memory.neocortical.store import NeocorticalStore
@@ -74,6 +74,8 @@ async def test_consolidation_with_episodes_fallback_gist(pg_session_factory):
     await episodic.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
+            scope=MemoryScope.USER,
+            scope_id=user_id,
             user_id=user_id,
             type=MemoryType.EPISODIC_EVENT,
             text="User said they like pizza.",
