@@ -8,6 +8,7 @@ from uuid import uuid4
 from ..core.enums import MemoryScope, MemorySource, MemoryType
 from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
+from ..utils.logging_config import get_logger
 from ..memory.neocortical.store import NeocorticalStore
 from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
@@ -213,10 +214,15 @@ class HybridRetriever:
             return []
         if cached:
             import json
+
             try:
                 return json.loads(cached) if isinstance(cached, str) else cached
-            except (TypeError, json.JSONDecodeError):
-                pass
+            except (TypeError, json.JSONDecodeError) as e:
+                get_logger(__name__).warning(
+                    "retrieval_cache_decode_error",
+                    cache_key=cache_key,
+                    error=str(e),
+                )
         return []
 
     def _to_retrieved_memories(

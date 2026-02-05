@@ -54,14 +54,6 @@ async def trigger_forgetting(
     }
 
 
-@admin_router.get("/users")
-async def list_users(
-    auth: AuthContext = Depends(require_admin_permission),
-):
-    """List all users with memory. Placeholder - extend with actual scan."""
-    return {"users": []}
-
-
 @admin_router.delete("/user/{user_id}")
 async def delete_user_memory(
     user_id: str,
