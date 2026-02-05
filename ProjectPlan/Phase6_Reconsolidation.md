@@ -920,7 +920,7 @@ from .belief_revision import BeliefRevisionEngine, RevisionPlan, RevisionOperati
 from ..core.schemas import MemoryRecord
 from ..core.enums import OperationType, MemoryType
 from ..storage.postgres import PostgresMemoryStore
-from ..extraction.fact_extractor import FactExtractor
+from ..extraction.fact_extractor import FactExtractor, LLMFactExtractor
 from ..utils.llm import LLMClient
 
 @dataclass
@@ -954,6 +954,7 @@ class ReconsolidationService:
         self.labile_tracker = LabileStateTracker()
         self.conflict_detector = ConflictDetector(llm_client)
         self.revision_engine = BeliefRevisionEngine()
+        # Orchestrator wires LLMFactExtractor(llm_client) by default for LLM-based fact extraction
         self.fact_extractor = fact_extractor
     
     async def process_turn(
