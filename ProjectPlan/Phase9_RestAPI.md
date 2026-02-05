@@ -256,53 +256,8 @@ class AuthContext:
     can_write: bool = True
     can_admin: bool = False
 
-class AuthService:
-    """
-    Handles authentication and authorization.
-    In production, integrate with proper auth system.
-    """
-    
-    def __init__(self):
-        self._api_keys: dict = {}  # In production, use database
-        self._load_keys()
-    
-    def _load_keys(self):
-        """Load API keys from config/database."""
-        settings = get_settings()
-        
-        # Demo keys - replace with database lookup
-        self._api_keys = {
-            "demo-key-123": AuthContext(
-                tenant_id="demo",
-                can_read=True,
-                can_write=True,
-                can_admin=False,
-                api_key="demo-key-123"
-            ),
-            "admin-key-456": AuthContext(
-                tenant_id="admin",
-                can_read=True,
-                can_write=True,
-                can_admin=True,
-                api_key="admin-key-456"
-            )
-        }
-    
-    def validate_key(self, api_key: str) -> Optional[AuthContext]:
-        """Validate API key and return context."""
-        return self._api_keys.get(api_key)
-    
-    def check_permission(self, context: AuthContext, permission: str) -> bool:
-        """Check if context has permission."""
-        if permission == "read":
-            return context.can_read
-        elif permission == "write":
-            return context.can_write
-        elif permission == "admin":
-            return context.can_admin
-        return False
-
-_auth_service = AuthService()
+# Auth is config-based: keys from env (AUTH__API_KEY, AUTH__ADMIN_API_KEY).
+# See src/api/auth.py: _build_api_keys() and get_auth_context().
 
 async def get_auth_context(
     api_key: Optional[str] = Security(api_key_header),
@@ -311,6 +266,7 @@ async def get_auth_context(
 ) -> AuthContext:
     """
     Dependency to get auth context from request.
+    Validates API key against config (AUTH__API_KEY, AUTH__ADMIN_API_KEY).
     """
     if not api_key:
         raise HTTPException(
@@ -318,7 +274,8 @@ async def get_auth_context(
             detail="API key required"
         )
     
-    context = _auth_service.validate_key(api_key)
+    api_keys = _build_api_keys()
+    context = api_keys.get(api_key)
     
     if not context:
         raise HTTPException(
@@ -708,20 +665,21 @@ async def forget_memory(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Stats endpoint
-@router.get("/memory/stats/{user_id}", response_model=MemoryStats)
+# Stats endpoint (scope-based)
+@router.get("/memory/stats/{scope}/{scope_id}", response_model=MemoryStats)
 async def get_memory_stats(
-    user_id: str,
+    scope: MemoryScope,
+    scope_id: str,
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator)
 ):
     """
-    Get memory statistics for a user.
+    Get memory statistics for a scope. silent_memories and archived_memories are computed.
     """
     try:
         stats = await orchestrator.get_stats(
             tenant_id=auth.tenant_id,
-            user_id=user_id
+            scope_id=scope_id
         )
         
         return MemoryStats(**stats)
@@ -959,58 +917,26 @@ class MemoryOrchestrator:
     async def forget(
         self,
         tenant_id: str,
-        user_id: str,
+        scope: MemoryScope,
+        scope_id: str,
         memory_ids: Optional[List[UUID]] = None,
         query: Optional[str] = None,
         before: Optional[datetime] = None,
         action: str = "delete"
     ) -> Dict[str, Any]:
-        """
-        Forget memories.
-        """
-        affected = 0
-        
-        if memory_ids:
-            for mid in memory_ids:
-                await self.hippocampal.store.delete(mid, hard=(action == "delete"))
-                affected += 1
-        
-        # TODO: Implement query-based and time-based forgetting
-        
-        return {"affected_count": affected}
-    
+        """Forget memories (by ids, query, or before timestamp)."""
+        # Implemented: memory_ids, query-based, and time-based forgetting
+        ...
+
     async def get_stats(
         self,
         tenant_id: str,
-        user_id: str
+        scope_id: str
     ) -> Dict[str, Any]:
-        """
-        Get memory statistics.
-        """
-        from ..core.enums import MemoryStatus
-        
-        total = await self.hippocampal.store.count(tenant_id, user_id)
-        active = await self.hippocampal.store.count(
-            tenant_id, user_id,
-            filters={"status": MemoryStatus.ACTIVE.value}
-        )
-        
-        # Get profile from neocortical
-        profile = await self.neocortical.get_user_profile(tenant_id, user_id)
-        
-        return {
-            "user_id": user_id,
-            "total_memories": total,
-            "active_memories": active,
-            "silent_memories": 0,  # TODO: Count
-            "archived_memories": 0,
-            "by_type": {},  # TODO: Count by type
-            "avg_confidence": 0.0,
-            "avg_importance": 0.0,
-            "oldest_memory": None,
-            "newest_memory": None,
-            "estimated_size_mb": total * 0.001  # Rough estimate
-        }
+        """Get memory statistics (silent and archived counts computed)."""
+        # Implemented: total, active, silent_memories, archived_memories, by_type,
+        # avg_confidence, avg_importance, oldest/newest_memory, estimated_size_mb
+        ...
 ```
 
 ---
@@ -1047,13 +973,7 @@ async def trigger_forgetting(
     """Manually trigger forgetting for a user."""
     return {"status": "forgetting_triggered", "user_id": user_id, "dry_run": dry_run}
 
-@admin_router.delete("/user/{user_id}")
-async def delete_user_memory(
-    user_id: str,
-    auth: AuthContext = Depends(require_admin_permission)
-):
-    """Delete all memory for a user (GDPR compliance)."""
-    return {"status": "deleted", "user_id": user_id}
+# DELETE /admin/user/{user_id} removed. Use orchestrator.delete_all_for_scope(tenant_id, scope_id) for GDPR if needed.
 ```
 
 ---
@@ -1063,7 +983,7 @@ async def delete_user_memory(
 - [x] FastAPI application factory with lifespan
 - [x] RequestLoggingMiddleware with timing
 - [x] RateLimitMiddleware with per-tenant limits
-- [x] AuthService with API key validation
+- [x] Config-based API key validation (AUTH__API_KEY, AUTH__ADMIN_API_KEY)
 - [x] Auth dependencies (get_auth_context, require_write, etc.)
 - [x] Request/Response Pydantic models
 - [x] /memory/write endpoint

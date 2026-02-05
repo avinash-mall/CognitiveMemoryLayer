@@ -47,6 +47,17 @@ class MemorySettings(BaseSettings):
     forgetting_interval_hours: int = Field(default=24)
 
 
+class AuthSettings(BaseSettings):
+    """
+    API authentication (keys from environment).
+    Env vars (with env_nested_delimiter='__'): AUTH__API_KEY, AUTH__ADMIN_API_KEY, AUTH__DEFAULT_TENANT_ID.
+    """
+
+    api_key: str | None = Field(default=None)
+    admin_api_key: str | None = Field(default=None)
+    default_tenant_id: str = Field(default="default")
+
+
 class Settings(BaseSettings):
     """Application settings with nested configuration."""
 
@@ -57,6 +68,7 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
 
     model_config = {
         "env_file": ".env",

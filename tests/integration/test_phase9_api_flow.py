@@ -3,24 +3,36 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
+from src.core.config import get_settings
 
 
 @pytest.fixture
-def client():
-    """Test client with auth headers. Uses context manager so lifespan runs."""
-    with TestClient(
-        app,
-        headers={
-            "X-API-Key": "demo-key-123",
-            "X-Tenant-ID": "demo",
-        },
-    ) as c:
-        yield c
+def client(monkeypatch):
+    """Test client with auth headers. Auth keys from config (set for tests)."""
+    monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
+    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "demo")
+    get_settings.cache_clear()
+    try:
+        with TestClient(
+            app,
+            headers={
+                "X-API-Key": "demo-key-123",
+                "X-Tenant-ID": "demo",
+            },
+        ) as c:
+            yield c
+    finally:
+        get_settings.cache_clear()
 
 
 @pytest.fixture
-def admin_client():
+def admin_client(monkeypatch):
     """Test client with admin auth."""
+    monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
+    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "admin")
+    get_settings.cache_clear()
     return TestClient(
         app,
         headers={
@@ -52,7 +64,11 @@ def test_write_requires_auth():
     with TestClient(app) as client_no_auth:
         resp = client_no_auth.post(
             "/api/v1/memory/write",
-            json={"user_id": "u1", "content": "test"},
+            json={
+                "scope": "session",
+                "scope_id": "s1",
+                "content": "test",
+            },
         )
     assert resp.status_code == 401
 
@@ -62,7 +78,11 @@ def test_read_requires_auth():
     with TestClient(app) as client_no_auth:
         resp = client_no_auth.post(
             "/api/v1/memory/read",
-            json={"user_id": "u1", "query": "test"},
+            json={
+                "scope": "session",
+                "scope_id": "s1",
+                "query": "test",
+            },
         )
     assert resp.status_code == 401
 
@@ -70,5 +90,5 @@ def test_read_requires_auth():
 def test_stats_requires_auth():
     """Stats should require API key."""
     with TestClient(app) as client_no_auth:
-        resp = client_no_auth.get("/api/v1/memory/stats/u1")
+        resp = client_no_auth.get("/api/v1/memory/stats/session/s1")
     assert resp.status_code == 401

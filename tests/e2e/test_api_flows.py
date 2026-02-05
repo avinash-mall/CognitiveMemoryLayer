@@ -5,19 +5,27 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.app import app
+from src.core.config import get_settings
 
 
 @pytest.fixture
-def client():
-    """Test client with auth headers. Uses context manager so lifespan runs."""
-    with TestClient(
-        app,
-        headers={
-            "X-API-Key": "demo-key-123",
-            "X-Tenant-ID": "demo",
-        },
-    ) as c:
-        yield c
+def client(monkeypatch):
+    """Test client with auth headers. Auth keys from config (set for tests)."""
+    monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
+    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "demo")
+    get_settings.cache_clear()
+    try:
+        with TestClient(
+            app,
+            headers={
+                "X-API-Key": "demo-key-123",
+                "X-Tenant-ID": "demo",
+            },
+        ) as c:
+            yield c
+    finally:
+        get_settings.cache_clear()
 
 
 @pytest.mark.skipif(
@@ -26,12 +34,13 @@ def client():
 )
 def test_full_memory_lifecycle(client):
     """Test write -> read -> update -> forget flow."""
-    user_id = "e2e-test-user"
+    scope_id = "e2e-test-session"
 
     write_resp = client.post(
         "/api/v1/memory/write",
         json={
-            "user_id": user_id,
+            "scope": "session",
+            "scope_id": scope_id,
             "content": "I prefer vegetarian food and I live in Paris",
         },
     )
@@ -41,7 +50,11 @@ def test_full_memory_lifecycle(client):
 
     read_resp = client.post(
         "/api/v1/memory/read",
-        json={"user_id": user_id, "query": "What food do I like?"},
+        json={
+            "scope": "session",
+            "scope_id": scope_id,
+            "query": "What food do I like?",
+        },
     )
     assert read_resp.status_code == 200
     read_data = read_resp.json()
@@ -53,8 +66,9 @@ def test_full_memory_lifecycle(client):
         update_resp = client.post(
             "/api/v1/memory/update",
             json={
-                "user_id": user_id,
-                "memory_id": memory_id,
+                "scope": "session",
+                "scope_id": scope_id,
+                "memory_id": str(memory_id),
                 "feedback": "correct",
             },
         )
@@ -62,7 +76,11 @@ def test_full_memory_lifecycle(client):
 
     forget_resp = client.post(
         "/api/v1/memory/forget",
-        json={"user_id": user_id, "query": "vegetarian"},
+        json={
+            "scope": "session",
+            "scope_id": scope_id,
+            "query": "vegetarian",
+        },
     )
     assert forget_resp.status_code == 200
 
@@ -72,7 +90,11 @@ def test_unauthorized_access():
     with TestClient(app) as client_no_auth:
         resp = client_no_auth.post(
             "/api/v1/memory/write",
-            json={"user_id": "test", "content": "test"},
+            json={
+                "scope": "session",
+                "scope_id": "test",
+                "content": "test",
+            },
         )
         assert resp.status_code == 401
 
