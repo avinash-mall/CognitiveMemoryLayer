@@ -42,6 +42,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 |-------------|--------|------------------|
 | Abstract base classes | ✅ | `src/storage/base.py` – `MemoryStoreBase` (upsert, get_by_id, get_by_key, delete, update, vector_search, scan, count), `GraphStoreBase` (merge_node, merge_edge, get_neighbors, personalized_pagerank) |
 | Database connection manager | ✅ | `src/storage/connection.py` – `DatabaseManager` singleton, `pg_session`, `neo4j_session`, `close()` |
+| Redis client helper | ✅ | `src/storage/redis.py` – `get_redis_client()` from settings (async client for cache/embedding) |
 
 ### Task 1.5: Database Migrations ✅
 
@@ -219,7 +220,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
-| RetrievalResult, HybridRetriever | ✅ | `src/retrieval/retriever.py` – execute plan (parallel steps), _retrieve_facts, _retrieve_vector, _retrieve_graph, _retrieve_cache, _to_retrieved_memories |
+| RetrievalResult, HybridRetriever | ✅ | `src/retrieval/retriever.py` – execute plan (parallel steps), _retrieve_facts, _retrieve_vector, _retrieve_graph, _retrieve_cache (logs decode errors), _to_retrieved_memories |
 
 ### Task 5.4: Reranker ✅
 
@@ -274,7 +275,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
 | ReconsolidationService (process_turn, fact extraction fallback, apply operations) | ✅ | `src/reconsolidation/service.py` |
-| FactExtractor stub | ✅ | `src/extraction/fact_extractor.py` – default no-op; used when provided |
+| FactExtractor / LLMFactExtractor | ✅ | `src/extraction/fact_extractor.py` – LLM-based extraction (same client as summarization); base no-op for tests |
 
 ### Phase 6 Tests
 
@@ -332,7 +333,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
-| ConsolidationReport, ConsolidationWorker | ✅ | `src/consolidation/worker.py` – sample → cluster → extract → align → migrate; background worker loop |
+| ConsolidationReport, ConsolidationWorker | ✅ | `src/consolidation/worker.py` – sample → cluster → extract → align → migrate; background worker loop; structlog for completion/failure |
 
 ### Phase 7 Tests
 
@@ -487,7 +488,6 @@ This document tracks what has been implemented against the plan in the `ProjectP
 |-------------|--------|------------------|
 | POST /admin/consolidate/{user_id} | ✅ | `src/api/admin_routes.py` |
 | POST /admin/forget/{user_id} (dry_run) | ✅ | `src/api/admin_routes.py` |
-| GET /admin/users | ✅ | `src/api/admin_routes.py` – placeholder |
 | DELETE /admin/user/{user_id} (GDPR) | ✅ | `src/api/admin_routes.py` |
 
 ### Phase 9 Tests
@@ -656,5 +656,5 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 - Phase 6 adds reconsolidation: `LabileStateTracker`, `ConflictDetector`, `BeliefRevisionEngine`, `ReconsolidationService`; `PostgresMemoryStore.update()` supports `valid_to` and `metadata` for revision patches.
 - Phase 7 adds consolidation: `ConsolidationScheduler`, `EpisodeSampler`, `SemanticClusterer`, `GistExtractor`, `SchemaAligner`, `ConsolidationMigrator`, `ConsolidationWorker`; `PostgresMemoryStore.scan()` supports `since` filter for time-window sampling.
 - Phase 8 adds active forgetting: `RelevanceScorer`, `ForgettingPolicyEngine`, `ForgettingExecutor`, `InterferenceDetector`, `ForgettingWorker`, `ForgettingScheduler`; `PostgresMemoryStore.update()` supports `entities` and `relations` for compress. Optional: LLM-based compression via `summarize_for_compression` and `VLLMClient` (vLLM + Llama 3.2 1B in Docker); dependency check before delete via `count_references_to`; Celery task `run_forgetting_task` and beat schedule.
-- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats/{user_id}`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`, `/users`, `/user/{id}`; API key auth (X-API-Key), multi-tenancy (X-Tenant-ID); Docker `api` service: `uvicorn src.api.app:app --host 0.0.0.0 --port 8000`.
+- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats/{user_id}`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`, `/user/{id}` (GDPR delete); API key auth (X-API-Key), multi-tenancy (X-Tenant-ID); Docker `api` service: `uvicorn src.api.app:app --host 0.0.0.0 --port 8000`.
 - Phase 10 adds: conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings); E2E tests in `tests/e2e/test_api_flows.py`; integration test setup with testcontainers (`tests/integration/conftest.py`); multi-stage Dockerfile (`docker/Dockerfile`); GitHub Actions CI with lint, test (coverage + codecov), build/push to ghcr.io, deploy-staging placeholder; API healthcheck in docker-compose; `src/utils/logging_config.py` for structured logging; `src/utils/metrics.py` for Prometheus (MEMORY_WRITES, MEMORY_READS, RETRIEVAL_LATENCY, MEMORY_COUNT) and `/metrics` endpoint.
