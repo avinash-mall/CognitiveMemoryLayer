@@ -15,6 +15,7 @@ from ..memory.neocortical.store import NeocorticalStore
 from ..memory.scratch_pad import ScratchPad
 from ..memory.short_term import ShortTermMemory
 from ..memory.tool_memory import ToolMemory
+from ..extraction.fact_extractor import LLMFactExtractor
 from ..reconsolidation.service import ReconsolidationService
 from ..retrieval.memory_retriever import MemoryRetriever
 from ..storage.connection import DatabaseManager
@@ -88,6 +89,7 @@ class MemoryOrchestrator:
         reconsolidation = ReconsolidationService(
             memory_store=episodic_store,
             llm_client=llm_client,
+            fact_extractor=LLMFactExtractor(llm_client),
         )
 
         consolidation = ConsolidationWorker(

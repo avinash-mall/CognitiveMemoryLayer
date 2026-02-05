@@ -13,6 +13,7 @@ from .triggers import ConsolidationScheduler, ConsolidationTask
 from ..memory.neocortical.store import NeocorticalStore
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.llm import LLMClient
+from ..utils.logging_config import get_logger
 
 
 @dataclass
@@ -125,6 +126,7 @@ class ConsolidationWorker:
 
     async def _worker_loop(self):
         """Background worker loop."""
+        log = get_logger(__name__)
         while self._running:
             task = await self.scheduler.get_next_task()
             if task:
@@ -134,10 +136,19 @@ class ConsolidationWorker:
                         task.user_id,
                         task,
                     )
-                    # Log report (could use structlog in production)
                     if report.gists_extracted:
-                        pass  # e.g. structlog.info("consolidation complete", ...)
+                        log.info(
+                            "consolidation complete",
+                            tenant_id=task.tenant_id,
+                            user_id=task.user_id,
+                            gists_extracted=report.gists_extracted,
+                            clusters_formed=report.clusters_formed,
+                        )
                 except Exception:
-                    pass  # e.g. structlog.exception("consolidation failed")
+                    log.exception(
+                        "consolidation failed",
+                        tenant_id=task.tenant_id,
+                        user_id=task.user_id,
+                    )
             else:
                 await asyncio.sleep(1)
