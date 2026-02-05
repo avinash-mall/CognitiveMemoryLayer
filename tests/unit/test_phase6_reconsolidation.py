@@ -43,7 +43,7 @@ def _make_memory(text: str, key: str | None = None) -> MemoryRecord:
 class TestLabileStateTracker:
     @pytest.mark.asyncio
     async def test_mark_labile_and_get_session(self):
-        tracker = LabileStateTracker(labile_duration_seconds=60, max_sessions_per_user=5)
+        tracker = LabileStateTracker(labile_duration_seconds=60, max_sessions_per_scope=5)
         mid = uuid4()
         session = await tracker.mark_labile(
             "tenant1",
