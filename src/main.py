@@ -1,7 +1,6 @@
 """Entry point for running the API server."""
 import uvicorn
 
-from .api.app import app
 
 if __name__ == "__main__":
     uvicorn.run(

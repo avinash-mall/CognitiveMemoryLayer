@@ -6,11 +6,10 @@ import pytest
 
 from src.consolidation.triggers import (
     ConsolidationScheduler,
-    ConsolidationTask,
     TriggerCondition,
     TriggerType,
 )
-from src.consolidation.clusterer import EpisodeCluster, SemanticClusterer
+from src.consolidation.clusterer import SemanticClusterer
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import EntityMention, MemoryRecord, Provenance
 

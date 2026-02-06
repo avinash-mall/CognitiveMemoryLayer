@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from .clusterer import EpisodeCluster
-from ..core.schemas import MemoryRecord
 from ..utils.llm import LLMClient
 
 GIST_EXTRACTION_PROMPT = """Analyze these related memories and extract the key semantic information.

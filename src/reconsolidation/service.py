@@ -2,7 +2,6 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
