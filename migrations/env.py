@@ -21,9 +21,12 @@ config = context.config
 
 # Set SQLAlchemy URL from application settings
 try:
-    from src.core.config import get_settings
+    from src.core.config import ensure_asyncpg_url, get_settings
+
     settings = get_settings()
-    config.set_main_option("sqlalchemy.url", settings.database.postgres_url)
+    config.set_main_option(
+        "sqlalchemy.url", ensure_asyncpg_url(settings.database.postgres_url)
+    )
 except Exception:
     pass  # Use sqlalchemy.url from alembic.ini if config not available
 
