@@ -48,9 +48,9 @@ flowchart TB
     API --> Orch
     Orch --> working & episodic & semantic
 
-    style API fill:#e3f2fd
-    style Orch fill:#fff3e0
-    style Stores fill:#e8f5e9
+    style API fill:#e3f2fd,color:#000
+    style Orch fill:#fff3e0,color:#000
+    style Stores fill:#e8f5e9,color:#000
 ```
 
 ---
