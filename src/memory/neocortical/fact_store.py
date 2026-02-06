@@ -9,6 +9,7 @@ from sqlalchemy import String, and_, cast, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...storage.models import SemanticFactModel
+from ...storage.utils import naive_utc
 from .schemas import DEFAULT_FACT_SCHEMAS, FactCategory, FactSchema, SemanticFact
 
 
@@ -195,14 +196,14 @@ class SemanticFactStore:
             model.confidence = min(1.0, model.confidence + 0.1)
             model.evidence_count += 1
             model.evidence_ids = list(model.evidence_ids or []) + (evidence_ids or [])
-            model.updated_at = datetime.now(timezone.utc)
+            model.updated_at = naive_utc(datetime.now(timezone.utc))
             await session.commit()
             await session.refresh(model)
             return self._model_to_fact(model)
         else:
             # Always supersede old fact when value changes (at most one current per key)
             model.is_current = False
-            model.valid_to = valid_from or datetime.now(timezone.utc)
+            model.valid_to = naive_utc(valid_from or datetime.now(timezone.utc))
             await session.flush()
             value_type = "str" if new_value is None else type(new_value).__name__.lower()
             new_fact = SemanticFact(
@@ -218,7 +219,7 @@ class SemanticFactStore:
                 confidence=confidence,
                 evidence_count=1,
                 evidence_ids=evidence_ids or [],
-                valid_from=valid_from or datetime.now(timezone.utc),
+                valid_from=naive_utc(valid_from or datetime.now(timezone.utc)),
                 is_current=True,
                 version=existing.version + 1,
                 supersedes_id=existing.id,
@@ -254,7 +255,7 @@ class SemanticFactStore:
             confidence=confidence,
             evidence_count=1,
             evidence_ids=evidence_ids or [],
-            valid_from=valid_from or datetime.now(timezone.utc),
+            valid_from=naive_utc(valid_from or datetime.now(timezone.utc)),
             is_current=True,
             version=1,
         )
@@ -279,11 +280,11 @@ class SemanticFactStore:
             confidence=fact.confidence,
             evidence_count=fact.evidence_count,
             evidence_ids=fact.evidence_ids,
-            valid_from=fact.valid_from,
-            valid_to=fact.valid_to,
+            valid_from=naive_utc(fact.valid_from),
+            valid_to=naive_utc(fact.valid_to),
             is_current=fact.is_current,
-            created_at=fact.created_at,
-            updated_at=fact.updated_at,
+            created_at=naive_utc(fact.created_at),
+            updated_at=naive_utc(fact.updated_at),
             version=fact.version,
             supersedes_id=UUID(fact.supersedes_id) if fact.supersedes_id else None,
         )
