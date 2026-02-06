@@ -7,7 +7,7 @@ import redis.asyncio as redis
 from neo4j import AsyncGraphDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from ..core.config import get_settings
+from ..core.config import ensure_asyncpg_url, get_settings
 
 
 class DatabaseManager:
@@ -20,7 +20,7 @@ class DatabaseManager:
 
         # PostgreSQL
         self.pg_engine = create_async_engine(
-            settings.database.postgres_url,
+            ensure_asyncpg_url(settings.database.postgres_url),
             pool_size=20,
             max_overflow=10,
             pool_pre_ping=True,
