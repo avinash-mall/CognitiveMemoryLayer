@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.enums import OperationType
 from ..core.schemas import EventLog
 from .models import EventLogModel
+from .utils import naive_utc
 
 
 class EventLogRepository:
@@ -36,7 +37,7 @@ class EventLogRepository:
             payload=event.payload,
             memory_ids=event.memory_ids,
             parent_event_id=event.parent_event_id,
-            created_at=event.created_at,
+            created_at=naive_utc(event.created_at),
             ip_address=event.ip_address,
             user_agent=event.user_agent,
         )
@@ -70,7 +71,7 @@ class EventLogRepository:
         )
 
         if since:
-            query = query.where(EventLogModel.created_at >= since)
+            query = query.where(EventLogModel.created_at >= naive_utc(since))
         if event_types:
             query = query.where(EventLogModel.event_type.in_(event_types))
 
@@ -100,7 +101,9 @@ class EventLogRepository:
         if from_event_id:
             from_event = await self.get_by_id(from_event_id)
             if from_event:
-                query = query.where(EventLogModel.created_at > from_event.created_at)
+                since_naive = naive_utc(from_event.created_at)
+                if since_naive is not None:
+                    query = query.where(EventLogModel.created_at > since_naive)
 
         result = await self.session.stream(query)
         async for model in result.scalars():

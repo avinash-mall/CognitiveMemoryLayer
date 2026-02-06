@@ -63,7 +63,9 @@ class MemoryRecord(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     # Temporal validity
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # When event occurred
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )  # When event occurred
     written_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # When stored
     valid_from: Optional[datetime] = None
     valid_to: Optional[datetime] = None

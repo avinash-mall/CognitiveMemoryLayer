@@ -122,12 +122,18 @@ class InterferenceDetector:
             return "keep_newer"
         return "merge"
 
-    def _resolve_keep_id(self, r1: MemoryRecord, r2: MemoryRecord, recommendation: str) -> Optional[str]:
+    def _resolve_keep_id(
+        self, r1: MemoryRecord, r2: MemoryRecord, recommendation: str
+    ) -> Optional[str]:
         """Return the id of the record to keep; the other will be deleted."""
         if recommendation == "merge":
             return None
         if recommendation == "keep_higher_confidence":
             return str(r1.id) if r1.confidence >= r2.confidence else str(r2.id)
         if recommendation == "keep_newer":
-            return str(r1.id) if (r1.timestamp or r1.written_at) >= (r2.timestamp or r2.written_at) else str(r2.id)
+            return (
+                str(r1.id)
+                if (r1.timestamp or r1.written_at) >= (r2.timestamp or r2.written_at)
+                else str(r2.id)
+            )
         return None

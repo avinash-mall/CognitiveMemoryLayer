@@ -246,12 +246,18 @@ async def create_session(
     ttl_hours = body.ttl_hours if body.ttl_hours is not None else 24
     expires_at = now + timedelta(hours=ttl_hours)
     ttl_seconds = max(1, int(ttl_hours * 3600))
-    if hasattr(request.app.state, "db") and request.app.state.db and getattr(request.app.state.db, "redis", None):
-        payload = json.dumps({
-            "tenant_id": auth.tenant_id,
-            "created_at": now.isoformat(),
-            "expires_at": expires_at.isoformat(),
-        })
+    if (
+        hasattr(request.app.state, "db")
+        and request.app.state.db
+        and getattr(request.app.state.db, "redis", None)
+    ):
+        payload = json.dumps(
+            {
+                "tenant_id": auth.tenant_id,
+                "created_at": now.isoformat(),
+                "expires_at": expires_at.isoformat(),
+            }
+        )
         await request.app.state.db.redis.setex(f"session:{session_id}", ttl_seconds, payload)
     return CreateSessionResponse(
         session_id=session_id,
