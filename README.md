@@ -555,41 +555,41 @@ CognitiveMemoryLayer/
 <details>
 <summary><strong>🧠 Neuroscience Foundations</strong></summary>
 
-1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). [Why there are complementary learning systems in the hippocampus and neocortex](https://doi.org/10.1037/0033-295X.102.3.419). *Psychological Review*, 102(3), 419-457.
+1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). ["Why there are complementary learning systems in the hippocampus and neocortex: Insights from the successes and failures of connectionist models of learning and memory."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
 
-2. **Tulving, E.** (1983). *Elements of Episodic Memory*. Oxford University Press.
+2. **Tulving, E.** (1983). ["Elements of Episodic Memory."](https://global.oup.com/academic/product/elements-of-episodic-memory-9780198522060) Oxford University Press. — Encoding Specificity Principle.
 
-3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). [Fear memories require protein synthesis in the amygdala for reconsolidation](https://doi.org/10.1038/35017083). *Nature*, 406(6797), 722-726.
+3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
 
-4. **Shuai, Y., et al.** (2010). [Forgetting is regulated through Rac activity in Drosophila](https://doi.org/10.1016/j.cell.2009.12.044). *Cell*, 140(4), 579-589.
+4. **Shuai, Y., Lu, B., Hu, Y., Wang, L., Sun, K., & Zhong, Y.** (2010). ["Forgetting is regulated through Rac activity in Drosophila."](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
 
-5. **Han, J.H., et al.** (2007). [Neuronal competition and selection during memory formation](https://doi.org/10.1126/science.1128294). *Science*, 316(5823), 457-460.
+5. **Han, J.H., et al.** (2007). ["Neuronal competition and selection during memory formation."](https://doi.org/10.1126/science.1139438) *Science*, 316(5823), 457-460. — CREB and memory allocation.
 
-6. **Miller, G.A.** (1956). [The magical number seven, plus or minus two](https://doi.org/10.1037/h0043158). *Psychological Review*, 63(2), 81-97.
+6. **Miller, G.A.** (1956). ["The magical number seven, plus or minus two: Some limits on our capacity for processing information."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
 
-7. **Bartlett, F.C.** (1932). *Remembering: A Study in Experimental and Social Psychology*. Cambridge University Press.
+7. **Bartlett, F.C.** (1932). ["Remembering: A Study in Experimental and Social Psychology."](https://archive.org/details/rememberingstudy00bart) Cambridge University Press. — Reconstructive memory.
 
 </details>
 
 <details>
 <summary><strong>🤖 AI Memory Frameworks</strong></summary>
 
-8. **HippoRAG** (2024). [Neurobiologically Inspired Long-Term Memory for LLMs](https://arxiv.org/abs/2405.14831). *arXiv:2405.14831*.
+8. **HippoRAG** (2024). ["Neurobiologically Inspired Long-Term Memory for Large Language Models."](https://arxiv.org/abs/2405.14831) *arXiv:2405.14831*. — Knowledge graph as hippocampal index with Personalized PageRank.
 
-9. **Mem0** (2025). [Building Production-Ready AI Agents with Scalable Long-Term Memory](https://arxiv.org/abs/2504.19413). *arXiv:2504.19413*.
+9. **Mem0** (2024). ["Mem0: The Memory Layer for AI Applications."](https://github.com/mem0ai/mem0) *GitHub Repository*. — A.U.D.N. operations, 90%+ token reduction.
 
-10. **HawkinsDB** (2025). GitHub repository — Based on Jeff Hawkins' Thousand Brains Theory.
+10. **HawkinsDB** (2024). ["HawkinsDB: A Thousand Brains Theory inspired Database."](https://github.com/harishsg993010/HawkinsDB) *GitHub Repository*. — Based on Jeff Hawkins' Thousand Brains Theory.
 
-11. **Wu, T., et al.** (2025). [From Human Memory to AI Memory: A Survey](https://arxiv.org/abs/2504.15965). *arXiv:2504.15965*.
+11. **Wu, T., et al.** (2024). ["From Human Memory to AI Memory: A Survey on Memory Mechanisms in the Era of LLMs."](https://arxiv.org/abs/2404.15965) *arXiv:2404.15965*.
 
 </details>
 
 <details>
 <summary><strong>📖 Implementation Guides</strong></summary>
 
-12. **Matlin, M.W.** (2005). *Cognition* (6th ed.). John Wiley & Sons.
+12. **Matlin, M.W.** (2012). ["Cognition"](https://books.google.com/books?id=i9i3EAAAQBAJ) (8th ed.). John Wiley & Sons.
 
-13. **Rasch, B., & Born, J.** (2013). [About sleep's role in memory](https://doi.org/10.1152/physrev.00032.2012). *Physiological Reviews*, 93(2), 681-766.
+13. **Rasch, B., & Born, J.** (2013). ["About sleep's role in memory."](https://doi.org/10.1152/physrev.00032.2012) *Physiological Reviews*, 93(2), 681-766.
 
 </details>
 

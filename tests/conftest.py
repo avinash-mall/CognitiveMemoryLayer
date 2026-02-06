@@ -21,17 +21,10 @@ except ImportError:
         sys.path.insert(0, str(root))
 
 
-def _asyncpg_url(url: str) -> str:
-    """Ensure URL uses async driver for create_async_engine (avoids psycopg2 when both installed)."""
-    if url.startswith("postgresql://") and "+asyncpg" not in url:
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return url
-
-
 def _get_postgres_url() -> str:
-    from src.core.config import get_settings
+    from src.core.config import ensure_asyncpg_url, get_settings
 
-    return _asyncpg_url(get_settings().database.postgres_url)
+    return ensure_asyncpg_url(get_settings().database.postgres_url)
 
 
 @pytest.fixture(scope="session")
