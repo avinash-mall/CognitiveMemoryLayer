@@ -143,10 +143,9 @@ class ForgettingWorker:
         for dup in duplicates:
             if dup.memory_id in resolved_ids or dup.interfering_memory_id in resolved_ids:
                 continue
-            to_delete = (
-                dup.interfering_memory_id if dup.recommendation == "keep_newer" else dup.memory_id
-            )
-            if dup.recommendation == "keep_higher_confidence":
+            if dup.keep_id:
+                to_delete = dup.interfering_memory_id if dup.keep_id == dup.memory_id else dup.memory_id
+            else:
                 to_delete = dup.interfering_memory_id
             operations.append(
                 ForgettingOperation(
@@ -205,6 +204,22 @@ class ForgettingScheduler:
         return None
 
     async def _scheduler_loop(self) -> None:
-        """Background scheduler loop."""
+        """Background scheduler loop.
+
+        Iterates over all previously-seen tenants/users and triggers forgetting
+        for those that haven't been run within the configured interval (MED-32).
+        """
         while self._running:
             await asyncio.sleep(self.interval.total_seconds())
+            # Trigger forgetting for all known users whose last run is stale
+            now = datetime.now(timezone.utc)
+            for key, last_run in list(self._user_last_run.items()):
+                if (now - last_run) >= self.interval:
+                    try:
+                        parts = key.split(":", 1)
+                        if len(parts) == 2:
+                            tenant_id, user_id = parts
+                            await self.worker.run_forgetting(tenant_id, user_id)
+                            self._user_last_run[key] = now
+                    except Exception:
+                        pass  # Individual failures shouldn't stop the loop

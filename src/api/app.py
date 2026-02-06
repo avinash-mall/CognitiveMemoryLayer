@@ -40,16 +40,18 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    settings = get_settings()
+    origins = settings.cors_origins if settings.cors_origins is not None else ["https://yourdomain.com"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(admin_router, prefix="/api/v1")

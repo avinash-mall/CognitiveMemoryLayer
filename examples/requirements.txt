@@ -10,9 +10,10 @@ openai>=1.0
 # Anthropic Claude integration
 anthropic>=0.18.0
 
-# LangChain integration
-langchain>=0.1.0
-langchain-openai>=0.1.0
+# LangChain integration (pinned to 0.3.x for compatibility)
+langchain>=0.3.0,<0.4.0
+langchain-core>=0.3.0,<0.4.0
+langchain-openai>=0.3.0,<0.4.0
 
 # Optional: for better async support
 anyio>=4.0.0

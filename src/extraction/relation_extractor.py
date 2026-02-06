@@ -7,6 +7,19 @@ from typing import List, Optional
 from ..core.schemas import Relation
 from ..utils.llm import LLMClient
 
+
+def _strip_markdown_fences(text: str) -> str:
+    """Strip markdown code block fences from LLM output (LOW-12)."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        if lines[-1].strip() == "```":
+            lines = lines[1:-1]
+        elif lines[0].startswith("```"):
+            lines = lines[1:]
+        text = "\n".join(lines).strip()
+    return text
+
 RELATION_EXTRACTION_PROMPT = """Extract relationships from the following text using Open Information Extraction.
 
 Text: {text}
@@ -46,7 +59,7 @@ class RelationExtractor:
             prompt += f"\n\nKnown entities: {', '.join(entities)}"
         try:
             response = await self.llm.complete(prompt, temperature=0.0, max_tokens=500)
-            data = json.loads(response)
+            data = json.loads(_strip_markdown_fences(response))
             if not isinstance(data, list):
                 data = [data]
             return [

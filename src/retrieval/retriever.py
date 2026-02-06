@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -69,7 +69,7 @@ class HybridRetriever:
         context_filter: Optional[List[str]] = None,
     ) -> RetrievalResult:
         """Execute a single retrieval step. Holistic: tenant-only."""
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc)
         try:
             if step.source == RetrievalSource.FACTS:
                 items = await self._retrieve_facts(tenant_id, step)
@@ -81,7 +81,7 @@ class HybridRetriever:
                 items = await self._retrieve_cache(tenant_id, step)
             else:
                 items = []
-            elapsed = (datetime.utcnow() - start).total_seconds() * 1000
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
             return RetrievalResult(
                 source=step.source,
                 items=items,
@@ -89,7 +89,7 @@ class HybridRetriever:
                 success=True,
             )
         except Exception as e:
-            elapsed = (datetime.utcnow() - start).total_seconds() * 1000
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
             return RetrievalResult(
                 source=step.source,
                 items=[],
@@ -151,6 +151,8 @@ class HybridRetriever:
                 filters.update(step.time_filter)
             if step.memory_types:
                 filters["type"] = step.memory_types
+            if step.min_confidence > 0:
+                filters["min_confidence"] = step.min_confidence
         records = await self.hippocampal.search(
             tenant_id,
             query=step.query or "",
@@ -278,8 +280,8 @@ class HybridRetriever:
             confidence=getattr(fact, "confidence", 0.5),
             importance=0.5,
             provenance=Provenance(source=MemorySource.AGENT_INFERRED),
-            timestamp=getattr(fact, "updated_at", datetime.utcnow()),
-            written_at=getattr(fact, "created_at", datetime.utcnow()),
+            timestamp=getattr(fact, "updated_at", datetime.now(timezone.utc)),
+            written_at=getattr(fact, "created_at", datetime.now(timezone.utc)),
         )
 
     def _dict_to_record(self, item: Dict[str, Any]) -> MemoryRecord:
@@ -300,6 +302,6 @@ class HybridRetriever:
             confidence=item.get("confidence", 0.5),
             importance=0.5,
             provenance=Provenance(source=MemorySource.AGENT_INFERRED),
-            timestamp=item.get("timestamp", datetime.utcnow()),
-            written_at=datetime.utcnow(),
+            timestamp=item.get("timestamp", datetime.now(timezone.utc)),
+            written_at=datetime.now(timezone.utc),
         )

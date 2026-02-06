@@ -2,7 +2,7 @@
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from ..core.enums import MemoryStatus, MemoryType
@@ -50,7 +50,7 @@ class EpisodeSampler:
                 MemoryType.PREFERENCE.value,
                 MemoryType.HYPOTHESIS.value,
             ],
-            "since": datetime.utcnow() - timedelta(days=self.config.time_window_days),
+            "since": datetime.now(timezone.utc) - timedelta(days=self.config.time_window_days),
         }
 
         candidates = await self.store.scan(
@@ -81,8 +81,8 @@ class EpisodeSampler:
         importance_score = record.importance
         access_score = math.log1p(record.access_count) / 5.0
         access_score = min(access_score, 1.0)
-        ts = record.timestamp or datetime.utcnow()
-        age_days = (datetime.utcnow() - ts).days
+        ts = record.timestamp or datetime.now(timezone.utc)
+        age_days = (datetime.now(timezone.utc) - ts).days
         recency_score = 1.0 / (1.0 + age_days * 0.1)
         return (
             self.config.importance_weight * importance_score

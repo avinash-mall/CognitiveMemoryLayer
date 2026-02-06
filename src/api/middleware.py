@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple
 
 import structlog
@@ -58,17 +58,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         tenant_id = request.headers.get("X-Tenant-ID", "default")
         allowed = await self._check_rate_limit(tenant_id)
         if not allowed:
-            from fastapi import HTTPException
+            from starlette.responses import JSONResponse
 
-            raise HTTPException(
+            return JSONResponse(
                 status_code=429,
-                detail="Rate limit exceeded. Please try again later.",
+                content={"detail": "Rate limit exceeded. Try again later."},
             )
         return await call_next(request)
 
     async def _check_rate_limit(self, key: str) -> bool:
         async with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+            # Evict old entries to prevent memory leak in multi-tenant deployments
+            if len(self._buckets) > 10000:
+                cutoff = now - timedelta(minutes=2)
+                self._buckets = {k: v for k, v in self._buckets.items() if v[1] > cutoff}
             if key in self._buckets:
                 count, window_start = self._buckets[key]
                 if now - window_start > timedelta(minutes=1):

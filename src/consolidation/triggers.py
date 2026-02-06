@@ -1,7 +1,7 @@
 """Consolidation triggers and scheduler."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -45,7 +45,7 @@ class ConsolidationTask:
     trigger_type: TriggerType
     trigger_reason: str
     priority: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Scope
     episode_limit: int = 200
@@ -108,7 +108,7 @@ class ConsolidationScheduler:
         key = self._user_key(tenant_id, user_id)
         conditions = self._conditions.get(key, [])
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         triggered = False
         trigger_reason = ""
 

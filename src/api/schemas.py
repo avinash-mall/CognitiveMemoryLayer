@@ -1,7 +1,7 @@
 """API request/response schemas. Holistic: no scopes, tenant-only."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -56,7 +56,7 @@ class ReadMemoryRequest(BaseModel):
     memory_types: Optional[List[MemoryType]] = None
     since: Optional[datetime] = None
     until: Optional[datetime] = None
-    format: str = "packet"  # "packet", "list", "llm_context"
+    format: Literal["packet", "list", "llm_context"] = "packet"
 
 
 class MemoryItem(BaseModel):
@@ -138,7 +138,7 @@ class ForgetRequest(BaseModel):
     memory_ids: Optional[List[UUID]] = None
     query: Optional[str] = None
     before: Optional[datetime] = None
-    action: str = "delete"  # "delete", "archive", "silence"
+    action: Literal["delete", "archive", "silence"] = "delete"
 
 
 class ForgetResponse(BaseModel):

@@ -1,7 +1,7 @@
 """Retrieval planning from query analysis."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -98,7 +98,7 @@ class RetrievalPlanner:
                     priority=0,
                 )
             )
-            parallel_groups = [[0, 1, 2]] if len(steps) == 3 else [[0, 1], [2]]
+            parallel_groups = [[0, 1, 2]] if len(steps) == 3 else [[0, 1]]
 
         elif analysis.intent == QueryIntent.TEMPORAL_QUERY:
             time_filter = self._build_time_filter(analysis)
@@ -173,7 +173,7 @@ class RetrievalPlanner:
         """Build time filter from analysis."""
         if not analysis.time_reference:
             return None
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         ref = (analysis.time_reference or "").lower()
         if "today" in ref:
             return {"since": now.replace(hour=0, minute=0, second=0, microsecond=0)}
