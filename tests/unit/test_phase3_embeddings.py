@@ -1,4 +1,5 @@
 """Unit tests for Phase 3: embedding client."""
+
 import pytest
 
 from src.utils.embeddings import MockEmbeddingClient

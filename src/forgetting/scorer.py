@@ -1,4 +1,5 @@
 """Relevance scoring for active forgetting."""
+
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -100,16 +101,12 @@ class RelevanceScorer:
         age_days = (now - ts).total_seconds() / 86400
         recency = pow(0.5, age_days / self.config.recency_half_life_days)
 
-        frequency = math.log(
-            1 + record.access_count, self.config.frequency_log_base
-        )
+        frequency = math.log(1 + record.access_count, self.config.frequency_log_base)
         frequency = min(frequency, 1.0)
 
         confidence = record.confidence
 
-        record_type = (
-            record.type if isinstance(record.type, str) else record.type.value
-        )
+        record_type = record.type if isinstance(record.type, str) else record.type.value
         type_bonus = self.config.type_bonuses.get(record_type, 0.5)
 
         dependency = min(dependency_count / 10.0, 1.0)

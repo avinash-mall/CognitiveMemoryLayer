@@ -16,6 +16,7 @@ class TestAuthConfig:
         monkeypatch.setenv("AUTH__API_KEY", "")
         monkeypatch.setenv("AUTH__ADMIN_API_KEY", "")
         from src.core.config import get_settings
+
         get_settings.cache_clear()
         keys = _build_api_keys()
         assert keys == {}
@@ -25,6 +26,7 @@ class TestAuthConfig:
         monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
         monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "demo")
         from src.core.config import get_settings
+
         get_settings.cache_clear()
         keys = _build_api_keys()
         assert "demo-key-123" in keys

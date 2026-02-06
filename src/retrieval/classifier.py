@@ -1,4 +1,5 @@
 """Query classifier for retrieval strategy selection."""
+
 import json
 import re
 from typing import List, Optional
@@ -100,7 +101,15 @@ class QueryClassifier:
         q = query.strip().lower()
         if len(q) < 15:
             return True
-        vague_starts = ("any ", "what about", "suggestions?", "thoughts?", "and?", "so?", "what do you think")
+        vague_starts = (
+            "any ",
+            "what about",
+            "suggestions?",
+            "thoughts?",
+            "and?",
+            "so?",
+            "what do you think",
+        )
         return any(q.startswith(p) or q == p for p in vague_starts)
 
     def _fast_classify(self, query: str) -> Optional[QueryAnalysis]:

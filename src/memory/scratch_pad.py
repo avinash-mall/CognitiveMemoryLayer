@@ -1,4 +1,5 @@
 """Ephemeral working memory (scratch pad) for multi-step reasoning."""
+
 import json
 from typing import Any, List, Optional
 

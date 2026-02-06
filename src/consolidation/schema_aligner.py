@@ -1,4 +1,5 @@
 """Schema alignment for consolidated gists."""
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -63,9 +64,7 @@ class SchemaAligner:
                     integration_key=key,
                 )
 
-        similar_facts = await self.fact_store.search_facts(
-            tenant_id, gist.text, limit=5
-        )
+        similar_facts = await self.fact_store.search_facts(tenant_id, gist.text, limit=5)
         if similar_facts:
             best_match = similar_facts[0]
             similarity = self._calculate_similarity(gist.text, best_match.value)

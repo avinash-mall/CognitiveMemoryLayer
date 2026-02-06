@@ -1,4 +1,5 @@
 """Short-term memory facade: sensory buffer + working memory."""
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -60,15 +61,10 @@ class ShortTermMemory:
         2. Process into working memory chunks
         3. Return chunks ready for potential encoding
         """
-        tokens_added = await self.sensory.ingest(
-            tenant_id, scope_id, text, turn_id, role
-        )
-        new_chunks = await self.working.process_input(
-            tenant_id, scope_id, text, turn_id, role
-        )
+        tokens_added = await self.sensory.ingest(tenant_id, scope_id, text, turn_id, role)
+        new_chunks = await self.working.process_input(tenant_id, scope_id, text, turn_id, role)
         chunks_for_encoding = [
-            c for c in new_chunks
-            if c.salience >= self.config.min_salience_for_encoding
+            c for c in new_chunks if c.salience >= self.config.min_salience_for_encoding
         ]
         return {
             "tokens_buffered": tokens_added,

@@ -1,4 +1,5 @@
 """Working memory manager: per-scope state and chunk processing."""
+
 from typing import Dict, List, Optional
 
 import asyncio
@@ -115,15 +116,11 @@ class WorkingMemoryManager:
             if key in self._states:
                 del self._states[key]
 
-    async def get_stats(
-        self, tenant_id: str, scope_id: str
-    ) -> Dict[str, object]:
+    async def get_stats(self, tenant_id: str, scope_id: str) -> Dict[str, object]:
         """Get working memory statistics."""
         state = await self.get_state(tenant_id, scope_id)
         avg_salience = (
-            sum(c.salience for c in state.chunks) / len(state.chunks)
-            if state.chunks
-            else 0.0
+            sum(c.salience for c in state.chunks) / len(state.chunks) if state.chunks else 0.0
         )
         return {
             "chunk_count": len(state.chunks),

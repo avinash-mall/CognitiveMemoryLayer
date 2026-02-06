@@ -1,4 +1,5 @@
 """Main memory retriever facade."""
+
 from typing import List, Optional
 
 from ..core.schemas import MemoryPacket
@@ -57,7 +58,8 @@ class MemoryRetriever:
     ) -> str:
         """Retrieve and format memories for LLM context. Holistic: tenant-only."""
         packet = await self.retrieve(
-            tenant_id, query,
+            tenant_id,
+            query,
             context_filter=context_filter,
             recent_context=recent_context,
         )

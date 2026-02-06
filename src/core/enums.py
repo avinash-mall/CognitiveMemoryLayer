@@ -1,4 +1,5 @@
 """Core enums for memory types, status, and operations."""
+
 from enum import Enum
 
 

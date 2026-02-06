@@ -1,4 +1,5 @@
 """Abstract storage interfaces for memory and graph backends."""
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from uuid import UUID

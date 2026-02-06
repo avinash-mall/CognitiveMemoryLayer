@@ -1,4 +1,5 @@
 """Unit tests for Phase 6: reconsolidation (labile tracker, conflict detector, belief revision)."""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -63,9 +64,7 @@ class TestLabileStateTracker:
     async def test_release_labile(self):
         tracker = LabileStateTracker(labile_duration_seconds=60)
         mid = uuid4()
-        await tracker.mark_labile(
-            "t", "u", "turn1", [mid], "q", ["t1"], [0.5], [0.5]
-        )
+        await tracker.mark_labile("t", "u", "turn1", [mid], "q", ["t1"], [0.5], [0.5])
         await tracker.release_labile("t", "u", "turn1")
         session = await tracker.get_session("t", "u", "turn1")
         assert session is None or len(session.memories) == 0
@@ -74,9 +73,7 @@ class TestLabileStateTracker:
     async def test_get_labile_memories(self):
         tracker = LabileStateTracker(labile_duration_seconds=300)
         mid = uuid4()
-        await tracker.mark_labile(
-            "t", "u", "turn1", [mid], "q", ["text"], [0.8], [0.7]
-        )
+        await tracker.mark_labile("t", "u", "turn1", [mid], "q", ["text"], [0.8], [0.7])
         labile = await tracker.get_labile_memories("t", "u", "turn1")
         assert len(labile) == 1
         assert labile[0].memory_id == mid
@@ -119,9 +116,7 @@ class TestBeliefRevisionEngine:
             new_statement="I still like coffee.",
             reasoning="Consistent",
         )
-        plan = engine.plan_revision(
-            conflict, old, MemoryType.PREFERENCE, "t", "ev1"
-        )
+        plan = engine.plan_revision(conflict, old, MemoryType.PREFERENCE, "t", "ev1")
         assert plan.strategy == RevisionStrategy.REINFORCE
         assert len(plan.operations) == 1
         assert plan.operations[0].op_type.value == "reinforce"
@@ -139,9 +134,7 @@ class TestBeliefRevisionEngine:
             is_superseding=True,
             reasoning="User corrected",
         )
-        plan = engine.plan_revision(
-            conflict, old, MemoryType.PREFERENCE, "t", "ev1"
-        )
+        plan = engine.plan_revision(conflict, old, MemoryType.PREFERENCE, "t", "ev1")
         assert plan.strategy == RevisionStrategy.TIME_SLICE
         assert len(plan.operations) == 2
         assert plan.operations[0].patch is not None
@@ -160,9 +153,7 @@ class TestBeliefRevisionEngine:
             is_superseding=True,
             reasoning="Preference changed",
         )
-        plan = engine.plan_revision(
-            conflict, old, MemoryType.PREFERENCE, "t", "ev1"
-        )
+        plan = engine.plan_revision(conflict, old, MemoryType.PREFERENCE, "t", "ev1")
         assert plan.strategy == RevisionStrategy.TIME_SLICE
         assert len(plan.operations) == 2
         assert "valid_to" in (plan.operations[0].patch or {})

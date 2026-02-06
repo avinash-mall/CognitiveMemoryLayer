@@ -1,4 +1,5 @@
 """Database connection manager for PostgreSQL, Neo4j, and Redis."""
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 

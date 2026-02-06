@@ -1,4 +1,5 @@
 """Memory orchestrator: coordinates all memory operations."""
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -215,7 +216,9 @@ class MemoryOrchestrator:
             patch["metadata"] = metadata
 
         if feedback == "correct":
-            patch["confidence"] = min(1.0, (record.confidence if confidence is None else confidence) + 0.2)
+            patch["confidence"] = min(
+                1.0, (record.confidence if confidence is None else confidence) + 0.2
+            )
         elif feedback == "incorrect":
             patch["confidence"] = 0.0
             patch["status"] = MemoryStatus.DELETED.value
@@ -250,9 +253,7 @@ class MemoryOrchestrator:
                     affected += 1
 
         if query:
-            packet = await self.retriever.retrieve(
-                tenant_id, query=query, max_results=100
-            )
+            packet = await self.retriever.retrieve(tenant_id, query=query, max_results=100)
             for mem in packet.all_memories:
                 rid = mem.record.id
                 record = await self.hippocampal.store.get_by_id(rid)
@@ -305,6 +306,7 @@ class MemoryOrchestrator:
             else:
                 messages.append(item)
         from ..retrieval.packet_builder import MemoryPacketBuilder
+
         builder = MemoryPacketBuilder()
         context_string = builder.to_llm_context(packet, max_tokens=4000)
         return {
@@ -319,9 +321,7 @@ class MemoryOrchestrator:
         tenant_id: str,
     ) -> int:
         """Delete all memories for a tenant (GDPR). Holistic: tenant-only."""
-        records = await self.hippocampal.store.scan(
-            tenant_id, limit=10000
-        )
+        records = await self.hippocampal.store.scan(tenant_id, limit=10000)
         affected = 0
         for r in records:
             await self.hippocampal.store.delete(r.id, hard=True)
@@ -348,9 +348,7 @@ class MemoryOrchestrator:
         )
 
         by_type: Dict[str, int] = {}
-        records = await self.hippocampal.store.scan(
-            tenant_id, limit=1000
-        )
+        records = await self.hippocampal.store.scan(tenant_id, limit=1000)
         for r in records:
             t = r.type.value if hasattr(r.type, "value") else str(r.type)
             by_type[t] = by_type.get(t, 0) + 1

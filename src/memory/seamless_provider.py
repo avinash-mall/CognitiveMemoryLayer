@@ -2,6 +2,7 @@
 Seamless memory provider: automatic retrieval and storage per turn.
 Makes memory recall unconscious, like human association.
 """
+
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -58,9 +59,7 @@ class SeamlessMemoryProvider:
         Returns context to inject into LLM prompt.
         """
         # Step 1: Retrieve relevant context BEFORE response
-        memory_context, injected_memories = await self._retrieve_context(
-            tenant_id, user_message
-        )
+        memory_context, injected_memories = await self._retrieve_context(tenant_id, user_message)
 
         stored_count = 0
         reconsolidation_applied = False
@@ -111,11 +110,7 @@ class SeamlessMemoryProvider:
             max_results=10,
         )
         # Filter by relevance and format for LLM
-        filtered = [
-            m
-            for m in packet.all_memories
-            if m.relevance_score >= self.relevance_threshold
-        ]
+        filtered = [m for m in packet.all_memories if m.relevance_score >= self.relevance_threshold]
         context_str = self._format_for_injection(packet, filtered)
         return context_str, filtered
 
@@ -182,9 +177,11 @@ class SeamlessMemoryProvider:
         tid = turn_id or "turn"
         reconsolidation_applied = False
 
-        if retrieved_memories and hasattr(
-            self.orchestrator, "reconsolidation"
-        ) and self.orchestrator.reconsolidation:
+        if (
+            retrieved_memories
+            and hasattr(self.orchestrator, "reconsolidation")
+            and self.orchestrator.reconsolidation
+        ):
             records = [
                 m if isinstance(m, MemoryRecord) else getattr(m, "record", m)
                 for m in retrieved_memories
@@ -198,8 +195,7 @@ class SeamlessMemoryProvider:
                 retrieved_memories=records,
             )
             reconsolidation_applied = (
-                rec_result.memories_processed > 0
-                or len(rec_result.operations_applied) > 0
+                rec_result.memories_processed > 0 or len(rec_result.operations_applied) > 0
             )
 
         return {

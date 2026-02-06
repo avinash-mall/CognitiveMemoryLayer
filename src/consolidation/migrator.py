@@ -1,4 +1,5 @@
 """Migration of consolidated gists to semantic store."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List
@@ -70,9 +71,7 @@ class ConsolidationMigrator:
                     result.episodes_marked += marked
 
             except Exception as e:
-                result.errors.append(
-                    f"Failed to migrate gist '{gist.text[:50]}': {e}"
-                )
+                result.errors.append(f"Failed to migrate gist '{gist.text[:50]}': {e}")
 
         return result
 
@@ -97,11 +96,7 @@ class ConsolidationMigrator:
     ):
         gist = alignment.gist
         schema = alignment.suggested_schema or {}
-        key = (
-            schema.get("key")
-            or gist.key
-            or f"user:custom:{hash(gist.text) % 10000}"
-        )
+        key = schema.get("key") or gist.key or f"user:custom:{hash(gist.text) % 10000}"
         await self.semantic.store_fact(
             tenant_id=tenant_id,
             key=key,

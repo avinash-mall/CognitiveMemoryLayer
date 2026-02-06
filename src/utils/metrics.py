@@ -1,4 +1,5 @@
 """Prometheus metrics for memory operations and retrieval (Phase 10)."""
+
 import asyncio
 import time
 from functools import wraps
@@ -47,9 +48,7 @@ def track_retrieval_latency(tenant_id: str = "default") -> Callable[[F], F]:
             try:
                 return await func(*args, **kwargs)
             finally:
-                RETRIEVAL_LATENCY.labels(tenant_id=tenant_id).observe(
-                    time.perf_counter() - start
-                )
+                RETRIEVAL_LATENCY.labels(tenant_id=tenant_id).observe(time.perf_counter() - start)
 
         @wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -57,9 +56,7 @@ def track_retrieval_latency(tenant_id: str = "default") -> Callable[[F], F]:
             try:
                 return func(*args, **kwargs)
             finally:
-                RETRIEVAL_LATENCY.labels(tenant_id=tenant_id).observe(
-                    time.perf_counter() - start
-                )
+                RETRIEVAL_LATENCY.labels(tenant_id=tenant_id).observe(time.perf_counter() - start)
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper  # type: ignore[return-value]

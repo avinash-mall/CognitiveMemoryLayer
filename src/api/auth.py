@@ -1,4 +1,5 @@
 """API authentication and authorization (config-based, no hardcoded keys)."""
+
 from dataclasses import dataclass
 from typing import Optional
 

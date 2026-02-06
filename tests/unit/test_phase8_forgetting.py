@@ -1,4 +1,5 @@
 """Unit tests for Phase 8: active forgetting (scorer, policy, interference)."""
+
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
@@ -104,7 +105,14 @@ class TestForgettingPolicyEngine:
         engine = ForgettingPolicyEngine()
         scores = [
             RelevanceScore(
-                "id1", 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8,
+                "id1",
+                0.8,
+                0.8,
+                0.8,
+                0.8,
+                0.8,
+                0.8,
+                0.8,
                 suggested_action="keep",
             ),
         ]
@@ -116,7 +124,14 @@ class TestForgettingPolicyEngine:
         mem_id = str(uuid4())
         scores = [
             RelevanceScore(
-                mem_id, 0.5, 0.5, 0.5, 0.5, 0.6, 0.5, 0.5,
+                mem_id,
+                0.5,
+                0.5,
+                0.5,
+                0.5,
+                0.6,
+                0.5,
+                0.5,
                 suggested_action="decay",
             ),
         ]
@@ -130,11 +145,25 @@ class TestForgettingPolicyEngine:
         engine = ForgettingPolicyEngine()
         scores = [
             RelevanceScore(
-                str(uuid4()), 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3,
+                str(uuid4()),
+                0.3,
+                0.3,
+                0.3,
+                0.3,
+                0.3,
+                0.3,
+                0.3,
                 suggested_action="decay",
             ),
             RelevanceScore(
-                str(uuid4()), 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2,
+                str(uuid4()),
+                0.2,
+                0.2,
+                0.2,
+                0.2,
+                0.2,
+                0.2,
+                0.2,
                 suggested_action="silence",
             ),
         ]
@@ -203,9 +232,7 @@ class TestCompression:
 
         mock = MockLLMClient(fixed_response="User likes pizza.")
         long_text = "The user said they really enjoy eating pizza on weekends."
-        out = await summarize_for_compression(
-            long_text, max_chars=100, llm_client=mock
-        )
+        out = await summarize_for_compression(long_text, max_chars=100, llm_client=mock)
         assert "pizza" in out.lower()
         assert len(out) <= 100
 
@@ -228,7 +255,6 @@ class TestDependencyCheck:
 
         store = PostgresMemoryStore(pg_session_factory)
         tenant_id = f"t-{uuid4().hex[:8]}"
-        user_id = f"u-{uuid4().hex[:8]}"
 
         r1 = await store.upsert(
             MemoryRecordCreate(
@@ -262,7 +288,6 @@ class TestDependencyCheck:
         store = PostgresMemoryStore(pg_session_factory)
         executor = ForgettingExecutor(store)
         tenant_id = f"t-{uuid4().hex[:8]}"
-        user_id = f"u-{uuid4().hex[:8]}"
 
         r1 = await store.upsert(
             MemoryRecordCreate(
