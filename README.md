@@ -67,68 +67,58 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 1. **Hippocampal System**: Fast learning, sparse representations, episodic memory
 2. **Neocortical System**: Slow learning, distributed representations, semantic memory
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           REST API Layer (FastAPI)                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
-│  │ memory.write│  │ memory.read │  │memory.update│  │ memory.forget           │ │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘ │
-└─────────┼────────────────┼────────────────┼─────────────────────┼───────────────┘
-          │                │                │                     │
-          ▼                ▼                ▼                     ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           Memory Orchestrator                                    │
-│                                                                                  │
-│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐   ┌───────────────┐  │
-│   │  Write Gate  │───▶│  Encoder     │───▶│  Retriever   │──▶│ Reconsolidate │  │
-│   │  (Salience)  │    │  (Sparse +   │    │  (Ecphory)   │   │ (Labile State)│  │
-│   └──────────────┘    │   Dense)     │    └──────────────┘   └───────────────┘  │
-│                       └──────────────┘                                          │
-└─────────────────────────────────────────────────────────────────────────────────┘
-          │                                                           │
-          ▼                                                           ▼
-┌───────────────────────────────────┐     ┌───────────────────────────────────────┐
-│    HIPPOCAMPAL STORE              │     │    NEOCORTICAL STORE                  │
-│    (Fast Episodic Memory)         │     │    (Slow Semantic Memory)             │
-│                                   │     │                                       │
-│  ┌─────────────────────────────┐  │     │  ┌─────────────────────────────────┐  │
-│  │   PostgreSQL + pgvector     │  │     │  │   Neo4j Knowledge Graph         │  │
-│  │                             │  │     │  │                                 │  │
-│  │  • Vector embeddings        │  │     │  │  • Entity nodes                 │  │
-│  │  • High contextual detail   │  │     │  │  • Relation edges               │  │
-│  │  • Rapid write (one-shot)   │  │     │  │  • Personalized PageRank        │  │
-│  │  • Time-indexed episodes    │  │     │  │  • Schema-aligned facts         │  │
-│  │  • Pattern separation       │  │     │  │  • Pattern completion           │  │
-│  └─────────────────────────────┘  │     │  └─────────────────────────────────┘  │
-│                                   │     │                                       │
-│  Biological Analog:               │     │  Biological Analog:                   │
-│  CA3/CA1 hippocampal circuits     │     │  Prefrontal & temporal cortex         │
-└───────────────────────────────────┘     └───────────────────────────────────────┘
-          │                                                           │
-          └─────────────────────────┬─────────────────────────────────┘
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        BACKGROUND WORKERS (Celery)                               │
-│                                                                                  │
-│   ┌──────────────────┐    ┌──────────────────┐    ┌────────────────────────┐    │
-│   │  CONSOLIDATION   │    │    FORGETTING    │    │     MAINTENANCE        │    │
-│   │  ("Sleep Cycle") │    │  (Rac1/Cofilin)  │    │    (Reindex/Prune)     │    │
-│   │                  │    │                  │    │                        │    │
-│   │  • Episode replay│    │  • Relevance     │    │  • Index optimization  │    │
-│   │  • Gist extract  │    │    scoring       │    │  • Schema alignment    │    │
-│   │  • Schema update │    │  • Decay/Silence │    │  • Graph maintenance   │    │
-│   │  • Migration     │    │  • Compression   │    │                        │    │
-│   └──────────────────┘    └──────────────────┘    └────────────────────────┘    │
-│                                                                                  │
-│   Biological Analog: NREM sleep sharp-wave ripples for memory replay            │
-└─────────────────────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           EVENT LOG (Append-Only)                                │
-│                     Immutable audit trail for all operations                     │
-│                     (Analogous to long-term potentiation trace)                  │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph API["REST API Layer (FastAPI)"]
+        write["/memory/write"]
+        read["/memory/read"]
+        update["/memory/update"]
+        forget["/memory/forget"]
+        turn["/memory/turn"]
+    end
+
+    subgraph Orchestrator["Memory Orchestrator"]
+        gate["Write Gate<br/>(Salience)"]
+        encoder["Encoder<br/>(Sparse + Dense)"]
+        retriever["Retriever<br/>(Ecphory)"]
+        recon["Reconsolidate<br/>(Labile State)"]
+        gate --> encoder --> retriever --> recon
+    end
+
+    subgraph Stores["Dual-Store Memory System"]
+        subgraph Hippo["HIPPOCAMPAL STORE<br/>Fast Episodic Memory"]
+            pg["PostgreSQL + pgvector"]
+            pg_feat["• Vector embeddings<br/>• High contextual detail<br/>• Rapid write (one-shot)<br/>• Time-indexed episodes<br/>• Pattern separation"]
+            bio1["🧠 CA3/CA1 hippocampal circuits"]
+        end
+        subgraph Neo["NEOCORTICAL STORE<br/>Slow Semantic Memory"]
+            neo4j["Neo4j Knowledge Graph"]
+            neo_feat["• Entity nodes<br/>• Relation edges<br/>• Personalized PageRank<br/>• Schema-aligned facts<br/>• Pattern completion"]
+            bio2["🧠 Prefrontal & temporal cortex"]
+        end
+    end
+
+    subgraph Workers["BACKGROUND WORKERS (Celery)"]
+        consol["CONSOLIDATION<br/>('Sleep Cycle')<br/>─────────────<br/>• Episode replay<br/>• Gist extraction<br/>• Schema update<br/>• Migration"]
+        forg["FORGETTING<br/>(Rac1/Cofilin)<br/>─────────────<br/>• Relevance scoring<br/>• Decay/Silence<br/>• Compression"]
+        maint["MAINTENANCE<br/>─────────────<br/>• Index optimization<br/>• Schema alignment<br/>• Graph maintenance"]
+    end
+
+    subgraph EventLog["EVENT LOG (Append-Only)"]
+        log["Immutable audit trail for all operations<br/>(Analogous to long-term potentiation trace)"]
+    end
+
+    API --> Orchestrator
+    Orchestrator --> Stores
+    Stores --> Workers
+    Workers --> EventLog
+
+    style API fill:#e1f5fe
+    style Orchestrator fill:#fff3e0
+    style Hippo fill:#e8f5e9
+    style Neo fill:#fce4ec
+    style Workers fill:#f3e5f5
+    style EventLog fill:#eceff1
 ```
 
 ---
@@ -141,20 +131,14 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     SENSORY + WORKING MEMORY                     │
-│                                                                  │
-│   Input Stream ──▶ [Sensory Buffer] ──▶ [Working Memory]        │
-│                         │                      │                 │
-│                    max_tokens=500         max_chunks=10          │
-│                    decay_seconds=30       LLM chunking           │
-│                         │                      │                 │
-│                         └──────────┬───────────┘                 │
-│                                    ▼                             │
-│                          Chunks for Encoding                     │
-│                    (Semantic units ready for LTM)                │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph STM["SENSORY + WORKING MEMORY"]
+        input["Input Stream"] --> sensory["Sensory Buffer<br/>max_tokens=500<br/>decay_seconds=30"]
+        sensory --> working["Working Memory<br/>max_chunks=10<br/>LLM chunking"]
+        sensory & working --> chunks["Chunks for Encoding<br/>(Semantic units ready for LTM)"]
+    end
+    style STM fill:#e3f2fd
 ```
 
 | Biological Concept | Implementation | Location |
@@ -174,22 +158,21 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         WRITE GATE                               │
-│            (Analogous to CREB/Npas4 memory allocation)           │
-│                                                                  │
-│   Input ──▶ [Salience Scoring] ──▶ [Novelty Check] ──▶ [Risk]   │
-│                    │                     │               │       │
-│                    ▼                     ▼               ▼       │
-│              importance > 0.3?     is_new?        contains_pii?  │
-│                    │                     │               │       │
-│                    └─────────┬───────────┴───────────────┘       │
-│                              ▼                                   │
-│                     WriteDecision: STORE / SKIP                  │
-│                                                                  │
-│   Threshold (0.3) = analogous to CREB activation threshold       │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph WG["WRITE GATE (CREB/Npas4 memory allocation)"]
+        input2["Input"] --> salience["Salience Scoring"]
+        salience --> novelty["Novelty Check"]
+        novelty --> risk["Risk Assessment"]
+        
+        salience -.-> q1{"importance > 0.3?"}
+        novelty -.-> q2{"is_new?"}
+        risk -.-> q3{"contains_pii?"}
+        
+        q1 & q2 & q3 --> decision["WriteDecision: STORE / SKIP"]
+    end
+    note["Threshold 0.3 = CREB activation threshold"]
+    style WG fill:#fff8e1
 ```
 
 | Biological Concept | Implementation | Location |
@@ -208,27 +191,20 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     HIPPOCAMPAL STORE                            │
-│              (PostgreSQL + pgvector for vector search)           │
-│                                                                  │
-│   Encoding Pipeline:                                             │
-│                                                                  │
-│   Chunk ──▶ [PIIRedactor] ──▶ [Embeddings] ──▶ [EntityExtract]  │
-│                                    │                │            │
-│                                    ▼                ▼            │
-│                            Dense Vector      Sparse Keys         │
-│                            (1536-dim)        (Entities)          │
-│                                    │                │            │
-│                                    └────────┬───────┘            │
-│                                             ▼                    │
-│                                    MemoryRecord stored           │
-│                                    with full provenance          │
-│                                                                  │
-│   Pattern Separation: Unique content_hash prevents duplicates    │
-│   Pattern Completion: Vector similarity enables fuzzy retrieval  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Hippo2["HIPPOCAMPAL STORE (PostgreSQL + pgvector)"]
+        direction TB
+        chunk["Chunk"] --> pii["PIIRedactor"]
+        pii --> embed["Embeddings"]
+        pii --> entity["EntityExtract"]
+        embed --> dense["Dense Vector<br/>(1536-dim)"]
+        entity --> sparse["Sparse Keys<br/>(Entities)"]
+        dense & sparse --> record["MemoryRecord stored<br/>with full provenance"]
+    end
+    sep["Pattern Separation: content_hash prevents duplicates"]
+    comp["Pattern Completion: Vector similarity for fuzzy retrieval"]
+    style Hippo2 fill:#e8f5e9
 ```
 
 | Biological Concept | Implementation | Location |
@@ -248,30 +224,17 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     NEOCORTICAL STORE                            │
-│                  (Neo4j Knowledge Graph)                         │
-│                                                                  │
-│                      ┌─────────────┐                             │
-│                      │   User:123  │                             │
-│                      └──────┬──────┘                             │
-│                             │                                    │
-│            ┌────────────────┼────────────────┐                   │
-│            │                │                │                   │
-│            ▼                ▼                ▼                   │
-│     ┌──────────┐     ┌──────────┐     ┌──────────┐              │
-│     │ lives_in │     │ prefers  │     │ works_at │              │
-│     └────┬─────┘     └────┬─────┘     └────┬─────┘              │
-│          │                │                │                     │
-│          ▼                ▼                ▼                     │
-│     ┌────────┐      ┌──────────┐     ┌──────────┐               │
-│     │ Paris  │      │vegetarian│     │ Acme Corp│               │
-│     └────────┘      └──────────┘     └──────────┘               │
-│                                                                  │
-│   Retrieval: Personalized PageRank from query entities           │
-│   (Multi-hop reasoning through graph traversal)                  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Neo2["NEOCORTICAL STORE (Neo4j Knowledge Graph)"]
+        user(("User:123"))
+        user -->|lives_in| paris["Paris"]
+        user -->|prefers| veg["vegetarian"]
+        user -->|works_at| acme["Acme Corp"]
+    end
+    ppr["Retrieval: Personalized PageRank from query entities<br/>(Multi-hop reasoning through graph traversal)"]
+    style Neo2 fill:#fce4ec
+    style user fill:#ffcdd2
 ```
 
 | Biological Concept | Implementation | Location |
@@ -291,43 +254,17 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    HYBRID RETRIEVAL (Ecphory)                    │
-│                                                                  │
-│   Query: "What food does the user prefer?"                       │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │  Query Classifier   │                             │
-│              │  (Intent Detection) │                             │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│              ┌──────────┴──────────┐                             │
-│              ▼                     ▼                             │
-│     ┌────────────────┐    ┌────────────────┐                    │
-│     │ Vector Search  │    │  Graph Search  │                    │
-│     │ (Hippocampal)  │    │ (Neocortical)  │                    │
-│     │                │    │                │                    │
-│     │ Semantic sim.  │    │ PPR traversal  │                    │
-│     │ to embeddings  │    │ from entities  │                    │
-│     └───────┬────────┘    └───────┬────────┘                    │
-│             │                     │                              │
-│             └──────────┬──────────┘                              │
-│                        ▼                                         │
-│              ┌─────────────────────┐                             │
-│              │     Reranker        │                             │
-│              │ (Relevance+Recency+ │                             │
-│              │  Confidence+Diverse)│                             │
-│              └──────────┬──────────┘                             │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │   Memory Packet     │                             │
-│              │ (Categorized result)│                             │
-│              └─────────────────────┘                             │
-│                                                                  │
-│   Encoding Specificity: Retrieval cue must overlap with engram   │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Retrieval["HYBRID RETRIEVAL (Ecphory)"]
+        query["Query: 'What food does the user prefer?'"] --> classifier["Query Classifier<br/>(Intent Detection)"]
+        classifier --> vector["Vector Search<br/>(Hippocampal)<br/>─────────<br/>Semantic sim.<br/>to embeddings"]
+        classifier --> graph["Graph Search<br/>(Neocortical)<br/>─────────<br/>PPR traversal<br/>from entities"]
+        vector & graph --> reranker["Reranker<br/>(Relevance+Recency+<br/>Confidence+Diverse)"]
+        reranker --> packet["Memory Packet<br/>(Categorized result)"]
+    end
+    enc["Encoding Specificity: Retrieval cue must overlap with engram"]
+    style Retrieval fill:#e8eaf6
 ```
 
 | Biological Concept | Implementation | Location |
@@ -347,31 +284,19 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     RECONSOLIDATION                              │
-│         (Memory updating during retrieval)                       │
-│                                                                  │
-│   Retrieved Memory ──▶ [Mark Labile] ──▶ [Conflict Detection]   │
-│                             │                    │               │
-│                             ▼                    ▼               │
-│                     Labile window         ConflictType:          │
-│                     (5 minutes)           • CONTRADICTION        │
-│                             │             • REFINEMENT           │
-│                             │             • TEMPORAL_SUPERSEDE   │
-│                             ▼                    │               │
-│                    [Belief Revision Engine]◀─────┘               │
-│                             │                                    │
-│                    ┌────────┴────────┐                          │
-│                    ▼        ▼        ▼                          │
-│               REINFORCE  TIME_SLICE  CORRECT                     │
-│               (+0.2 conf) (valid_to) (invalidate)               │
-│                    │        │        │                          │
-│                    └────────┴────────┘                          │
-│                             ▼                                    │
-│                      [Restabilize]                               │
-│                    (Update in store)                             │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Recon["RECONSOLIDATION (Memory updating during retrieval)"]
+        retrieved["Retrieved Memory"] --> mark["Mark Labile<br/>(5 min window)"]
+        retrieved --> detect["Conflict Detection"]
+        detect --> types["ConflictType:<br/>• CONTRADICTION<br/>• REFINEMENT<br/>• TEMPORAL_SUPERSEDE"]
+        mark & types --> belief["Belief Revision Engine"]
+        belief --> reinforce["REINFORCE<br/>(+0.2 conf)"]
+        belief --> timeslice["TIME_SLICE<br/>(valid_to)"]
+        belief --> correct["CORRECT<br/>(invalidate)"]
+        reinforce & timeslice & correct --> restab["Restabilize<br/>(Update in store)"]
+    end
+    style Recon fill:#fff3e0
 ```
 
 | Biological Concept | Implementation | Location |
@@ -392,47 +317,20 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   CONSOLIDATION ENGINE                           │
-│              ("Sleep Cycle" - Offline Processing)                │
-│                                                                  │
-│   Trigger: scheduled | quota_reached | manual                    │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │   Episode Sampler   │                             │
-│              │ (Priority scoring)  │                             │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │ Semantic Clusterer  │   ◀── Sharp-wave ripple     │
-│              │ (Group by similarity)│       analog: replay       │
-│              └──────────┬──────────┘       similar episodes      │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │   Gist Extractor    │   ◀── Extract semantic      │
-│              │ (LLM summarization) │       "gist" from episodes  │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │   Schema Aligner    │   ◀── Match to existing     │
-│              │ (Rapid integration) │       neocortical schemas   │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │     Migrator        │   ◀── Transfer to           │
-│              │ (Hippo → Neocortex) │       semantic store        │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│                         ▼                                        │
-│              Mark episodes as consolidated                       │
-│              (Allows forgetting of source detail)                │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Consol["CONSOLIDATION ENGINE ('Sleep Cycle' - Offline Processing)"]
+        trigger["Trigger: scheduled | quota_reached | manual"] --> sampler["Episode Sampler<br/>(Priority scoring)"]
+        sampler --> cluster["Semantic Clusterer<br/>(Group by similarity)"]
+        ripple["⚡ Sharp-wave ripple analog:<br/>replay similar episodes"] -.-> cluster
+        cluster --> gist["Gist Extractor<br/>(LLM summarization)"]
+        extract["Extract semantic 'gist'<br/>from episodes"] -.-> gist
+        gist --> schema["Schema Aligner<br/>(Rapid integration)"]
+        match["Match to existing<br/>neocortical schemas"] -.-> schema
+        schema --> migrator["Migrator<br/>(Hippo → Neocortex)"]
+        migrator --> mark2["Mark episodes as consolidated<br/>(Allows forgetting of source detail)"]
+    end
+    style Consol fill:#f3e5f5
 ```
 
 | Biological Concept | Implementation | Location |
@@ -453,53 +351,15 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 **Implementation**:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ACTIVE FORGETTING                             │
-│              (Rac1/Cofilin Pruning Algorithm)                    │
-│                                                                  │
-│   Background Process (Celery beat: every 24h)                    │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │  Relevance Scorer   │                             │
-│              │                     │                             │
-│              │  Score = weighted(  │                             │
-│              │    importance,      │                             │
-│              │    recency,         │                             │
-│              │    access_freq,     │                             │
-│              │    confidence,      │                             │
-│              │    type_bonus       │                             │
-│              │  )                  │                             │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │   Policy Engine     │                             │
-│              │                     │                             │
-│              │  score > 0.7 → KEEP │                             │
-│              │  score > 0.5 → DECAY│                             │
-│              │  score > 0.3 → SILENT│                            │
-│              │  score > 0.1 → COMPRESS│                          │
-│              │  score ≤ 0.1 → DELETE│                            │
-│              └──────────┬──────────┘                             │
-│                         │                                        │
-│                         ▼                                        │
-│              ┌─────────────────────┐                             │
-│              │    Executor         │                             │
-│              │                     │                             │
-│              │  • Decay: reduce    │                             │
-│              │    confidence       │                             │
-│              │  • Silence: mark    │                             │
-│              │    inaccessible     │                             │
-│              │  • Compress: LLM    │                             │
-│              │    summarization    │                             │
-│              │  • Delete: with     │                             │
-│              │    dependency check │                             │
-│              └─────────────────────┘                             │
-│                                                                  │
-│   Interference Management: Detect & resolve duplicate/overlap    │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Forget["ACTIVE FORGETTING (Rac1/Cofilin Pruning Algorithm)"]
+        bg["Background Process<br/>(Celery beat: every 24h)"] --> scorer["Relevance Scorer<br/>─────────────<br/>Score = weighted(<br/>importance, recency,<br/>access_freq, confidence,<br/>type_bonus)"]
+        scorer --> policy["Policy Engine<br/>─────────────<br/>score > 0.7 → KEEP<br/>score > 0.5 → DECAY<br/>score > 0.3 → SILENT<br/>score > 0.1 → COMPRESS<br/>score ≤ 0.1 → DELETE"]
+        policy --> executor["Executor<br/>─────────────<br/>• Decay: reduce confidence<br/>• Silence: mark inaccessible<br/>• Compress: LLM summarization<br/>• Delete: with dependency check"]
+    end
+    interference["Interference Management: Detect & resolve duplicate/overlap"]
+    style Forget fill:#ffebee
 ```
 
 | Biological Concept | Implementation | Location |
@@ -642,35 +502,35 @@ See [ProjectPlan/UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md) for
 
 ### Neuroscience Foundations
 
-1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). "Why there are complementary learning systems in the hippocampus and neocortex: Insights from the successes and failures of connectionist models of learning and memory." *Psychological Review*, 102(3), 419-457.
+1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). ["Why there are complementary learning systems in the hippocampus and neocortex: Insights from the successes and failures of connectionist models of learning and memory."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
 
 2. **Tulving, E.** (1983). *Elements of Episodic Memory*. Oxford University Press. — Encoding Specificity Principle.
 
-3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). "Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval." *Nature*, 406(6797), 722-726.
+3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35017083) *Nature*, 406(6797), 722-726.
 
-4. **Shuai, Y., Lu, B., Hu, Y., Wang, L., Sun, K., & Zhong, Y.** (2010). "Forgetting is regulated through Rac activity in Drosophila." *Cell*, 140(4), 579-589.
+4. **Shuai, Y., Lu, B., Hu, Y., Wang, L., Sun, K., & Zhong, Y.** (2010). ["Forgetting is regulated through Rac activity in Drosophila."](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
 
-5. **Han, J.H., et al.** (2007). "Neuronal competition and selection during memory formation." *Science*, 316(5823), 457-460. — CREB and memory allocation.
+5. **Han, J.H., et al.** (2007). ["Neuronal competition and selection during memory formation."](https://doi.org/10.1126/science.1128294) *Science*, 316(5823), 457-460. — CREB and memory allocation.
 
-6. **Miller, G.A.** (1956). "The magical number seven, plus or minus two: Some limits on our capacity for processing information." *Psychological Review*, 63(2), 81-97.
+6. **Miller, G.A.** (1956). ["The magical number seven, plus or minus two: Some limits on our capacity for processing information."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
 
 7. **Bartlett, F.C.** (1932). *Remembering: A Study in Experimental and Social Psychology*. Cambridge University Press. — Reconstructive memory.
 
 ### AI Memory Frameworks
 
-8. **HippoRAG** (2024). "Neurobiologically Inspired Long-Term Memory for Large Language Models." *arXiv:2405.14831*. — Knowledge graph as hippocampal index with Personalized PageRank.
+8. **HippoRAG** (2024). ["Neurobiologically Inspired Long-Term Memory for Large Language Models."](https://arxiv.org/abs/2405.14831) *arXiv:2405.14831*. — Knowledge graph as hippocampal index with Personalized PageRank.
 
-9. **Mem0** (2025). "Building Production-Ready AI Agents with Scalable Long-Term Memory." *arXiv:2504.19413*. — A.U.D.N. operations, 90%+ token reduction.
+9. **Mem0** (2025). ["Building Production-Ready AI Agents with Scalable Long-Term Memory."](https://arxiv.org/abs/2504.19413) *arXiv:2504.19413*. — A.U.D.N. operations, 90%+ token reduction.
 
 10. **HawkinsDB** (2025). GitHub repository. — Based on Jeff Hawkins' Thousand Brains Theory.
 
-11. **Wu, T., et al.** (2025). "From Human Memory to AI Memory: A Survey on Memory Mechanisms in the Era of LLMs." *arXiv:2504.15965*.
+11. **Wu, T., et al.** (2025). ["From Human Memory to AI Memory: A Survey on Memory Mechanisms in the Era of LLMs."](https://arxiv.org/abs/2504.15965) *arXiv:2504.15965*.
 
 ### Implementation Guides
 
 12. **Matlin, M.W.** (2005). *Cognition* (6th ed.). John Wiley & Sons.
 
-13. **Rasch, B., & Born, J.** (2013). "About sleep's role in memory." *Physiological Reviews*, 93(2), 681-766.
+13. **Rasch, B., & Born, J.** (2013). ["About sleep's role in memory."](https://doi.org/10.1152/physrev.00032.2012) *Physiological Reviews*, 93(2), 681-766.
 
 ---
 
