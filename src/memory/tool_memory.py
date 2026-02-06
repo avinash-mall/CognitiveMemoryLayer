@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from ..core.enums import MemoryScope, MemorySource, MemoryType
+from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance
 from ..storage.base import MemoryStoreBase
 
@@ -13,6 +13,7 @@ class ToolMemory:
     """
     Store outputs from tool executions per session.
     Enables agents to remember and reuse tool results within a session.
+    Holistic: tenant-only, session_id for origin tracking.
     """
 
     def __init__(self, store: MemoryStoreBase) -> None:
@@ -34,13 +35,11 @@ class ToolMemory:
         }
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.SESSION,
-            scope_id=session_id,
-            user_id=None,
-            session_id=session_id,
+            context_tags=["conversation", "tool_result"],
+            source_session_id=session_id,
             type=MemoryType.TOOL_RESULT,
             text=text,
-            key=f"tool_result:{tool_name}:{datetime.utcnow().isoformat()}",
+            key=f"tool_result:{session_id}:{tool_name}:{datetime.utcnow().isoformat()}",
             embedding=None,
             metadata=meta,
             provenance=Provenance(source=MemorySource.TOOL_RESULT, tool_refs=[tool_name]),
@@ -56,10 +55,13 @@ class ToolMemory:
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """Retrieve tool results for the session, optionally filtered by tool_name."""
-        filters: Dict[str, Any] = {"status": "active", "type": MemoryType.TOOL_RESULT.value}
+        filters: Dict[str, Any] = {
+            "status": "active",
+            "type": MemoryType.TOOL_RESULT.value,
+            "source_session_id": session_id,
+        }
         records = await self.store.scan(
             tenant_id=tenant_id,
-            user_id=session_id,
             filters=filters,
             order_by="-timestamp",
             limit=limit,

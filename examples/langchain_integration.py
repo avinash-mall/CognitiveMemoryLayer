@@ -42,15 +42,14 @@ class CognitiveMemory(BaseChatMemory):
         from langchain_openai import ChatOpenAI
         from langchain.chains import ConversationChain
         
-        memory = CognitiveMemory(scope="session", scope_id="session-123")
+        memory = CognitiveMemory(session_id="session-123")
         llm = ChatOpenAI()
         chain = ConversationChain(llm=llm, memory=memory)
         
         response = chain.predict(input="My name is Alice")
     """
     
-    scope: str = "session"
-    scope_id: str
+    session_id: str = "default"
     memory_client: Optional[CognitiveMemoryClient] = None
     api_url: str = "http://localhost:8000"
     api_key: str = ""  # Default: set AUTH__API_KEY in env or pass when constructing
@@ -103,8 +102,6 @@ class CognitiveMemory(BaseChatMemory):
         try:
             # Retrieve relevant memories
             result = self.memory_client.read(
-                scope=self.scope,
-                scope_id=self.scope_id,
                 query=query,
                 max_results=self.max_retrieval_results,
                 format=self.retrieval_format
@@ -139,10 +136,10 @@ class CognitiveMemory(BaseChatMemory):
                 human_input = inputs.get(self.input_key, "")
                 if human_input:
                     self.memory_client.write(
-                        scope=self.scope,
-                        scope_id=self.scope_id,
-                        content=f"User said: {human_input}",
-                        memory_type="episodic_event"
+                        f"User said: {human_input}",
+                        session_id=self.session_id,
+                        context_tags=["conversation"],
+                        memory_type="episodic_event",
                     )
             
             # Store AI response (usually not needed as it's derived)
@@ -150,10 +147,10 @@ class CognitiveMemory(BaseChatMemory):
                 ai_output = outputs.get(self.output_key, "")
                 if ai_output:
                     self.memory_client.write(
-                        scope=self.scope,
-                        scope_id=self.scope_id,
-                        content=f"Assistant responded about: {ai_output[:200]}",
-                        memory_type="episodic_event"
+                        f"Assistant responded about: {ai_output[:200]}",
+                        session_id=self.session_id,
+                        context_tags=["conversation"],
+                        memory_type="episodic_event",
                     )
                     
         except Exception as e:
@@ -162,12 +159,7 @@ class CognitiveMemory(BaseChatMemory):
     def clear(self) -> None:
         """Clear all memories for this scope."""
         try:
-            self.memory_client.forget(
-                scope=self.scope,
-                scope_id=self.scope_id,
-                query="*",
-                action="delete"
-            )
+            self.memory_client.forget(query="*", action="delete")
         except Exception as e:
             print(f"Warning: Could not clear memory: {e}")
     
@@ -188,10 +180,10 @@ class CognitiveMemory(BaseChatMemory):
         
         try:
             self.memory_client.write(
-                scope=self.scope,
-                scope_id=self.scope_id,
-                content=content,
-                memory_type=memory_type
+                content,
+                session_id=self.session_id,
+                context_tags=["conversation"],
+                memory_type=memory_type,
             )
         except Exception as e:
             print(f"Warning: Could not add message to memory: {e}")
@@ -211,8 +203,7 @@ Assistant:"""
 
 
 def create_memory_chain(
-    scope_id: str,
-    scope: str = "session",
+    session_id: str = "default",
     llm_model: str = "gpt-4o-mini",
     memory_api_url: str = "http://localhost:8000",
     memory_api_key: Optional[str] = None
@@ -221,8 +212,7 @@ def create_memory_chain(
     Create a LangChain conversation chain with cognitive memory.
 
     Args:
-        scope_id: Unique identifier for the memory scope (e.g., session ID)
-        scope: Memory scope type (session, agent, namespace, global)
+        session_id: Session identifier for origin tracking
         llm_model: OpenAI model to use
         memory_api_url: Cognitive Memory Layer API URL
         memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
@@ -233,8 +223,7 @@ def create_memory_chain(
     import os
     key = memory_api_key or os.environ.get("AUTH__API_KEY", "")
     memory = CognitiveMemory(
-        scope=scope,
-        scope_id=scope_id,
+        session_id=session_id,
         api_url=memory_api_url,
         api_key=key,
         auto_store=True,
@@ -271,8 +260,7 @@ def main():
     # Create a chain with memory
     print("\nCreating conversation chain with persistent memory...")
     chain = create_memory_chain(
-        scope_id="langchain-demo-session",
-        scope="session",
+        session_id="langchain-demo-session",
         llm_model="gpt-4o-mini"
     )
     
@@ -306,8 +294,7 @@ def example_direct_usage():
     print("\n--- Direct Usage Example ---\n")
     
     memory = CognitiveMemory(
-        scope="session",
-        scope_id="direct-usage-demo-session",
+        session_id="direct-usage-demo-session",
         auto_store=True
     )
     

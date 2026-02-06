@@ -1,19 +1,19 @@
-"""API request/response schemas."""
+"""API request/response schemas. Holistic: no scopes, tenant-only."""
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from ..core.enums import MemoryScope, MemoryType
+from ..core.enums import MemoryType
 
 
 class WriteMemoryRequest(BaseModel):
-    """Request to store a memory."""
+    """Request to store a memory. Holistic: tenant-only."""
 
-    scope: MemoryScope
-    scope_id: str
     content: str
+    context_tags: Optional[List[str]] = None
+    session_id: Optional[str] = None
     memory_type: Optional[MemoryType] = None
     namespace: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -47,12 +47,11 @@ class WriteMemoryResponse(BaseModel):
 
 
 class ReadMemoryRequest(BaseModel):
-    """Request to retrieve memories."""
+    """Request to retrieve memories. Holistic: tenant-only."""
 
-    scope: MemoryScope
-    scope_id: str
     query: str
     max_results: int = Field(default=10, le=50)
+    context_filter: Optional[List[str]] = None
     memory_types: Optional[List[MemoryType]] = None
     since: Optional[datetime] = None
     until: Optional[datetime] = None
@@ -94,12 +93,28 @@ class ReadMemoryResponse(BaseModel):
     elapsed_ms: float
 
 
+class ProcessTurnRequest(BaseModel):
+    """Request to process a conversation turn with seamless memory (auto-retrieve + optional auto-store)."""
+
+    user_message: str
+    assistant_response: Optional[str] = None
+    session_id: Optional[str] = None
+    max_context_tokens: int = 1500
+
+
+class ProcessTurnResponse(BaseModel):
+    """Response from process_turn: memory context ready to inject into prompt."""
+
+    memory_context: str
+    memories_retrieved: int
+    memories_stored: int
+    reconsolidation_applied: bool = False
+
+
 class UpdateMemoryRequest(BaseModel):
-    """Request to update a memory."""
+    """Request to update a memory. Holistic: tenant-only."""
 
     memory_id: UUID
-    scope: MemoryScope
-    scope_id: str
     text: Optional[str] = None
     confidence: Optional[float] = None
     importance: Optional[float] = None
@@ -117,10 +132,8 @@ class UpdateMemoryResponse(BaseModel):
 
 
 class ForgetRequest(BaseModel):
-    """Request to forget memories."""
+    """Request to forget memories. Holistic: tenant-only."""
 
-    scope: MemoryScope
-    scope_id: str
     memory_ids: Optional[List[UUID]] = None
     query: Optional[str] = None
     before: Optional[datetime] = None
@@ -136,10 +149,8 @@ class ForgetResponse(BaseModel):
 
 
 class MemoryStats(BaseModel):
-    """Memory statistics for a scope."""
+    """Memory statistics for tenant. Holistic: tenant-only."""
 
-    scope: MemoryScope
-    scope_id: str
     total_memories: int
     active_memories: int
     silent_memories: int

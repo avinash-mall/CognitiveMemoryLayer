@@ -124,7 +124,6 @@ class ReconsolidationService:
                     old_memory=memory,
                     new_info_type=mem_type,
                     tenant_id=tenant_id,
-                    scope_id=scope_id,
                     evidence_id=turn_id,
                 )
 

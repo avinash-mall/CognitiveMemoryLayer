@@ -13,7 +13,7 @@ async def test_event_log_append_and_get_by_id(event_log_repo: EventLogRepository
     """Append an event and fetch it by ID."""
     event = EventLog(
         tenant_id="tenant-1",
-        user_id="user-1",
+        scope_id="user-1",
         event_type="turn",
         operation=OperationType.ADD,
         payload={"role": "user", "content": "Hello"},
@@ -25,7 +25,7 @@ async def test_event_log_append_and_get_by_id(event_log_repo: EventLogRepository
     found = await event_log_repo.get_by_id(event.id)
     assert found is not None
     assert found.tenant_id == "tenant-1"
-    assert found.user_id == "user-1"
+    assert found.scope_id == "user-1"
     assert found.event_type == "turn"
     assert found.operation == OperationType.ADD
     assert found.payload == {"role": "user", "content": "Hello"}
@@ -36,7 +36,7 @@ async def test_event_log_get_user_events(event_log_repo: EventLogRepository):
     """List events for a user; order by created_at desc."""
     base = EventLog(
         tenant_id="tenant-2",
-        user_id="user-2",
+        scope_id="user-2",
         event_type="memory_op",
         operation=OperationType.ADD,
         payload={"op": "add"},
@@ -45,7 +45,7 @@ async def test_event_log_get_user_events(event_log_repo: EventLogRepository):
     await event_log_repo.append(
         EventLog(
             tenant_id="tenant-2",
-            user_id="user-2",
+            scope_id="user-2",
             event_type="turn",
             payload={"msg": "second"},
         )
@@ -70,7 +70,7 @@ async def test_event_log_replay_events(event_log_repo: EventLogRepository):
     for i in range(3):
         e = EventLog(
             tenant_id=tenant,
-            user_id=user,
+            scope_id=user,
             event_type="turn",
             payload={"seq": i},
         )

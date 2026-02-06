@@ -3,7 +3,7 @@ import pytest
 
 from src.core.config import get_settings
 from src.core.enums import (
-    MemoryScope,
+    MemoryContext,
     MemorySource,
     MemoryStatus,
     MemoryType,
@@ -29,12 +29,12 @@ class TestEnums:
         assert MemoryType.SEMANTIC_FACT.value == "semantic_fact"
         assert MemoryType.PREFERENCE.value == "preference"
 
-    def test_memory_scope_values(self):
-        assert MemoryScope.SESSION.value == "session"
-        assert MemoryScope.AGENT.value == "agent"
-        assert MemoryScope.NAMESPACE.value == "namespace"
-        assert MemoryScope.GLOBAL.value == "global"
-        assert MemoryScope.USER.value == "user"
+    def test_memory_context_values(self):
+        assert MemoryContext.PERSONAL.value == "personal"
+        assert MemoryContext.WORLD.value == "world"
+        assert MemoryContext.CONVERSATION.value == "conversation"
+        assert MemoryContext.TASK.value == "task"
+        assert MemoryContext.PROCEDURAL.value == "procedural"
 
     def test_memory_type_general_purpose(self):
         assert MemoryType.CONVERSATION.value == "conversation"
@@ -81,9 +81,8 @@ class TestMemoryRecordSchema:
         prov = Provenance(source=MemorySource.USER_EXPLICIT)
         create = MemoryRecordCreate(
             tenant_id="t1",
-            scope=MemoryScope.USER,
-            scope_id="u1",
-            user_id="u1",
+            context_tags=["personal"],
+            source_session_id="u1",
             type=MemoryType.SEMANTIC_FACT,
             text="User lives in Paris",
             key="user:location",
@@ -99,9 +98,8 @@ class TestMemoryRecordSchema:
         prov = Provenance(source=MemorySource.USER_EXPLICIT)
         record = MemoryRecord(
             tenant_id="t1",
-            scope=MemoryScope.USER,
-            scope_id="u1",
-            user_id="u1",
+            context_tags=[],
+            source_session_id="u1",
             type=MemoryType.PREFERENCE,
             text="Prefers dark mode",
             provenance=prov,
@@ -147,9 +145,8 @@ class TestMemoryPacket:
         prov = Provenance(source=MemorySource.USER_EXPLICIT)
         record = MemoryRecord(
             tenant_id="t1",
-            scope=MemoryScope.USER,
-            scope_id="u1",
-            user_id="u1",
+            context_tags=[],
+            source_session_id="u1",
             type=MemoryType.SEMANTIC_FACT,
             text="A fact",
             provenance=prov,
@@ -163,9 +160,8 @@ class TestMemoryPacket:
         prov = Provenance(source=MemorySource.USER_EXPLICIT)
         record = MemoryRecord(
             tenant_id="t1",
-            scope=MemoryScope.USER,
-            scope_id="u1",
-            user_id="u1",
+            context_tags=[],
+            source_session_id="u1",
             type=MemoryType.SEMANTIC_FACT,
             text="User likes coffee",
             provenance=prov,

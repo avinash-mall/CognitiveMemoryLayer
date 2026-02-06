@@ -517,6 +517,10 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**,
 
 ## System Components
 
+### Seamless Memory
+
+Memory retrieval is **automatic and unconscious**: use the `/memory/turn` endpoint to process each conversation turn. The system auto-retrieves relevant context for the user message, optionally stores salient information, and returns formatted memory context ready to inject into your LLM prompt. No explicit scope or partition: access is **holistic** per tenant, with optional `context_tags` for filtering.
+
 ### Memory Types
 
 | Type | Description | Biological Analog | Decay Rate |
@@ -561,17 +565,26 @@ curl http://localhost:8000/api/v1/health
 # Set API key (required for write/read). Use AUTH__API_KEY in .env or export it.
 # export AUTH__API_KEY=your-secret-key
 
-# Store a memory
+# Store a memory (holistic: tenant-only; optional context_tags and session_id)
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $AUTH__API_KEY" \
-  -d '{"scope": "session", "scope_id": "session-001", "content": "User prefers vegetarian food and lives in Paris."}'
+  -H "X-Tenant-ID: demo" \
+  -d '{"content": "User prefers vegetarian food and lives in Paris.", "context_tags": ["preference", "personal"]}'
 
 # Retrieve memories
 curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $AUTH__API_KEY" \
-  -d '{"scope": "session", "scope_id": "session-001", "query": "dietary preferences", "format": "llm_context"}'
+  -H "X-Tenant-ID: demo" \
+  -d '{"query": "dietary preferences", "format": "llm_context"}'
+
+# Seamless turn: auto-retrieve context + optional auto-store (for chat integrations)
+curl -X POST http://localhost:8000/api/v1/memory/turn \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $AUTH__API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
 ### Run Tests
@@ -610,9 +623,10 @@ See [ProjectPlan/UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md) for
 |----------|--------|-------------|
 | `/api/v1/memory/write` | POST | Store new information |
 | `/api/v1/memory/read` | POST | Retrieve relevant memories |
+| `/api/v1/memory/turn` | POST | **Seamless memory**: auto-retrieve + auto-store per turn |
 | `/api/v1/memory/update` | POST | Update or provide feedback |
 | `/api/v1/memory/forget` | POST | Forget memories |
-| `/api/v1/memory/stats/{scope}/{scope_id}` | GET | Get memory statistics |
+| `/api/v1/memory/stats` | GET | Get memory statistics (tenant from auth) |
 | `/api/v1/session/create` | POST | Create a new memory session |
 | `/api/v1/session/{session_id}/write` | POST | Write to session memory |
 | `/api/v1/session/{session_id}/read` | POST | Read from session memory |

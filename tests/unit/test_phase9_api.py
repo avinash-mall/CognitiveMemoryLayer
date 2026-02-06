@@ -15,7 +15,6 @@ from src.api.schemas import (
     ReadMemoryRequest,
     MemoryItem,
 )
-from src.core.enums import MemoryScope
 
 
 class TestAuthConfig:
@@ -49,19 +48,18 @@ class TestSchemas:
 
     def test_write_memory_request(self):
         req = WriteMemoryRequest(
-            scope=MemoryScope.SESSION,
-            scope_id="s1",
             content="Hello",
+            context_tags=["conversation"],
+            session_id="s1",
         )
-        assert req.scope_id == "s1"
+        assert req.session_id == "s1"
         assert req.content == "Hello"
         assert req.metadata == {}
 
     def test_read_memory_request_defaults(self):
         req = ReadMemoryRequest(
-            scope=MemoryScope.SESSION,
-            scope_id="s1",
             query="test",
+            context_filter=["conversation"],
         )
         assert req.max_results == 10
         assert req.format == "packet"

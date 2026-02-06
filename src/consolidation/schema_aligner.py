@@ -41,7 +41,7 @@ class SchemaAligner:
     ) -> AlignmentResult:
         """Align a gist with existing schemas."""
         if gist.key:
-            existing = await self.fact_store.get_fact(tenant_id, user_id, gist.key)
+            existing = await self.fact_store.get_fact(tenant_id, gist.key)
             if existing:
                 return AlignmentResult(
                     gist=gist,
@@ -53,7 +53,7 @@ class SchemaAligner:
 
         if gist.gist_type == "preference" and gist.predicate:
             key = f"user:preference:{gist.predicate}"
-            existing = await self.fact_store.get_fact(tenant_id, user_id, key)
+            existing = await self.fact_store.get_fact(tenant_id, key)
             if existing:
                 return AlignmentResult(
                     gist=gist,
@@ -64,7 +64,7 @@ class SchemaAligner:
                 )
 
         similar_facts = await self.fact_store.search_facts(
-            tenant_id, user_id, gist.text, limit=5
+            tenant_id, gist.text, limit=5
         )
         if similar_facts:
             best_match = similar_facts[0]

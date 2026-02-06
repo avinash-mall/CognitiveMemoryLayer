@@ -1,6 +1,6 @@
 # Cognitive Memory Layer – Project Status
 
-**Last updated:** 2026-02-04
+**Last updated:** 2026-02-05
 
 This document tracks what has been implemented against the plan in the `ProjectPlan` folder.
 
@@ -590,6 +590,51 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ---
 
+## Phase 11: Holistic Memory Refactoring ✅
+
+**Status:** Implemented  
+**Plan reference:** `Phase11_HolisticMemory.md` (Seamless Holistic Memory plan)
+
+- Removed `MemoryScope`; added `MemoryContext` for tagging. Updated `MemoryRecord` / `MemoryRecordCreate` with `context_tags`, `source_session_id`.
+- Migration `004_remove_scopes_holistic`: drop scope columns, add `context_tags`, `source_session_id`; GIN index on `context_tags`.
+- Storage, orchestrator, retrieval, API: all use tenant-only holistic access; optional `context_filter` on read.
+- Stats endpoint: `GET /memory/stats` (tenant from auth).
+
+---
+
+## Phase 12: Seamless Memory Integration ✅
+
+**Status:** Implemented  
+**Plan reference:** `Phase12_SeamlessIntegration.md`
+
+- `SeamlessMemoryProvider`: auto-retrieve per turn, optional auto-store, reconsolidation; returns `memory_context` for LLM injection.
+- `POST /memory/turn` and `ProcessTurnRequest` / `ProcessTurnResponse`.
+- QueryClassifier: `recent_context` for vague queries. Tool definitions simplified (no scope).
+
+---
+
+## Phase 13: Code Improvements ✅
+
+**Status:** Implemented  
+**Plan reference:** `Phase13_CodeImprovements.md`
+
+- Orchestrator `update()`: re-embed and re-extract entities when text changes.
+- Working memory: recency-aware eviction in `WorkingMemoryState.add_chunk()`.
+- Chunker: sentiment-aware salience boost (`_compute_salience_boost_for_sentiment`).
+- Belief revision: archive instead of delete (valid_to, status=ARCHIVED).
+
+---
+
+## Phase 14: Documentation & Examples Update ✅
+
+**Status:** Implemented  
+**Plan reference:** `Phase14_DocumentationUpdate.md`
+
+- README and UsageDocumentation updated for holistic API and seamless memory; tool definitions and API reference without scopes.
+- Examples: `memory_client` (holistic + `process_turn`), `basic_usage`, `chatbot_with_memory`, `openai_tool_calling`, `anthropic_tool_calling`, `langchain_integration` updated.
+
+---
+
 ## Phases 3–10
 
 | Phase | Name | Status |
@@ -655,5 +700,5 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 - Phase 6 adds reconsolidation: `LabileStateTracker`, `ConflictDetector`, `BeliefRevisionEngine`, `ReconsolidationService`; `PostgresMemoryStore.update()` supports `valid_to` and `metadata` for revision patches.
 - Phase 7 adds consolidation: `ConsolidationScheduler`, `EpisodeSampler`, `SemanticClusterer`, `GistExtractor`, `SchemaAligner`, `ConsolidationMigrator`, `ConsolidationWorker`; `PostgresMemoryStore.scan()` supports `since` filter for time-window sampling.
 - Phase 8 adds active forgetting: `RelevanceScorer`, `ForgettingPolicyEngine`, `ForgettingExecutor`, `InterferenceDetector`, `ForgettingWorker`, `ForgettingScheduler`; `PostgresMemoryStore.update()` supports `entities` and `relations` for compress. Optional: LLM-based compression via `summarize_for_compression` and `VLLMClient` (vLLM + Llama 3.2 1B in Docker); dependency check before delete via `count_references_to`; Celery task `run_forgetting_task` and beat schedule.
-- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats/{scope}/{scope_id}`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`; API key auth from config (AUTH__API_KEY, AUTH__ADMIN_API_KEY), multi-tenancy (X-Tenant-ID); Docker `api` service: `uvicorn src.api.app:app --host 0.0.0.0 --port 8000`.
+- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`; API key auth, multi-tenancy (X-Tenant-ID). Phase 11+ refactor: holistic (tenant-only) memory; no scopes. Phase 12 adds `/memory/turn` (seamless memory) and `SeamlessMemoryProvider`.
 - Phase 10 adds: conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings); E2E tests in `tests/e2e/test_api_flows.py`; integration test setup with testcontainers (`tests/integration/conftest.py`); multi-stage Dockerfile (`docker/Dockerfile`); GitHub Actions CI with lint, test (coverage + codecov), build/push to ghcr.io; API healthcheck in docker-compose; `src/utils/logging_config.py` for structured logging; `src/utils/metrics.py` for Prometheus (MEMORY_WRITES, MEMORY_READS, RETRIEVAL_LATENCY, MEMORY_COUNT) and `/metrics` endpoint.

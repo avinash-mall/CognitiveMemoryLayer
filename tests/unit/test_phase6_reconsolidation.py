@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemoryScope, MemorySource, MemoryType
+from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance
 from src.reconsolidation.labile_tracker import (
     LabileMemory,
@@ -27,9 +27,7 @@ def _make_memory(text: str, key: str | None = None) -> MemoryRecord:
     return MemoryRecord(
         id=uuid4(),
         tenant_id="t",
-        scope=MemoryScope.USER,
-        scope_id="u",
-        user_id="u",
+        context_tags=[],
         type=MemoryType.PREFERENCE,
         text=text,
         key=key,
@@ -125,7 +123,7 @@ class TestBeliefRevisionEngine:
             reasoning="Consistent",
         )
         plan = engine.plan_revision(
-            conflict, old, MemoryType.PREFERENCE, "t", "u", "ev1"
+            conflict, old, MemoryType.PREFERENCE, "t", "ev1"
         )
         assert plan.strategy == RevisionStrategy.REINFORCE
         assert len(plan.operations) == 1
@@ -145,12 +143,12 @@ class TestBeliefRevisionEngine:
             reasoning="User corrected",
         )
         plan = engine.plan_revision(
-            conflict, old, MemoryType.PREFERENCE, "t", "u", "ev1"
+            conflict, old, MemoryType.PREFERENCE, "t", "ev1"
         )
-        assert plan.strategy == RevisionStrategy.OVERWRITE
+        assert plan.strategy == RevisionStrategy.TIME_SLICE
         assert len(plan.operations) == 2
         assert plan.operations[0].patch is not None
-        assert plan.operations[0].patch.get("status") == "deleted"
+        assert plan.operations[0].patch.get("status") == "archived"
         assert plan.operations[1].new_record is not None
         assert plan.operations[1].new_record.text == "I prefer tea."
 
@@ -166,7 +164,7 @@ class TestBeliefRevisionEngine:
             reasoning="Preference changed",
         )
         plan = engine.plan_revision(
-            conflict, old, MemoryType.PREFERENCE, "t", "u", "ev1"
+            conflict, old, MemoryType.PREFERENCE, "t", "ev1"
         )
         assert plan.strategy == RevisionStrategy.TIME_SLICE
         assert len(plan.operations) == 2

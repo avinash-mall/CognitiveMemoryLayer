@@ -1,10 +1,9 @@
-"""API routes for memory operations."""
+"""API routes for memory operations. Holistic: tenant-only, no scopes."""
 from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..core.enums import MemoryScope
 from ..utils.metrics import MEMORY_READS, MEMORY_WRITES
 from .auth import AuthContext, get_auth_context, require_write_permission
 from .schemas import (
@@ -14,6 +13,8 @@ from .schemas import (
     ForgetResponse,
     MemoryItem,
     MemoryStats,
+    ProcessTurnRequest,
+    ProcessTurnResponse,
     ReadMemoryRequest,
     ReadMemoryResponse,
     SessionContextResponse,
@@ -23,6 +24,7 @@ from .schemas import (
     WriteMemoryResponse,
 )
 from ..memory.orchestrator import MemoryOrchestrator
+from ..memory.seamless_provider import SeamlessMemoryProvider
 
 router = APIRouter(tags=["memory"])
 
@@ -40,20 +42,17 @@ async def write_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """
-    Store new information in memory.
-    Requires scope (SESSION, AGENT, NAMESPACE, GLOBAL) and scope_id.
-    """
+    """Store new information in memory. Holistic: tenant-only."""
     try:
         result = await orchestrator.write(
             tenant_id=auth.tenant_id,
             content=body.content,
+            context_tags=body.context_tags,
+            session_id=body.session_id,
             memory_type=body.memory_type,
             metadata=body.metadata,
             turn_id=body.turn_id,
             agent_id=body.agent_id,
-            scope=body.scope,
-            scope_id=body.scope_id,
             namespace=body.namespace,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
@@ -68,25 +67,52 @@ async def write_memory(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/memory/turn", response_model=ProcessTurnResponse)
+async def process_turn(
+    body: ProcessTurnRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """
+    Process a conversation turn with seamless memory:
+    - Auto-retrieves relevant context for the user message
+    - Auto-stores salient information (user message and optional assistant response)
+    - Returns formatted memory context for LLM injection
+    """
+    provider = SeamlessMemoryProvider(
+        orchestrator,
+        max_context_tokens=body.max_context_tokens,
+        auto_store=True,
+    )
+    result = await provider.process_turn(
+        tenant_id=auth.tenant_id,
+        user_message=body.user_message,
+        assistant_response=body.assistant_response,
+        session_id=body.session_id,
+    )
+    return ProcessTurnResponse(
+        memory_context=result.memory_context,
+        memories_retrieved=len(result.injected_memories),
+        memories_stored=result.stored_count,
+        reconsolidation_applied=result.reconsolidation_applied,
+    )
+
+
 @router.post("/memory/read", response_model=ReadMemoryResponse)
 async def read_memory(
     body: ReadMemoryRequest,
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """
-    Retrieve relevant memories for a query.
-    Requires scope and scope_id to identify the memory space.
-    """
+    """Retrieve relevant memories for a query. Holistic: tenant-only."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.utcnow()
     try:
         packet = await orchestrator.read(
             tenant_id=auth.tenant_id,
-            scope=body.scope,
-            scope_id=body.scope_id,
             query=body.query,
             max_results=body.max_results,
+            context_filter=body.context_filter,
             memory_types=body.memory_types,
             time_filter={"since": body.since, "until": body.until} if body.since or body.until else None,
         )
@@ -137,12 +163,10 @@ async def update_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Update an existing memory. Supports feedback for reconsolidation."""
+    """Update an existing memory. Supports feedback for reconsolidation. Holistic: tenant-only."""
     try:
         result = await orchestrator.update(
             tenant_id=auth.tenant_id,
-            scope=body.scope,
-            scope_id=body.scope_id,
             memory_id=body.memory_id,
             text=body.text,
             confidence=body.confidence,
@@ -168,12 +192,10 @@ async def forget_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Forget (delete/archive/silence) memories within a scope."""
+    """Forget (delete/archive/silence) memories. Holistic: tenant-only."""
     try:
         result = await orchestrator.forget(
             tenant_id=auth.tenant_id,
-            scope=body.scope,
-            scope_id=body.scope_id,
             memory_ids=body.memory_ids,
             query=body.query,
             before=body.before,
@@ -188,20 +210,15 @@ async def forget_memory(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/memory/stats/{scope}/{scope_id}", response_model=MemoryStats)
+@router.get("/memory/stats", response_model=MemoryStats)
 async def get_memory_stats(
-    scope: MemoryScope,
-    scope_id: str,
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Get memory statistics for a scope."""
+    """Get memory statistics for tenant. Holistic: tenant-only."""
     try:
-        stats = await orchestrator.get_stats(
-            tenant_id=auth.tenant_id,
-            scope_id=scope_id,
-        )
-        return MemoryStats(scope=scope, scope_id=scope_id, **stats)
+        stats = await orchestrator.get_stats(tenant_id=auth.tenant_id)
+        return MemoryStats(**stats)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -230,17 +247,17 @@ async def session_write(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Write to session memory (scope=SESSION)."""
+    """Write to memory with session_id for origin tracking. Holistic: tenant-only."""
     try:
         result = await orchestrator.write(
             tenant_id=auth.tenant_id,
             content=body.content,
+            context_tags=body.context_tags or ["conversation"],
+            session_id=session_id,
             memory_type=body.memory_type,
             metadata=body.metadata,
             turn_id=body.turn_id,
             agent_id=body.agent_id,
-            scope=MemoryScope.SESSION,
-            scope_id=session_id,
             namespace=body.namespace,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
@@ -262,16 +279,15 @@ async def session_read(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Read from session memory."""
+    """Read from memory. Holistic: tenant-only (session_id kept for API compatibility)."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.utcnow()
     try:
         packet = await orchestrator.read(
             tenant_id=auth.tenant_id,
-            scope=MemoryScope.SESSION,
-            scope_id=session_id,
             query=body.query,
             max_results=body.max_results,
+            context_filter=body.context_filter,
             memory_types=body.memory_types,
             time_filter={"since": body.since, "until": body.until} if body.since or body.until else None,
         )

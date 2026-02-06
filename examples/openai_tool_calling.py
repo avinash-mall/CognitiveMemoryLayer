@@ -37,7 +37,7 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_write",
-            "description": "Store new information in the session's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them. The system automatically filters trivial information.",
+            "description": "Store important information in long-term memory. The system automatically manages context. Use when the user shares personal information, preferences, or significant facts.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -59,7 +59,7 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_read",
-            "description": "Retrieve relevant memories to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
+            "description": "Retrieve relevant memories. Usually automatic, but call explicitly for specific queries (e.g. user preferences, history, or personal information).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -147,8 +147,6 @@ class MemoryEnabledAssistant:
         scope: str = "session"
     ):
         self.session_id = session_id
-        self.scope = scope
-        self.scope_id = session_id
         self.model = model
         
         # Initialize OpenAI client
@@ -184,39 +182,30 @@ Be natural and conversational. Don't mention the memory system explicitly unless
         try:
             if tool_name == "memory_write":
                 result = self.memory.write(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    content=arguments["content"],
-                    memory_type=arguments.get("memory_type")
+                    arguments["content"],
+                    session_id=self.session_id,
+                    context_tags=["conversation"],
+                    memory_type=arguments.get("memory_type"),
                 )
                 return json.dumps({
                     "success": result.success,
                     "message": result.message
                 })
-            
             elif tool_name == "memory_read":
                 result = self.memory.read(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    query=arguments["query"],
+                    arguments["query"],
                     memory_types=arguments.get("memory_types"),
                     format="llm_context"
                 )
                 return result.llm_context or "No relevant memories found."
-            
             elif tool_name == "memory_update":
                 result = self.memory.update(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
                     memory_id=arguments["memory_id"],
                     feedback=arguments["feedback"]
                 )
                 return json.dumps(result)
-            
             elif tool_name == "memory_forget":
                 result = self.memory.forget(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
                     query=arguments["query"],
                     action=arguments.get("action", "archive")
                 )

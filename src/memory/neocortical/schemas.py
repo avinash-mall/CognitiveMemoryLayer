@@ -43,13 +43,13 @@ class SemanticFact:
 
     id: str
     tenant_id: str
-    scope_id: str
     category: FactCategory
     key: str
     subject: str
     predicate: str
     value: Any
     value_type: str
+    context_tags: List[str] = field(default_factory=list)
     confidence: float = 0.8
     evidence_count: int = 1
     evidence_ids: List[str] = field(default_factory=list)

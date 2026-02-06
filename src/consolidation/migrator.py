@@ -55,10 +55,10 @@ class ConsolidationMigrator:
                 gist = alignment.gist
 
                 if alignment.can_integrate_rapidly and alignment.integration_key:
-                    await self._update_existing_fact(tenant_id, user_id, alignment)
+                    await self._update_existing_fact(tenant_id, alignment)
                     result.facts_updated += 1
                 else:
-                    await self._create_new_fact(tenant_id, user_id, alignment)
+                    await self._create_new_fact(tenant_id, alignment)
                     result.facts_created += 1
 
                 result.gists_processed += 1
@@ -80,13 +80,11 @@ class ConsolidationMigrator:
     async def _update_existing_fact(
         self,
         tenant_id: str,
-        user_id: str,
         alignment: AlignmentResult,
     ):
         gist = alignment.gist
         await self.semantic.store_fact(
             tenant_id=tenant_id,
-            user_id=user_id,
             key=alignment.integration_key or gist.key or "user:custom:unknown",
             value=gist.value if gist.value is not None else gist.text,
             confidence=gist.confidence,
@@ -96,7 +94,6 @@ class ConsolidationMigrator:
     async def _create_new_fact(
         self,
         tenant_id: str,
-        user_id: str,
         alignment: AlignmentResult,
     ):
         gist = alignment.gist
@@ -108,7 +105,6 @@ class ConsolidationMigrator:
         )
         await self.semantic.store_fact(
             tenant_id=tenant_id,
-            user_id=user_id,
             key=key,
             value=gist.value if gist.value is not None else gist.text,
             confidence=gist.confidence,

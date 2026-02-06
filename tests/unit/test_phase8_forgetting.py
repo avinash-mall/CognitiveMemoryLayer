@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemoryScope, MemorySource, MemoryType
+from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance
 from src.forgetting.actions import ForgettingAction, ForgettingPolicyEngine
 from src.forgetting.scorer import (
@@ -28,9 +28,7 @@ def _make_record(
     return MemoryRecord(
         id=uuid4(),
         tenant_id="t",
-        scope=MemoryScope.USER,
-        scope_id="u",
-        user_id="u",
+        context_tags=[],
         type=memory_type,
         text=text,
         confidence=confidence,
@@ -235,9 +233,7 @@ class TestDependencyCheck:
         r1 = await store.upsert(
             MemoryRecordCreate(
                 tenant_id=tenant_id,
-                scope=MemoryScope.USER,
-                scope_id=user_id,
-                user_id=user_id,
+                context_tags=[],
                 type=MemoryType.EPISODIC_EVENT,
                 text="First memory.",
                 provenance=Provenance(source=MemorySource.USER_EXPLICIT),
@@ -246,9 +242,7 @@ class TestDependencyCheck:
         await store.upsert(
             MemoryRecordCreate(
                 tenant_id=tenant_id,
-                scope=MemoryScope.USER,
-                scope_id=user_id,
-                user_id=user_id,
+                context_tags=[],
                 type=MemoryType.EPISODIC_EVENT,
                 text="Second memory.",
                 provenance=Provenance(source=MemorySource.USER_EXPLICIT),
@@ -273,9 +267,7 @@ class TestDependencyCheck:
         r1 = await store.upsert(
             MemoryRecordCreate(
                 tenant_id=tenant_id,
-                scope=MemoryScope.USER,
-                scope_id=user_id,
-                user_id=user_id,
+                context_tags=[],
                 type=MemoryType.EPISODIC_EVENT,
                 text="Referenced memory.",
                 provenance=Provenance(source=MemorySource.USER_EXPLICIT),
@@ -285,9 +277,7 @@ class TestDependencyCheck:
         r2 = await store.upsert(
             MemoryRecordCreate(
                 tenant_id=tenant_id,
-                scope=MemoryScope.USER,
-                scope_id=user_id,
-                user_id=user_id,
+                context_tags=[],
                 type=MemoryType.EPISODIC_EVENT,
                 text="Another memory.",
                 provenance=Provenance(source=MemorySource.USER_EXPLICIT),

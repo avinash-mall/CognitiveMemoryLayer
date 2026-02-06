@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from ..core.enums import MemoryScope, MemorySource, MemoryType
+from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance
 from ..storage.base import MemoryStoreBase
 
@@ -12,6 +12,7 @@ class ConversationMemory:
     """
     Store and retrieve conversation history per session.
     Messages are stored as memory records with type MESSAGE or CONVERSATION.
+    Holistic: tenant-only, session_id for origin tracking.
     """
 
     def __init__(self, store: MemoryStoreBase) -> None:
@@ -32,10 +33,8 @@ class ConversationMemory:
         text = content
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.SESSION,
-            scope_id=session_id,
-            user_id=None,
-            session_id=session_id,
+            context_tags=["conversation", "message"],
+            source_session_id=session_id,
             type=MemoryType.MESSAGE,
             text=text,
             key=None,
@@ -55,8 +54,11 @@ class ConversationMemory:
         """Get recent conversation history (messages in time order)."""
         records = await self.store.scan(
             tenant_id=tenant_id,
-            user_id=session_id,
-            filters={"status": "active", "type": [MemoryType.MESSAGE.value, MemoryType.CONVERSATION.value]},
+            filters={
+                "status": "active",
+                "type": [MemoryType.MESSAGE.value, MemoryType.CONVERSATION.value],
+                "source_session_id": session_id,
+            },
             order_by="-timestamp",
             limit=limit,
         )

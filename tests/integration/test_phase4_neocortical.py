@@ -27,18 +27,17 @@ async def test_neocortical_store_fact_and_profile(pg_session_factory):
     store = NeocorticalStore(graph_store=graph_store, fact_store=fact_store)
 
     tenant_id = f"t-{uuid4().hex[:8]}"
-    user_id = f"u-{uuid4().hex[:8]}"
 
     fact = await store.store_fact(
-        tenant_id, user_id, "user:identity:name", "Diana", confidence=0.85
+        tenant_id, "user:identity:name", "Diana", confidence=0.85
     )
     assert fact.value == "Diana"
 
-    got = await store.get_fact(tenant_id, user_id, "user:identity:name")
+    got = await store.get_fact(tenant_id, "user:identity:name")
     assert got is not None
     assert got.value == "Diana"
 
-    profile = await store.get_user_profile(tenant_id, user_id)
+    profile = await store.get_tenant_profile(tenant_id)
     assert isinstance(profile, dict)
 
 
@@ -49,10 +48,9 @@ async def test_neocortical_text_search(pg_session_factory):
     store = NeocorticalStore(graph_store=graph_store, fact_store=fact_store)
 
     tenant_id = f"t-{uuid4().hex[:8]}"
-    user_id = f"u-{uuid4().hex[:8]}"
-    await store.store_fact(tenant_id, user_id, "user:location:current_city", "Berlin")
+    await store.store_fact(tenant_id, "user:location:current_city", "Berlin")
 
-    results = await store.text_search(tenant_id, user_id, "Berlin", limit=5)
+    results = await store.text_search(tenant_id, "Berlin", limit=5)
     assert isinstance(results, list)
     if results:
         assert results[0]["type"] == "fact"

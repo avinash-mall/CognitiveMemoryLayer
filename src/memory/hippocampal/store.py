@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from ...core.enums import MemoryScope, MemoryStatus, MemorySource, MemoryType
+from ...core.enums import MemoryStatus, MemorySource, MemoryType
 from ...core.schemas import (
     EntityMention,
     MemoryRecord,
@@ -45,9 +45,9 @@ class HippocampalStore:
     async def encode_chunk(
         self,
         tenant_id: str,
-        scope: MemoryScope,
-        scope_id: str,
         chunk: SemanticChunk,
+        context_tags: Optional[List[str]] = None,
+        source_session_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         existing_memories: Optional[List[Dict[str, Any]]] = None,
         namespace: Optional[str] = None,
@@ -90,8 +90,8 @@ class HippocampalStore:
 
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=scope,
-            scope_id=scope_id,
+            context_tags=context_tags or [],
+            source_session_id=source_session_id,
             agent_id=agent_id,
             namespace=namespace,
             type=memory_type,
@@ -122,15 +122,14 @@ class HippocampalStore:
     async def encode_batch(
         self,
         tenant_id: str,
-        scope: MemoryScope,
-        scope_id: str,
         chunks: List[SemanticChunk],
+        context_tags: Optional[List[str]] = None,
+        source_session_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         namespace: Optional[str] = None,
     ) -> List[MemoryRecord]:
         existing = await self.store.scan(
             tenant_id,
-            scope_id,
             filters={"status": MemoryStatus.ACTIVE.value},
             limit=50,
             order_by="-timestamp",
@@ -140,10 +139,10 @@ class HippocampalStore:
         for chunk in chunks:
             record = await self.encode_chunk(
                 tenant_id,
-                scope,
-                scope_id,
                 chunk,
-                agent_id,
+                context_tags=context_tags,
+                source_session_id=source_session_id,
+                agent_id=agent_id,
                 existing_memories=existing_dicts,
                 namespace=namespace,
             )
@@ -155,17 +154,17 @@ class HippocampalStore:
     async def search(
         self,
         tenant_id: str,
-        scope_id: str,
         query: str,
         top_k: int = 10,
+        context_filter: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[MemoryRecord]:
         query_embedding = await self.embeddings.embed(query)
         results = await self.store.vector_search(
             tenant_id,
-            scope_id,
             embedding=query_embedding.embedding,
             top_k=top_k,
+            context_filter=context_filter,
             filters=filters,
         )
         for record in results:
@@ -182,7 +181,6 @@ class HippocampalStore:
     async def get_recent(
         self,
         tenant_id: str,
-        scope_id: str,
         limit: int = 20,
         memory_types: Optional[List[MemoryType]] = None,
     ) -> List[MemoryRecord]:
@@ -191,7 +189,6 @@ class HippocampalStore:
             filters["type"] = [t.value for t in memory_types]
         return await self.store.scan(
             tenant_id,
-            scope_id,
             filters=filters,
             order_by="-timestamp",
             limit=limit,
