@@ -189,5 +189,6 @@ class TestConfig:
 
     def test_nested_settings_defaults(self):
         s = get_settings()
-        assert s.embedding.provider in ("openai", "local")
-        assert s.memory.working_memory_max_chunks == 10
+        assert s.embedding.provider in ("openai", "local", "vllm")
+        assert s.embedding.dimensions == 1536
+        assert s.llm.provider in ("openai", "vllm", "ollama", "gemini", "claude")

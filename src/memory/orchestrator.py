@@ -22,7 +22,7 @@ from ..retrieval.memory_retriever import MemoryRetriever
 from ..storage.connection import DatabaseManager
 from ..storage.neo4j import Neo4jGraphStore
 from ..storage.postgres import PostgresMemoryStore
-from ..utils.embeddings import OpenAIEmbeddings
+from ..utils.embeddings import get_embedding_client
 from ..utils.llm import get_llm_client
 
 try:
@@ -68,7 +68,7 @@ class MemoryOrchestrator:
     async def create(cls, db_manager: DatabaseManager) -> "MemoryOrchestrator":
         """Factory method to create orchestrator with all dependencies."""
         llm_client = get_llm_client()
-        embedding_client = OpenAIEmbeddings()
+        embedding_client = get_embedding_client()
 
         episodic_store = PostgresMemoryStore(db_manager.pg_session)
         graph_store = Neo4jGraphStore(db_manager.neo4j_driver)
@@ -100,7 +100,10 @@ class MemoryOrchestrator:
             llm_client=llm_client,
         )
 
-        forgetting = ForgettingWorker(store=episodic_store)
+        forgetting = ForgettingWorker(
+            store=episodic_store,
+            compression_llm_client=llm_client,
+        )
 
         scratch_pad = ScratchPad(store=episodic_store)
         conversation = ConversationMemory(store=episodic_store)
