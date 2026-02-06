@@ -141,7 +141,8 @@ class SemanticClusterer:
                     EpisodeCluster(
                         cluster_id=c.cluster_id,
                         episodes=unassigned,
-                        centroid=_centroid([e.embedding for e in unassigned if e.embedding]) or c.centroid,
+                        centroid=_centroid([e.embedding for e in unassigned if e.embedding])
+                        or c.centroid,
                         avg_confidence=sum(e.confidence for e in unassigned) / len(unassigned),
                     )
                 )

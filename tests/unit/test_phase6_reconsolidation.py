@@ -98,9 +98,10 @@ class TestConflictDetector:
 
     @pytest.mark.asyncio
     async def test_fast_preference_temporal(self):
+        """Preference-to-preference with topic overlap is TEMPORAL_CHANGE (fast path)."""
         detector = ConflictDetector(llm_client=None)
-        old = _make_memory("I prefer coffee.")
-        result = await detector.detect(old, "I prefer tea.")
+        old = _make_memory("I prefer black coffee.")
+        result = await detector.detect(old, "I prefer milk coffee.")
         assert result.conflict_type == ConflictType.TEMPORAL_CHANGE
         assert result.is_superseding is True
 
