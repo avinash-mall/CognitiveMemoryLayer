@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from .clusterer import SemanticClusterer
@@ -66,7 +66,7 @@ class ConsolidationWorker:
         task: Optional[ConsolidationTask] = None,
     ) -> ConsolidationReport:
         """Run full consolidation for a user."""
-        started = datetime.utcnow()
+        started = datetime.now(timezone.utc)
 
         episode_limit = task.episode_limit if task else 200
         episodes = await self.sampler.sample(tenant_id, user_id, max_episodes=episode_limit)
@@ -76,7 +76,7 @@ class ConsolidationWorker:
                 tenant_id=tenant_id,
                 user_id=user_id,
                 started_at=started,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 episodes_sampled=0,
                 clusters_formed=0,
                 gists_extracted=0,
@@ -95,7 +95,7 @@ class ConsolidationWorker:
             compress_episodes=False,
         )
 
-        completed = datetime.utcnow()
+        completed = datetime.now(timezone.utc)
         return ConsolidationReport(
             tenant_id=tenant_id,
             user_id=user_id,

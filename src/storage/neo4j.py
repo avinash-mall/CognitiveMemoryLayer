@@ -1,13 +1,17 @@
 """Neo4j knowledge graph store for semantic memory."""
 
+import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from neo4j import AsyncGraphDatabase
+from neo4j.exceptions import ClientError as Neo4jClientError
 
 from .base import GraphStoreBase
 from ..core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,9 +43,21 @@ class GraphEdge:
 
 def _sanitize_rel_type(predicate: str) -> str:
     """Sanitize predicate for Neo4j relationship type (alphanumeric + underscore only)."""
-    return "".join(
+    sanitized = "".join(
         c if c.isalnum() or c == "_" else "_" for c in predicate.upper().replace(" ", "_")
     )
+    # Strip leading/trailing underscores and collapse runs
+    sanitized = "_".join(part for part in sanitized.split("_") if part)
+    if not sanitized or not sanitized.replace("_", "").isalnum():
+        return "RELATED_TO"
+    return sanitized
+
+
+def _validate_max_depth(max_depth: int) -> int:
+    """Validate max_depth is a positive integer within safe bounds."""
+    if not isinstance(max_depth, int) or max_depth < 1:
+        return 1
+    return min(max_depth, 10)  # Cap at 10 to prevent runaway traversals
 
 
 class Neo4jGraphStore(GraphStoreBase):
@@ -79,7 +95,7 @@ class Neo4jGraphStore(GraphStoreBase):
         properties = properties or {}
         if namespace is not None:
             properties["namespace"] = namespace
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         query = """
         MERGE (n:Entity {
@@ -122,12 +138,13 @@ class Neo4jGraphStore(GraphStoreBase):
         namespace: Optional[str] = None,
     ) -> str:
         """Create or update an edge between two nodes. Creates nodes if they don't exist."""
+        target = object  # Avoid shadowing built-in 'object'
         properties = properties or {}
         if namespace is not None:
             properties["namespace"] = namespace
-        rel_type = _sanitize_rel_type(predicate) or "RELATED_TO"
+        rel_type = _sanitize_rel_type(predicate)
         confidence = properties.get("confidence", 0.8)
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         query = f"""
         MERGE (s:Entity {{
@@ -140,7 +157,7 @@ class Neo4jGraphStore(GraphStoreBase):
         MERGE (o:Entity {{
             tenant_id: $tenant_id,
             scope_id: $scope_id,
-            entity: $object
+            entity: $target
         }})
         ON CREATE SET o.created_at = $now, o.entity_type = 'UNKNOWN'
 
@@ -164,7 +181,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 tenant_id=tenant_id,
                 scope_id=scope_id,
                 subject=subject,
-                object=object,
+                target=target,
                 properties=properties,
                 confidence=confidence,
                 now=now,
@@ -180,6 +197,7 @@ class Neo4jGraphStore(GraphStoreBase):
         max_depth: int = 2,
     ) -> List[Dict[str, Any]]:
         """Get neighboring nodes up to max_depth hops."""
+        max_depth = _validate_max_depth(max_depth)
         fallback_query = f"""
         MATCH path = (start:Entity {{
             tenant_id: $tenant_id,
@@ -218,7 +236,9 @@ class Neo4jGraphStore(GraphStoreBase):
                     entity=entity,
                     max_depth=max_depth,
                 )
-            except Exception:
+            except Neo4jClientError:
+                # APOC not available; fall back to plain Cypher traversal
+                logger.debug("APOC unavailable, falling back to Cypher traversal")
                 result = await session.run(
                     fallback_query,
                     tenant_id=tenant_id,
@@ -298,7 +318,9 @@ class Neo4jGraphStore(GraphStoreBase):
                     damping=damping,
                     top_k=top_k,
                 )
-            except Exception:
+            except Neo4jClientError:
+                # GDS not available; fall back to multi-hop heuristic
+                logger.debug("GDS unavailable, falling back to multi-hop heuristic")
                 result = await session.run(
                     fallback_query,
                     tenant_id=tenant_id,
@@ -352,15 +374,16 @@ class Neo4jGraphStore(GraphStoreBase):
         limit: int = 50,
     ) -> List[Tuple[str, str, str, Dict]]:
         """Search for triples matching a pattern. None values are wildcards."""
+        target = object  # Avoid shadowing built-in 'object'
         conditions = ["s.tenant_id = $tenant_id", "s.scope_id = $scope_id"]
         params: Dict[str, Any] = {"tenant_id": tenant_id, "scope_id": scope_id, "limit": limit}
 
         if subject:
             conditions.append("s.entity = $subject")
             params["subject"] = subject
-        if object:
-            conditions.append("o.entity = $object")
-            params["object"] = object
+        if target:
+            conditions.append("o.entity = $target")
+            params["target"] = target
 
         rel_pattern = "[r]" if not predicate else f"[r:{_sanitize_rel_type(predicate)}]"
         query = f"""

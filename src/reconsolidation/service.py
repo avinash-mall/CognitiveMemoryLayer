@@ -1,8 +1,11 @@
 """Reconsolidation orchestrator service."""
 
+import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
@@ -70,7 +73,7 @@ class ReconsolidationService:
         retrieved_memories: List[MemoryRecord],
     ) -> ReconsolidationResult:
         """Process a conversation turn for reconsolidation."""
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc)
         operations_applied: List[Dict[str, Any]] = []
         conflicts_found = 0
 
@@ -90,7 +93,7 @@ class ReconsolidationService:
 
         if not new_facts:
             await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
-            elapsed = (datetime.utcnow() - start).total_seconds() * 1000
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
             return ReconsolidationResult(
                 turn_id=turn_id,
                 memories_processed=len(retrieved_memories),
@@ -131,7 +134,7 @@ class ReconsolidationService:
                     )
 
         await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
-        elapsed = (datetime.utcnow() - start).total_seconds() * 1000
+        elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
         return ReconsolidationResult(
             turn_id=turn_id,
@@ -202,5 +205,9 @@ class ReconsolidationService:
                     await self.store.delete(op.target_id, hard=False)
                 return True
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(
+                "revision_operation_failed",
+                extra={"op_type": op.op_type.value, "error": str(e)},
+            )
             return False

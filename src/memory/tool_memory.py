@@ -1,7 +1,7 @@
 """Tool result storage for agentic workflows."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -40,7 +40,7 @@ class ToolMemory:
             source_session_id=session_id,
             type=MemoryType.TOOL_RESULT,
             text=text,
-            key=f"tool_result:{session_id}:{tool_name}:{datetime.utcnow().isoformat()}",
+            key=f"tool_result:{session_id}:{tool_name}:{datetime.now(timezone.utc).isoformat()}",
             embedding=None,
             metadata=meta,
             provenance=Provenance(source=MemorySource.TOOL_RESULT, tool_refs=[tool_name]),

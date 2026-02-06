@@ -1,8 +1,7 @@
 """Pytest fixtures for Phase 1 and beyond."""
 
-import asyncio
 from datetime import datetime
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -27,12 +26,16 @@ def _get_postgres_url() -> str:
     return ensure_asyncpg_url(get_settings().database.postgres_url)
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+@pytest.fixture(autouse=True)
+def _clear_settings_cache():
+    """Auto-clear the settings LRU cache after each test to prevent pollution (MED-47)."""
+    yield
+    try:
+        from src.core.config import get_settings
+
+        get_settings.cache_clear()
+    except Exception:
+        pass
 
 
 @pytest.fixture

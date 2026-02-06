@@ -1,6 +1,6 @@
 """Hippocampal store: episodic memory with write gate, embedding, and vector store."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ...core.enums import MemoryStatus, MemorySource, MemoryType
@@ -158,14 +158,27 @@ class HippocampalStore:
             context_filter=context_filter,
             filters=filters,
         )
+        # Batch update access tracking for all returned results
+        now = datetime.now(timezone.utc)
         for record in results:
-            await self.store.update(
-                record.id,
-                {
-                    "access_count": record.access_count + 1,
-                    "last_accessed_at": datetime.utcnow(),
-                },
-                increment_version=False,
+            record.access_count += 1
+            record.last_accessed_at = now
+        # Fire off updates concurrently; don't block on stale pre-update data
+        if results:
+            import asyncio
+
+            await asyncio.gather(
+                *[
+                    self.store.update(
+                        record.id,
+                        {
+                            "access_count": record.access_count,
+                            "last_accessed_at": now,
+                        },
+                        increment_version=False,
+                    )
+                    for record in results
+                ]
             )
         return results
 

@@ -1,5 +1,6 @@
 """API authentication and authorization (config-based, no hardcoded keys)."""
 
+import hmac
 from dataclasses import dataclass
 from typing import Optional
 
@@ -52,19 +53,30 @@ async def get_auth_context(
     x_tenant_id: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
 ) -> AuthContext:
-    """Dependency to get auth context from request."""
+    """Dependency to get auth context from request.
+
+    The X-Tenant-Id header can override the default tenant derived from the
+    API key. The X-User-Id header can set the user identity.
+    """
     if not api_key:
         raise HTTPException(status_code=401, detail="API key required")
 
     api_keys = _build_api_keys()
-    context = api_keys.get(api_key)
+    context = None
+    for known_key, ctx in api_keys.items():
+        if hmac.compare_digest(api_key, known_key):
+            context = ctx
+            break
     if not context:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    if x_user_id:
+    # Apply header overrides (MED-30)
+    tenant_id = x_tenant_id or context.tenant_id
+    user_id = x_user_id or context.user_id
+    if tenant_id != context.tenant_id or user_id != context.user_id:
         context = AuthContext(
-            tenant_id=context.tenant_id,
-            user_id=x_user_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
             api_key=context.api_key,
             can_read=context.can_read,
             can_write=context.can_write,

@@ -112,7 +112,7 @@ class LocalEmbeddings(EmbeddingClient):
     async def embed(self, text: str) -> EmbeddingResult:
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         embedding = await loop.run_in_executor(None, lambda: self.model.encode(text).tolist())
         return EmbeddingResult(
             embedding=embedding,
@@ -124,7 +124,7 @@ class LocalEmbeddings(EmbeddingClient):
     async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         embeddings = await loop.run_in_executor(None, lambda: self.model.encode(texts).tolist())
         return [
             EmbeddingResult(
@@ -148,12 +148,20 @@ class MockEmbeddingClient(EmbeddingClient):
         return self._dimensions
 
     async def embed(self, text: str) -> EmbeddingResult:
+        import random
+
+        # Use the hash to seed a deterministic PRNG, generating all dimensions
+        # instead of padding most with 0.0 (LOW-15)
         h = hashlib.sha256(text.encode()).digest()
-        embedding = [(b / 255.0) - 0.5 for b in h[: self._dimensions]]
-        if len(embedding) < self._dimensions:
-            embedding.extend([0.0] * (self._dimensions - len(embedding)))
+        seed = int.from_bytes(h[:8], "little")
+        rng = random.Random(seed)
+        embedding = [rng.gauss(0.0, 0.3) for _ in range(self._dimensions)]
+        # L2-normalize for reliable cosine similarity
+        norm = sum(x * x for x in embedding) ** 0.5
+        if norm > 0:
+            embedding = [x / norm for x in embedding]
         return EmbeddingResult(
-            embedding=embedding[: self._dimensions],
+            embedding=embedding,
             model="mock",
             dimensions=self._dimensions,
             tokens_used=len(text.split()),
