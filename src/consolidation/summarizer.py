@@ -17,7 +17,8 @@ COMMON THEMES: {themes}
 Extract:
 1. The main fact or pattern these memories represent
 2. The confidence level (how consistent/certain the info is)
-3. The type: "fact" (definite info), "preference" (user likes/dislikes), "pattern" (behavioral tendency), or "summary" (general synopsis)
+3. The type: "fact" (definite info), "preference" (user likes/dislikes),
+   "pattern" (behavioral tendency), or "summary" (general synopsis)
 4. A structured representation if possible (subject, predicate, value)
 
 Return JSON:
