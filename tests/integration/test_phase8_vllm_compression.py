@@ -2,11 +2,11 @@
 Integration tests for LLM-based compression using a real vLLM server.
 
 These tests are skipped unless a vLLM OpenAI-compatible endpoint is available:
-  - Set LLM__VLLM_BASE_URL (or VLLM_BASE_URL) to the vLLM endpoint, e.g. http://vllm:8000/v1.
+  - Set LLM__BASE_URL (or LLM__VLLM_BASE_URL / VLLM_BASE_URL) to the vLLM endpoint, e.g. http://vllm:8000/v1.
   - Start vLLM first, e.g.:
       docker compose -f docker/docker-compose.yml --profile vllm up -d vllm
     then:
-      docker compose run --rm -e LLM__VLLM_BASE_URL=http://vllm:8000/v1 app \\
+      docker compose run --rm -e LLM__PROVIDER=vllm -e LLM__BASE_URL=http://vllm:8000/v1 app \\
         pytest tests/integration/test_phase8_vllm_compression.py -v
   - Without a configured and reachable vLLM server, the tests are skipped with a clear message.
 """
@@ -16,27 +16,31 @@ import os
 import pytest
 
 from src.forgetting.compression import summarize_for_compression
-from src.utils.llm import VLLMClient
+from src.utils.llm import OpenAICompatibleClient
 
 
 def _vllm_base_url() -> str | None:
-    """Base URL for vLLM from env (same as VLLMClient uses)."""
-    return os.environ.get("LLM__VLLM_BASE_URL") or os.environ.get("VLLM_BASE_URL")
+    """Base URL for vLLM from env (LLM__BASE_URL or legacy vars)."""
+    return (
+        os.environ.get("LLM__BASE_URL")
+        or os.environ.get("LLM__VLLM_BASE_URL")
+        or os.environ.get("VLLM_BASE_URL")
+    )
 
 
 SKIP_NO_VLLM = (
-    "vLLM not configured: set LLM__VLLM_BASE_URL or VLLM_BASE_URL to the vLLM OpenAI-compatible "
-    "endpoint (e.g. http://vllm:8000/v1) and ensure the vLLM server is running to run these tests."
+    "vLLM not configured: set LLM__BASE_URL (or LLM__VLLM_BASE_URL / VLLM_BASE_URL) to the vLLM "
+    "OpenAI-compatible endpoint (e.g. http://vllm:8000/v1) and ensure the vLLM server is running."
 )
 
 
 @pytest.fixture(scope="module")
 def vllm_client():
-    """VLLMClient when vLLM is configured; otherwise skip with a clear message."""
+    """OpenAI-compatible client for vLLM when configured; otherwise skip with a clear message."""
     base_url = _vllm_base_url()
     if not base_url:
         pytest.skip(SKIP_NO_VLLM)
-    return VLLMClient(base_url=base_url)
+    return OpenAICompatibleClient(base_url=base_url)
 
 
 async def _skip_if_vllm_unreachable(vllm_client):
