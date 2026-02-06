@@ -35,17 +35,11 @@ Current Large Language Models operate with **fixed context windows** and **stati
 
 Human memory is not a unitary faculty but an **orchestra of distinct functional systems**. Our architecture replicates this through specialized database tiers and biologically-inspired algorithms.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                  │
-│   "Memory is the process of maintaining information over time."                  │
-│                                    — Matlin, 2005                                │
-│                                                                                  │
-│   "The brain does not simply store memories; it actively reconstructs them."    │
-│                                    — Bartlett, 1932                              │
-│                                                                                  │
-└─────────────────────────────────────────────────────────────────────────────────┘
-```
+> *"Memory is the process of maintaining information over time."*
+> — **Matlin, 2005**
+
+> *"The brain does not simply store memories; it actively reconstructs them."*
+> — **Bartlett, 1932**
 
 ### Key Research Frameworks Integrated
 
@@ -113,12 +107,12 @@ flowchart TB
     Stores --> Workers
     Workers --> EventLog
 
-    style API fill:#e1f5fe
-    style Orchestrator fill:#fff3e0
-    style Hippo fill:#e8f5e9
-    style Neo fill:#fce4ec
-    style Workers fill:#f3e5f5
-    style EventLog fill:#eceff1
+    style API fill:#e1f5fe,color:#000
+    style Orchestrator fill:#fff3e0,color:#000
+    style Hippo fill:#e8f5e9,color:#000
+    style Neo fill:#fce4ec,color:#000
+    style Workers fill:#f3e5f5,color:#000
+    style EventLog fill:#eceff1,color:#000
 ```
 
 ---
@@ -138,7 +132,7 @@ flowchart LR
         sensory --> working["Working Memory<br/>max_chunks=10<br/>LLM chunking"]
         sensory & working --> chunks["Chunks for Encoding<br/>(Semantic units ready for LTM)"]
     end
-    style STM fill:#e3f2fd
+    style STM fill:#e3f2fd,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -172,7 +166,7 @@ flowchart TB
         q1 & q2 & q3 --> decision["WriteDecision: STORE / SKIP"]
     end
     note["Threshold 0.3 = CREB activation threshold"]
-    style WG fill:#fff8e1
+    style WG fill:#fff8e1,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -204,7 +198,7 @@ flowchart TB
     end
     sep["Pattern Separation: content_hash prevents duplicates"]
     comp["Pattern Completion: Vector similarity for fuzzy retrieval"]
-    style Hippo2 fill:#e8f5e9
+    style Hippo2 fill:#e8f5e9,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -233,8 +227,8 @@ flowchart TB
         user -->|works_at| acme["Acme Corp"]
     end
     ppr["Retrieval: Personalized PageRank from query entities<br/>(Multi-hop reasoning through graph traversal)"]
-    style Neo2 fill:#fce4ec
-    style user fill:#ffcdd2
+    style Neo2 fill:#fce4ec,color:#000
+    style user fill:#ffcdd2,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -259,12 +253,12 @@ flowchart TB
     subgraph Retrieval["HYBRID RETRIEVAL (Ecphory)"]
         query["Query: 'What food does the user prefer?'"] --> classifier["Query Classifier<br/>(Intent Detection)"]
         classifier --> vector["Vector Search<br/>(Hippocampal)<br/>─────────<br/>Semantic sim.<br/>to embeddings"]
-        classifier --> graph["Graph Search<br/>(Neocortical)<br/>─────────<br/>PPR traversal<br/>from entities"]
-        vector & graph --> reranker["Reranker<br/>(Relevance+Recency+<br/>Confidence+Diverse)"]
+        classifier --> graphSearch["Graph Search<br/>(Neocortical)<br/>─────────<br/>PPR traversal<br/>from entities"]
+        vector & graphSearch --> reranker["Reranker<br/>(Relevance+Recency+<br/>Confidence+Diverse)"]
         reranker --> packet["Memory Packet<br/>(Categorized result)"]
     end
     enc["Encoding Specificity: Retrieval cue must overlap with engram"]
-    style Retrieval fill:#e8eaf6
+    style Retrieval fill:#e8eaf6,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -296,7 +290,7 @@ flowchart TB
         belief --> correct["CORRECT<br/>(invalidate)"]
         reinforce & timeslice & correct --> restab["Restabilize<br/>(Update in store)"]
     end
-    style Recon fill:#fff3e0
+    style Recon fill:#fff3e0,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -330,7 +324,7 @@ flowchart TB
         schema --> migrator["Migrator<br/>(Hippo → Neocortex)"]
         migrator --> mark2["Mark episodes as consolidated<br/>(Allows forgetting of source detail)"]
     end
-    style Consol fill:#f3e5f5
+    style Consol fill:#f3e5f5,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
@@ -359,7 +353,7 @@ flowchart TB
         policy --> executor["Executor<br/>─────────────<br/>• Decay: reduce confidence<br/>• Silence: mark inaccessible<br/>• Compress: LLM summarization<br/>• Delete: with dependency check"]
     end
     interference["Interference Management: Detect & resolve duplicate/overlap"]
-    style Forget fill:#ffebee
+    style Forget fill:#ffebee,color:#000
 ```
 
 | Biological Concept | Implementation | Location |
