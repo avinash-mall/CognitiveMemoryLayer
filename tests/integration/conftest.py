@@ -50,9 +50,13 @@ if HAS_TESTCONTAINERS and not _use_env_postgres():
         with Neo4jContainer("neo4j:5") as neo4j:
             yield neo4j
 
-    @pytest.fixture(scope="module")
+    @pytest.fixture
     async def pg_engine(postgres_container: PostgresContainer):
-        """Override root pg_engine with Testcontainers Postgres for integration tests."""
+        """Override root pg_engine with Testcontainers Postgres for integration tests.
+
+        Function-scoped so each test gets an engine on its own event loop, avoiding
+        "Future attached to a different loop" when disposing or rolling back.
+        """
         from sqlalchemy.ext.asyncio import create_async_engine
 
         from src.core.config import ensure_asyncpg_url

@@ -11,8 +11,10 @@ This document catalogues all identified issues in the codebase, organized by sev
 | Empty/Placeholder Files | 3 | 2 |
 | Code Organization | 2 | 2 |
 | Potential Runtime Issues | 2 | 2 |
-| Documentation | 1 | 0 |
-| **Total** | **8** | **6** |
+| Documentation | 1 | 1 |
+| **Total** | **8** | **8** |
+
+**All listed issues have been resolved.**
 
 ---
 
@@ -38,6 +40,26 @@ This document catalogues all identified issues in the codebase, organized by sev
 
 ---
 
+### 3. ~~Empty `__init__.py` Files Throughout Codebase~~ — RESOLVED
+
+**Location:** All package roots: `src/`, `src/api/`, `src/core/`, `src/storage/`, `src/utils/`, `src/memory/`, `src/retrieval/`, `src/extraction/`, `src/consolidation/`, `src/forgetting/`, `src/reconsolidation/`.
+
+**Issue:** All `__init__.py` files were empty placeholders without any exports, so no public API was explicitly defined and users had to import from deep nested paths.
+
+**Resolution (2026-02-06):** Added meaningful exports to every package `__init__.py`:
+- **src.core:** `get_settings`, `Settings`, `MemoryContext`, `MemoryType`, `MemoryStatus`, `MemorySource`, `MemoryRecord`, `MemoryRecordCreate`, `MemoryPacket`
+- **src.api:** `create_app`, `AuthContext`, `get_auth_context`, `require_write_permission`, `require_admin_permission`
+- **src.storage:** `DatabaseManager`, `Base`, `EventLogModel`, `MemoryRecordModel`, `SemanticFactModel`, `PostgresMemoryStore`
+- **src.utils:** `EmbeddingClient`, `OpenAIEmbeddings`, `LLMClient`, `get_llm_client`
+- **src.memory:** `MemoryOrchestrator`, `ShortTermMemory`, `HippocampalStore`, `NeocorticalStore`
+- **src.retrieval:** `MemoryRetriever`
+- **src.extraction:** `EntityExtractor`, `FactExtractor`, `LLMFactExtractor`
+- **src.consolidation:** `ConsolidationReport`, `ConsolidationWorker`
+- **src.forgetting:** `ForgettingReport`, `ForgettingWorker`, `ForgettingScheduler`
+- **src.reconsolidation:** `LabileMemory`, `LabileSession`, `LabileStateTracker`, `ReconsolidationResult`, `ReconsolidationService`
+
+---
+
 ### 4. ~~Hardcoded CORS Origin in `app.py`~~ — RESOLVED
 
 **Location:** `src/api/app.py` (line ~44)
@@ -49,15 +71,6 @@ This document catalogues all identified issues in the codebase, organized by sev
 - If `debug` mode is enabled → allow all origins (`["*"]`)
 - Otherwise → use sensible development defaults (`["http://localhost:3000", "http://localhost:8080"]`)
 
-```python
-if settings.cors_origins is not None:
-    origins = settings.cors_origins
-elif settings.debug:
-    origins = ["*"]
-else:
-    origins = ["http://localhost:3000", "http://localhost:8080"]
-```
-
 ---
 
 ### 5. ~~Missing Error Handling in `DatabaseManager.close()`~~ — RESOLVED
@@ -66,18 +79,7 @@ else:
 
 **Issue:** The `close()` method didn't handle cases where connections might be `None`, which would raise `AttributeError` if called when connections weren't fully initialized.
 
-**Resolution (2026-02-06):** Added null checks before each close operation:
-
-```python
-async def close(self) -> None:
-    """Close all database connections safely."""
-    if self.pg_engine:
-        await self.pg_engine.dispose()
-    if self.neo4j_driver:
-        await self.neo4j_driver.close()
-    if self.redis:
-        await self.redis.aclose()
-```
+**Resolution (2026-02-06):** Added null checks before each close operation so only non-`None` connections are disposed/closed.
 
 ---
 
@@ -87,143 +89,31 @@ async def close(self) -> None:
 
 **Issue:** The `read()` method accepted `memory_types` and `time_filter` parameters but did not pass them to the underlying retriever, misleading API consumers.
 
-**Resolution (2026-02-06):** Removed the unused `memory_types` and `time_filter` parameters from `MemoryOrchestrator.read()` and removed the corresponding arguments from both call sites in `src/api/routes.py`. The API request schema retains the fields for forward-compatibility; filtering by type and time is handled internally by the retrieval planner at a lower level.
+**Resolution (2026-02-06):** Removed the unused parameters from `MemoryOrchestrator.read()` and from both call sites in `src/api/routes.py`. Filtering by type and time remains at the retrieval layer where supported.
 
 ---
 
-## 🟡 Remaining Issues
+### 7. ~~Simple Tokenization in `SensoryBuffer`~~ — RESOLVED
 
-### 3. Empty `__init__.py` Files Throughout Codebase
+**Location:** `src/memory/sensory/buffer.py`
 
-**Location:** Multiple modules:
-- `src/__init__.py`
-- `src/api/__init__.py`
-- `src/core/__init__.py`
-- `src/storage/__init__.py`
-- `src/utils/__init__.py`
-- `src/memory/__init__.py`
-- `src/retrieval/__init__.py`
-- `src/extraction/__init__.py`
-- `src/consolidation/__init__.py`
-- `src/forgetting/__init__.py`
-- `src/reconsolidation/__init__.py`
+**Issue:** The `_tokenize()` method used basic whitespace splitting instead of proper tokenization, which could produce incorrect token counts for real-world text.
 
-**Issue:** All `__init__.py` files are empty placeholders without any exports. This is not technically incorrect, but it means:
-1. No public API is explicitly defined
-2. No convenient re-exports for common usage patterns
-3. Users must import from deep nested paths
-
-**Impact:** Low - Functions correctly, but reduces developer experience.
-
-**Resolution:** Add meaningful exports to key modules. For example:
-
-**`src/core/__init__.py`:**
-```python
-"""Core types and configuration for CognitiveMemoryLayer."""
-
-from .config import get_settings, Settings
-from .enums import MemoryType, MemoryStatus, MemorySource
-from .schemas import MemoryRecord, MemoryRecordCreate, MemoryPacket
-
-__all__ = [
-    "get_settings",
-    "Settings",
-    "MemoryType",
-    "MemoryStatus",
-    "MemorySource",
-    "MemoryRecord",
-    "MemoryRecordCreate",
-    "MemoryPacket",
-]
-```
-
-**`src/memory/__init__.py`:**
-```python
-"""Memory components: sensory, working, hippocampal, neocortical."""
-
-from .orchestrator import MemoryOrchestrator
-from .short_term import ShortTermMemory
-from .hippocampal.store import HippocampalStore
-from .neocortical.store import NeocorticalStore
-
-__all__ = [
-    "MemoryOrchestrator",
-    "ShortTermMemory",
-    "HippocampalStore",
-    "NeocorticalStore",
-]
-```
+**Resolution (2026-02-06):** Implemented tiktoken (cl100k_base) when available for accurate token counting, with a whitespace-split fallback when tiktoken is not installed. `get_text()` normalizes spacing so joined output is consistent regardless of tokenizer (e.g. `" ".join(raw.split())`).
 
 ---
 
-### 7. Simple Tokenization in `SensoryBuffer`
-
-**Location:** `src/memory/sensory/buffer.py` (line 134-136)
-
-**Issue:** The `_tokenize()` method uses basic whitespace splitting instead of proper tokenization:
-
-```python
-def _tokenize(self, text: str) -> List[str]:
-    """Simple whitespace tokenization. For production, use tiktoken."""
-    return text.split()
-```
-
-**Impact:** Low - Works for basic cases but may produce incorrect token counts for real-world text.
-
-**Resolution:** Implement tiktoken for accurate token counting:
-```python
-def _tokenize(self, text: str) -> List[str]:
-    """Tokenize text using tiktoken for accurate token counting."""
-    try:
-        import tiktoken
-        enc = tiktoken.get_encoding("cl100k_base")
-        tokens = enc.encode(text)
-        return [enc.decode([t]) for t in tokens]
-    except ImportError:
-        # Fallback to whitespace tokenization
-        return text.split()
-```
-
----
-
-### 8. Missing Documentation Files
+### 8. ~~Missing Documentation Files~~ — RESOLVED
 
 **Location:** Project root
 
-**Issue:** Some common documentation files are missing:
-- `CONTRIBUTING.md` - Guidelines for contributors
-- `CHANGELOG.md` - Version history and changes
-- `SECURITY.md` - Security policy and vulnerability reporting
-- `.env.example` - Example environment configuration
+**Issue:** Common documentation files were missing: `CONTRIBUTING.md`, `CHANGELOG.md`, `SECURITY.md`, `.env.example`.
 
-**Impact:** Low - Affects developer experience and project maintainability.
-
-**Resolution:** Create these documentation files:
-
-**`.env.example`:**
-```bash
-# Database Configuration
-DATABASE__POSTGRES_URL=postgresql+asyncpg://localhost/memory
-DATABASE__NEO4J_URL=bolt://localhost:7687
-DATABASE__NEO4J_USER=neo4j
-DATABASE__NEO4J_PASSWORD=
-DATABASE__REDIS_URL=redis://localhost:6379
-
-# API Configuration
-AUTH__API_KEY=your-api-key-here
-AUTH__ADMIN_API_KEY=your-admin-key-here
-AUTH__DEFAULT_TENANT_ID=default
-
-# LLM Configuration
-LLM__PROVIDER=openai
-LLM__MODEL=gpt-4o-mini
-LLM__API_KEY=your-openai-key
-
-# Embedding Configuration
-EMBEDDING__PROVIDER=openai
-EMBEDDING__MODEL=text-embedding-3-small
-EMBEDDING__DIMENSIONS=1536
-```
+**Resolution (2026-02-06):** Created all four:
+- **CONTRIBUTING.md** — Development setup, code standards, how to submit changes, project structure.
+- **CHANGELOG.md** — Unreleased section documenting the recent fixes and additions (public API, CORS, close(), orchestrator read, tokenization, docs).
+- **SECURITY.md** — Supported versions, how to report vulnerabilities privately, and security practices (secrets, API auth, dependencies).
+- **.env.example** — Example environment variables for database, API auth, LLM, and embedding configuration (with optional CORS and DEBUG).
 
 ---
 
@@ -231,10 +121,10 @@ EMBEDDING__DIMENSIONS=1536
 
 1. ~~**Immediate:** Remove or implement empty files (`dependencies.py`, `encoder.py`)~~ ✅ Done
 2. ~~**Short-term:** Fix CORS default and DatabaseManager error handling~~ ✅ Done
-3. **Medium-term:** Add exports to `__init__.py` files for better API ergonomics
-4. **Long-term:** Implement proper tokenization and add missing documentation
+3. ~~**Medium-term:** Add exports to `__init__.py` files for better API ergonomics~~ ✅ Done
+4. ~~**Long-term:** Implement proper tokenization and add missing documentation~~ ✅ Done
 
 ---
 
 *Generated: 2026-02-06*
-*Last updated: 2026-02-06 — Resolved issues 1, 2, 4, 5, 6*
+*Last updated: 2026-02-06 — All 8 issues resolved (3, 7, 8 completed this pass)*

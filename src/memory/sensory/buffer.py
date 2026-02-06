@@ -114,9 +114,10 @@ class SensoryBuffer:
         max_tokens: Optional[int] = None,
         role_filter: Optional[str] = None,
     ) -> str:
-        """Get buffered content as joined text."""
+        """Get buffered content as joined text. Normalizes spacing (e.g. after tiktoken tokens)."""
         tokens = await self.get_recent(max_tokens=max_tokens, role_filter=role_filter)
-        return " ".join(bt.token for bt in tokens)
+        raw = " ".join(bt.token for bt in tokens)
+        return " ".join(raw.split())
 
     async def clear(self) -> None:
         """Clear all buffered tokens."""
@@ -132,8 +133,14 @@ class SensoryBuffer:
             self._tokens.popleft()
 
     def _tokenize(self, text: str) -> List[str]:
-        """Simple whitespace tokenization. For production, use tiktoken."""
-        return text.split()
+        """Tokenize text using tiktoken for accurate token counting; fallback to whitespace if unavailable."""
+        try:
+            import tiktoken
+            enc = tiktoken.get_encoding("cl100k_base")
+            tokens = enc.encode(text)
+            return [enc.decode([t]) for t in tokens]
+        except ImportError:
+            return text.split()
 
     @property
     def size(self) -> int:
