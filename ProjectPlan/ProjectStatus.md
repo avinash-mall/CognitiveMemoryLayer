@@ -21,7 +21,7 @@ flowchart LR
         p12 --> p13["Phase 13<br/>Testing"]
         p13 --> p14["Phase 14<br/>Docs"]
     end
-    style Complete fill:#c8e6c9
+    style Complete fill:#c8e6c9,color:#000
 ```
 
 ---
