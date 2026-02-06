@@ -15,7 +15,7 @@ from .admin_routes import admin_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan handler."""
-    settings = get_settings()
+    get_settings()
     db_manager = DatabaseManager.get_instance()
     app.state.db = db_manager
 
@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
 def create_app() -> FastAPI:
     """Create FastAPI application."""
-    settings = get_settings()
+    get_settings()
 
     app = FastAPI(
         title="Cognitive Memory Layer",

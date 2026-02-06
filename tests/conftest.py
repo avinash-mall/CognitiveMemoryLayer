@@ -17,7 +17,6 @@ except ImportError:
     root = Path(__file__).resolve().parent.parent
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from src.storage.models import Base
 
 
 def _get_postgres_url() -> str:

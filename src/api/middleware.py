@@ -7,7 +7,6 @@ from typing import Dict, Tuple
 import structlog
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 logger = structlog.get_logger()
 

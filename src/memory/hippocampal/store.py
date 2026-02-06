@@ -1,7 +1,6 @@
 """Hippocampal store: episodic memory with write gate, embedding, and vector store."""
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 from ...core.enums import MemoryStatus, MemorySource, MemoryType
 from ...core.schemas import (
@@ -17,7 +16,7 @@ from ...storage.postgres import PostgresMemoryStore
 from ...utils.embeddings import EmbeddingClient
 from ..working.models import SemanticChunk
 from .redactor import PIIRedactor
-from .write_gate import WriteDecision, WriteGate, WriteGateResult
+from .write_gate import WriteDecision, WriteGate
 
 
 class HippocampalStore:

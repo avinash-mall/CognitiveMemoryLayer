@@ -1,5 +1,5 @@
 """Schema management for neocortical fact types."""
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from .schemas import DEFAULT_FACT_SCHEMAS, FactCategory, FactSchema
 

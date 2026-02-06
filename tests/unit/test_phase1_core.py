@@ -1,5 +1,4 @@
 """Unit tests for Phase 1: core enums, schemas, and config."""
-import pytest
 
 from src.core.config import get_settings
 from src.core.enums import (
@@ -10,13 +9,11 @@ from src.core.enums import (
     OperationType,
 )
 from src.core.schemas import (
-    EntityMention,
     EventLog,
     MemoryPacket,
     MemoryRecord,
     MemoryRecordCreate,
     Provenance,
-    Relation,
     RetrievedMemory,
 )
 
