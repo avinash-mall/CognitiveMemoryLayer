@@ -1,6 +1,7 @@
 """Celery application and background tasks (e.g. active forgetting)."""
 
 import asyncio
+import threading
 from typing import Any, Dict
 
 from celery import Celery
@@ -27,16 +28,65 @@ app.conf.update(
     enable_utc=True,
     task_track_started=True,
 )
-# Beat schedule: run forgetting daily per user (in production, iterate over registered users)
+
+# --- Persistent event loop per worker thread (MED-13/14) ---
+_thread_local = threading.local()
+
+
+def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
+    """Return a persistent event loop for this worker thread."""
+    loop = getattr(_thread_local, "loop", None)
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        _thread_local.loop = loop
+    return loop
+
+
+def _run_async(coro):
+    """Run an async coroutine on the persistent per-thread event loop."""
+    loop = _get_or_create_event_loop()
+    return loop.run_until_complete(coro)
+
+
+def _get_all_tenant_user_pairs() -> list[tuple[str, str]]:
+    """Discover all tenant (and user) pairs from the memory store for fan-out."""
+    from sqlalchemy import distinct, select
+
+    from .storage.connection import DatabaseManager
+    from .storage.models import MemoryRecordModel
+
+    async def _fetch():
+        db = DatabaseManager.get_instance()
+        pairs = []
+        async with db.pg_session_factory() as session:
+            r = await session.execute(select(distinct(MemoryRecordModel.tenant_id)))
+            for row in r.scalars().all():
+                tid = row
+                if tid:
+                    pairs.append((tid, tid))  # user_id same as tenant in holistic model
+        return pairs
+
+    return _run_async(_fetch())
+
+
+@app.task(name="src.celery_app.fan_out_forgetting")
+def fan_out_forgetting() -> None:
+    """Discover all tenants and dispatch individual forgetting tasks."""
+    for tenant_id, user_id in _get_all_tenant_user_pairs():
+        run_forgetting_task.delay(tenant_id, user_id)
+
+
+# Beat schedule: run forgetting daily via fan-out
 app.conf.beat_schedule = {
     "forgetting-daily": {
-        "task": "src.celery_app.run_forgetting_task",
+        "task": "src.celery_app.fan_out_forgetting",
         "schedule": 86400.0,  # 24 hours in seconds
         "options": {"queue": "forgetting"},
     },
 }
 app.conf.task_routes = {
     "src.celery_app.run_forgetting_task": {"queue": "forgetting"},
+    "src.celery_app.fan_out_forgetting": {"queue": "forgetting"},
 }
 
 
@@ -51,16 +101,20 @@ def run_forgetting_task(
     """
     Celery task: run active forgetting for a tenant/user.
     Call from API or Beat; runs in worker process with async bridge.
+    Uses persistent event loop to enable connection pool reuse.
     """
-    from .forgetting.worker import ForgettingWorker
-    from .storage.connection import DatabaseManager
-    from .storage.postgres import PostgresMemoryStore
-
-    db = DatabaseManager.get_instance()
-    store = PostgresMemoryStore(db.pg_session_factory)
-    worker = ForgettingWorker(store)
 
     async def _run() -> Dict[str, Any]:
+        # Create DB manager inside async context to ensure connections
+        # are bound to the correct event loop (MED-14)
+        from .forgetting.worker import ForgettingWorker
+        from .storage.connection import DatabaseManager
+        from .storage.postgres import PostgresMemoryStore
+
+        db = DatabaseManager.get_instance()
+        store = PostgresMemoryStore(db.pg_session_factory)
+        worker = ForgettingWorker(store)
+
         report = await worker.run_forgetting(
             tenant_id=tenant_id,
             user_id=user_id,
@@ -83,4 +137,4 @@ def run_forgetting_task(
             "errors": report.result.errors,
         }
 
-    return asyncio.run(_run())
+    return _run_async(_run())

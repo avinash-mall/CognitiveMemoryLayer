@@ -1,7 +1,7 @@
 """Belief revision strategies based on conflict detection."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -93,7 +93,7 @@ class BeliefRevisionEngine:
                     patch={
                         "confidence": new_confidence,
                         "access_count": old_memory.access_count + 1,
-                        "last_accessed_at": datetime.utcnow(),
+                        "last_accessed_at": datetime.now(timezone.utc),
                     },
                     reason="Consistent with new information - reinforcing",
                 )
@@ -113,7 +113,7 @@ class BeliefRevisionEngine:
         """Plan time-slice for temporal changes. Archive old record (valid_to, status=archived)."""
         from ..core.enums import MemoryStatus
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         meta = dict(old_memory.metadata)
         meta["superseded"] = True
         return RevisionPlan(
@@ -167,7 +167,7 @@ class BeliefRevisionEngine:
         """Plan correction when user explicitly corrects. Archive old record instead of delete."""
         from ..core.enums import MemoryStatus
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         meta = dict(old_memory.metadata)
         meta["invalidated_by"] = evidence_id
         meta["invalidated_at"] = now.isoformat()

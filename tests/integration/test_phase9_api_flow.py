@@ -29,18 +29,22 @@ def client(monkeypatch):
 
 @pytest.fixture
 def admin_client(monkeypatch):
-    """Test client with admin auth."""
+    """Test client with admin auth (MED-39: use yield + cleanup)."""
     monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
     monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
     monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "admin")
     get_settings.cache_clear()
-    return TestClient(
-        app,
-        headers={
-            "X-API-Key": "admin-key-456",
-            "X-Tenant-ID": "admin",
-        },
-    )
+    try:
+        with TestClient(
+            app,
+            headers={
+                "X-API-Key": "admin-key-456",
+                "X-Tenant-ID": "admin",
+            },
+        ) as c:
+            yield c
+    finally:
+        get_settings.cache_clear()
 
 
 def test_health_check(client):

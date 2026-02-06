@@ -62,3 +62,6 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
 ]
+# Use session-scoped event loop by default (replaces deprecated custom event_loop fixtures)
+# Requires pytest-asyncio >= 0.23
+asyncio_default_fixture_loop_scope = "session"

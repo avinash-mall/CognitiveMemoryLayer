@@ -1,7 +1,7 @@
 """SQLAlchemy models for PostgreSQL (event log and memory records)."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
@@ -30,10 +30,10 @@ class EventLogModel(Base):
     operation = Column(String(20), nullable=True)
 
     payload = Column(JSON, nullable=False)
-    memory_ids = Column(ARRAY(UUID(as_uuid=True)), default=[])
+    memory_ids = Column(ARRAY(UUID(as_uuid=True)), default=list)
     parent_event_id = Column(UUID(as_uuid=True), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
     ip_address = Column(String(50), nullable=True)
     user_agent = Column(String(500), nullable=True)
@@ -61,12 +61,12 @@ class MemoryRecordModel(Base):
     key = Column(String(200), nullable=True, index=True)
     embedding = Column(Vector(1536), nullable=True)
 
-    entities = Column(JSON, default=[])
-    relations = Column(JSON, default=[])
-    meta = Column("metadata", JSON, default={})  # DB column "metadata"
+    entities = Column(JSON, default=list)
+    relations = Column(JSON, default=list)
+    meta = Column("metadata", JSON, default=dict)  # DB column "metadata"
 
     timestamp = Column(DateTime, nullable=False, index=True)
-    written_at = Column(DateTime, default=datetime.utcnow)
+    written_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     valid_from = Column(DateTime, nullable=True)
     valid_to = Column(DateTime, nullable=True)
 
@@ -101,7 +101,7 @@ class SemanticFactModel(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String(100), nullable=False, index=True)
-    context_tags = Column(ARRAY(String), default=[], nullable=False)
+    context_tags = Column(ARRAY(String), default=list, nullable=False)
     category = Column(String(30), nullable=False, index=True)
     key = Column(String(200), nullable=False, index=True)
     subject = Column(String(200), nullable=False)
@@ -110,12 +110,12 @@ class SemanticFactModel(Base):
     value_type = Column(String(50), nullable=False)
     confidence = Column(Float, default=0.8)
     evidence_count = Column(Integer, default=1)
-    evidence_ids = Column(ARRAY(String), default=[])
+    evidence_ids = Column(ARRAY(String), default=list)
     valid_from = Column(DateTime, nullable=True)
     valid_to = Column(DateTime, nullable=True)
     is_current = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     version = Column(Integer, default=1)
     supersedes_id = Column(UUID(as_uuid=True), nullable=True)
 

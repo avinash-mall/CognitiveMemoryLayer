@@ -1,7 +1,7 @@
 """Labile state tracking for memories after retrieval."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 import asyncio
@@ -28,7 +28,7 @@ class LabileSession:
     turn_id: str
 
     memories: Dict[UUID, LabileMemory] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Context from retrieval
     query: str = ""
@@ -78,7 +78,7 @@ class LabileStateTracker:
         async with self._lock:
             session_key = self._session_key(tenant_id, scope_id, turn_id)
             scope_key = self._scope_key(tenant_id, scope_id)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expires = now + self.labile_duration
 
             session = LabileSession(
@@ -118,7 +118,7 @@ class LabileStateTracker:
         """Get all currently labile memories for a scope."""
         async with self._lock:
             scope_key = self._scope_key(tenant_id, scope_id)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             labile = []
             session_keys = self._scope_sessions.get(scope_key, [])
 
@@ -140,8 +140,9 @@ class LabileStateTracker:
         turn_id: str,
     ) -> Optional[LabileSession]:
         """Get a specific session."""
-        session_key = self._session_key(tenant_id, scope_id, turn_id)
-        return self._sessions.get(session_key)
+        async with self._lock:
+            session_key = self._session_key(tenant_id, scope_id, turn_id)
+            return self._sessions.get(session_key)
 
     async def release_labile(
         self,
@@ -174,7 +175,7 @@ class LabileStateTracker:
         sessions = self._scope_sessions.get(scope_key, [])
         if len(sessions) <= self.max_sessions:
             return
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         to_remove = []
         for sk in list(sessions):
             session = self._sessions.get(sk)

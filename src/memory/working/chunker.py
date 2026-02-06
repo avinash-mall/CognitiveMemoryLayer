@@ -231,7 +231,7 @@ class RuleBasedChunker:
 
             salience = min(1.0, salience + _compute_salience_boost_for_sentiment(sentence))
 
-            chunk_id = f"rule_{hash(sentence) % 10000}_{i}"
+            chunk_id = f"rule_{hashlib.sha256(sentence.encode()).hexdigest()[:8]}_{i}"
             chunks.append(
                 SemanticChunk(
                     id=chunk_id,
