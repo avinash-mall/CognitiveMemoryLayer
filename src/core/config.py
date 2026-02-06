@@ -79,7 +79,9 @@ class Settings(BaseSettings):
 
     app_name: str = Field(default="CognitiveMemoryLayer")
     debug: bool = Field(default=False)
-    cors_origins: list[str] | None = Field(default=None)  # None = use default; ["*"] disables credentials
+    cors_origins: list[str] | None = Field(
+        default=None
+    )  # None = use default; ["*"] disables credentials
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)

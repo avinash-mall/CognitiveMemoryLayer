@@ -41,7 +41,9 @@ def create_app() -> FastAPI:
     )
 
     settings = get_settings()
-    origins = settings.cors_origins if settings.cors_origins is not None else ["https://yourdomain.com"]
+    origins = (
+        settings.cors_origins if settings.cors_origins is not None else ["https://yourdomain.com"]
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,

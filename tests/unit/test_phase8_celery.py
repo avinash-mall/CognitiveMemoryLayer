@@ -14,8 +14,8 @@ class TestCeleryForgettingTask:
         assert run_forgetting_task.name == "src.celery_app.run_forgetting_task"
 
     def test_beat_schedule_includes_forgetting(self):
-        """Beat schedule defines daily forgetting run."""
+        """Beat schedule runs fan-out daily; fan-out dispatches run_forgetting_task per tenant."""
         assert "forgetting-daily" in (app.conf.beat_schedule or {})
         entry = app.conf.beat_schedule["forgetting-daily"]
-        assert entry["task"] == "src.celery_app.run_forgetting_task"
+        assert entry["task"] == "src.celery_app.fan_out_forgetting"
         assert entry["schedule"] == 86400.0

@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from enum import Enum
-import json
 from typing import Optional
 
 from ..core.schemas import MemoryRecord
@@ -150,8 +149,16 @@ class ConflictDetector:
         if old_has_pref and new_has_pref:
             # Only classify as temporal change if the statements share topic
             # overlap, avoiding false positives on unrelated preferences (MED-27)
-            old_words = set(old_lower.split()) - set(preference_words) - {"i", "my", "a", "the", "is", "are"}
-            new_words = set(new_lower.split()) - set(preference_words) - {"i", "my", "a", "the", "is", "are"}
+            old_words = (
+                set(old_lower.split())
+                - set(preference_words)
+                - {"i", "my", "a", "the", "is", "are"}
+            )
+            new_words = (
+                set(new_lower.split())
+                - set(preference_words)
+                - {"i", "my", "a", "the", "is", "are"}
+            )
             if old_words and new_words:
                 topic_overlap = len(old_words & new_words) / max(len(old_words | new_words), 1)
                 if topic_overlap > 0.2:
