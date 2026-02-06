@@ -1,5 +1,9 @@
 """Unit tests for Phase 8: Celery forgetting task."""
 
+import pytest
+
+pytest.importorskip("celery")
+
 from src.celery_app import app, run_forgetting_task
 
 

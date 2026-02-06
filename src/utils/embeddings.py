@@ -37,24 +37,28 @@ class EmbeddingClient(ABC):
 
 
 class OpenAIEmbeddings(EmbeddingClient):
-    """OpenAI embedding client."""
+    """OpenAI embedding client (supports any OpenAI-compatible embedding endpoint via base_url)."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         dimensions: int = 1536,
+        base_url: Optional[str] = None,
     ) -> None:
         import os
 
         if AsyncOpenAI is None:
             raise ImportError("openai package is required for OpenAIEmbeddings")
         settings = get_settings()
-        self.client = AsyncOpenAI(
-            api_key=api_key or settings.embedding.api_key or os.environ.get("OPENAI_API_KEY", "")
-        )
+        key = api_key or settings.embedding.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.model = model or settings.embedding.model
         self._dimensions = dimensions
+        url = base_url or settings.embedding.base_url
+        if url:
+            self.client = AsyncOpenAI(base_url=url, api_key=key)
+        else:
+            self.client = AsyncOpenAI(api_key=key)
 
     @property
     def dimensions(self) -> int:
@@ -248,3 +252,31 @@ class CachedEmbeddings(EmbeddingClient):
                 )
         results.sort(key=lambda x: x[0])
         return [r for _, r in results]
+
+
+def get_embedding_client() -> EmbeddingClient:
+    """Factory function to get configured embedding client."""
+    import os
+
+    settings = get_settings()
+    provider = settings.embedding.provider
+    if provider == "openai":
+        return OpenAIEmbeddings(
+            api_key=settings.embedding.api_key,
+            model=settings.embedding.model,
+            dimensions=settings.embedding.dimensions,
+            base_url=settings.embedding.base_url,
+        )
+    if provider == "vllm":
+        # OpenAI-compatible embedding endpoint (e.g. local vLLM with embedding model)
+        base_url = settings.embedding.base_url or "http://localhost:8000/v1"
+        api_key = settings.embedding.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
+        return OpenAIEmbeddings(
+            api_key=api_key,
+            model=settings.embedding.model,
+            dimensions=settings.embedding.dimensions,
+            base_url=base_url,
+        )
+    if provider == "local":
+        return LocalEmbeddings(model_name=settings.embedding.local_model)
+    raise ValueError(f"Unknown embedding provider: {provider}")

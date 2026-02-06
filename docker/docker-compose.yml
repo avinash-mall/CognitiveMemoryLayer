@@ -40,7 +40,7 @@ services:
       retries: 5
 
   # vLLM with Llama 3.2 1B (OpenAI-compatible API). Optional; for LLM-based compression.
-  # Set LLM__VLLM_BASE_URL=http://vllm:8000/v1 when running app in same compose.
+  # Set LLM__BASE_URL=http://vllm:8000/v1 (and EMBEDDING__BASE_URL if using vLLM for embeddings) when running app in same compose.
   vllm:
     image: vllm/vllm-openai:latest
     ports:
@@ -58,7 +58,7 @@ services:
 
   # vLLM on CPU (no GPU). Use for CI or machines without GPU. Slower; needs more RAM.
   # Run: docker compose --profile vllm-cpu up -d vllm-cpu
-  # Then: docker compose --profile vllm-cpu run --rm -e LLM__VLLM_BASE_URL=http://vllm-cpu:8000/v1 app pytest tests/integration/test_phase8_vllm_compression.py -v
+  # Then: docker compose --profile vllm-cpu run --rm -e LLM__BASE_URL=http://vllm-cpu:8000/v1 app pytest tests/integration/test_phase8_vllm_compression.py -v
   vllm-cpu:
     image: vllm/vllm-openai:latest
     ports:
@@ -79,7 +79,7 @@ services:
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
-      # Optional: LLM__PROVIDER=vllm and LLM__VLLM_BASE_URL=http://vllm:8000/v1 when vllm profile is used
+      # Optional when vllm profile is used: LLM__PROVIDER=vllm, LLM__BASE_URL=http://vllm:8000/v1, EMBEDDING__BASE_URL=http://vllm:8000/v1 (if using vLLM for embeddings)
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +100,7 @@ services:
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
+      # Optional when vllm profile is used: LLM__PROVIDER=vllm, LLM__BASE_URL=http://vllm:8000/v1, EMBEDDING__BASE_URL=http://vllm:8000/v1 (if using vLLM for embeddings)
     depends_on:
       postgres:
         condition: service_healthy

@@ -136,6 +136,7 @@ class SensoryBuffer:
         """Tokenize text using tiktoken for accurate token counting; fallback to whitespace if unavailable."""
         try:
             import tiktoken
+
             enc = tiktoken.get_encoding("cl100k_base")
             tokens = enc.encode(text)
             return [enc.decode([t]) for t in tokens]
