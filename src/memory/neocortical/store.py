@@ -19,31 +19,30 @@ class NeocorticalStore:
     async def store_fact(
         self,
         tenant_id: str,
-        scope_id: str,
         key: str,
         value: Any,
         confidence: float = 0.8,
         evidence_ids: Optional[List[str]] = None,
+        context_tags: Optional[List[str]] = None,
     ) -> SemanticFact:
-        """Store a semantic fact; optionally sync to graph if relation-like."""
+        """Store a semantic fact; optionally sync to graph if relation-like. Holistic: tenant-only."""
         fact = await self.facts.upsert_fact(
-            tenant_id, scope_id, key, value, confidence, evidence_ids
+            tenant_id, key, value, confidence, evidence_ids, context_tags=context_tags
         )
         if ":" in key and isinstance(value, str):
-            await self._sync_fact_to_graph(tenant_id, scope_id, fact)
+            await self._sync_fact_to_graph(tenant_id, fact)
         return fact
 
     async def store_relation(
         self,
         tenant_id: str,
-        scope_id: str,
         relation: Relation,
         evidence_ids: Optional[List[str]] = None,
     ) -> str:
-        """Store a relation in the knowledge graph."""
+        """Store a relation in the knowledge graph. Holistic: tenant as partition."""
         edge_id = await self.graph.merge_edge(
             tenant_id,
-            scope_id,
+            tenant_id,  # scope_id = tenant_id for holistic (one partition per tenant)
             subject=relation.subject,
             predicate=relation.predicate,
             object=relation.object,
@@ -57,38 +56,35 @@ class NeocorticalStore:
     async def store_relations_batch(
         self,
         tenant_id: str,
-        scope_id: str,
         relations: List[Relation],
         evidence_ids: Optional[List[str]] = None,
     ) -> List[str]:
         """Store multiple relations."""
         return [
-            await self.store_relation(tenant_id, scope_id, rel, evidence_ids)
+            await self.store_relation(tenant_id, rel, evidence_ids)
             for rel in relations
         ]
 
     async def get_fact(
         self,
         tenant_id: str,
-        scope_id: str,
         key: str,
     ) -> Optional[SemanticFact]:
-        """Get a fact by key."""
-        return await self.facts.get_fact(tenant_id, scope_id, key)
+        """Get a fact by key. Holistic: tenant-only."""
+        return await self.facts.get_fact(tenant_id, key)
 
-    async def get_scope_profile(self, tenant_id: str, scope_id: str) -> Dict[str, Any]:
-        """Get structured profile for a scope."""
-        return await self.facts.get_scope_profile(tenant_id, scope_id)
+    async def get_tenant_profile(self, tenant_id: str) -> Dict[str, Any]:
+        """Get structured profile for tenant. Holistic: tenant-only."""
+        return await self.facts.get_tenant_profile(tenant_id)
 
     async def query_entity(
         self,
         tenant_id: str,
-        scope_id: str,
         entity: str,
     ) -> Dict[str, Any]:
-        """Get all information about an entity (graph + facts)."""
-        graph_facts = await self.graph.get_entity_facts(tenant_id, scope_id, entity)
-        fact_results = await self.facts.search_facts(tenant_id, scope_id, entity, limit=20)
+        """Get all information about an entity (graph + facts). Holistic: tenant-only."""
+        graph_facts = await self.graph.get_entity_facts(tenant_id, tenant_id, entity)
+        fact_results = await self.facts.search_facts(tenant_id, entity, limit=20)
         return {
             "entity": entity,
             "relations": graph_facts,
@@ -101,17 +97,16 @@ class NeocorticalStore:
     async def multi_hop_query(
         self,
         tenant_id: str,
-        scope_id: str,
         seed_entities: List[str],
         max_hops: int = 3,
     ) -> List[Dict[str, Any]]:
-        """Multi-hop reasoning from seed entities via Personalized PageRank."""
+        """Multi-hop reasoning from seed entities via Personalized PageRank. Holistic: tenant-only."""
         related = await self.graph.personalized_pagerank(
-            tenant_id, scope_id, seed_entities=seed_entities, top_k=20
+            tenant_id, tenant_id, seed_entities=seed_entities, top_k=20
         )
         results = []
         for item in related[:10]:
-            entity_info = await self.query_entity(tenant_id, scope_id, item["entity"])
+            entity_info = await self.query_entity(tenant_id, item["entity"])
             entity_info["relevance_score"] = item.get("score", 0)
             results.append(entity_info)
         return results
@@ -119,13 +114,10 @@ class NeocorticalStore:
     async def find_schema_match(
         self,
         tenant_id: str,
-        scope_id: str,
         candidate_fact: str,
     ) -> Optional[SemanticFact]:
-        """Find if a candidate fact matches existing schema/knowledge."""
-        matches = await self.facts.search_facts(
-            tenant_id, scope_id, candidate_fact, limit=5
-        )
+        """Find if a candidate fact matches existing schema/knowledge. Holistic: tenant-only."""
+        matches = await self.facts.search_facts(tenant_id, candidate_fact, limit=5)
         if matches:
             best = max(matches, key=lambda f: f.confidence)
             if best.confidence > 0.5:
@@ -135,12 +127,11 @@ class NeocorticalStore:
     async def text_search(
         self,
         tenant_id: str,
-        scope_id: str,
         query: str,
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
-        """Search semantic memory by text."""
-        facts = await self.facts.search_facts(tenant_id, scope_id, query, limit)
+        """Search semantic memory by text. Holistic: tenant-only."""
+        facts = await self.facts.search_facts(tenant_id, query, limit)
         return [
             {
                 "type": "fact",
@@ -152,16 +143,11 @@ class NeocorticalStore:
             for f in facts
         ]
 
-    async def _sync_fact_to_graph(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        fact: SemanticFact,
-    ) -> None:
-        """Sync a fact to the knowledge graph as a relation."""
+    async def _sync_fact_to_graph(self, tenant_id: str, fact: SemanticFact) -> None:
+        """Sync a fact to the knowledge graph as a relation. Partition by tenant."""
         await self.graph.merge_edge(
             tenant_id,
-            scope_id,
+            tenant_id,
             subject=fact.subject,
             predicate=fact.predicate,
             object=str(fact.value),

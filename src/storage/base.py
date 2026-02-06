@@ -24,10 +24,10 @@ class MemoryStoreBase(ABC):
     async def get_by_key(
         self,
         tenant_id: str,
-        scope_id: str,
         key: str,
+        context_filter: Optional[List[str]] = None,
     ) -> Optional[MemoryRecord]:
-        """Get a record by its unique key (for facts/preferences)."""
+        """Get a record by its unique key (for facts/preferences). Holistic: tenant-only."""
         ...
 
     @abstractmethod
@@ -49,36 +49,34 @@ class MemoryStoreBase(ABC):
     async def vector_search(
         self,
         tenant_id: str,
-        scope_id: str,
         embedding: List[float],
         top_k: int = 10,
+        context_filter: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
         min_similarity: float = 0.0,
     ) -> List[MemoryRecord]:
-        """Search by vector similarity."""
+        """Search by vector similarity. Holistic: tenant-only, optional context_tags filter."""
         ...
 
     @abstractmethod
     async def scan(
         self,
         tenant_id: str,
-        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
         order_by: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List[MemoryRecord]:
-        """Scan records with filters."""
+        """Scan records with filters. Holistic: tenant-only."""
         ...
 
     @abstractmethod
     async def count(
         self,
         tenant_id: str,
-        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """Count records matching filters."""
+        """Count records matching filters. Holistic: tenant-only."""
         ...
 
 

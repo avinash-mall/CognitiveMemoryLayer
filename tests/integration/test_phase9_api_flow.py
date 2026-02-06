@@ -65,9 +65,8 @@ def test_write_requires_auth():
         resp = client_no_auth.post(
             "/api/v1/memory/write",
             json={
-                "scope": "session",
-                "scope_id": "s1",
                 "content": "test",
+                "session_id": "s1",
             },
         )
     assert resp.status_code == 401
@@ -79,8 +78,6 @@ def test_read_requires_auth():
         resp = client_no_auth.post(
             "/api/v1/memory/read",
             json={
-                "scope": "session",
-                "scope_id": "s1",
                 "query": "test",
             },
         )
@@ -90,5 +87,5 @@ def test_read_requires_auth():
 def test_stats_requires_auth():
     """Stats should require API key."""
     with TestClient(app) as client_no_auth:
-        resp = client_no_auth.get("/api/v1/memory/stats/session/s1")
+        resp = client_no_auth.get("/api/v1/memory/stats")
     assert resp.status_code == 401

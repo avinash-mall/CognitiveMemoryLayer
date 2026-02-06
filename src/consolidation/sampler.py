@@ -54,7 +54,6 @@ class EpisodeSampler:
 
         candidates = await self.store.scan(
             tenant_id,
-            user_id,
             filters=filters,
             limit=max_eps * 3,
         )

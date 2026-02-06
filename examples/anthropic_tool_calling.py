@@ -29,7 +29,7 @@ from memory_client import CognitiveMemoryClient
 MEMORY_TOOLS = [
     {
         "name": "memory_write",
-        "description": "Store new information in the session's long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant about them.",
+        "description": "Store important information in long-term memory. The system automatically manages context. Use when the user shares personal information, preferences, or significant facts.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -48,7 +48,7 @@ MEMORY_TOOLS = [
     },
     {
         "name": "memory_read",
-        "description": "Retrieve relevant memories to inform your response. Use this before answering questions about the user's preferences, history, or personal information.",
+        "description": "Retrieve relevant memories. Usually automatic, but call explicitly for specific queries (e.g. user preferences, history, or personal information).",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -123,11 +123,8 @@ class ClaudeMemoryAssistant:
         memory_api_url: str = "http://localhost:8000",
         memory_api_key: Optional[str] = None,
         model: str = "claude-sonnet-4-20250514",
-        scope: str = "session"
     ):
         self.session_id = session_id
-        self.scope = scope
-        self.scope_id = session_id
         self.model = model
         
         # Initialize Anthropic client
@@ -161,39 +158,30 @@ Be natural and conversational. Don't mention the memory system explicitly unless
         try:
             if tool_name == "memory_write":
                 result = self.memory.write(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    content=tool_input["content"],
-                    memory_type=tool_input.get("memory_type")
+                    tool_input["content"],
+                    session_id=self.session_id,
+                    context_tags=["conversation"],
+                    memory_type=tool_input.get("memory_type"),
                 )
                 return json.dumps({
                     "success": result.success,
                     "message": result.message
                 })
-            
             elif tool_name == "memory_read":
                 result = self.memory.read(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    query=tool_input["query"],
+                    tool_input["query"],
                     memory_types=tool_input.get("memory_types"),
                     format="llm_context"
                 )
                 return result.llm_context or "No relevant memories found."
-            
             elif tool_name == "memory_update":
                 result = self.memory.update(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
                     memory_id=tool_input["memory_id"],
                     feedback=tool_input["feedback"]
                 )
                 return json.dumps(result)
-            
             elif tool_name == "memory_forget":
                 result = self.memory.forget(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
                     query=tool_input["query"],
                     action=tool_input.get("action", "archive")
                 )
@@ -293,7 +281,6 @@ def main():
     assistant = ClaudeMemoryAssistant(
         session_id="claude-demo-session",
         model="claude-sonnet-4-20250514",  # or claude-3-opus-20240229
-        scope="session"
     )
     
     try:
@@ -328,7 +315,6 @@ def example_conversation():
     assistant = ClaudeMemoryAssistant(
         session_id="claude-example-session",
         model="claude-sonnet-4-20250514",
-        scope="session"
     )
     
     conversations = [

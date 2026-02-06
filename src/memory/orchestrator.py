@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from ..core.enums import MemoryScope, MemoryStatus
+from ..core.enums import MemoryStatus
 from ..core.schemas import MemoryPacket
 from ..consolidation.worker import ConsolidationWorker
 from ..forgetting.worker import ForgettingWorker
@@ -123,18 +123,18 @@ class MemoryOrchestrator:
         self,
         tenant_id: str,
         content: str,
-        scope: MemoryScope,
-        scope_id: str,
+        context_tags: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
         memory_type: Optional[Any] = None,
         metadata: Optional[Dict[str, Any]] = None,
         turn_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         namespace: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Write new information to memory."""
+        """Write new information to memory. Holistic: tenant-only."""
         stm_result = await self.short_term.ingest_turn(
             tenant_id=tenant_id,
-            scope_id=scope_id,
+            scope_id=session_id or tenant_id,
             text=content,
             turn_id=turn_id,
             role="user",
@@ -151,9 +151,9 @@ class MemoryOrchestrator:
 
         stored = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
-            scope=scope,
-            scope_id=scope_id,
             chunks=chunks_for_encoding,
+            context_tags=context_tags,
+            source_session_id=session_id,
             agent_id=agent_id,
             namespace=namespace,
         )
@@ -168,45 +168,45 @@ class MemoryOrchestrator:
         self,
         tenant_id: str,
         query: str,
-        scope: MemoryScope,
-        scope_id: str,
         max_results: int = 10,
+        context_filter: Optional[List[str]] = None,
         memory_types: Optional[List[Any]] = None,
         time_filter: Optional[Dict] = None,
     ) -> MemoryPacket:
-        """Retrieve relevant memories."""
+        """Retrieve relevant memories. Holistic: tenant-only."""
         return await self.retriever.retrieve(
             tenant_id=tenant_id,
-            scope_id=scope_id,
             query=query,
             max_results=max_results,
+            context_filter=context_filter,
         )
 
     async def update(
         self,
         tenant_id: str,
         memory_id: UUID,
-        scope: MemoryScope,
-        scope_id: str,
         text: Optional[str] = None,
         confidence: Optional[float] = None,
         importance: Optional[float] = None,
         metadata: Optional[Dict] = None,
         feedback: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Update an existing memory."""
+        """Update an existing memory. Holistic: tenant-only."""
         record = await self.hippocampal.store.get_by_id(memory_id)
         if not record:
             raise ValueError(f"Memory {memory_id} not found")
         if record.tenant_id != tenant_id:
             raise ValueError("Memory does not belong to tenant")
-        record_scope_id = getattr(record, "scope_id", None)
-        if record_scope_id != scope_id:
-            raise ValueError("Memory does not belong to scope")
 
         patch: Dict[str, Any] = {}
         if text is not None:
             patch["text"] = text
+            # Re-embed and re-extract entities when text changes
+            emb_result = await self.hippocampal.embeddings.embed(text)
+            patch["embedding"] = emb_result.embedding
+            if self.hippocampal.entity_extractor:
+                entities = await self.hippocampal.entity_extractor.extract(text)
+                patch["entities"] = [e.model_dump() for e in entities]
         if confidence is not None:
             patch["confidence"] = confidence
         if importance is not None:
@@ -230,22 +230,17 @@ class MemoryOrchestrator:
     async def forget(
         self,
         tenant_id: str,
-        scope: MemoryScope,
-        scope_id: str,
         memory_ids: Optional[List[UUID]] = None,
         query: Optional[str] = None,
         before: Optional[datetime] = None,
         action: str = "delete",
     ) -> Dict[str, Any]:
-        """Forget memories."""
+        """Forget memories. Holistic: tenant-only."""
         affected = 0
         hard = action == "delete"
 
         def owns(record) -> bool:
-            if record.tenant_id != tenant_id:
-                return False
-            record_scope_id = getattr(record, "scope_id", None)
-            return record_scope_id == scope_id
+            return record.tenant_id == tenant_id
 
         if memory_ids:
             for mid in memory_ids:
@@ -256,7 +251,7 @@ class MemoryOrchestrator:
 
         if query:
             packet = await self.retriever.retrieve(
-                tenant_id, scope_id, query=query, max_results=100
+                tenant_id, query=query, max_results=100
             )
             for mem in packet.all_memories:
                 rid = mem.record.id
@@ -267,7 +262,7 @@ class MemoryOrchestrator:
 
         if before:
             records = await self.hippocampal.store.scan(
-                tenant_id, scope_id, filters={"status": MemoryStatus.ACTIVE.value}, limit=500
+                tenant_id, filters={"status": MemoryStatus.ACTIVE.value}, limit=500
             )
             for r in records:
                 if r.timestamp and r.timestamp < before:
@@ -279,12 +274,11 @@ class MemoryOrchestrator:
     async def get_session_context(
         self,
         tenant_id: str,
-        session_id: str,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get full session context for LLM (messages, tool_results, scratch_pad, context_string)."""
+        """Get full session context for LLM (messages, tool_results, scratch_pad, context_string). Holistic: tenant-only."""
         packet = await self.retriever.retrieve(
             tenant_id=tenant_id,
-            scope_id=session_id,
             query="",
             max_results=50,
         )
@@ -320,14 +314,13 @@ class MemoryOrchestrator:
             "context_string": context_string,
         }
 
-    async def delete_all_for_scope(
+    async def delete_all(
         self,
         tenant_id: str,
-        scope_id: str,
     ) -> int:
-        """Delete all memories for a scope (GDPR)."""
+        """Delete all memories for a tenant (GDPR). Holistic: tenant-only."""
         records = await self.hippocampal.store.scan(
-            tenant_id, scope_id, limit=10000
+            tenant_id, limit=10000
         )
         affected = 0
         for r in records:
@@ -338,29 +331,25 @@ class MemoryOrchestrator:
     async def get_stats(
         self,
         tenant_id: str,
-        scope_id: str,
     ) -> Dict[str, Any]:
-        """Get memory statistics for a scope."""
-        total = await self.hippocampal.store.count(tenant_id, scope_id)
+        """Get memory statistics for tenant. Holistic: tenant-only."""
+        total = await self.hippocampal.store.count(tenant_id)
         active = await self.hippocampal.store.count(
             tenant_id,
-            scope_id,
             filters={"status": MemoryStatus.ACTIVE.value},
         )
         silent = await self.hippocampal.store.count(
             tenant_id,
-            scope_id,
             filters={"status": MemoryStatus.SILENT.value},
         )
         archived = await self.hippocampal.store.count(
             tenant_id,
-            scope_id,
             filters={"status": MemoryStatus.ARCHIVED.value},
         )
 
         by_type: Dict[str, int] = {}
         records = await self.hippocampal.store.scan(
-            tenant_id, scope_id, limit=1000
+            tenant_id, limit=1000
         )
         for r in records:
             t = r.type.value if hasattr(r.type, "value") else str(r.type)

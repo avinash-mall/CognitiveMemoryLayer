@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.core.enums import MemoryScope, MemorySource, MemoryType
+from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from src.retrieval.query_types import QueryAnalysis, QueryIntent
 from src.retrieval.classifier import QueryClassifier
@@ -71,9 +71,7 @@ class TestMemoryReranker:
         return RetrievedMemory(
             record=MemoryRecord(
                 tenant_id="t",
-                scope=MemoryScope.USER,
-                scope_id="u",
-                user_id="u",
+                context_tags=[],
                 type=MemoryType.EPISODIC_EVENT,
                 text=text,
                 provenance=Provenance(source=MemorySource.AGENT_INFERRED),
@@ -106,9 +104,7 @@ class TestMemoryPacketBuilder:
         return RetrievedMemory(
             record=MemoryRecord(
                 tenant_id="t",
-                scope=MemoryScope.USER,
-                scope_id="u",
-                user_id="u",
+                context_tags=[],
                 type=mem_type,
                 text=text,
                 provenance=Provenance(source=MemorySource.AGENT_INFERRED),

@@ -34,14 +34,14 @@ def client(monkeypatch):
 )
 def test_full_memory_lifecycle(client):
     """Test write -> read -> update -> forget flow."""
-    scope_id = "e2e-test-session"
+    session_id = "e2e-test-session"
 
     write_resp = client.post(
         "/api/v1/memory/write",
         json={
-            "scope": "session",
-            "scope_id": scope_id,
             "content": "I prefer vegetarian food and I live in Paris",
+            "session_id": session_id,
+            "context_tags": ["conversation", "preference"],
         },
     )
     assert write_resp.status_code == 200
@@ -51,9 +51,8 @@ def test_full_memory_lifecycle(client):
     read_resp = client.post(
         "/api/v1/memory/read",
         json={
-            "scope": "session",
-            "scope_id": scope_id,
             "query": "What food do I like?",
+            "context_filter": ["conversation", "preference"],
         },
     )
     assert read_resp.status_code == 200
@@ -66,8 +65,6 @@ def test_full_memory_lifecycle(client):
         update_resp = client.post(
             "/api/v1/memory/update",
             json={
-                "scope": "session",
-                "scope_id": scope_id,
                 "memory_id": str(memory_id),
                 "feedback": "correct",
             },
@@ -77,8 +74,6 @@ def test_full_memory_lifecycle(client):
     forget_resp = client.post(
         "/api/v1/memory/forget",
         json={
-            "scope": "session",
-            "scope_id": scope_id,
             "query": "vegetarian",
         },
     )
@@ -91,8 +86,6 @@ def test_unauthorized_access():
         resp = client_no_auth.post(
             "/api/v1/memory/write",
             json={
-                "scope": "session",
-                "scope_id": "test",
                 "content": "test",
             },
         )

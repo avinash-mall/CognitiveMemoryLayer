@@ -6,7 +6,7 @@
 2. [Quick Start](#quick-start)
 3. [LLM Tool Calling Interface](#llm-tool-calling-interface)
 4. [API Reference](#api-reference)
-5. [Memory Scopes](#memory-scopes)
+5. [Holistic memory and context tags](#holistic-memory-and-context-tags)
 6. [Memory Types](#memory-types)
 7. [Authentication](#authentication)
 8. [Response Formats](#response-formats)
@@ -69,14 +69,17 @@ curl http://localhost:8000/api/v1/health
 
 ### 3. Store Your First Memory
 
+Memory is **holistic** per tenant (no scopes). Use optional `context_tags` and `session_id` for categorization and origin tracking.
+
 ```bash
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $AUTH__API_KEY" \
+  -H "X-Tenant-ID: demo" \
   -d '{
-    "scope": "session",
-    "scope_id": "demo-session-001",
-    "content": "The user prefers vegetarian food and lives in Paris."
+    "content": "The user prefers vegetarian food and lives in Paris.",
+    "context_tags": ["preference", "personal"],
+    "session_id": "demo-session-001"
   }'
 ```
 (Set `AUTH__API_KEY` in your environment or use a key you configured.)
@@ -87,12 +90,30 @@ curl -X POST http://localhost:8000/api/v1/memory/write \
 curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $AUTH__API_KEY" \
+  -H "X-Tenant-ID: demo" \
   -d '{
-    "scope": "session",
-    "scope_id": "demo-session-001",
-    "query": "What are the user dietary preferences?"
+    "query": "What are the user dietary preferences?",
+    "context_filter": ["preference", "personal"]
   }'
 ```
+
+### 5. Seamless Memory (per turn)
+
+For chat integrations, use **Seamless Memory**: one call per turn to auto-retrieve context and optionally auto-store.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/memory/turn \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $AUTH__API_KEY" \
+  -H "X-Tenant-ID: demo" \
+  -d '{
+    "user_message": "What do I like to eat?",
+    "assistant_response": null,
+    "session_id": "session-001",
+    "max_context_tokens": 1500
+  }'
+```
+Response includes `memory_context` (ready to inject into your LLM prompt), `memories_retrieved`, and `memories_stored`.
 
 ---
 
@@ -104,24 +125,15 @@ This section provides tool definitions that LLMs can use to interact with the Co
 
 #### 1. memory_write
 
-Store new information in long-term memory.
+Store important information in long-term memory. The system automatically manages context.
 
 ```json
 {
   "name": "memory_write",
-  "description": "Store new information in long-term memory. Use this when the user shares important personal information, preferences, facts about themselves, or when you learn something significant. The system automatically filters trivial information.",
+  "description": "Store important information in long-term memory. The system automatically manages context. Use when the user shares personal information, preferences, or significant facts.",
   "parameters": {
     "type": "object",
     "properties": {
-      "scope": {
-        "type": "string",
-        "enum": ["session", "agent", "namespace", "global", "user"],
-        "description": "Memory scope: 'session' for conversation, 'agent' for agent-specific, 'namespace' for project/team, 'global' for shared, 'user' for user-specific"
-      },
-      "scope_id": {
-        "type": "string",
-        "description": "Unique identifier within the scope (e.g., session ID, agent name)"
-      },
       "content": {
         "type": "string",
         "description": "The information to store. Be specific and factual."
@@ -129,14 +141,19 @@ Store new information in long-term memory.
       "memory_type": {
         "type": "string",
         "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis"],
-        "description": "Type of memory. Use 'semantic_fact' for facts, 'preference' for preferences, 'episodic_event' for specific events, 'constraint' for rules that must be followed."
+        "description": "Type of memory. Use 'semantic_fact' for facts, 'preference' for preferences, 'constraint' for rules that must be followed."
       },
-      "metadata": {
-        "type": "object",
-        "description": "Optional additional context (e.g., source, category)"
+      "context_tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional tags for retrieval filtering (e.g. personal, conversation, task)"
+      },
+      "session_id": {
+        "type": "string",
+        "description": "Optional session ID for origin tracking"
       }
     },
-    "required": ["scope", "scope_id", "content"]
+    "required": ["content"]
   }
 }
 ```
@@ -146,8 +163,6 @@ Store new information in long-term memory.
 {
   "name": "memory_write",
   "arguments": {
-    "scope": "session",
-    "scope_id": "session-abc123",
     "content": "User is allergic to peanuts and requires all food recommendations to avoid peanut ingredients.",
     "memory_type": "constraint"
   }
@@ -156,24 +171,15 @@ Store new information in long-term memory.
 
 #### 2. memory_read
 
-Retrieve relevant memories for a query.
+Retrieve relevant memories. Usually automatic via `/memory/turn`; call explicitly for specific queries.
 
 ```json
 {
   "name": "memory_read",
-  "description": "Retrieve relevant memories to inform your response. Use this before answering questions about preferences, history, or personal information.",
+  "description": "Retrieve relevant memories. Usually automatic, but call explicitly for specific queries (e.g. user preferences, history, or personal information).",
   "parameters": {
     "type": "object",
     "properties": {
-      "scope": {
-        "type": "string",
-        "enum": ["session", "agent", "namespace", "global", "user"],
-        "description": "Memory scope to query"
-      },
-      "scope_id": {
-        "type": "string",
-        "description": "Unique identifier within the scope"
-      },
       "query": {
         "type": "string",
         "description": "Natural language query describing what information you need"
@@ -183,13 +189,10 @@ Retrieve relevant memories for a query.
         "description": "Maximum number of memories to retrieve (default: 10, max: 50)",
         "default": 10
       },
-      "memory_types": {
+      "context_filter": {
         "type": "array",
-        "items": {
-          "type": "string",
-          "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis"]
-        },
-        "description": "Filter by specific memory types"
+        "items": { "type": "string" },
+        "description": "Optional filter by context tags"
       },
       "format": {
         "type": "string",
@@ -198,7 +201,7 @@ Retrieve relevant memories for a query.
         "default": "packet"
       }
     },
-    "required": ["scope", "scope_id", "query"]
+    "required": ["query"]
   }
 }
 ```
@@ -208,10 +211,7 @@ Retrieve relevant memories for a query.
 {
   "name": "memory_read",
   "arguments": {
-    "scope": "session",
-    "scope_id": "session-abc123",
     "query": "What dietary restrictions does the user have?",
-    "memory_types": ["preference", "constraint"],
     "format": "llm_context"
   }
 }
@@ -219,7 +219,7 @@ Retrieve relevant memories for a query.
 
 #### 3. memory_update
 
-Update or provide feedback on an existing memory.
+Update or provide feedback on an existing memory. Holistic: tenant from auth.
 
 ```json
 {
@@ -228,15 +228,6 @@ Update or provide feedback on an existing memory.
   "parameters": {
     "type": "object",
     "properties": {
-      "scope": {
-        "type": "string",
-        "enum": ["session", "agent", "namespace", "global", "user"],
-        "description": "Memory scope"
-      },
-      "scope_id": {
-        "type": "string",
-        "description": "Unique identifier within the scope"
-      },
       "memory_id": {
         "type": "string",
         "description": "UUID of the memory to update"
@@ -257,7 +248,7 @@ Update or provide feedback on an existing memory.
         "description": "Feedback type: 'correct' reinforces the memory, 'incorrect' marks it invalid, 'outdated' adds a validity end date"
       }
     },
-    "required": ["scope", "scope_id", "memory_id"]
+    "required": ["memory_id"]
   }
 }
 ```
@@ -277,7 +268,7 @@ Update or provide feedback on an existing memory.
 
 #### 4. memory_forget
 
-Remove or silence memories.
+Remove or silence memories. Holistic: tenant from auth.
 
 ```json
 {
@@ -286,15 +277,6 @@ Remove or silence memories.
   "parameters": {
     "type": "object",
     "properties": {
-      "scope": {
-        "type": "string",
-        "enum": ["session", "agent", "namespace", "global", "user"],
-        "description": "Memory scope"
-      },
-      "scope_id": {
-        "type": "string",
-        "description": "Unique identifier within the scope"
-      },
       "memory_ids": {
         "type": "array",
         "items": { "type": "string" },
@@ -315,8 +297,7 @@ Remove or silence memories.
         "description": "Action: 'delete' removes permanently, 'archive' keeps but hides, 'silence' makes harder to retrieve",
         "default": "delete"
       }
-    },
-    "required": ["scope", "scope_id"]
+    }
   }
 }
 ```
@@ -326,8 +307,6 @@ Remove or silence memories.
 {
   "name": "memory_forget",
   "arguments": {
-    "scope": "session",
-    "scope_id": "session-abc123",
     "query": "old address information",
     "action": "archive"
   }
@@ -336,26 +315,15 @@ Remove or silence memories.
 
 #### 5. memory_stats
 
-Get statistics about memories.
+Get statistics about memories for the tenant (no parameters; tenant from auth).
 
 ```json
 {
   "name": "memory_stats",
-  "description": "Get statistics about stored memories. Useful for understanding memory usage and health.",
+  "description": "Get statistics about stored memories for the current tenant.",
   "parameters": {
     "type": "object",
-    "properties": {
-      "scope": {
-        "type": "string",
-        "enum": ["session", "agent", "namespace", "global", "user"],
-        "description": "Memory scope"
-      },
-      "scope_id": {
-        "type": "string",
-        "description": "Unique identifier within the scope"
-      }
-    },
-    "required": ["scope", "scope_id"]
+    "properties": {}
   }
 }
 ```
@@ -380,16 +348,19 @@ Store new information in memory.
 - `X-API-Key: <api_key>` (required)
 - `Content-Type: application/json`
 
+**Request Headers:**
+- `X-Tenant-ID: <tenant_id>` (optional; default from API key)
+
 **Request Body:**
 ```json
 {
-  "scope": "session|agent|namespace|global|user (required)",
-  "scope_id": "string (required)",
   "content": "string (required)",
+  "context_tags": ["personal", "conversation"],
+  "session_id": "string (optional - origin tracking)",
   "memory_type": "episodic_event|semantic_fact|preference|task_state|procedure|constraint|hypothesis (optional)",
   "metadata": { "key": "value" },
-  "turn_id": "string (optional - for conversation tracking)",
-  "agent_id": "string (optional - which agent wrote this)"
+  "turn_id": "string (optional)",
+  "agent_id": "string (optional)"
 }
 ```
 
@@ -410,21 +381,47 @@ Store new information in memory.
 
 ---
 
-#### POST /memory/read
+#### POST /memory/turn (Seamless Memory)
 
-Retrieve relevant memories.
-
-**Request Headers:**
-- `X-API-Key: <api_key>` (required)
-- `Content-Type: application/json`
+Process a conversation turn: auto-retrieve relevant context and optionally auto-store. Returns `memory_context` ready to inject into your LLM prompt.
 
 **Request Body:**
 ```json
 {
-  "scope": "session|agent|namespace|global|user (required)",
-  "scope_id": "string (required)",
+  "user_message": "string (required)",
+  "assistant_response": "string (optional)",
+  "session_id": "string (optional)",
+  "max_context_tokens": 1500
+}
+```
+
+**Response:**
+```json
+{
+  "memory_context": "# Retrieved Memory Context\n\n## Facts\n- ...",
+  "memories_retrieved": 5,
+  "memories_stored": 1,
+  "reconsolidation_applied": false
+}
+```
+
+---
+
+#### POST /memory/read
+
+Retrieve relevant memories. Holistic: tenant from auth.
+
+**Request Headers:**
+- `X-API-Key: <api_key>` (required)
+- `Content-Type: application/json`
+- `X-Tenant-ID: <tenant_id>` (optional)
+
+**Request Body:**
+```json
+{
   "query": "string (required)",
   "max_results": 10,
+  "context_filter": ["personal", "conversation"],
   "memory_types": ["semantic_fact", "preference"],
   "since": "2024-01-01T00:00:00Z",
   "until": "2024-12-31T23:59:59Z",
@@ -480,8 +477,6 @@ Update an existing memory.
 **Request Body:**
 ```json
 {
-  "scope": "session|agent|namespace|global|user (required)",
-  "scope_id": "string (required)",
   "memory_id": "uuid (required)",
   "text": "Updated memory text (optional)",
   "confidence": 0.9,
@@ -519,8 +514,6 @@ Forget memories.
 **Request Body:**
 ```json
 {
-  "scope": "session|agent|namespace|global|user (required)",
-  "scope_id": "string (required)",
   "memory_ids": ["uuid1", "uuid2"],
   "query": "old address",
   "before": "2023-01-01T00:00:00Z",
@@ -539,9 +532,9 @@ Forget memories.
 
 ---
 
-#### GET /memory/stats/{scope}/{scope_id}
+#### GET /memory/stats
 
-Get memory statistics.
+Get memory statistics for the authenticated tenant.
 
 **Request Headers:**
 - `X-API-Key: <api_key>` (required)
@@ -549,8 +542,6 @@ Get memory statistics.
 **Response:**
 ```json
 {
-  "scope": "session",
-  "scope_id": "session-abc123",
   "total_memories": 150,
   "active_memories": 120,
   "silent_memories": 20,
@@ -598,24 +589,13 @@ Health check endpoint.
 
 ---
 
-## Memory Scopes
+## Holistic memory and context tags
 
-The API uses a scope-based system for organizing memories, replacing the traditional user_id approach:
+Memory access is **holistic per tenant**: there are no scopes or partitions. All memories for a tenant live in a single unified store. You identify the tenant via the `X-Tenant-ID` header (or the default tenant from your API key).
 
-| Scope | Description | Use Case |
-|-------|-------------|----------|
-| `session` | Single conversation session | Conversation context, turn-by-turn memory |
-| `agent` | Agent-specific context | Agent-level preferences, tool history |
-| `namespace` | Project or team level | Shared project knowledge, team context |
-| `global` | Shared across all contexts | Universal facts, shared procedures |
-| `user` | User-specific memories | User preferences across sessions |
-
-### Scope Hierarchy
-
-Memories can be queried across scope levels when appropriate:
-- Session-level queries can optionally include agent and namespace context
-- Agent-level queries can include namespace context
-- Global scope is accessible from all other scopes
+- **context_tags**: Optional list of tags (e.g. `personal`, `conversation`, `task`, `procedural`) for categorization. Use `context_filter` on read to optionally restrict retrieval to certain tags.
+- **source_session_id**: Optional session ID when writing; used for origin tracking only, not for access control.
+- **Seamless Memory**: Use the `/memory/turn` endpoint to auto-retrieve relevant context for each user message and optionally auto-store; the returned `memory_context` is ready to inject into your LLM prompt.
 
 ---
 

@@ -70,13 +70,21 @@ class QueryClassifier:
             for intent, patterns in FAST_PATTERNS.items()
         }
 
-    async def classify(self, query: str) -> QueryAnalysis:
-        """Classify a query and extract relevant information."""
-        fast_result = self._fast_classify(query)
+    async def classify(
+        self,
+        query: str,
+        recent_context: Optional[str] = None,
+    ) -> QueryAnalysis:
+        """Classify a query and extract relevant information. Uses recent_context when query is vague (e.g. 'Any suggestions?')."""
+        # If query is vague and we have context, use it to infer intent
+        effective_query = query
+        if recent_context and self._is_vague(query):
+            effective_query = f"{recent_context}\nUser now asks: {query}"
+        fast_result = self._fast_classify(effective_query)
         if fast_result and fast_result.confidence > 0.8:
             return fast_result
         if self.llm:
-            return await self._llm_classify(query)
+            return await self._llm_classify(effective_query, recent_context=recent_context)
         return fast_result or QueryAnalysis(
             original_query=query,
             intent=QueryIntent.GENERAL_QUESTION,
@@ -84,6 +92,14 @@ class QueryClassifier:
             suggested_sources=["vector", "facts"],
             suggested_top_k=10,
         )
+
+    def _is_vague(self, query: str) -> bool:
+        """Heuristic: query is too short or lacks clear intent."""
+        q = query.strip().lower()
+        if len(q) < 15:
+            return True
+        vague_starts = ("any ", "what about", "suggestions?", "thoughts?", "and?", "so?", "what do you think")
+        return any(q.startswith(p) or q == p for p in vague_starts)
 
     def _fast_classify(self, query: str) -> Optional[QueryAnalysis]:
         """Fast pattern-based classification."""
@@ -101,9 +117,15 @@ class QueryClassifier:
                     )
         return None
 
-    async def _llm_classify(self, query: str) -> QueryAnalysis:
+    async def _llm_classify(
+        self,
+        query: str,
+        recent_context: Optional[str] = None,
+    ) -> QueryAnalysis:
         """LLM-based classification for complex queries."""
         prompt = CLASSIFICATION_PROMPT.format(query=query)
+        if recent_context:
+            prompt = f"Recent conversation context:\n{recent_context}\n\n{prompt}"
         try:
             data = await self.llm.complete_json(prompt, temperature=0.0)
             intent_str = data.get("intent", "unknown")

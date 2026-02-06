@@ -41,22 +41,21 @@ from memory_client import CognitiveMemoryClient
 
 client = CognitiveMemoryClient(api_key="your-api-key")  # or os.environ.get("AUTH__API_KEY")
 
-# Store a memory with explicit scope
+# Store a memory (holistic: tenant from auth; optional session_id, context_tags)
 client.write(
-    scope="session",
-    scope_id="session-123",
-    content="User prefers vegetarian food",
+    "User prefers vegetarian food",
+    session_id="session-123",
+    context_tags=["preference"],
     memory_type="preference"
 )
 
 # Retrieve memories
-result = client.read(
-    scope="session",
-    scope_id="session-123",
-    query="dietary preferences",
-    format="llm_context"
-)
+result = client.read("dietary preferences", format="llm_context")
 print(result.llm_context)
+
+# Seamless turn: auto-retrieve + auto-store (for chat)
+turn = client.process_turn("What do I like to eat?", session_id="session-123")
+print(turn.memory_context)  # Inject into LLM prompt
 ```
 
 ### 2. Basic Usage (`basic_usage.py`)
