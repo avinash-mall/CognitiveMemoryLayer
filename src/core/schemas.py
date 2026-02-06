@@ -1,4 +1,5 @@
 """Core Pydantic schemas for memory records, events, and retrieval."""
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
@@ -197,9 +198,7 @@ class MemoryPacket(BaseModel):
             if memories:
                 lines.append(f"## {category}")
                 for m in memories[:5]:  # Limit per category
-                    lines.append(
-                        f"- {m.record.text} (confidence: {m.record.confidence:.2f})"
-                    )
+                    lines.append(f"- {m.record.text} (confidence: {m.record.confidence:.2f})")
 
         result = "\n".join(lines)
         return result[:max_chars]

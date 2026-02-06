@@ -1,4 +1,5 @@
 """Integration tests for Phase 8: active forgetting flow."""
+
 from uuid import uuid4
 
 import pytest
@@ -48,15 +49,11 @@ async def test_forgetting_dry_run_does_not_modify(pg_session_factory):
         )
     )
 
-    report = await worker.run_forgetting(
-        tenant_id, user_id, max_memories=100, dry_run=True
-    )
+    report = await worker.run_forgetting(tenant_id, user_id, max_memories=100, dry_run=True)
 
     assert report.memories_scanned >= 1
     assert report.memories_scored >= 1
-    records = await store.scan(
-        tenant_id, filters={"status": "active"}, limit=10
-    )
+    records = await store.scan(tenant_id, filters={"status": "active"}, limit=10)
     assert len(records) >= 1
     assert records[0].status.value == "active"
 
@@ -81,9 +78,7 @@ async def test_forgetting_decay_reduces_confidence(pg_session_factory):
         )
     )
 
-    report = await worker.run_forgetting(
-        tenant_id, user_id, max_memories=100, dry_run=False
-    )
+    report = await worker.run_forgetting(tenant_id, user_id, max_memories=100, dry_run=False)
 
     if report.result.decayed >= 1:
         updated = await store.get_by_id(rec.id)

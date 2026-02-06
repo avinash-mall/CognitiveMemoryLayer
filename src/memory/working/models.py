@@ -1,4 +1,5 @@
 """Working memory data structures: chunks and state."""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -81,8 +82,6 @@ class WorkingMemoryState:
         self.chunks = older_chunks[:keep_older] + recent_chunks
         self.chunks.sort(key=lambda c: c.timestamp)
 
-    def get_high_salience_chunks(
-        self, min_salience: float = 0.5
-    ) -> List[SemanticChunk]:
+    def get_high_salience_chunks(self, min_salience: float = 0.5) -> List[SemanticChunk]:
         """Get chunks above salience threshold."""
         return [c for c in self.chunks if c.salience >= min_salience]

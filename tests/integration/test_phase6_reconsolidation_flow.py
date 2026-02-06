@@ -1,4 +1,5 @@
 """Integration test: full reconsolidation flow (labile -> extract -> conflict -> revise)."""
+
 from uuid import uuid4
 
 import pytest

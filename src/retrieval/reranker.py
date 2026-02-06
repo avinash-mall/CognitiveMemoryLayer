@@ -1,4 +1,5 @@
 """Reranker for retrieved memories."""
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
@@ -85,8 +86,7 @@ class MemoryReranker:
                 best_mmr = float("-inf")
                 for i, (score, mem) in enumerate(candidates):
                     max_sim = max(
-                        self._text_similarity(mem.record.text, s[1].record.text)
-                        for s in selected
+                        self._text_similarity(mem.record.text, s[1].record.text) for s in selected
                     )
                     mmr = score - self.config.diversity_threshold * max_sim
                     if mmr > best_mmr:

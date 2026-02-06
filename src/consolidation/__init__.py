@@ -1,4 +1,5 @@
 """Phase 7: Consolidation engine (episodic → semantic)."""
+
 from .clusterer import EpisodeCluster, SemanticClusterer
 from .migrator import ConsolidationMigrator, MigrationResult
 from .sampler import EpisodeSampler, SamplingConfig

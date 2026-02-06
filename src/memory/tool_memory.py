@@ -1,4 +1,5 @@
 """Tool result storage for agentic workflows."""
+
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -73,19 +74,23 @@ class ToolMemory:
                 continue
             try:
                 data = json.loads(r.text)
-                out.append({
-                    "id": r.id,
-                    "tool_name": data.get("tool", meta.get("tool_name")),
-                    "input": data.get("input", meta.get("input_params")),
-                    "output": data.get("output", r.text),
-                    "timestamp": r.timestamp,
-                })
+                out.append(
+                    {
+                        "id": r.id,
+                        "tool_name": data.get("tool", meta.get("tool_name")),
+                        "input": data.get("input", meta.get("input_params")),
+                        "output": data.get("output", r.text),
+                        "timestamp": r.timestamp,
+                    }
+                )
             except json.JSONDecodeError:
-                out.append({
-                    "id": r.id,
-                    "tool_name": meta.get("tool_name"),
-                    "input": meta.get("input_params"),
-                    "output": r.text,
-                    "timestamp": r.timestamp,
-                })
+                out.append(
+                    {
+                        "id": r.id,
+                        "tool_name": meta.get("tool_name"),
+                        "input": meta.get("input_params"),
+                        "output": r.text,
+                        "timestamp": r.timestamp,
+                    }
+                )
         return out

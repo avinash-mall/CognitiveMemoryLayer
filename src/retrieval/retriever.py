@@ -1,4 +1,5 @@
 """Hybrid retriever executing plans across memory sources."""
+
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
@@ -47,14 +48,9 @@ class HybridRetriever:
         """Execute a retrieval plan and return results. Holistic: tenant-only."""
         all_results: List[Dict[str, Any]] = []
         for group_indices in plan.parallel_steps:
-            group_steps = [
-                plan.steps[i] for i in group_indices if i < len(plan.steps)
-            ]
+            group_steps = [plan.steps[i] for i in group_indices if i < len(plan.steps)]
             group_results = await asyncio.gather(
-                *[
-                    self._execute_step(tenant_id, step, context_filter)
-                    for step in group_steps
-                ],
+                *[self._execute_step(tenant_id, step, context_filter) for step in group_steps],
                 return_exceptions=True,
             )
             for step, result in zip(group_steps, group_results):
@@ -112,31 +108,33 @@ class HybridRetriever:
         if step.key:
             fact = await self.neocortical.get_fact(tenant_id, step.key)
             if fact:
-                results.append({
-                    "type": "fact",
-                    "source": "facts",
-                    "key": fact.key,
-                    "text": f"{fact.predicate}: {fact.value}",
-                    "value": fact.value,
-                    "confidence": fact.confidence,
-                    "relevance": 1.0,
-                    "record": fact,
-                })
+                results.append(
+                    {
+                        "type": "fact",
+                        "source": "facts",
+                        "key": fact.key,
+                        "text": f"{fact.predicate}: {fact.value}",
+                        "value": fact.value,
+                        "confidence": fact.confidence,
+                        "relevance": 1.0,
+                        "record": fact,
+                    }
+                )
         if step.query:
-            facts = await self.neocortical.text_search(
-                tenant_id, step.query, limit=step.top_k
-            )
+            facts = await self.neocortical.text_search(tenant_id, step.query, limit=step.top_k)
             for f in facts:
-                results.append({
-                    "type": "fact",
-                    "source": "facts",
-                    "key": f.get("key"),
-                    "text": f"{f.get('key', '')}: {f.get('value', '')}",
-                    "value": f.get("value"),
-                    "confidence": f.get("confidence", 0.5),
-                    "relevance": 0.8,
-                    "record": f,
-                })
+                results.append(
+                    {
+                        "type": "fact",
+                        "source": "facts",
+                        "key": f.get("key"),
+                        "text": f"{f.get('key', '')}: {f.get('value', '')}",
+                        "value": f.get("value"),
+                        "confidence": f.get("confidence", 0.5),
+                        "relevance": 0.8,
+                        "record": f,
+                    }
+                )
         return results[: step.top_k]
 
     async def _retrieve_vector(
@@ -256,15 +254,17 @@ class HybridRetriever:
         """Format entity data as readable text."""
         lines = [f"Entity: {entity_data.get('entity', 'Unknown')}"]
         for rel in entity_data.get("relations", [])[:5]:
-            lines.append(
-                f"  - {rel.get('predicate', '')}: {rel.get('related_entity', '')}"
-            )
+            lines.append(f"  - {rel.get('predicate', '')}: {rel.get('related_entity', '')}")
         return "\n".join(lines)
 
     def _fact_to_record(self, fact: Any, item: Dict[str, Any]) -> MemoryRecord:
         """Build MemoryRecord from SemanticFact-like object. Holistic: context_tags."""
         from uuid import UUID
-        text = item.get("text", "") or f"{getattr(fact, 'predicate', '')}: {getattr(fact, 'value', '')}"
+
+        text = (
+            item.get("text", "")
+            or f"{getattr(fact, 'predicate', '')}: {getattr(fact, 'value', '')}"
+        )
         fid = getattr(fact, "id", None)
         context_tags = getattr(fact, "context_tags", None) or []
         return MemoryRecord(

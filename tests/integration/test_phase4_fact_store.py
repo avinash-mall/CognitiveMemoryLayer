@@ -1,4 +1,5 @@
 """Integration tests for Phase 4: SemanticFactStore with PostgreSQL."""
+
 from uuid import uuid4
 
 import pytest
@@ -12,9 +13,7 @@ async def test_upsert_and_get_fact(pg_session_factory):
     store = SemanticFactStore(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
 
-    fact = await store.upsert_fact(
-        tenant_id, "user:identity:name", "Alice", confidence=0.9
-    )
+    fact = await store.upsert_fact(tenant_id, "user:identity:name", "Alice", confidence=0.9)
     assert fact.id
     assert fact.value == "Alice"
     assert fact.key == "user:identity:name"

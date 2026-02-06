@@ -1,4 +1,5 @@
 """PII redaction before storage."""
+
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -29,8 +30,7 @@ class PIIRedactor:
         if additional_patterns:
             self.patterns.update(additional_patterns)
         self._compiled = {
-            name: re.compile(pattern, re.IGNORECASE)
-            for name, pattern in self.patterns.items()
+            name: re.compile(pattern, re.IGNORECASE) for name, pattern in self.patterns.items()
         }
 
     def redact(self, text: str) -> RedactionResult:

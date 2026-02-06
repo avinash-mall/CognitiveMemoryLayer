@@ -1,4 +1,5 @@
 """Embedding service for memory content."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, List, Optional
@@ -26,16 +27,13 @@ class EmbeddingClient(ABC):
 
     @property
     @abstractmethod
-    def dimensions(self) -> int:
-        ...
+    def dimensions(self) -> int: ...
 
     @abstractmethod
-    async def embed(self, text: str) -> EmbeddingResult:
-        ...
+    async def embed(self, text: str) -> EmbeddingResult: ...
 
     @abstractmethod
-    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
-        ...
+    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]: ...
 
 
 class OpenAIEmbeddings(EmbeddingClient):
@@ -53,9 +51,7 @@ class OpenAIEmbeddings(EmbeddingClient):
             raise ImportError("openai package is required for OpenAIEmbeddings")
         settings = get_settings()
         self.client = AsyncOpenAI(
-            api_key=api_key
-            or settings.embedding.api_key
-            or os.environ.get("OPENAI_API_KEY", "")
+            api_key=api_key or settings.embedding.api_key or os.environ.get("OPENAI_API_KEY", "")
         )
         self.model = model or settings.embedding.model
         self._dimensions = dimensions
@@ -102,9 +98,7 @@ class LocalEmbeddings(EmbeddingClient):
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
-            raise ImportError(
-                "sentence-transformers is required for LocalEmbeddings"
-            )
+            raise ImportError("sentence-transformers is required for LocalEmbeddings")
         settings = get_settings()
         name = model_name or settings.embedding.local_model
         self.model = SentenceTransformer(name)
@@ -119,9 +113,7 @@ class LocalEmbeddings(EmbeddingClient):
         import asyncio
 
         loop = asyncio.get_event_loop()
-        embedding = await loop.run_in_executor(
-            None, lambda: self.model.encode(text).tolist()
-        )
+        embedding = await loop.run_in_executor(None, lambda: self.model.encode(text).tolist())
         return EmbeddingResult(
             embedding=embedding,
             model=self.model_name,
@@ -133,9 +125,7 @@ class LocalEmbeddings(EmbeddingClient):
         import asyncio
 
         loop = asyncio.get_event_loop()
-        embeddings = await loop.run_in_executor(
-            None, lambda: self.model.encode(texts).tolist()
-        )
+        embeddings = await loop.run_in_executor(None, lambda: self.model.encode(texts).tolist())
         return [
             EmbeddingResult(
                 embedding=emb,
@@ -206,12 +196,14 @@ class CachedEmbeddings(EmbeddingClient):
         await self.redis.setex(
             cache_key,
             self.ttl,
-            json.dumps({
-                "embedding": result.embedding,
-                "model": result.model,
-                "dimensions": result.dimensions,
-                "tokens_used": result.tokens_used,
-            }),
+            json.dumps(
+                {
+                    "embedding": result.embedding,
+                    "model": result.model,
+                    "dimensions": result.dimensions,
+                    "tokens_used": result.tokens_used,
+                }
+            ),
         )
         return result
 
@@ -237,12 +229,14 @@ class CachedEmbeddings(EmbeddingClient):
                 await self.redis.setex(
                     cache_key,
                     self.ttl,
-                    json.dumps({
-                        "embedding": result.embedding,
-                        "model": result.model,
-                        "dimensions": result.dimensions,
-                        "tokens_used": result.tokens_used,
-                    }),
+                    json.dumps(
+                        {
+                            "embedding": result.embedding,
+                            "model": result.model,
+                            "dimensions": result.dimensions,
+                            "tokens_used": result.tokens_used,
+                        }
+                    ),
                 )
         results.sort(key=lambda x: x[0])
         return [r for _, r in results]
