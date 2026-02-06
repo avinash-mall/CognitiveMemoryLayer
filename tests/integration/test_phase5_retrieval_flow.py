@@ -38,10 +38,9 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
     neocortical = NeocorticalStore(graph_store=_MockGraph(), fact_store=fact_store)
 
     tenant_id = f"t-{uuid4().hex[:8]}"
-    user_id = f"u-{uuid4().hex[:8]}"
 
     await neocortical.store_fact(
-        tenant_id, user_id, "user:preference:cuisine", "Italian", confidence=0.9
+        tenant_id, "user:preference:cuisine", "Italian", confidence=0.9
     )
 
     retriever = MemoryRetriever(
@@ -49,7 +48,7 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
         neocortical=neocortical,
         llm_client=None,
     )
-    packet = await retriever.retrieve(tenant_id, user_id, "cuisine")
+    packet = await retriever.retrieve(tenant_id, "cuisine")
 
     assert packet.query == "cuisine"
     all_mems = packet.all_memories
@@ -74,8 +73,7 @@ async def test_retrieve_for_llm_returns_string(pg_session_factory):
     retriever = MemoryRetriever(hippocampal=hippocampal, neocortical=neocortical, llm_client=None)
 
     tenant_id = f"t-{uuid4().hex[:8]}"
-    user_id = f"u-{uuid4().hex[:8]}"
 
-    ctx = await retriever.retrieve_for_llm(tenant_id, user_id, "my preferences", max_tokens=500)
+    ctx = await retriever.retrieve_for_llm(tenant_id, "my preferences", max_tokens=500)
     assert isinstance(ctx, str)
     assert "Retrieved Memory" in ctx or len(ctx) >= 0

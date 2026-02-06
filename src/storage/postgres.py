@@ -16,7 +16,7 @@ def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.enums import MemoryScope, MemoryStatus, MemoryType
+from ..core.enums import MemoryStatus, MemoryType
 from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
 from .base import MemoryStoreBase
 from .models import MemoryRecordModel
@@ -30,10 +30,7 @@ class PostgresMemoryStore(MemoryStoreBase):
 
 
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
-        content_hash = self._hash_content(
-            record.text, record.tenant_id,
-            scope=record.scope.value, scope_id=record.scope_id,
-        )
+        content_hash = self._hash_content(record.text, record.tenant_id)
         async with self.session_factory() as session:
             existing = await session.execute(
                 select(MemoryRecordModel).where(
@@ -59,8 +56,8 @@ class PostgresMemoryStore(MemoryStoreBase):
             model = MemoryRecordModel(
                 tenant_id=record.tenant_id,
                 agent_id=record.agent_id,
-                scope=record.scope.value,
-                scope_id=record.scope_id,
+                context_tags=record.context_tags or [],
+                source_session_id=record.source_session_id,
                 namespace=record.namespace,
                 type=record.type.value,
                 text=record.text,
@@ -90,19 +87,24 @@ class PostgresMemoryStore(MemoryStoreBase):
             return self._to_schema(model) if model else None
 
     async def get_by_key(
-        self, tenant_id: str, scope_id: str, key: str
+        self,
+        tenant_id: str,
+        key: str,
+        context_filter: Optional[List[str]] = None,
     ) -> Optional[MemoryRecord]:
         async with self.session_factory() as session:
-            r = await session.execute(
-                select(MemoryRecordModel).where(
-                    and_(
-                        MemoryRecordModel.tenant_id == tenant_id,
-                        MemoryRecordModel.scope_id == scope_id,
-                        MemoryRecordModel.key == key,
-                        MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
-                    )
+            q = select(MemoryRecordModel).where(
+                and_(
+                    MemoryRecordModel.tenant_id == tenant_id,
+                    MemoryRecordModel.key == key,
+                    MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
                 )
             )
+            if context_filter:
+                q = q.where(
+                    MemoryRecordModel.context_tags.overlap(context_filter)
+                )
+            r = await session.execute(q)
             model = r.scalar_one_or_none()
             return self._to_schema(model) if model else None
 
@@ -142,6 +144,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 "access_count", "last_accessed_at", "confidence",
                 "importance", "status", "meta", "text", "embedding",
                 "valid_to", "metadata", "entities", "relations",
+                "context_tags", "source_session_id",
             }
             for key, value in patch.items():
                 if key == "metadata":
@@ -157,18 +160,19 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def vector_search(
         self,
         tenant_id: str,
-        scope_id: str,
         embedding: List[float],
         top_k: int = 10,
+        context_filter: Optional[List[str]] = None,
         filters: Optional[Dict[str, Any]] = None,
         min_similarity: float = 0.0,
     ) -> List[MemoryRecord]:
         async with self.session_factory() as session:
             base = and_(
                 MemoryRecordModel.tenant_id == tenant_id,
-                MemoryRecordModel.scope_id == scope_id,
                 MemoryRecordModel.embedding.isnot(None),
             )
+            if context_filter:
+                base = and_(base, MemoryRecordModel.context_tags.overlap(context_filter))
             q = select(
                 MemoryRecordModel,
                 (
@@ -212,7 +216,6 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def scan(
         self,
         tenant_id: str,
-        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
         order_by: Optional[str] = None,
         limit: int = 100,
@@ -220,11 +223,16 @@ class PostgresMemoryStore(MemoryStoreBase):
     ) -> List[MemoryRecord]:
         async with self.session_factory() as session:
             q = select(MemoryRecordModel).where(
-                and_(
-                    MemoryRecordModel.tenant_id == tenant_id,
-                    MemoryRecordModel.scope_id == scope_id,
-                )
+                MemoryRecordModel.tenant_id == tenant_id
             )
+            if filters and "context_tags" in filters:
+                q = q.where(
+                    MemoryRecordModel.context_tags.overlap(filters["context_tags"])
+                )
+            if filters and "source_session_id" in filters:
+                q = q.where(
+                    MemoryRecordModel.source_session_id == filters["source_session_id"]
+                )
             if filters:
                 if "status" in filters:
                     q = q.where(
@@ -254,16 +262,20 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def count(
         self,
         tenant_id: str,
-        scope_id: str,
         filters: Optional[Dict[str, Any]] = None,
     ) -> int:
         async with self.session_factory() as session:
             q = select(func.count(MemoryRecordModel.id)).where(
-                and_(
-                    MemoryRecordModel.tenant_id == tenant_id,
-                    MemoryRecordModel.scope_id == scope_id,
-                )
+                MemoryRecordModel.tenant_id == tenant_id
             )
+            if filters and "context_tags" in filters:
+                q = q.where(
+                    MemoryRecordModel.context_tags.overlap(filters["context_tags"])
+                )
+            if filters and "source_session_id" in filters:
+                q = q.where(
+                    MemoryRecordModel.source_session_id == filters["source_session_id"]
+                )
             if filters and "status" in filters:
                 q = q.where(
                     MemoryRecordModel.status == filters["status"]
@@ -280,12 +292,8 @@ class PostgresMemoryStore(MemoryStoreBase):
         if not record:
             return 0
         refs = 0
-        scope_id = record.scope_id
-        if not scope_id:
-            return 0
         others = await self.scan(
             record.tenant_id,
-            scope_id,
             limit=5000,
         )
         mid_str = str(record_id)
@@ -299,14 +307,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                 refs += 1
         return refs
 
-    def _hash_content(
-        self,
-        text: str,
-        tenant_id: str,
-        scope: str,
-        scope_id: str,
-    ) -> str:
-        content = f"{tenant_id}:{scope}:{scope_id}:{text.lower().strip()}"
+    def _hash_content(self, text: str, tenant_id: str) -> str:
+        content = f"{tenant_id}:{text.lower().strip()}"
         return hashlib.sha256(content.encode()).hexdigest()
 
     def _to_schema(self, model: Optional[MemoryRecordModel]) -> Optional[MemoryRecord]:
@@ -316,17 +318,13 @@ class PostgresMemoryStore(MemoryStoreBase):
             mem_type = MemoryType(model.type)
         except ValueError:
             mem_type = MemoryType.EPISODIC_EVENT
-        scope_val = getattr(model, "scope", None) or "session"
-        scope_id_val = getattr(model, "scope_id", None) or ""
-        try:
-            scope_enum = MemoryScope(scope_val)
-        except ValueError:
-            scope_enum = MemoryScope.SESSION
+        context_tags = getattr(model, "context_tags", None) or []
+        source_session_id = getattr(model, "source_session_id", None)
         return MemoryRecord(
             id=model.id,
             tenant_id=model.tenant_id,
-            scope=scope_enum,
-            scope_id=scope_id_val,
+            context_tags=list(context_tags),
+            source_session_id=source_session_id,
             agent_id=model.agent_id,
             namespace=getattr(model, "namespace", None),
             type=mem_type,

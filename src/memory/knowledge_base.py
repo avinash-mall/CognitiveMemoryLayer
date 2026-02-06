@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from ..core.enums import MemoryScope, MemorySource, MemoryType
+from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance
 from ..storage.base import MemoryStoreBase
 from ..utils.embeddings import EmbeddingClient
@@ -24,7 +24,8 @@ class Fact:
 class KnowledgeBase:
     """
     General-purpose knowledge storage (not user-specific).
-    Facts are scoped by namespace; supports semantic query via embeddings.
+    Facts are tagged by namespace; supports semantic query via embeddings.
+    Holistic: tenant-only.
     """
 
     def __init__(
@@ -53,9 +54,8 @@ class KnowledgeBase:
             meta["source"] = source
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.NAMESPACE,
-            scope_id=namespace,
-            user_id=None,
+            context_tags=["world", "knowledge", f"namespace:{namespace}"],
+            source_session_id=None,
             namespace=namespace,
             type=MemoryType.KNOWLEDGE,
             text=text,
@@ -78,12 +78,16 @@ class KnowledgeBase:
         query: str,
         max_results: int = 10,
     ) -> List[Fact]:
-        """Query the knowledge base by semantic similarity (requires embedding_client)."""
+        """Query the knowledge base by semantic similarity (requires embedding_client). Holistic: filter by context_tags."""
+        ns_tag = f"namespace:{namespace}"
         if not self.embeddings:
             records = await self.store.scan(
                 tenant_id=tenant_id,
-                user_id=namespace,
-                filters={"status": "active", "type": MemoryType.KNOWLEDGE.value},
+                filters={
+                    "status": "active",
+                    "type": MemoryType.KNOWLEDGE.value,
+                    "context_tags": [ns_tag],
+                },
                 limit=max_results,
             )
             return [
@@ -101,9 +105,9 @@ class KnowledgeBase:
         emb_result = await self.embeddings.embed(query)
         records = await self.store.vector_search(
             tenant_id=tenant_id,
-            user_id=namespace,
             embedding=emb_result.embedding,
             top_k=max_results,
+            context_filter=[ns_tag],
             filters={"type": MemoryType.KNOWLEDGE.value},
         )
         return [

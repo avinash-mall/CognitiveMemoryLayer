@@ -51,8 +51,8 @@ class MemoryRecordModel(Base):
     tenant_id = Column(String(100), nullable=False, index=True)
     agent_id = Column(String(100), nullable=True)
 
-    scope = Column(String(20), nullable=False, index=True)
-    scope_id = Column(String(100), nullable=False, index=True)
+    context_tags = Column(ARRAY(String), default=[], nullable=False)
+    source_session_id = Column(String(100), nullable=True)
     namespace = Column(String(100), nullable=True, index=True)
 
     type = Column(String(30), nullable=False, index=True)
@@ -86,10 +86,10 @@ class MemoryRecordModel(Base):
     content_hash = Column(String(64), nullable=True, index=True)
 
     __table_args__ = (
-        Index("ix_memory_tenant_scope", "tenant_id", "scope", "scope_id", "status"),
         Index("ix_memory_tenant_namespace", "tenant_id", "namespace", "status"),
-        Index("ix_memory_tenant_scope_type", "tenant_id", "scope_id", "type"),
-        Index("ix_memory_tenant_scope_key", "tenant_id", "scope_id", "key"),
+        Index("ix_memory_tenant_status", "tenant_id", "status"),
+        Index("ix_memory_tenant_type", "tenant_id", "type"),
+        Index("ix_memory_tenant_key", "tenant_id", "key"),
     )
 
 
@@ -100,7 +100,7 @@ class SemanticFactModel(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String(100), nullable=False, index=True)
-    scope_id = Column(String(100), nullable=False, index=True)
+    context_tags = Column(ARRAY(String), default=[], nullable=False)
     category = Column(String(30), nullable=False, index=True)
     key = Column(String(200), nullable=False, index=True)
     subject = Column(String(200), nullable=False)
@@ -119,6 +119,6 @@ class SemanticFactModel(Base):
     supersedes_id = Column(UUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
-        Index("ix_semantic_facts_tenant_scope_key", "tenant_id", "scope_id", "key", "is_current"),
-        Index("ix_semantic_facts_tenant_scope_category", "tenant_id", "scope_id", "category", "is_current"),
+        Index("ix_semantic_facts_tenant_key", "tenant_id", "key", "is_current"),
+        Index("ix_semantic_facts_tenant_category", "tenant_id", "category", "is_current"),
     )

@@ -12,11 +12,11 @@ Usage:
 
     client = CognitiveMemoryClient(api_key=os.environ.get("AUTH__API_KEY", "your-key"))
 
-    # Store a memory (scope-based)
-    result = client.write("session", "session-123", "User prefers vegetarian food")
+    # Store a memory (holistic: tenant from auth; optional context_tags, session_id)
+    result = client.write("User prefers vegetarian food", session_id="session-123", context_tags=["preference"])
 
     # Retrieve memories
-    memories = client.read("session", "session-123", "What food does the user like?")
+    memories = client.read("What food does the user like?")
 """
 
 import httpx
@@ -60,11 +60,18 @@ class MemoryWriteResult:
     message: str
 
 
-@dataclass 
+@dataclass
+class ProcessTurnResult:
+    """Result from process_turn (seamless memory)."""
+    memory_context: str
+    memories_retrieved: int
+    memories_stored: int
+    reconsolidation_applied: bool
+
+
+@dataclass
 class MemoryStats:
-    """Memory statistics for a scope."""
-    scope: str
-    scope_id: str
+    """Memory statistics for the tenant."""
     total_memories: int
     active_memories: int
     by_type: Dict[str, int]
@@ -74,22 +81,20 @@ class MemoryStats:
 class CognitiveMemoryClient:
     """
     Python client for the Cognitive Memory Layer API.
-    
-    Memory Scopes:
-        - session: Session-specific memory (most common for agents)
-        - agent: Agent-specific memory (shared across sessions)
-        - namespace: Namespace-scoped memory (for organizational grouping)
-        - global: Global memory (tenant-wide)
-    
+    Holistic memory: tenant from X-Tenant-ID or API key; no scopes.
+
     Example:
         import os
         client = CognitiveMemoryClient(
             base_url="http://localhost:8000",
             api_key=os.environ.get("AUTH__API_KEY", "")
         )
-        client.write("session", "session-123", "The user lives in Paris")
-        result = client.read("session", "session-123", "Where does the user live?", format="llm_context")
+        client.write("The user lives in Paris", session_id="session-123", context_tags=["personal"])
+        result = client.read("Where does the user live?", format="llm_context")
         print(result.llm_context)
+        # Seamless turn (auto-retrieve + auto-store):
+        turn = client.process_turn("What do I like?", session_id="session-123")
+        print(turn.memory_context)
     """
 
     def __init__(
@@ -112,21 +117,27 @@ class CognitiveMemoryClient:
         self.timeout = timeout
         self._client = httpx.Client(timeout=timeout)
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
         """Get request headers with authentication."""
-        return {
-            "Content-Type": "application/json",
-            "X-API-Key": self.api_key
-        }
+        h = {"Content-Type": "application/json", "X-API-Key": self.api_key}
+        if tenant_id:
+            h["X-Tenant-ID"] = tenant_id
+        return h
     
-    def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        tenant_id: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """Make an API request."""
         url = f"{self.base_url}/api/v1{endpoint}"
+        headers = self._headers(tenant_id=tenant_id)
+        if "headers" in kwargs:
+            headers = {**headers, **kwargs.pop("headers")}
         response = self._client.request(
-            method, 
-            url, 
-            headers=self._headers(),
-            **kwargs
+            method, url, headers=headers, **kwargs
         )
         response.raise_for_status()
         return response.json()
@@ -137,44 +148,35 @@ class CognitiveMemoryClient:
     
     def write(
         self,
-        scope: str,
-        scope_id: str,
         content: str,
+        context_tags: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
         memory_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         turn_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        namespace: Optional[str] = None
+        namespace: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> MemoryWriteResult:
         """
-        Store new information in memory.
-        
+        Store new information in memory. Holistic: tenant from header or API key.
+
         Args:
-            scope: Memory scope ("session", "agent", "namespace", "global")
-            scope_id: Identifier for the scope (e.g., session ID, agent ID)
             content: The information to store
+            context_tags: Optional tags (e.g. personal, conversation)
+            session_id: Optional session ID for origin tracking
             memory_type: Type of memory (episodic_event, semantic_fact, preference, etc.)
-            metadata: Additional metadata to store
+            metadata: Additional metadata
             turn_id: Conversation turn identifier
             agent_id: Agent that created this memory
-            namespace: Optional namespace for grouping
-            
-        Returns:
-            MemoryWriteResult with success status and memory_id
-            
-        Example:
-            result = client.write(
-                scope="session",
-                scope_id="session-123",
-                content="User mentioned they are allergic to peanuts",
-                memory_type="constraint"
-            )
+            namespace: Optional namespace
+            tenant_id: Optional tenant (default from API key config)
         """
-        payload = {
-            "scope": scope,
-            "scope_id": scope_id,
-            "content": content
-        }
+        payload = {"content": content}
+        if context_tags:
+            payload["context_tags"] = context_tags
+        if session_id:
+            payload["session_id"] = session_id
         if memory_type:
             payload["memory_type"] = memory_type
         if metadata:
@@ -185,68 +187,70 @@ class CognitiveMemoryClient:
             payload["agent_id"] = agent_id
         if namespace:
             payload["namespace"] = namespace
-            
-        data = self._request("POST", "/memory/write", json=payload)
+        data = self._request("POST", "/memory/write", tenant_id=tenant_id, json=payload)
         return MemoryWriteResult(
             success=data.get("success", False),
             memory_id=data.get("memory_id"),
             chunks_created=data.get("chunks_created", 0),
             message=data.get("message", "")
         )
+
+    def process_turn(
+        self,
+        user_message: str,
+        assistant_response: Optional[str] = None,
+        session_id: Optional[str] = None,
+        max_context_tokens: int = 1500,
+        tenant_id: Optional[str] = None,
+    ) -> ProcessTurnResult:
+        """
+        Seamless memory: auto-retrieve context for user message and optionally auto-store.
+        Returns memory_context ready to inject into LLM prompt.
+        """
+        payload = {
+            "user_message": user_message,
+            "max_context_tokens": max_context_tokens,
+        }
+        if assistant_response is not None:
+            payload["assistant_response"] = assistant_response
+        if session_id:
+            payload["session_id"] = session_id
+        data = self._request("POST", "/memory/turn", tenant_id=tenant_id, json=payload)
+        return ProcessTurnResult(
+            memory_context=data.get("memory_context", ""),
+            memories_retrieved=data.get("memories_retrieved", 0),
+            memories_stored=data.get("memories_stored", 0),
+            reconsolidation_applied=data.get("reconsolidation_applied", False),
+        )
     
     def read(
         self,
-        scope: str,
-        scope_id: str,
         query: str,
         max_results: int = 10,
+        context_filter: Optional[List[str]] = None,
         memory_types: Optional[List[str]] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        format: str = "packet"
+        format: str = "packet",
+        tenant_id: Optional[str] = None,
     ) -> MemoryReadResult:
         """
-        Retrieve relevant memories for a query.
-        
-        Args:
-            scope: Memory scope ("session", "agent", "namespace", "global")
-            scope_id: Identifier for the scope
-            query: Natural language query
-            max_results: Maximum number of memories to return
-            memory_types: Filter by specific memory types
-            since: Only return memories after this time
-            until: Only return memories before this time
-            format: Response format ("packet", "list", "llm_context")
-            
-        Returns:
-            MemoryReadResult with retrieved memories
-            
-        Example:
-            # Get memories as LLM-ready context
-            result = client.read(
-                scope="session",
-                scope_id="session-123",
-                query="What are the user's dietary restrictions?",
-                memory_types=["preference", "constraint"],
-                format="llm_context"
-            )
-            print(result.llm_context)
+        Retrieve relevant memories for a query. Holistic: tenant from auth.
         """
         payload = {
-            "scope": scope,
-            "scope_id": scope_id,
             "query": query,
             "max_results": max_results,
-            "format": format
+            "format": format,
         }
+        if context_filter:
+            payload["context_filter"] = context_filter
         if memory_types:
             payload["memory_types"] = memory_types
         if since:
             payload["since"] = since.isoformat()
         if until:
             payload["until"] = until.isoformat()
-            
-        data = self._request("POST", "/memory/read", json=payload)
+        data = self._request("POST", "/memory/read", tenant_id=tenant_id, json=payload)
         
         def parse_item(item: Dict) -> MemoryItem:
             return MemoryItem(
@@ -272,136 +276,49 @@ class CognitiveMemoryClient:
     
     def update(
         self,
-        scope: str,
-        scope_id: str,
         memory_id: str,
         text: Optional[str] = None,
         confidence: Optional[float] = None,
-        feedback: Optional[str] = None
+        feedback: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Update an existing memory or provide feedback.
-        
-        Args:
-            scope: Memory scope
-            scope_id: Identifier for the scope
-            memory_id: UUID of the memory to update
-            text: New text content
-            confidence: New confidence score (0-1)
-            feedback: Feedback type ("correct", "incorrect", "outdated")
-            
-        Returns:
-            Update result with new version number
-            
-        Example:
-            # Mark a memory as incorrect
-            client.update(
-                scope="session",
-                scope_id="session-123",
-                memory_id="550e8400-e29b-41d4-a716-446655440000",
-                feedback="incorrect"
-            )
-        """
-        payload = {
-            "scope": scope,
-            "scope_id": scope_id,
-            "memory_id": memory_id
-        }
+        """Update an existing memory or provide feedback. Holistic: tenant from auth."""
+        payload = {"memory_id": memory_id}
         if text:
             payload["text"] = text
         if confidence is not None:
             payload["confidence"] = confidence
         if feedback:
             payload["feedback"] = feedback
-            
-        return self._request("POST", "/memory/update", json=payload)
+        return self._request("POST", "/memory/update", tenant_id=tenant_id, json=payload)
     
     def forget(
         self,
-        scope: str,
-        scope_id: str,
         memory_ids: Optional[List[str]] = None,
         query: Optional[str] = None,
         before: Optional[datetime] = None,
-        action: str = "delete"
+        action: str = "delete",
+        tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Forget (delete/archive/silence) memories.
-        
-        Args:
-            scope: Memory scope
-            scope_id: Identifier for the scope
-            memory_ids: Specific memory UUIDs to forget
-            query: Natural language query to find memories to forget
-            before: Forget memories older than this date
-            action: Action type ("delete", "archive", "silence")
-            
-        Returns:
-            Result with affected_count
-            
-        Example:
-            # Forget old address information
-            client.forget(
-                scope="session",
-                scope_id="session-123",
-                query="old address",
-                action="archive"
-            )
-        """
-        payload = {
-            "scope": scope,
-            "scope_id": scope_id,
-            "action": action
-        }
+        """Forget (delete/archive/silence) memories. Holistic: tenant from auth."""
+        payload = {"action": action}
         if memory_ids:
             payload["memory_ids"] = memory_ids
         if query:
             payload["query"] = query
         if before:
             payload["before"] = before.isoformat()
-            
-        return self._request("POST", "/memory/forget", json=payload)
-    
-    def stats(self, scope: str, scope_id: str) -> MemoryStats:
-        """
-        Get memory statistics for a scope.
-        
-        Args:
-            scope: Memory scope
-            scope_id: Identifier for the scope
-            
-        Returns:
-            MemoryStats with counts and averages
-        """
-        data = self._request("GET", f"/memory/stats/{scope}/{scope_id}")
+        return self._request("POST", "/memory/forget", tenant_id=tenant_id, json=payload)
+
+    def stats(self, tenant_id: Optional[str] = None) -> MemoryStats:
+        """Get memory statistics for the tenant."""
+        data = self._request("GET", "/memory/stats", tenant_id=tenant_id)
         return MemoryStats(
-            scope=data["scope"],
-            scope_id=data["scope_id"],
             total_memories=data["total_memories"],
             active_memories=data["active_memories"],
             by_type=data.get("by_type", {}),
             avg_confidence=data.get("avg_confidence", 0.0)
         )
-    
-    # Convenience methods for session-based memory
-    def session_write(
-        self,
-        session_id: str,
-        content: str,
-        memory_type: Optional[str] = None,
-        **kwargs
-    ) -> MemoryWriteResult:
-        """Convenience method to write to session memory."""
-        return self.write("session", session_id, content, memory_type, **kwargs)
-    
-    def session_read(
-        self,
-        session_id: str,
-        query: str,
-        **kwargs
-    ) -> MemoryReadResult:
-        """Convenience method to read from session memory."""
-        return self.read("session", session_id, query, **kwargs)
     
     def close(self):
         """Close the HTTP client."""
@@ -437,64 +354,67 @@ class AsyncCognitiveMemoryClient:
         self.timeout = timeout
         self._client = httpx.AsyncClient(timeout=timeout)
     
-    def _headers(self) -> Dict[str, str]:
-        return {
-            "Content-Type": "application/json",
-            "X-API-Key": self.api_key
-        }
-    
-    async def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
+    def _headers(self, tenant_id: Optional[str] = None) -> Dict[str, str]:
+        h = {"Content-Type": "application/json", "X-API-Key": self.api_key}
+        if tenant_id:
+            h["X-Tenant-ID"] = tenant_id
+        return h
+
+    async def _request(
+        self,
+        method: str,
+        endpoint: str,
+        tenant_id: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         url = f"{self.base_url}/api/v1{endpoint}"
         response = await self._client.request(
-            method, 
-            url, 
-            headers=self._headers(),
-            **kwargs
+            method, url, headers=self._headers(tenant_id=tenant_id), **kwargs
         )
         response.raise_for_status()
         return response.json()
-    
+
     async def health(self) -> Dict[str, Any]:
         return await self._request("GET", "/health")
-    
+
     async def write(
         self,
-        scope: str,
-        scope_id: str,
         content: str,
+        context_tags: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
         memory_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        tenant_id: Optional[str] = None,
     ) -> MemoryWriteResult:
-        payload = {"scope": scope, "scope_id": scope_id, "content": content}
+        payload = {"content": content}
+        if context_tags:
+            payload["context_tags"] = context_tags
+        if session_id:
+            payload["session_id"] = session_id
         if memory_type:
             payload["memory_type"] = memory_type
         if metadata:
             payload["metadata"] = metadata
-            
-        data = await self._request("POST", "/memory/write", json=payload)
+        data = await self._request("POST", "/memory/write", tenant_id=tenant_id, json=payload)
         return MemoryWriteResult(
             success=data.get("success", False),
             memory_id=data.get("memory_id"),
             chunks_created=data.get("chunks_created", 0),
             message=data.get("message", "")
         )
-    
+
     async def read(
         self,
-        scope: str,
-        scope_id: str,
         query: str,
         max_results: int = 10,
-        format: str = "packet"
+        context_filter: Optional[List[str]] = None,
+        format: str = "packet",
+        tenant_id: Optional[str] = None,
     ) -> MemoryReadResult:
-        payload = {
-            "scope": scope,
-            "scope_id": scope_id,
-            "query": query,
-            "max_results": max_results,
-            "format": format
-        }
-        data = await self._request("POST", "/memory/read", json=payload)
+        payload = {"query": query, "max_results": max_results, "format": format}
+        if context_filter:
+            payload["context_filter"] = context_filter
+        data = await self._request("POST", "/memory/read", tenant_id=tenant_id, json=payload)
         
         def parse_item(item: Dict) -> MemoryItem:
             return MemoryItem(
@@ -539,22 +459,13 @@ if __name__ == "__main__":
     try:
         health = client.health()
         print(f"API Status: {health['status']}")
-        
-        # Write a test memory
         result = client.write(
-            scope="session",
-            scope_id="test-session",
-            content="This is a test memory from the Python client"
+            "This is a test memory from the Python client",
+            session_id="test-session",
+            context_tags=["conversation"],
         )
         print(f"Write result: {result}")
-        
-        # Read it back
-        memories = client.read(
-            scope="session",
-            scope_id="test-session",
-            query="test memory",
-            format="llm_context"
-        )
+        memories = client.read("test memory", format="llm_context")
         print(f"Found {memories.total_count} memories")
         if memories.llm_context:
             print(f"LLM Context:\n{memories.llm_context}")

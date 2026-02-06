@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemoryScope, MemorySource, MemoryType
+from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
 from src.forgetting.worker import ForgettingWorker
 from src.storage.postgres import PostgresMemoryStore
@@ -39,9 +39,7 @@ async def test_forgetting_dry_run_does_not_modify(pg_session_factory):
     await store.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.USER,
-            scope_id=user_id,
-            user_id=user_id,
+            context_tags=[],
             type=MemoryType.EPISODIC_EVENT,
             text="Old low-value memory to forget.",
             confidence=0.3,
@@ -57,7 +55,7 @@ async def test_forgetting_dry_run_does_not_modify(pg_session_factory):
     assert report.memories_scanned >= 1
     assert report.memories_scored >= 1
     records = await store.scan(
-        tenant_id, user_id, filters={"status": "active"}, limit=10
+        tenant_id, filters={"status": "active"}, limit=10
     )
     assert len(records) >= 1
     assert records[0].status.value == "active"
@@ -74,9 +72,7 @@ async def test_forgetting_decay_reduces_confidence(pg_session_factory):
     rec = await store.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.USER,
-            scope_id=user_id,
-            user_id=user_id,
+            context_tags=[],
             type=MemoryType.EPISODIC_EVENT,
             text="Temporary memory.",
             confidence=0.6,

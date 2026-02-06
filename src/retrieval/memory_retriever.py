@@ -1,5 +1,5 @@
 """Main memory retriever facade."""
-from typing import Optional
+from typing import List, Optional
 
 from ..core.schemas import MemoryPacket
 from ..memory.hippocampal.store import HippocampalStore
@@ -13,7 +13,7 @@ from .retriever import HybridRetriever
 
 
 class MemoryRetriever:
-    """Main entry point for memory retrieval. Coordinates classification, planning, retrieval, rerank, and formatting."""
+    """Main entry point for memory retrieval. Coordinates classification, planning, retrieval, rerank, and formatting. Holistic: tenant-only."""
 
     def __init__(
         self,
@@ -31,15 +31,16 @@ class MemoryRetriever:
     async def retrieve(
         self,
         tenant_id: str,
-        scope_id: str,
         query: str,
         max_results: int = 20,
+        context_filter: Optional[List[str]] = None,
+        recent_context: Optional[str] = None,
         return_packet: bool = True,
     ) -> MemoryPacket:
-        """Retrieve relevant memories for a query."""
-        analysis = await self.classifier.classify(query)
+        """Retrieve relevant memories for a query. Holistic: tenant-only."""
+        analysis = await self.classifier.classify(query, recent_context=recent_context)
         plan = self.planner.plan(analysis)
-        raw_results = await self.retriever.retrieve(tenant_id, scope_id, plan)
+        raw_results = await self.retriever.retrieve(tenant_id, plan, context_filter=context_filter)
         reranked = self.reranker.rerank(raw_results, query, max_results=max_results)
         if return_packet:
             return self.packet_builder.build(reranked, query)
@@ -48,11 +49,16 @@ class MemoryRetriever:
     async def retrieve_for_llm(
         self,
         tenant_id: str,
-        scope_id: str,
         query: str,
         max_tokens: int = 2000,
         format: str = "markdown",
+        context_filter: Optional[List[str]] = None,
+        recent_context: Optional[str] = None,
     ) -> str:
-        """Retrieve and format memories for LLM context."""
-        packet = await self.retrieve(tenant_id, scope_id, query)
+        """Retrieve and format memories for LLM context. Holistic: tenant-only."""
+        packet = await self.retrieve(
+            tenant_id, query,
+            context_filter=context_filter,
+            recent_context=recent_context,
+        )
         return self.packet_builder.to_llm_context(packet, max_tokens, format)

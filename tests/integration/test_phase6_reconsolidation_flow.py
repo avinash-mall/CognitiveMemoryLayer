@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.enums import MemoryScope, MemorySource, MemoryType
+from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
 from src.storage.postgres import PostgresMemoryStore
 from src.reconsolidation.service import ReconsolidationService
@@ -18,7 +18,7 @@ async def test_reconsolidation_process_turn_no_memories(pg_session_factory):
     user_id = f"u-{uuid4().hex[:8]}"
     result = await svc.process_turn(
         tenant_id=tenant_id,
-        user_id=user_id,
+        scope_id=user_id,
         turn_id="turn1",
         user_message="I like pizza.",
         assistant_response="Great! I'll remember that.",
@@ -40,9 +40,7 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     created = await store.upsert(
         MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.USER,
-            scope_id=user_id,
-            user_id=user_id,
+            context_tags=[],
             type=MemoryType.PREFERENCE,
             text="I prefer coffee.",
             key="user:preference:drink",
@@ -56,7 +54,7 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     svc = ReconsolidationService(memory_store=store, llm_client=None)
     result = await svc.process_turn(
         tenant_id=tenant_id,
-        user_id=user_id,
+        scope_id=user_id,
         turn_id="turn2",
         user_message="Actually, I prefer tea now.",
         assistant_response="Got it, I'll remember you prefer tea.",
