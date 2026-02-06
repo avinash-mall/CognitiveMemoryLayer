@@ -70,9 +70,7 @@ class MemoryRecordModel(Base):
     meta = Column("metadata", JSON, default=dict)  # DB column "metadata"
 
     timestamp = Column(DateTime, nullable=False, index=True)
-    written_at = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
-    )
+    written_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     valid_from = Column(DateTime, nullable=True)
     valid_to = Column(DateTime, nullable=True)
 

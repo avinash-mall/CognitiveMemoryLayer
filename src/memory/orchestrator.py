@@ -172,8 +172,6 @@ class MemoryOrchestrator:
         query: str,
         max_results: int = 10,
         context_filter: Optional[List[str]] = None,
-        memory_types: Optional[List[Any]] = None,
-        time_filter: Optional[Dict] = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories. Holistic: tenant-only."""
         return await self.retriever.retrieve(
