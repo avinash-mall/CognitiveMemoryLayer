@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/PKief/vscode-material-icon-theme/main/icons/brain.svg" width="100" height="100" alt="Brain Icon"/>
-</p>
-
 <h1 align="center">🧠 Cognitive Memory Layer</h1>
 
 <p align="center">
@@ -129,7 +125,7 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**:
 
 ```mermaid
 flowchart TB
-    subgraph API["🌐 REST API Layer (FastAPI)"]
+    subgraph API["REST API Layer - FastAPI"]
         write["/memory/write"]
         read["/memory/read"]
         update["/memory/update"]
@@ -137,28 +133,28 @@ flowchart TB
         turn["/memory/turn"]
     end
 
-    subgraph Orchestrator["🎭 Memory Orchestrator"]
-        gate["Write Gate<br/>(Salience)"]
-        encoder["Encoder<br/>(Sparse + Dense)"]
-        retriever["Retriever<br/>(Ecphory)"]
-        recon["Reconsolidate<br/>(Labile State)"]
+    subgraph Orchestrator["Memory Orchestrator"]
+        gate["Write Gate"]
+        encoder["Encoder"]
+        retriever["Retriever"]
+        recon["Reconsolidate"]
         gate --> encoder --> retriever --> recon
     end
 
-    subgraph Stores["💾 Dual-Store Memory System"]
-        subgraph Hippo["🔵 HIPPOCAMPAL STORE<br/>Fast Episodic Memory"]
+    subgraph Stores["Dual-Store Memory System"]
+        subgraph Hippo["HIPPOCAMPAL STORE"]
             pg["PostgreSQL + pgvector"]
-            pg_feat["• Vector embeddings<br/>• High contextual detail<br/>• Rapid write (one-shot)<br/>• Time-indexed episodes"]
+            pg_feat["Vector embeddings, Rapid write"]
         end
-        subgraph Neo["🟣 NEOCORTICAL STORE<br/>Slow Semantic Memory"]
+        subgraph Neo["NEOCORTICAL STORE"]
             neo4j["Neo4j Knowledge Graph"]
-            neo_feat["• Entity nodes<br/>• Relation edges<br/>• Personalized PageRank<br/>• Schema-aligned facts"]
+            neo_feat["Entity nodes, Relations, PPR"]
         end
     end
 
-    subgraph Workers["⚙️ BACKGROUND WORKERS (Celery)"]
-        consol["CONSOLIDATION<br/>('Sleep Cycle')"]
-        forg["FORGETTING<br/>(Rac1/Cofilin)"]
+    subgraph Workers["BACKGROUND WORKERS - Celery"]
+        consol["CONSOLIDATION"]
+        forg["FORGETTING"]
         maint["MAINTENANCE"]
     end
 
@@ -184,9 +180,9 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph STM["🧠 SENSORY + WORKING MEMORY"]
-        input["Input Stream"] --> sensory["Sensory Buffer<br/>max_tokens=500<br/>decay_seconds=30"]
-        sensory --> working["Working Memory<br/>max_chunks=10<br/>LLM chunking"]
+    subgraph STM["SENSORY + WORKING MEMORY"]
+        input["Input Stream"] --> sensory["Sensory Buffer"]
+        sensory --> working["Working Memory"]
         sensory & working --> chunks["Chunks for Encoding"]
     end
     style STM fill:#e3f2fd,color:#000
@@ -209,7 +205,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph WG["🔐 WRITE GATE (CREB/Npas4 memory allocation)"]
+    subgraph WG["WRITE GATE - CREB/Npas4 memory allocation"]
         input2["Input"] --> salience["Salience Scoring"]
         salience --> novelty["Novelty Check"]
         novelty --> risk["Risk Assessment"]
@@ -240,7 +236,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Hippo2["🔵 HIPPOCAMPAL STORE (PostgreSQL + pgvector)"]
+    subgraph Hippo2["HIPPOCAMPAL STORE - PostgreSQL + pgvector"]
         chunk["Chunk"] --> pii["PIIRedactor"]
         pii --> embed["Embeddings"]
         pii --> entity["EntityExtract"]
@@ -268,7 +264,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Neo2["🟣 NEOCORTICAL STORE (Neo4j Knowledge Graph)"]
+    subgraph Neo2["NEOCORTICAL STORE - Neo4j Knowledge Graph"]
         user(("User:123"))
         user -->|lives_in| paris["Paris"]
         user -->|prefers| veg["vegetarian"]
@@ -294,7 +290,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Retrieval["🔍 HYBRID RETRIEVAL (Ecphory)"]
+    subgraph Retrieval["HYBRID RETRIEVAL - Ecphory"]
         query["Query"] --> classifier["Query Classifier"]
         classifier --> vector["Vector Search<br/>(Hippocampal)"]
         classifier --> graphSearch["Graph Search<br/>(Neocortical)"]
@@ -320,7 +316,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Recon["🔄 RECONSOLIDATION"]
+    subgraph Recon["RECONSOLIDATION"]
         retrieved["Retrieved Memory"] --> mark["Mark Labile (5 min)"]
         retrieved --> detect["Conflict Detection"]
         detect --> types["ConflictType:<br/>• CONTRADICTION<br/>• REFINEMENT<br/>• TEMPORAL_SUPERSEDE"]
@@ -348,7 +344,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Consol["😴 CONSOLIDATION ENGINE ('Sleep Cycle')"]
+    subgraph Consol["CONSOLIDATION ENGINE - Sleep Cycle"]
         trigger["Trigger"] --> sampler["Episode Sampler"]
         sampler --> cluster["Semantic Clusterer"]
         cluster --> gist["Gist Extractor"]
@@ -369,7 +365,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Forget["🗑️ ACTIVE FORGETTING (Rac1/Cofilin)"]
+    subgraph Forget["ACTIVE FORGETTING - Rac1/Cofilin"]
         bg["Background Process (24h)"] --> scorer["Relevance Scorer"]
         scorer --> policy["Policy Engine"]
         policy --> executor["Executor"]
