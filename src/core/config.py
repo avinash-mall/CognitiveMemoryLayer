@@ -23,7 +23,7 @@ def ensure_asyncpg_url(url: str) -> str:
 class DatabaseSettings(PydanticBaseModel):
     """Database connection settings (nested; read via Settings env prefix)."""
 
-    postgres_url: str = Field(default="postgresql+asyncpg://localhost/memory")
+    postgres_url: str = Field(default="postgresql+asyncpg://memory:memory@localhost/memory")
     neo4j_url: str = Field(default="bolt://localhost:7687")
     neo4j_user: str = Field(default="neo4j")
     neo4j_password: str = Field(default="")
@@ -33,34 +33,23 @@ class DatabaseSettings(PydanticBaseModel):
 class EmbeddingSettings(PydanticBaseModel):
     """Embedding provider settings."""
 
-    provider: str = Field(default="openai")  # openai | local
+    provider: str = Field(default="openai")  # openai | local | vllm
     model: str = Field(default="text-embedding-3-small")
     dimensions: int = Field(default=1536)
     local_model: str = Field(default="all-MiniLM-L6-v2")
     api_key: str | None = Field(default=None)  # OpenAI; can use OPENAI_API_KEY env
+    base_url: str | None = Field(default=None)  # Optional; OpenAI-compatible embedding endpoint
 
 
 class LLMSettings(PydanticBaseModel):
     """LLM provider settings."""
 
-    provider: str = Field(default="openai")  # openai | vllm
+    provider: str = Field(default="openai")  # openai | vllm | ollama | gemini | claude
     model: str = Field(default="gpt-4o-mini")
-    temperature: float = Field(default=0.0)
-    api_key: str | None = Field(default=None)  # OpenAI API key; can use OPENAI_API_KEY env
-    # vLLM (OpenAI-compatible) for local/compression
-    vllm_base_url: str | None = Field(default=None)  # e.g. http://vllm:8000/v1
-    vllm_model: str = Field(default="meta-llama/Llama-3.2-1B-Instruct")
-
-
-class MemorySettings(PydanticBaseModel):
-    """Memory system tuning parameters."""
-
-    sensory_buffer_max_tokens: int = Field(default=500)
-    sensory_buffer_decay_seconds: float = Field(default=30.0)
-    working_memory_max_chunks: int = Field(default=10)
-    write_gate_threshold: float = Field(default=0.3)
-    consolidation_interval_hours: int = Field(default=6)
-    forgetting_interval_hours: int = Field(default=24)
+    api_key: str | None = Field(default=None)  # API key; can use OPENAI_API_KEY env
+    base_url: str | None = Field(
+        default=None
+    )  # OpenAI-compatible endpoint; for vllm/ollama or proxy
 
 
 class AuthSettings(PydanticBaseModel):
@@ -86,7 +75,6 @@ class Settings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
-    memory: MemorySettings = Field(default_factory=MemorySettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
 
     model_config = {
