@@ -1,4 +1,5 @@
 """LLM-based compression (summarization) for active forgetting."""
+
 from typing import Optional
 
 from ..utils.llm import LLMClient

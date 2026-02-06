@@ -1,4 +1,5 @@
 """Integration test: encode chunk through hippocampal store (with mock embedding)."""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -38,9 +39,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         confidence=0.9,
         timestamp=datetime.now(timezone.utc),
     )
-    record = await hippocampal_store.encode_chunk(
-        tenant_id, chunk, existing_memories=None
-    )
+    record = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
     assert record is not None
     assert record.text == chunk.text
     assert record.embedding is not None
@@ -51,11 +50,11 @@ async def test_encode_chunk_stores_record(pg_session_factory):
     assert any(r.id == record.id for r in recent), "encoded record should appear in get_recent"
 
     # Vector search smoke test (no exception; may return 0 results depending on pgvector/embedding env)
-    results = await hippocampal_store.search(
-        tenant_id, "user preference dark mode", top_k=5
-    )
+    results = await hippocampal_store.search(tenant_id, "user preference dark mode", top_k=5)
     if results:
-        assert any(r.id == record.id for r in results), "stored record should appear in search when results returned"
+        assert any(
+            r.id == record.id for r in results
+        ), "stored record should appear in search when results returned"
 
 
 @pytest.mark.asyncio
@@ -68,9 +67,7 @@ async def test_encode_chunk_skip_low_salience(pg_session_factory):
         chunk_type=ChunkType.STATEMENT,
         salience=0.1,
     )
-    record = await hippocampal_store.encode_chunk(
-        tenant_id, chunk, existing_memories=None
-    )
+    record = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
     # May be None if write gate skips
     if record is None:
         return

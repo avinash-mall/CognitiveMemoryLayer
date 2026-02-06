@@ -1,4 +1,5 @@
 """Redis client for cache and session storage."""
+
 from typing import Any
 
 from ..core.config import get_settings

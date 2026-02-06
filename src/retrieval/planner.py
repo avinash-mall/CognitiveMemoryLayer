@@ -1,4 +1,5 @@
 """Retrieval planning from query analysis."""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -138,9 +139,7 @@ class RetrievalPlanner:
                         priority=1,
                     )
                 )
-            parallel_groups = (
-                [[0, 1, 2]] if len(steps) == 3 else [[0, 1]]
-            )
+            parallel_groups = [[0, 1, 2]] if len(steps) == 3 else [[0, 1]]
 
         return RetrievalPlan(
             query=analysis.original_query,

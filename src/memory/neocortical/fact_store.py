@@ -1,4 +1,5 @@
 """Semantic fact store with versioning and schema alignment."""
+
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -42,7 +43,16 @@ class SemanticFactStore:
                     session, existing, value, confidence, evidence_ids, schema, valid_from
                 )
             return await self._create_fact(
-                session, tenant_id, key, category, predicate, value, confidence, evidence_ids, valid_from, context_tags or []
+                session,
+                tenant_id,
+                key,
+                category,
+                predicate,
+                value,
+                confidence,
+                evidence_ids,
+                valid_from,
+                context_tags or [],
             )
 
     async def get_fact(

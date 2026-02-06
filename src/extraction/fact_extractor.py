@@ -1,4 +1,5 @@
 """Fact extraction from conversation text (for reconsolidation)."""
+
 import json
 from dataclasses import dataclass
 from typing import List

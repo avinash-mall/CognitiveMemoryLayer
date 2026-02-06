@@ -1,4 +1,5 @@
 """SQLAlchemy models for PostgreSQL (event log and memory records)."""
+
 import uuid
 from datetime import datetime
 

@@ -1,4 +1,5 @@
 """API routes for memory operations. Holistic: tenant-only, no scopes."""
+
 from datetime import datetime
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ def get_orchestrator(request: Request) -> MemoryOrchestrator:
 
 
 # ---- General Memory API ----
+
 
 @router.post("/memory/write", response_model=WriteMemoryResponse)
 async def write_memory(
@@ -114,7 +116,9 @@ async def read_memory(
             max_results=body.max_results,
             context_filter=body.context_filter,
             memory_types=body.memory_types,
-            time_filter={"since": body.since, "until": body.until} if body.since or body.until else None,
+            time_filter=(
+                {"since": body.since, "until": body.until} if body.since or body.until else None
+            ),
         )
 
         elapsed_ms = (datetime.utcnow() - start).total_seconds() * 1000
@@ -140,6 +144,7 @@ async def read_memory(
         llm_context = None
         if body.format == "llm_context":
             from ..retrieval.packet_builder import MemoryPacketBuilder
+
             builder = MemoryPacketBuilder()
             llm_context = builder.to_llm_context(packet, max_tokens=2000)
 
@@ -225,6 +230,7 @@ async def get_memory_stats(
 
 # ---- Session-based API (convenience for scope=SESSION) ----
 
+
 @router.post("/session/create", response_model=CreateSessionResponse)
 async def create_session(
     body: CreateSessionRequest,
@@ -289,7 +295,9 @@ async def session_read(
             max_results=body.max_results,
             context_filter=body.context_filter,
             memory_types=body.memory_types,
-            time_filter={"since": body.since, "until": body.until} if body.since or body.until else None,
+            time_filter=(
+                {"since": body.since, "until": body.until} if body.since or body.until else None
+            ),
         )
         elapsed_ms = (datetime.utcnow() - start).total_seconds() * 1000
 
@@ -313,6 +321,7 @@ async def session_read(
         llm_context = None
         if body.format == "llm_context":
             from ..retrieval.packet_builder import MemoryPacketBuilder
+
             builder = MemoryPacketBuilder()
             llm_context = builder.to_llm_context(packet, max_tokens=2000)
 
@@ -342,6 +351,7 @@ async def session_context(
             tenant_id=auth.tenant_id,
             session_id=session_id,
         )
+
         def to_memory_item(d):
             return MemoryItem(
                 id=d["id"],
@@ -352,6 +362,7 @@ async def session_context(
                 timestamp=d["timestamp"],
                 metadata=d.get("metadata") or {},
             )
+
         return SessionContextResponse(
             session_id=session_id,
             messages=[to_memory_item(m) for m in ctx.get("messages", [])],

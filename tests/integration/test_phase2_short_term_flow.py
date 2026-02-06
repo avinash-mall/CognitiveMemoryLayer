@@ -1,4 +1,5 @@
 """Integration test: full short-term ingest flow."""
+
 import pytest
 
 from src.memory.short_term import ShortTermMemory, ShortTermMemoryConfig
@@ -16,9 +17,11 @@ async def test_full_ingest_flow():
 
     # First turn: preference + fact
     r1 = await stm.ingest_turn(
-        "tenant-a", "user-a",
+        "tenant-a",
+        "user-a",
         "I prefer vegetarian food. My name is Alex.",
-        turn_id="turn-1", role="user",
+        turn_id="turn-1",
+        role="user",
     )
     assert r1["tokens_buffered"] > 0
     assert r1["chunks_created"] >= 1
@@ -29,16 +32,20 @@ async def test_full_ingest_flow():
 
     # Second turn
     r2 = await stm.ingest_turn(
-        "tenant-a", "user-a",
+        "tenant-a",
+        "user-a",
         "What's the weather?",
-        turn_id="turn-2", role="user",
+        turn_id="turn-2",
+        role="user",
     )
     assert r2["chunks_created"] >= 1
 
     # Context includes both
     ctx = await stm.get_immediate_context(
-        "tenant-a", "user-a",
-        include_sensory=True, max_working_chunks=10,
+        "tenant-a",
+        "user-a",
+        include_sensory=True,
+        max_working_chunks=10,
     )
     assert ctx["working_memory"]
     assert "vegetarian" in ctx["recent_text"] or "Alex" in ctx["recent_text"]

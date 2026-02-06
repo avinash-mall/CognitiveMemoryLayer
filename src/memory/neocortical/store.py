@@ -1,4 +1,5 @@
 """Neocortical store: semantic memory facade (graph + fact store)."""
+
 from typing import Any, Dict, List, Optional
 
 from ...core.schemas import Relation
@@ -60,10 +61,7 @@ class NeocorticalStore:
         evidence_ids: Optional[List[str]] = None,
     ) -> List[str]:
         """Store multiple relations."""
-        return [
-            await self.store_relation(tenant_id, rel, evidence_ids)
-            for rel in relations
-        ]
+        return [await self.store_relation(tenant_id, rel, evidence_ids) for rel in relations]
 
     async def get_fact(
         self,
@@ -89,8 +87,7 @@ class NeocorticalStore:
             "entity": entity,
             "relations": graph_facts,
             "facts": [
-                {"key": f.key, "value": f.value, "confidence": f.confidence}
-                for f in fact_results
+                {"key": f.key, "value": f.value, "confidence": f.confidence} for f in fact_results
             ],
         }
 

@@ -1,4 +1,5 @@
 """Admin API routes for consolidation, forgetting, and user management."""
+
 from fastapi import APIRouter, Depends, Request
 
 from .auth import AuthContext, require_admin_permission
@@ -52,5 +53,3 @@ async def trigger_forgetting(
         "memories_scanned": report.memories_scanned,
         "operations_applied": report.result.operations_applied,
     }
-
-
