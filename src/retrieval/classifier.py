@@ -40,7 +40,8 @@ CLASSIFICATION_PROMPT = """Classify this query for a memory retrieval system.
 Query: {query}
 
 Determine:
-1. Intent (one of: preference_lookup, identity_lookup, task_status, episodic_recall, general_question, multi_hop, temporal_query, procedural, constraint_check, unknown)
+1. Intent (one of: preference_lookup, identity_lookup, task_status, episodic_recall,
+   general_question, multi_hop, temporal_query, procedural, constraint_check, unknown)
 2. Key entities mentioned
 3. Time reference if any (recent, specific date, always, etc.)
 4. Confidence (0.0-1.0)
@@ -75,7 +76,8 @@ class QueryClassifier:
         query: str,
         recent_context: Optional[str] = None,
     ) -> QueryAnalysis:
-        """Classify a query and extract relevant information. Uses recent_context when query is vague (e.g. 'Any suggestions?')."""
+        """Classify a query and extract relevant information. Uses recent_context when
+        query is vague (e.g. 'Any suggestions?')."""
         # If query is vague and we have context, use it to infer intent
         effective_query = query
         if recent_context and self._is_vague(query):
@@ -157,7 +159,8 @@ class QueryClassifier:
         entities = []
         for i, word in enumerate(words):
             w = word.strip("?.,!")
-            if w and w[0].isupper() and len(w) > 1 and (i == 0 or words[i - 1][-1] in ".!?" or i > 0):
+            prev_ends = i == 0 or words[i - 1][-1] in ".!?"
+            if w and w[0].isupper() and len(w) > 1 and (prev_ends or i > 0):
                 entities.append(w)
         return entities
 
