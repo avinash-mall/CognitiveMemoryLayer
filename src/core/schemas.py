@@ -1,6 +1,6 @@
 """Core Pydantic schemas for memory records, events, and retrieval."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -63,8 +63,8 @@ class MemoryRecord(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     # Temporal validity
-    timestamp: datetime = Field(default_factory=datetime.utcnow)  # When event occurred
-    written_at: datetime = Field(default_factory=datetime.utcnow)  # When stored
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # When event occurred
+    written_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # When stored
     valid_from: Optional[datetime] = None
     valid_to: Optional[datetime] = None
 
@@ -132,7 +132,7 @@ class EventLog(BaseModel):
     parent_event_id: Optional[UUID] = None  # For chaining
 
     # Timing
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Audit
     ip_address: Optional[str] = None
@@ -162,7 +162,7 @@ class MemoryPacket(BaseModel):
     """Structured bundle returned from retrieval."""
 
     query: str
-    retrieved_at: datetime = Field(default_factory=datetime.utcnow)
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Categorized memories
     facts: List[RetrievedMemory] = Field(default_factory=list)
@@ -201,4 +201,11 @@ class MemoryPacket(BaseModel):
                     lines.append(f"- {m.record.text} (confidence: {m.record.confidence:.2f})")
 
         result = "\n".join(lines)
-        return result[:max_chars]
+        if len(result) <= max_chars:
+            return result
+        # Truncate at the last newline boundary to avoid mid-line/mid-character cuts (LOW-04)
+        truncated = result[:max_chars]
+        last_nl = truncated.rfind("\n")
+        if last_nl > 0:
+            return truncated[:last_nl] + "\n..."
+        return truncated + "\n..."

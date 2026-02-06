@@ -18,8 +18,14 @@ class EventLogRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def append(self, event: EventLog) -> EventLog:
-        """Append an event to the log. Events are immutable."""
+    async def append(self, event: EventLog, auto_commit: bool = True) -> EventLog:
+        """Append an event to the log. Events are immutable.
+
+        Args:
+            event: The event to append.
+            auto_commit: If True (default), commit immediately. Set to False
+                         to let the caller manage the transaction boundary.
+        """
         model = EventLogModel(
             id=event.id,
             tenant_id=event.tenant_id,
@@ -35,7 +41,8 @@ class EventLogRepository:
             user_agent=event.user_agent,
         )
         self.session.add(model)
-        await self.session.commit()
+        if auto_commit:
+            await self.session.commit()
         return event
 
     async def get_by_id(self, event_id: UUID) -> Optional[EventLog]:

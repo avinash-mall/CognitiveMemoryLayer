@@ -39,7 +39,7 @@ class SensoryBufferManager:
     ) -> int:
         """Ingest text into scope's buffer."""
         buffer = await self.get_buffer(tenant_id, scope_id)
-        return buffer.ingest(text, turn_id, role)
+        return await buffer.ingest(text, turn_id, role)
 
     async def get_recent_text(
         self,
@@ -49,18 +49,25 @@ class SensoryBufferManager:
     ) -> str:
         """Get recent text from scope's buffer."""
         buffer = await self.get_buffer(tenant_id, scope_id)
-        return buffer.get_text(max_tokens=max_tokens)
+        return await buffer.get_text(max_tokens=max_tokens)
 
     async def clear_user(self, tenant_id: str, scope_id: str) -> None:
         """Clear a specific scope's buffer."""
         key = self._get_key(tenant_id, scope_id)
         async with self._lock:
             if key in self._buffers:
-                self._buffers[key].clear()
+                await self._buffers[key].clear()
 
     async def cleanup_inactive(self, inactive_seconds: float = 300) -> None:
-        """Remove buffers that are empty (inactive)."""
+        """Remove buffers that are empty or have had no activity for inactive_seconds (MED-21)."""
+        import time
+
+        now = time.time()
         async with self._lock:
-            to_remove = [key for key, buffer in self._buffers.items() if buffer.is_empty]
+            to_remove = [
+                key
+                for key, buffer in self._buffers.items()
+                if buffer.is_empty or (now - buffer.last_activity) > inactive_seconds
+            ]
             for key in to_remove:
                 del self._buffers[key]

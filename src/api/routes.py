@@ -1,6 +1,7 @@
 """API routes for memory operations. Holistic: tenant-only, no scopes."""
 
-from datetime import datetime
+import json
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -33,6 +34,21 @@ router = APIRouter(tags=["memory"])
 def get_orchestrator(request: Request) -> MemoryOrchestrator:
     """Get memory orchestrator from app state."""
     return request.app.state.orchestrator
+
+
+def _to_memory_item(mem) -> MemoryItem:
+    """Convert a retrieved memory (with .record, .relevance_score) to MemoryItem."""
+    t = mem.record.type
+    type_str = t.value if hasattr(t, "value") else str(t)
+    return MemoryItem(
+        id=mem.record.id,
+        text=mem.record.text,
+        type=type_str,
+        confidence=mem.record.confidence,
+        relevance=mem.relevance_score,
+        timestamp=mem.record.timestamp,
+        metadata=mem.record.metadata or {},
+    )
 
 
 # ---- General Memory API ----
@@ -72,7 +88,7 @@ async def write_memory(
 @router.post("/memory/turn", response_model=ProcessTurnResponse)
 async def process_turn(
     body: ProcessTurnRequest,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
     """
@@ -108,7 +124,7 @@ async def read_memory(
 ):
     """Retrieve relevant memories for a query. Holistic: tenant-only."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         packet = await orchestrator.read(
             tenant_id=auth.tenant_id,
@@ -121,25 +137,12 @@ async def read_memory(
             ),
         )
 
-        elapsed_ms = (datetime.utcnow() - start).total_seconds() * 1000
+        elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
-        def to_item(mem):
-            t = mem.record.type
-            type_str = t.value if hasattr(t, "value") else str(t)
-            return MemoryItem(
-                id=mem.record.id,
-                text=mem.record.text,
-                type=type_str,
-                confidence=mem.record.confidence,
-                relevance=mem.relevance_score,
-                timestamp=mem.record.timestamp,
-                metadata=mem.record.metadata or {},
-            )
-
-        all_memories = [to_item(m) for m in packet.all_memories]
-        facts = [to_item(m) for m in packet.facts]
-        preferences = [to_item(m) for m in packet.preferences]
-        episodes = [to_item(m) for m in packet.recent_episodes]
+        all_memories = [_to_memory_item(m) for m in packet.all_memories]
+        facts = [_to_memory_item(m) for m in packet.facts]
+        preferences = [_to_memory_item(m) for m in packet.preferences]
+        episodes = [_to_memory_item(m) for m in packet.recent_episodes]
 
         llm_context = None
         if body.format == "llm_context":
@@ -233,16 +236,27 @@ async def get_memory_stats(
 
 @router.post("/session/create", response_model=CreateSessionResponse)
 async def create_session(
+    request: Request,
     body: CreateSessionRequest,
     auth: AuthContext = Depends(require_write_permission),
 ):
-    """Create a new memory session. Returns session_id for subsequent calls."""
+    """Create a new memory session. Returns session_id for subsequent calls. Persisted in Redis."""
     session_id = str(uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    ttl_hours = body.ttl_hours if body.ttl_hours is not None else 24
+    expires_at = now + timedelta(hours=ttl_hours)
+    ttl_seconds = max(1, int(ttl_hours * 3600))
+    if hasattr(request.app.state, "db") and request.app.state.db and getattr(request.app.state.db, "redis", None):
+        payload = json.dumps({
+            "tenant_id": auth.tenant_id,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at.isoformat(),
+        })
+        await request.app.state.db.redis.setex(f"session:{session_id}", ttl_seconds, payload)
     return CreateSessionResponse(
         session_id=session_id,
         created_at=now,
-        expires_at=now,
+        expires_at=expires_at,
     )
 
 
@@ -287,7 +301,7 @@ async def session_read(
 ):
     """Read from memory. Holistic: tenant-only (session_id kept for API compatibility)."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         packet = await orchestrator.read(
             tenant_id=auth.tenant_id,
@@ -299,25 +313,12 @@ async def session_read(
                 {"since": body.since, "until": body.until} if body.since or body.until else None
             ),
         )
-        elapsed_ms = (datetime.utcnow() - start).total_seconds() * 1000
+        elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
-        def to_item(mem):
-            t = mem.record.type
-            type_str = t.value if hasattr(t, "value") else str(t)
-            return MemoryItem(
-                id=mem.record.id,
-                text=mem.record.text,
-                type=type_str,
-                confidence=mem.record.confidence,
-                relevance=mem.relevance_score,
-                timestamp=mem.record.timestamp,
-                metadata=mem.record.metadata or {},
-            )
-
-        all_memories = [to_item(m) for m in packet.all_memories]
-        facts = [to_item(m) for m in packet.facts]
-        preferences = [to_item(m) for m in packet.preferences]
-        episodes = [to_item(m) for m in packet.recent_episodes]
+        all_memories = [_to_memory_item(m) for m in packet.all_memories]
+        facts = [_to_memory_item(m) for m in packet.facts]
+        preferences = [_to_memory_item(m) for m in packet.preferences]
+        episodes = [_to_memory_item(m) for m in packet.recent_episodes]
         llm_context = None
         if body.format == "llm_context":
             from ..retrieval.packet_builder import MemoryPacketBuilder
@@ -377,4 +378,4 @@ async def session_context(
 @router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}

@@ -384,6 +384,9 @@ class AsyncCognitiveMemoryClient:
         session_id: Optional[str] = None,
         memory_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        turn_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        namespace: Optional[str] = None,
         tenant_id: Optional[str] = None,
     ) -> MemoryWriteResult:
         payload = {"content": content}
@@ -395,6 +398,12 @@ class AsyncCognitiveMemoryClient:
             payload["memory_type"] = memory_type
         if metadata:
             payload["metadata"] = metadata
+        if turn_id:
+            payload["turn_id"] = turn_id
+        if agent_id:
+            payload["agent_id"] = agent_id
+        if namespace:
+            payload["namespace"] = namespace
         data = await self._request("POST", "/memory/write", tenant_id=tenant_id, json=payload)
         return MemoryWriteResult(
             success=data.get("success", False),
@@ -408,12 +417,21 @@ class AsyncCognitiveMemoryClient:
         query: str,
         max_results: int = 10,
         context_filter: Optional[List[str]] = None,
+        memory_types: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
         format: str = "packet",
         tenant_id: Optional[str] = None,
     ) -> MemoryReadResult:
         payload = {"query": query, "max_results": max_results, "format": format}
         if context_filter:
             payload["context_filter"] = context_filter
+        if memory_types:
+            payload["memory_types"] = memory_types
+        if since:
+            payload["since"] = since.isoformat()
+        if until:
+            payload["until"] = until.isoformat()
         data = await self._request("POST", "/memory/read", tenant_id=tenant_id, json=payload)
         
         def parse_item(item: Dict) -> MemoryItem:
@@ -437,7 +455,78 @@ class AsyncCognitiveMemoryClient:
             total_count=data.get("total_count", 0),
             elapsed_ms=data.get("elapsed_ms", 0)
         )
-    
+
+    async def stats(self, tenant_id: Optional[str] = None) -> MemoryStats:
+        """Get memory statistics for the tenant."""
+        data = await self._request("GET", "/memory/stats", tenant_id=tenant_id)
+        return MemoryStats(
+            total_memories=data["total_memories"],
+            active_memories=data["active_memories"],
+            by_type=data.get("by_type", {}),
+            avg_confidence=data.get("avg_confidence", 0.0)
+        )
+
+    async def update(
+        self,
+        memory_id: str,
+        text: Optional[str] = None,
+        confidence: Optional[float] = None,
+        feedback: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update an existing memory or provide feedback."""
+        payload = {"memory_id": memory_id}
+        if text:
+            payload["text"] = text
+        if confidence is not None:
+            payload["confidence"] = confidence
+        if feedback:
+            payload["feedback"] = feedback
+        return await self._request("POST", "/memory/update", tenant_id=tenant_id, json=payload)
+
+    async def forget(
+        self,
+        memory_ids: Optional[List[str]] = None,
+        query: Optional[str] = None,
+        before: Optional[datetime] = None,
+        action: str = "delete",
+        tenant_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Forget (delete/archive/silence) memories."""
+        payload = {"action": action}
+        if memory_ids:
+            payload["memory_ids"] = memory_ids
+        if query:
+            payload["query"] = query
+        if before:
+            payload["before"] = before.isoformat()
+        return await self._request("POST", "/memory/forget", tenant_id=tenant_id, json=payload)
+
+    async def process_turn(
+        self,
+        user_message: str,
+        assistant_response: Optional[str] = None,
+        session_id: Optional[str] = None,
+        max_context_tokens: int = 1500,
+        tenant_id: Optional[str] = None,
+    ) -> ProcessTurnResult:
+        """Seamless memory: auto-retrieve context and optionally auto-store. Returns memory_context."""
+        payload = {
+            "user_message": user_message,
+            "max_context_tokens": max_context_tokens,
+        }
+        if assistant_response is not None:
+            payload["assistant_response"] = assistant_response
+        if session_id:
+            payload["session_id"] = session_id
+        data = await self._request("POST", "/memory/turn", tenant_id=tenant_id, json=payload)
+        return ProcessTurnResult(
+            memory_context=data.get("memory_context", ""),
+            memories_retrieved=data.get("memories_retrieved", 0),
+            memories_stored=data.get("memories_stored", 0),
+            reconsolidation_applied=data.get("reconsolidation_applied", False),
+        )
+
     async def close(self):
         await self._client.aclose()
     

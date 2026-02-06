@@ -34,10 +34,24 @@ class PIIRedactor:
         }
 
     def redact(self, text: str) -> RedactionResult:
-        matches: List[Tuple[int, int, str, str]] = []  # start, end, pii_type, replacement
+        matches: List[Tuple[int, int, str, str]] = []  # start, end, pii_type, original
         for pii_type, pattern in self._compiled.items():
             for match in pattern.finditer(text):
                 matches.append((match.start(), match.end(), pii_type, match.group()))
+
+        # Merge overlapping ranges to avoid garbled output (LOW-11)
+        if matches:
+            matches.sort(key=lambda x: (x[0], -x[1]))
+            merged: List[Tuple[int, int, str, str]] = [matches[0]]
+            for start, end, pii_type, original in matches[1:]:
+                prev_start, prev_end, prev_type, prev_orig = merged[-1]
+                if start <= prev_end:
+                    # Overlapping; extend the previous range
+                    if end > prev_end:
+                        merged[-1] = (prev_start, end, prev_type, text[prev_start:end])
+                else:
+                    merged.append((start, end, pii_type, original))
+            matches = merged
 
         # Sort by start descending so we can replace without offset issues
         matches.sort(key=lambda x: x[0], reverse=True)

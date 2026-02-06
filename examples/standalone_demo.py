@@ -71,46 +71,42 @@ def demo_write_memories():
     """Demonstrate writing different types of memories."""
     print_section("Writing Memories")
     
-    # Using scope-based identifiers
-    scope = "session"
-    scope_id = "standalone-demo-session"
+    session_id = "standalone-demo-session"
     
-    # Example memories to store
+    # Example memories to store (using correct API schema fields)
     memories = [
         {
-            "scope": scope,
-            "scope_id": scope_id,
             "content": "User's name is John Smith and he is 35 years old.",
+            "session_id": session_id,
             "memory_type": "semantic_fact",
+            "context_tags": ["identity"],
             "metadata": {"source": "user_introduction"}
         },
         {
-            "scope": scope,
-            "scope_id": scope_id,
             "content": "User prefers dark mode in all applications.",
-            "memory_type": "preference"
+            "session_id": session_id,
+            "memory_type": "preference",
+            "context_tags": ["preferences"],
         },
         {
-            "scope": scope,
-            "scope_id": scope_id,
             "content": "User is severely allergic to penicillin - this is critical medical information.",
-            "memory_type": "constraint"
+            "session_id": session_id,
+            "context_tags": ["medical", "critical"],
         },
         {
-            "scope": scope,
-            "scope_id": scope_id,
             "content": "On 2024-01-20, user mentioned starting a new job at Google.",
-            "memory_type": "episodic_event"
+            "session_id": session_id,
+            "memory_type": "episodic_event",
+            "context_tags": ["career"],
         },
         {
-            "scope": scope,
-            "scope_id": scope_id,
             "content": "User seems interested in machine learning based on questions asked.",
-            "memory_type": "hypothesis"
+            "session_id": session_id,
+            "context_tags": ["interests"],
         }
     ]
     
-    print(f"Storing {len(memories)} memories for scope '{scope}/{scope_id}'...\n")
+    print(f"Storing {len(memories)} memories (session: {session_id})...\n")
     
     for i, memory in enumerate(memories, 1):
         response = httpx.post(
@@ -121,15 +117,15 @@ def demo_write_memories():
         
         if response.status_code == 200:
             data = response.json()
-            print(f"{i}. ✓ [{memory.get('memory_type', 'auto')}] {memory['content'][:50]}...")
+            print(f"{i}. [{memory.get('memory_type', 'auto')}] {memory['content'][:50]}...")
             print(f"   Memory ID: {data.get('memory_id')}")
         else:
-            print(f"{i}. ✗ Failed: {response.text}")
+            print(f"{i}. Failed: {response.text}")
     
-    return scope, scope_id
+    return session_id
 
 
-def demo_read_memories(scope: str, scope_id: str):
+def demo_read_memories(session_id: str):
     """Demonstrate reading memories with different queries."""
     print_section("Reading Memories")
     
@@ -160,9 +156,8 @@ def demo_read_memories(scope: str, scope_id: str):
             f"{BASE_URL}/memory/read",
             headers=HEADERS,
             json={
-                "scope": scope,
-                "scope_id": scope_id,
                 "query": q["query"],
+                "session_id": session_id,
                 "max_results": 5,
                 "format": "packet"
             }
@@ -170,18 +165,18 @@ def demo_read_memories(scope: str, scope_id: str):
         
         if response.status_code == 200:
             data = response.json()
-            print(f"Found {data['total_count']} memories ({data['elapsed_ms']:.1f}ms)")
+            print(f"Found {data.get('total_count', 0)} memories ({data.get('elapsed_ms', 0):.1f}ms)")
             
             for mem in data.get("memories", [])[:3]:
-                conf = f"[{mem['confidence']:.0%}]"
-                print(f"  • {mem['type']}: {mem['text'][:60]}... {conf}")
+                conf = f"[{mem.get('confidence', 0):.0%}]"
+                print(f"  - {mem.get('type', '')}: {mem.get('text', '')[:60]}... {conf}")
         else:
             print(f"Error: {response.text}")
         
         print()
 
 
-def demo_llm_context_format(scope: str, scope_id: str):
+def demo_llm_context_format(session_id: str):
     """Demonstrate the LLM-ready context format."""
     print_section("LLM Context Format")
     
@@ -191,11 +186,10 @@ def demo_llm_context_format(scope: str, scope_id: str):
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
         json={
-            "scope": scope,
-            "scope_id": scope_id,
             "query": "Tell me everything about the user",
+            "session_id": session_id,
             "max_results": 10,
-            "format": "llm_context"  # This is the key!
+            "format": "llm_context"
         }
     )
     
@@ -207,7 +201,7 @@ def demo_llm_context_format(scope: str, scope_id: str):
         print("-" * 50)
 
 
-def demo_update_memory(scope: str, scope_id: str):
+def demo_update_memory(session_id: str):
     """Demonstrate updating memories with feedback."""
     print_section("Updating Memories")
     
@@ -216,9 +210,8 @@ def demo_update_memory(scope: str, scope_id: str):
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
         json={
-            "scope": scope,
-            "scope_id": scope_id,
             "query": "machine learning interest",
+            "session_id": session_id,
             "max_results": 1
         }
     )
@@ -227,54 +220,52 @@ def demo_update_memory(scope: str, scope_id: str):
         memory = response.json()["memories"][0]
         memory_id = memory["id"]
         
-        print(f"Found hypothesis: {memory['text']}")
-        print(f"Current confidence: {memory['confidence']:.0%}")
+        print(f"Found memory: {memory.get('text', '')}")
+        print(f"Current confidence: {memory.get('confidence', 0):.0%}")
         print()
         
         # Confirm the hypothesis
-        print("Confirming this hypothesis (feedback='correct')...")
+        print("Confirming this memory (feedback='correct')...")
         
         update_response = httpx.post(
             f"{BASE_URL}/memory/update",
             headers=HEADERS,
             json={
-                "scope": scope,
-                "scope_id": scope_id,
                 "memory_id": memory_id,
                 "feedback": "correct"
             }
         )
         
         if update_response.status_code == 200:
-            print(f"✓ Memory updated: {update_response.json()}")
+            print(f"Memory updated: {update_response.json()}")
         else:
-            print(f"✗ Update failed: {update_response.text}")
+            print(f"Update failed: {update_response.text}")
     else:
-        print("No hypothesis found to update")
+        print("No memory found to update")
 
 
-def demo_memory_stats(scope: str, scope_id: str):
+def demo_memory_stats():
     """Demonstrate memory statistics."""
     print_section("Memory Statistics")
     
     response = httpx.get(
-        f"{BASE_URL}/memory/stats/{scope}/{scope_id}",
+        f"{BASE_URL}/memory/stats",
         headers=HEADERS
     )
     
     if response.status_code == 200:
         stats = response.json()
-        print(f"Statistics for scope '{scope}/{scope_id}':")
-        print(f"  Total memories:  {stats['total_memories']}")
-        print(f"  Active memories: {stats['active_memories']}")
-        print(f"  Avg confidence:  {stats['avg_confidence']:.0%}")
-        print(f"  Avg importance:  {stats['avg_importance']:.0%}")
-        print(f"  By type:         {stats['by_type']}")
+        print(f"Memory Statistics:")
+        print(f"  Total memories:  {stats.get('total_memories', 0)}")
+        print(f"  Active memories: {stats.get('active_memories', 0)}")
+        print(f"  Avg confidence:  {stats.get('avg_confidence', 0):.0%}")
+        print(f"  Avg importance:  {stats.get('avg_importance', 0):.0%}")
+        print(f"  By type:         {stats.get('by_type', {})}")
     else:
         print(f"Error: {response.text}")
 
 
-def demo_forget_memory(scope: str, scope_id: str):
+def demo_forget_memory():
     """Demonstrate forgetting memories."""
     print_section("Forgetting Memories")
     
@@ -284,18 +275,16 @@ def demo_forget_memory(scope: str, scope_id: str):
         f"{BASE_URL}/memory/forget",
         headers=HEADERS,
         json={
-            "scope": scope,
-            "scope_id": scope_id,
             "query": "new job at Google",
-            "action": "archive"  # or "delete" for permanent removal
+            "action": "archive"
         }
     )
     
     if response.status_code == 200:
         data = response.json()
-        print(f"✓ Archived {data.get('affected_count', 0)} memories")
+        print(f"Archived {data.get('affected_count', 0)} memories")
     else:
-        print(f"✗ Failed: {response.text}")
+        print(f"Failed: {response.text}")
 
 
 def demo_curl_examples():
@@ -309,12 +298,13 @@ def demo_curl_examples():
         ("Write Memory", '''curl -X POST http://localhost:8000/api/v1/memory/write \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: $AUTH__API_KEY" \\
-  -d '{"scope": "session", "scope_id": "test-session", "content": "User likes pizza"}\''''),
+  -d '{"content": "User likes pizza", "session_id": "test-session", "context_tags": ["preferences"]}\''''),
         ("Read Memory", '''curl -X POST http://localhost:8000/api/v1/memory/read \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: $AUTH__API_KEY" \\
-  -d '{"scope": "session", "scope_id": "test-session", "query": "food preferences", "format": "llm_context"}\''''),
-        ("Get Stats", "curl http://localhost:8000/api/v1/memory/stats/session/test-session -H \"X-API-Key: $AUTH__API_KEY\""),
+  -d '{"query": "food preferences", "format": "llm_context"}\''''),
+        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats \\
+  -H "X-API-Key: $AUTH__API_KEY"'''),
     ]
     
     for name, cmd in commands:
@@ -339,22 +329,22 @@ def main():
             return
         
         input("Press Enter to continue with write demo...")
-        scope, scope_id = demo_write_memories()
+        session_id = demo_write_memories()
         
         input("Press Enter to continue with read demo...")
-        demo_read_memories(scope, scope_id)
+        demo_read_memories(session_id)
         
         input("Press Enter to continue with LLM context demo...")
-        demo_llm_context_format(scope, scope_id)
+        demo_llm_context_format(session_id)
         
         input("Press Enter to continue with update demo...")
-        demo_update_memory(scope, scope_id)
+        demo_update_memory(session_id)
         
         input("Press Enter to continue with stats demo...")
-        demo_memory_stats(scope, scope_id)
+        demo_memory_stats()
         
         input("Press Enter to continue with forget demo...")
-        demo_forget_memory(scope, scope_id)
+        demo_forget_memory()
         
         input("Press Enter to see curl examples...")
         demo_curl_examples()

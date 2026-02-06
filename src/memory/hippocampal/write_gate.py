@@ -94,6 +94,19 @@ class WriteGate:
         importance = self._compute_importance(chunk, context)
         novelty = self._compute_novelty(chunk, existing_memories)
         memory_types = self._determine_memory_types(chunk)
+
+        # Skip if novelty alone is below minimum threshold (MED-17)
+        if novelty < self.config.min_novelty:
+            return WriteGateResult(
+                decision=WriteDecision.SKIP,
+                memory_types=[],
+                importance=importance,
+                novelty=novelty,
+                risk_flags=risk_flags,
+                redaction_required=False,
+                reason=f"Below novelty threshold: {novelty:.2f} < {self.config.min_novelty:.2f}",
+            )
+
         combined_score = (importance * 0.6) + (novelty * 0.4)
 
         if combined_score < self.config.min_importance:
@@ -161,9 +174,13 @@ class WriteGate:
         chunk: SemanticChunk,
         existing_memories: Optional[List[Dict[str, Any]]] = None,
     ) -> float:
+        # Check known facts cache first (MED-16)
+        chunk_text_lower = chunk.text.lower().strip()
+        if chunk_text_lower in self._known_facts:
+            return 0.0
+
         if not existing_memories:
             return 1.0
-        chunk_text_lower = chunk.text.lower()
         chunk_words = set(chunk_text_lower.split())
         for mem in existing_memories:
             mem_text = (mem.get("text") or "").lower()

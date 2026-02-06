@@ -122,19 +122,29 @@ class SemanticClusterer:
         small = [c for c in clusters if len(c.episodes) < self.min_cluster_size]
         large = [c for c in clusters if len(c.episodes) >= self.min_cluster_size]
         for c in small:
+            reassigned: set = set()
             for ep in c.episodes:
                 nearest = self._find_nearest(ep, large)
                 if nearest:
                     nearest.episodes.append(ep)
+                    reassigned.add(id(ep))
                     nearest.centroid = _centroid(
                         [e.embedding for e in nearest.episodes if e.embedding]
                     )
                     nearest.avg_confidence = sum(e.confidence for e in nearest.episodes) / len(
                         nearest.episodes
                     )
-                else:
-                    large.append(c)
-                    break
+            # Only add episodes that were not reassigned (no duplication)
+            unassigned = [ep for ep in c.episodes if id(ep) not in reassigned]
+            if unassigned:
+                large.append(
+                    EpisodeCluster(
+                        cluster_id=c.cluster_id,
+                        episodes=unassigned,
+                        centroid=_centroid([e.embedding for e in unassigned if e.embedding]) or c.centroid,
+                        avg_confidence=sum(e.confidence for e in unassigned) / len(unassigned),
+                    )
+                )
         clusters = [c for c in large if len(c.episodes) >= self.min_cluster_size]
         if not clusters and large:
             clusters = large

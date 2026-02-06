@@ -1,7 +1,7 @@
 """Semantic fact store with versioning and schema alignment."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -141,7 +141,7 @@ class SemanticFactStore:
     ) -> bool:
         """Mark a fact as no longer current. Holistic: tenant-only."""
         async with self.session_factory() as session:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             stmt = (
                 update(SemanticFactModel)
                 .where(
@@ -162,8 +162,8 @@ class SemanticFactStore:
         session: AsyncSession,
         tenant_id: str,
         key: str,
-    ) -> Optional[SemanticFact]:
-        """Get existing current fact."""
+    ) -> Optional[SemanticFactModel]:
+        """Get existing current fact as the ORM model (avoids double-fetch, LOW-10)."""
         q = select(SemanticFactModel).where(
             and_(
                 SemanticFactModel.tenant_id == tenant_id,
@@ -172,37 +172,39 @@ class SemanticFactStore:
             )
         )
         result = await session.execute(q)
-        model = result.scalar_one_or_none()
-        return self._model_to_fact(model) if model else None
+        return result.scalar_one_or_none()
 
     async def _update_fact(
         self,
         session: AsyncSession,
-        existing: SemanticFact,
+        existing_model: SemanticFactModel,
         new_value: Any,
         confidence: float,
         evidence_ids: Optional[List[str]],
         schema: Optional[FactSchema],
         valid_from: Optional[datetime],
     ) -> SemanticFact:
-        """Update existing fact (reinforce or new version)."""
-        model = await session.get(SemanticFactModel, UUID(existing.id))
-        if not model:
-            return existing
+        """Update existing fact (reinforce or new version).
+
+        Receives the ORM model directly to avoid a redundant DB round-trip (LOW-10).
+        """
+        model = existing_model
+        existing = self._model_to_fact(model)
 
         if existing.value == new_value:
             model.confidence = min(1.0, model.confidence + 0.1)
             model.evidence_count += 1
             model.evidence_ids = list(model.evidence_ids or []) + (evidence_ids or [])
-            model.updated_at = datetime.utcnow()
+            model.updated_at = datetime.now(timezone.utc)
             await session.commit()
             await session.refresh(model)
             return self._model_to_fact(model)
         else:
-            if schema and schema.temporal:
-                model.is_current = False
-                model.valid_to = valid_from or datetime.utcnow()
-                await session.flush()
+            # Always supersede old fact when value changes (at most one current per key)
+            model.is_current = False
+            model.valid_to = valid_from or datetime.now(timezone.utc)
+            await session.flush()
+            value_type = "str" if new_value is None else type(new_value).__name__.lower()
             new_fact = SemanticFact(
                 id=str(uuid4()),
                 tenant_id=existing.tenant_id,
@@ -212,11 +214,11 @@ class SemanticFactStore:
                 subject=existing.subject,
                 predicate=existing.predicate,
                 value=new_value,
-                value_type=type(new_value).__name__.lower().replace("none", "str"),
+                value_type=value_type,
                 confidence=confidence,
                 evidence_count=1,
                 evidence_ids=evidence_ids or [],
-                valid_from=valid_from or datetime.utcnow(),
+                valid_from=valid_from or datetime.now(timezone.utc),
                 is_current=True,
                 version=existing.version + 1,
                 supersedes_id=existing.id,
@@ -238,6 +240,7 @@ class SemanticFactStore:
         context_tags: List[str],
     ) -> SemanticFact:
         """Create new fact."""
+        value_type = "str" if value is None else type(value).__name__.lower()
         fact = SemanticFact(
             id=str(uuid4()),
             tenant_id=tenant_id,
@@ -247,11 +250,11 @@ class SemanticFactStore:
             subject="user",
             predicate=predicate,
             value=value,
-            value_type=type(value).__name__.lower().replace("none", "str"),
+            value_type=value_type,
             confidence=confidence,
             evidence_count=1,
             evidence_ids=evidence_ids or [],
-            valid_from=valid_from or datetime.utcnow(),
+            valid_from=valid_from or datetime.now(timezone.utc),
             is_current=True,
             version=1,
         )

@@ -1,7 +1,7 @@
 """Migration of consolidated gists to semantic store."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from uuid import UUID
 
@@ -71,7 +71,13 @@ class ConsolidationMigrator:
                     result.episodes_marked += marked
 
             except Exception as e:
-                result.errors.append(f"Failed to migrate gist '{gist.text[:50]}': {e}")
+                gist_preview = "unknown"
+                try:
+                    if alignment and getattr(alignment, "gist", None):
+                        gist_preview = (getattr(alignment.gist, "text", None) or "unknown")[:50]
+                except Exception:
+                    pass
+                result.errors.append(f"Failed to migrate gist '{gist_preview}': {e}")
 
         return result
 
@@ -117,13 +123,13 @@ class ConsolidationMigrator:
                 patch: dict = {
                     "metadata": {
                         "consolidated": True,
-                        "consolidated_at": datetime.utcnow().isoformat(),
+                        "consolidated_at": datetime.now(timezone.utc).isoformat(),
                     }
                 }
                 if compress:
                     patch["status"] = MemoryStatus.COMPRESSED.value
                 await self.episodic.update(ep_uuid, patch, increment_version=False)
                 marked += 1
-            except (ValueError, Exception):
+            except Exception:
                 continue
         return marked

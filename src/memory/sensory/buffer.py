@@ -6,7 +6,6 @@ from typing import Deque, List, Optional
 
 import asyncio
 import time
-from threading import Lock
 
 
 @dataclass
@@ -39,10 +38,11 @@ class SensoryBuffer:
     def __init__(self, config: Optional[SensoryBufferConfig] = None):
         self.config = config or SensoryBufferConfig()
         self._tokens: Deque[BufferedToken] = deque()
-        self._lock = Lock()
+        self._lock = asyncio.Lock()
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._last_activity: float = time.time()
 
-    def ingest(
+    async def ingest(
         self,
         text: str,
         turn_id: Optional[str] = None,
@@ -62,7 +62,7 @@ class SensoryBuffer:
         now = time.time()
         tokens = self._tokenize(text)
 
-        with self._lock:
+        async with self._lock:
             for token in tokens:
                 self._tokens.append(
                     BufferedToken(
@@ -73,10 +73,11 @@ class SensoryBuffer:
                     )
                 )
             self._cleanup(now)
+            self._last_activity = now
 
         return len(tokens)
 
-    def get_recent(
+    async def get_recent(
         self,
         max_tokens: Optional[int] = None,
         since_seconds: Optional[float] = None,
@@ -96,7 +97,7 @@ class SensoryBuffer:
         now = time.time()
         cutoff = now - (since_seconds or self.config.decay_seconds)
 
-        with self._lock:
+        async with self._lock:
             result = []
             for bt in self._tokens:
                 if bt.timestamp < cutoff:
@@ -108,18 +109,18 @@ class SensoryBuffer:
                     break
             return result
 
-    def get_text(
+    async def get_text(
         self,
         max_tokens: Optional[int] = None,
         role_filter: Optional[str] = None,
     ) -> str:
         """Get buffered content as joined text."""
-        tokens = self.get_recent(max_tokens=max_tokens, role_filter=role_filter)
+        tokens = await self.get_recent(max_tokens=max_tokens, role_filter=role_filter)
         return " ".join(bt.token for bt in tokens)
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
         """Clear all buffered tokens."""
-        with self._lock:
+        async with self._lock:
             self._tokens.clear()
 
     def _cleanup(self, now: float) -> None:
@@ -143,13 +144,18 @@ class SensoryBuffer:
     def is_empty(self) -> bool:
         return len(self._tokens) == 0
 
+    @property
+    def last_activity(self) -> float:
+        """Unix timestamp of last ingest activity."""
+        return self._last_activity
+
     async def start_cleanup_loop(self) -> None:
         """Start background cleanup task."""
 
         async def cleanup_loop() -> None:
             while True:
                 await asyncio.sleep(self.config.cleanup_interval_seconds)
-                with self._lock:
+                async with self._lock:
                     self._cleanup(time.time())
 
         self._cleanup_task = asyncio.create_task(cleanup_loop())

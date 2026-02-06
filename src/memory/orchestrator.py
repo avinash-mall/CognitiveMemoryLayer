@@ -1,6 +1,6 @@
 """Memory orchestrator: coordinates all memory operations."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -223,7 +223,7 @@ class MemoryOrchestrator:
             patch["confidence"] = 0.0
             patch["status"] = MemoryStatus.DELETED.value
         elif feedback == "outdated":
-            patch["valid_to"] = datetime.utcnow()
+            patch["valid_to"] = datetime.now(timezone.utc)
 
         result = await self.hippocampal.store.update(memory_id, patch)
         return {
@@ -238,39 +238,47 @@ class MemoryOrchestrator:
         before: Optional[datetime] = None,
         action: str = "delete",
     ) -> Dict[str, Any]:
-        """Forget memories. Holistic: tenant-only."""
-        affected = 0
+        """Forget memories. Holistic: tenant-only.
+
+        Collects all target IDs into a set first to avoid double-counting when
+        multiple criteria overlap (MED-19).
+        """
         hard = action == "delete"
+        target_ids: set[UUID] = set()
 
         def owns(record) -> bool:
             return record.tenant_id == tenant_id
 
+        # Collect IDs from explicit memory_ids
         if memory_ids:
             for mid in memory_ids:
                 record = await self.hippocampal.store.get_by_id(mid)
                 if record and owns(record):
-                    await self.hippocampal.store.delete(mid, hard=hard)
-                    affected += 1
+                    target_ids.add(mid)
 
+        # Collect IDs from query-based search
         if query:
             packet = await self.retriever.retrieve(tenant_id, query=query, max_results=100)
             for mem in packet.all_memories:
                 rid = mem.record.id
                 record = await self.hippocampal.store.get_by_id(rid)
                 if record and owns(record):
-                    await self.hippocampal.store.delete(rid, hard=hard)
-                    affected += 1
+                    target_ids.add(rid)
 
+        # Collect IDs by time filter
         if before:
             records = await self.hippocampal.store.scan(
                 tenant_id, filters={"status": MemoryStatus.ACTIVE.value}, limit=500
             )
             for r in records:
                 if r.timestamp and r.timestamp < before:
-                    await self.hippocampal.store.delete(r.id, hard=hard)
-                    affected += 1
+                    target_ids.add(r.id)
 
-        return {"affected_count": affected}
+        # Delete deduplicated set
+        for mid in target_ids:
+            await self.hippocampal.store.delete(mid, hard=hard)
+
+        return {"affected_count": len(target_ids)}
 
     async def get_session_context(
         self,
@@ -320,19 +328,26 @@ class MemoryOrchestrator:
         self,
         tenant_id: str,
     ) -> int:
-        """Delete all memories for a tenant (GDPR). Holistic: tenant-only."""
-        records = await self.hippocampal.store.scan(tenant_id, limit=10000)
+        """Delete all memories for a tenant (GDPR). Holistic: tenant-only. Paginates until none left."""
         affected = 0
-        for r in records:
-            await self.hippocampal.store.delete(r.id, hard=True)
-            affected += 1
+        while True:
+            records = await self.hippocampal.store.scan(tenant_id, limit=1000)
+            if not records:
+                break
+            for r in records:
+                await self.hippocampal.store.delete(r.id, hard=True)
+                affected += 1
         return affected
 
     async def get_stats(
         self,
         tenant_id: str,
     ) -> Dict[str, Any]:
-        """Get memory statistics for tenant. Holistic: tenant-only."""
+        """Get memory statistics for tenant. Holistic: tenant-only.
+
+        Uses count queries per status and per type for accurate results even
+        when the tenant has more than 1,000 records (MED-18).
+        """
         total = await self.hippocampal.store.count(tenant_id)
         active = await self.hippocampal.store.count(
             tenant_id,
@@ -347,12 +362,20 @@ class MemoryOrchestrator:
             filters={"status": MemoryStatus.ARCHIVED.value},
         )
 
+        # Count per type using dedicated count queries (not limited to first N records)
         by_type: Dict[str, int] = {}
-        records = await self.hippocampal.store.scan(tenant_id, limit=1000)
-        for r in records:
-            t = r.type.value if hasattr(r.type, "value") else str(r.type)
-            by_type[t] = by_type.get(t, 0) + 1
+        if MemoryType is not None:
+            for mt in MemoryType:
+                cnt = await self.hippocampal.store.count(
+                    tenant_id, filters={"type": mt.value}
+                )
+                if cnt > 0:
+                    by_type[mt.value] = cnt
 
+        # Sample a limited set for aggregate statistics
+        records = await self.hippocampal.store.scan(
+            tenant_id, limit=1000, order_by="-timestamp"
+        )
         timestamps = [r.timestamp for r in records if r.timestamp]
         confidences = [r.confidence for r in records]
         importances = [r.importance for r in records]

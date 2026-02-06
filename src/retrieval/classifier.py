@@ -153,7 +153,13 @@ class QueryClassifier:
                 suggested_sources=self._get_sources_for_intent(intent),
                 suggested_top_k=self._get_top_k_for_intent(intent),
             )
-        except (json.JSONDecodeError, ValueError, TypeError):
+        except (json.JSONDecodeError, ValueError, TypeError, Exception) as e:
+            # Catch all errors including LLM network failures, rate limits, etc. (MED-26)
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "llm_classify_failed: %s", str(e)
+            )
             return QueryAnalysis(
                 original_query=query,
                 intent=QueryIntent.GENERAL_QUESTION,
@@ -163,13 +169,20 @@ class QueryClassifier:
             )
 
     def _extract_entities_simple(self, query: str) -> List[str]:
-        """Simple entity extraction using capitalization."""
+        """Simple entity extraction using capitalization.
+
+        Only treats capitalized words as entities if they do NOT appear at a
+        sentence boundary (i.e., after a period/exclamation/question mark or at
+        position 0). This avoids false positives like 'The', 'What', 'How'
+        (MED-23).
+        """
         words = query.split()
         entities = []
         for i, word in enumerate(words):
             w = word.strip("?.,!")
+            # Skip sentence-initial words: position 0 or preceded by sentence-ending punctuation
             prev_ends = i == 0 or words[i - 1][-1] in ".!?"
-            if w and w[0].isupper() and len(w) > 1 and (prev_ends or i > 0):
+            if w and w[0].isupper() and len(w) > 1 and not prev_ends:
                 entities.append(w)
         return entities
 

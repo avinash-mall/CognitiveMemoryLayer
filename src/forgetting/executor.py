@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from ..core.enums import MemoryStatus
+from ..core.schemas import MemoryRecord, MemoryRecordCreate
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.llm import LLMClient
 
@@ -129,6 +130,27 @@ class ForgettingExecutor:
         result = await self.store.update(op.memory_id, patch)
         return result is not None
 
+    def _record_to_create_schema(self, record: MemoryRecord) -> MemoryRecordCreate:
+        """Convert MemoryRecord to MemoryRecordCreate for archive upsert."""
+        return MemoryRecordCreate(
+            tenant_id=record.tenant_id,
+            context_tags=record.context_tags or [],
+            source_session_id=record.source_session_id,
+            agent_id=record.agent_id,
+            namespace=record.namespace,
+            type=record.type,
+            text=record.text,
+            key=record.key,
+            embedding=record.embedding,
+            entities=record.entities,
+            relations=record.relations,
+            metadata=record.metadata or {},
+            timestamp=record.timestamp,
+            confidence=record.confidence,
+            importance=record.importance,
+            provenance=record.provenance,
+        )
+
     async def _execute_archive(self, op: ForgettingOperation) -> bool:
         """Move to archive store or mark archived."""
         if not self.archive_store:
@@ -142,6 +164,7 @@ class ForgettingExecutor:
         record = await self.store.get_by_id(op.memory_id)
         if not record:
             return False
+        await self.archive_store.upsert(self._record_to_create_schema(record))
         await self.store.delete(op.memory_id, hard=True)
         return True
 
