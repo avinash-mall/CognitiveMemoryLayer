@@ -29,24 +29,28 @@ The Cognitive Memory Layer is a neuro-inspired memory system designed for LLMs a
 
 ### Architecture Summary
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      REST API (FastAPI)                         │
-│   /memory/write  /memory/read  /memory/update  /memory/forget   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────▼───────────────────────────────────┐
-│                    Memory Orchestrator                           │
-│   Write Gate → Hippocampal Store → Neocortical Store → Retrieval │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        ▼                     ▼                     ▼
-┌───────────────┐   ┌─────────────────┐   ┌───────────────────┐
-│ Working Memory│   │ Episodic Store  │   │ Semantic Store    │
-│ (Short-term)  │   │ (PostgreSQL +   │   │ (Neo4j Knowledge  │
-│               │   │  pgvector)      │   │  Graph)           │
-└───────────────┘   └─────────────────┘   └───────────────────┘
+```mermaid
+flowchart TB
+    subgraph API["REST API (FastAPI)"]
+        endpoints["/memory/write  /memory/read  /memory/update  /memory/forget"]
+    end
+    
+    subgraph Orch["Memory Orchestrator"]
+        flow["Write Gate → Hippocampal Store → Neocortical Store → Retrieval"]
+    end
+    
+    subgraph Stores["Memory Stores"]
+        working["Working Memory<br/>(Short-term)"]
+        episodic["Episodic Store<br/>(PostgreSQL + pgvector)"]
+        semantic["Semantic Store<br/>(Neo4j Knowledge Graph)"]
+    end
+    
+    API --> Orch
+    Orch --> working & episodic & semantic
+
+    style API fill:#e3f2fd
+    style Orch fill:#fff3e0
+    style Stores fill:#e8f5e9
 ```
 
 ---
@@ -806,22 +810,16 @@ When users confirm or correct information:
 ```python
 # User confirms: "Yes, that's correct!"
 await memory_update(
-    scope=scope,
-    scope_id=scope_id,
     memory_id=retrieved_memory_id,
     feedback="correct"
 )
 
 # User corrects: "No, I actually live in London now"
 await memory_update(
-    scope=scope,
-    scope_id=scope_id,
     memory_id=old_memory_id,
     feedback="outdated"
 )
 await memory_write(
-    scope=scope,
-    scope_id=scope_id,
     content="User lives in London",
     memory_type="semantic_fact"
 )
@@ -833,11 +831,9 @@ Always check for constraints before generating responses:
 
 ```python
 context = await memory_read(
-    scope=scope,
-    scope_id=scope_id,
     query=current_topic,
     memory_types=["constraint"],
-    format="packet"
+    format="llm_context"
 )
 
 constraints = [m.text for m in context.constraints]
@@ -1151,6 +1147,6 @@ The Cognitive Memory Layer provides LLMs with a sophisticated memory system that
 4. **Use `memory_forget` for explicit deletion** requests
 5. **Request `format: "llm_context"`** for easy system prompt injection
 6. **Respect `constraints`** - they are safety-critical rules
-7. **Use appropriate scopes** - session for conversations, agent for agent context, etc.
+7. **Use context tags** to categorize memories (e.g., "conversation", "preferences", "project_X")
 
 For questions or issues, refer to the project documentation in the `ProjectPlan` folder.
