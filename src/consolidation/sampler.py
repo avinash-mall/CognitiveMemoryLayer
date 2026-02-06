@@ -8,6 +8,7 @@ from typing import List, Optional
 from ..core.enums import MemoryStatus, MemoryType
 from ..core.schemas import MemoryRecord
 from ..storage.postgres import PostgresMemoryStore
+from ..storage.utils import naive_utc
 
 
 @dataclass
@@ -82,7 +83,9 @@ class EpisodeSampler:
         access_score = math.log1p(record.access_count) / 5.0
         access_score = min(access_score, 1.0)
         ts = record.timestamp or datetime.now(timezone.utc)
-        age_days = (datetime.now(timezone.utc) - ts).days
+        now_naive = naive_utc(datetime.now(timezone.utc))
+        ts_naive = naive_utc(ts)
+        age_days = (now_naive - ts_naive).days if (now_naive and ts_naive) else 0
         recency_score = 1.0 / (1.0 + age_days * 0.1)
         return (
             self.config.importance_weight * importance_score
