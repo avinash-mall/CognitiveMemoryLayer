@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, delete, func, select, update
 
-from ..core.enums import MemoryStatus, MemoryType
+from ..core.enums import MemorySource, MemoryStatus, MemoryType
 from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
 from .base import MemoryStoreBase
 from .models import MemoryRecordModel
@@ -141,7 +141,6 @@ class PostgresMemoryStore(MemoryStoreBase):
                 "text",
                 "embedding",
                 "valid_to",
-                "metadata",
                 "entities",
                 "relations",
                 "context_tags",
@@ -191,9 +190,15 @@ class PostgresMemoryStore(MemoryStoreBase):
                     else:
                         q = q.where(MemoryRecordModel.type == t)
                 if "since" in filters:
-                    q = q.where(MemoryRecordModel.timestamp >= filters["since"])
+                    since = _naive_utc(filters["since"])
+                    if since is not None:
+                        q = q.where(MemoryRecordModel.timestamp >= since)
                 if "until" in filters:
-                    q = q.where(MemoryRecordModel.timestamp <= filters["until"])
+                    until = _naive_utc(filters["until"])
+                    if until is not None:
+                        q = q.where(MemoryRecordModel.timestamp <= until)
+                if "min_confidence" in filters:
+                    q = q.where(MemoryRecordModel.confidence >= filters["min_confidence"])
             q = q.order_by(MemoryRecordModel.embedding.cosine_distance(embedding)).limit(top_k)
             result = await session.execute(q)
             records = []
@@ -264,24 +269,12 @@ class PostgresMemoryStore(MemoryStoreBase):
         Count how many other memory records reference this one (supersedes_id or evidence_refs).
         Used to block delete when dependencies exist.
         """
-        record = await self.get_by_id(record_id)
-        if not record:
-            return 0
-        refs = 0
-        others = await self.scan(
-            record.tenant_id,
-            limit=5000,
-        )
-        mid_str = str(record_id)
-        for r in others:
-            if r.id == record_id:
-                continue
-            if r.supersedes_id == record_id:
-                refs += 1
-                continue
-            if mid_str in (r.metadata or {}).get("evidence_refs", []):
-                refs += 1
-        return refs
+        async with self.session_factory() as session:
+            q = select(func.count(MemoryRecordModel.id)).where(
+                MemoryRecordModel.supersedes_id == record_id
+            )
+            r = await session.execute(q)
+            return r.scalar() or 0
 
     def _hash_content(self, text: str, tenant_id: str) -> str:
         content = f"{tenant_id}:{text.lower().strip()}"
@@ -294,6 +287,14 @@ class PostgresMemoryStore(MemoryStoreBase):
             mem_type = MemoryType(model.type)
         except ValueError:
             mem_type = MemoryType.EPISODIC_EVENT
+        try:
+            status = MemoryStatus(model.status)
+        except ValueError:
+            status = MemoryStatus.ACTIVE
+        try:
+            provenance = Provenance(**(model.provenance or {}))
+        except (TypeError, ValueError):
+            provenance = Provenance(source=MemorySource.AGENT_INFERRED)
         context_tags = getattr(model, "context_tags", None) or []
         source_session_id = getattr(model, "source_session_id", None)
         return MemoryRecord(
@@ -319,9 +320,9 @@ class PostgresMemoryStore(MemoryStoreBase):
             access_count=model.access_count,
             last_accessed_at=model.last_accessed_at,
             decay_rate=model.decay_rate,
-            status=MemoryStatus(model.status),
+            status=status,
             labile=model.labile,
-            provenance=Provenance(**model.provenance),
+            provenance=provenance,
             version=model.version,
             supersedes_id=model.supersedes_id,
             content_hash=model.content_hash,

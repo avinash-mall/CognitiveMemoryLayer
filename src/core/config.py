@@ -3,7 +3,7 @@
 import re
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import BaseModel as PydanticBaseModel, Field
 from pydantic_settings import BaseSettings
 
 
@@ -20,17 +20,17 @@ def ensure_asyncpg_url(url: str) -> str:
     return re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
 
 
-class DatabaseSettings(BaseSettings):
-    """Database connection settings."""
+class DatabaseSettings(PydanticBaseModel):
+    """Database connection settings (nested; read via Settings env prefix)."""
 
     postgres_url: str = Field(default="postgresql+asyncpg://localhost/memory")
     neo4j_url: str = Field(default="bolt://localhost:7687")
     neo4j_user: str = Field(default="neo4j")
-    neo4j_password: str = Field(default="password")
+    neo4j_password: str = Field(default="")
     redis_url: str = Field(default="redis://localhost:6379")
 
 
-class EmbeddingSettings(BaseSettings):
+class EmbeddingSettings(PydanticBaseModel):
     """Embedding provider settings."""
 
     provider: str = Field(default="openai")  # openai | local
@@ -40,7 +40,7 @@ class EmbeddingSettings(BaseSettings):
     api_key: str | None = Field(default=None)  # OpenAI; can use OPENAI_API_KEY env
 
 
-class LLMSettings(BaseSettings):
+class LLMSettings(PydanticBaseModel):
     """LLM provider settings."""
 
     provider: str = Field(default="openai")  # openai | vllm
@@ -52,7 +52,7 @@ class LLMSettings(BaseSettings):
     vllm_model: str = Field(default="meta-llama/Llama-3.2-1B-Instruct")
 
 
-class MemorySettings(BaseSettings):
+class MemorySettings(PydanticBaseModel):
     """Memory system tuning parameters."""
 
     sensory_buffer_max_tokens: int = Field(default=500)
@@ -63,7 +63,7 @@ class MemorySettings(BaseSettings):
     forgetting_interval_hours: int = Field(default=24)
 
 
-class AuthSettings(BaseSettings):
+class AuthSettings(PydanticBaseModel):
     """
     API authentication (keys from environment).
     Env vars (with env_nested_delimiter='__'): AUTH__API_KEY, AUTH__ADMIN_API_KEY, AUTH__DEFAULT_TENANT_ID.
@@ -79,6 +79,7 @@ class Settings(BaseSettings):
 
     app_name: str = Field(default="CognitiveMemoryLayer")
     debug: bool = Field(default=False)
+    cors_origins: list[str] | None = Field(default=None)  # None = use default; ["*"] disables credentials
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
@@ -94,5 +95,38 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return cached application settings."""
+    """Return cached application settings.
+
+    The result is cached via ``@lru_cache`` for the process lifetime.
+    **Testing note (LOW-01):** call ``get_settings.cache_clear()`` after
+    overriding environment variables via ``monkeypatch`` to pick up new
+    values. An autouse fixture in ``tests/conftest.py`` does this
+    automatically after each test.
+    """
     return Settings()
+
+
+def validate_embedding_dimensions(settings: Settings | None = None) -> None:
+    """Validate that the configured embedding dimension matches the DB schema.
+
+    Call this at application startup (e.g. in the lifespan handler) to
+    catch mismatches between ``EMBEDDING__DIMENSIONS`` and the ``Vector(N)``
+    column defined in ``MemoryRecordModel`` (MED-04).
+
+    Raises ``ValueError`` if the dimensions disagree.
+    """
+    settings = settings or get_settings()
+    configured = settings.embedding.dimensions
+    try:
+        from ..storage.models import MemoryRecordModel
+
+        col = MemoryRecordModel.__table__.columns["embedding"]
+        db_dim = getattr(col.type, "dim", None)
+        if db_dim is not None and configured != db_dim:
+            raise ValueError(
+                f"Configured embedding dimensions ({configured}) do not match the "
+                f"database Vector column dimension ({db_dim}). Update "
+                f"EMBEDDING__DIMENSIONS or create a new migration."
+            )
+    except ImportError:
+        pass  # storage.models not available (e.g. during setup)

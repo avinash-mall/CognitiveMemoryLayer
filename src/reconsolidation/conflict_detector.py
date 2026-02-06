@@ -148,14 +148,21 @@ class ConflictDetector:
         old_has_pref = any(w in old_lower for w in preference_words)
         new_has_pref = any(w in new_lower for w in preference_words)
         if old_has_pref and new_has_pref:
-            return ConflictResult(
-                conflict_type=ConflictType.TEMPORAL_CHANGE,
-                confidence=0.6,
-                old_statement=old_statement,
-                new_statement=new_statement,
-                is_superseding=True,
-                reasoning="Both statements express preferences",
-            )
+            # Only classify as temporal change if the statements share topic
+            # overlap, avoiding false positives on unrelated preferences (MED-27)
+            old_words = set(old_lower.split()) - set(preference_words) - {"i", "my", "a", "the", "is", "are"}
+            new_words = set(new_lower.split()) - set(preference_words) - {"i", "my", "a", "the", "is", "are"}
+            if old_words and new_words:
+                topic_overlap = len(old_words & new_words) / max(len(old_words | new_words), 1)
+                if topic_overlap > 0.2:
+                    return ConflictResult(
+                        conflict_type=ConflictType.TEMPORAL_CHANGE,
+                        confidence=0.6,
+                        old_statement=old_statement,
+                        new_statement=new_statement,
+                        is_superseding=True,
+                        reasoning=f"Both express preferences with topic overlap ({topic_overlap:.0%})",
+                    )
         return None
 
     async def _llm_detect(
@@ -164,7 +171,7 @@ class ConflictDetector:
         new_statement: str,
         context: Optional[str] = None,
     ) -> ConflictResult:
-        """LLM-based conflict detection."""
+        """LLM-based conflict detection. Uses complete_json() for reliable parsing (MED-45)."""
         prompt = CONFLICT_DETECTION_PROMPT.format(
             old_statement=old_statement,
             new_statement=new_statement,
@@ -172,13 +179,7 @@ class ConflictDetector:
         if context:
             prompt = f"CONTEXT:\n{context}\n\n{prompt}"
         try:
-            response = await self.llm.complete(prompt, temperature=0.0)
-            # Strip markdown code block if present
-            text = response.strip()
-            if text.startswith("```"):
-                lines = text.split("\n")
-                text = "\n".join(line for line in lines if not line.startswith("```")).strip()
-            data = json.loads(text)
+            data = await self.llm.complete_json(prompt, temperature=0.0)
             raw_type = data.get("conflict_type", "none")
             try:
                 ctype = ConflictType(raw_type)
@@ -193,7 +194,7 @@ class ConflictDetector:
                 is_superseding=data.get("is_superseding", False),
                 reasoning=data.get("reasoning", ""),
             )
-        except (json.JSONDecodeError, ValueError) as e:
+        except Exception as e:
             return ConflictResult(
                 conflict_type=ConflictType.AMBIGUITY,
                 confidence=0.3,

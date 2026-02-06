@@ -43,7 +43,7 @@ services:
   vllm:
     image: vllm/vllm-openai:latest
     ports:
-      - "8000:8000"
+      - "8080:8000"
     command: ["--model", "unslop/Llama-3.2-1B-Instruct"]
     deploy:
       resources:
@@ -81,6 +81,10 @@ services:
       # Optional: LLM__PROVIDER=vllm and LLM__VLLM_BASE_URL=http://vllm:8000/v1 when vllm profile is used
     depends_on:
       postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     command: sh -c "alembic upgrade head && pytest tests -v --tb=short"
 

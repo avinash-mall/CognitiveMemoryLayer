@@ -59,7 +59,19 @@ class MemoryReranker:
             age_days = 0
         recency = 1.0 / (1.0 + age_days * 0.1)
         confidence = memory.record.confidence
-        diversity = 1.0
+        # Compute actual diversity: average dissimilarity to other memories (LOW-13)
+        if len(all_memories) > 1:
+            total_sim = 0.0
+            count = 0
+            for other in all_memories:
+                if other is memory:
+                    continue
+                total_sim += self._text_similarity(memory.record.text, other.record.text)
+                count += 1
+            avg_sim = total_sim / count if count > 0 else 0.0
+            diversity = 1.0 - avg_sim  # Higher diversity = less similar to others
+        else:
+            diversity = 1.0
         score = (
             self.config.relevance_weight * relevance
             + self.config.recency_weight * recency

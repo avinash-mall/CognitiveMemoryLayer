@@ -1,6 +1,6 @@
 """Admin API routes for consolidation, forgetting, and user management."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .auth import AuthContext, require_admin_permission
 from ..memory.orchestrator import MemoryOrchestrator
@@ -20,17 +20,20 @@ async def trigger_consolidation(
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
     """Manually trigger consolidation for a user."""
-    report = await orchestrator.consolidation.consolidate(
-        tenant_id=auth.tenant_id,
-        user_id=user_id,
-    )
-    return {
-        "status": "consolidation_completed",
-        "user_id": user_id,
-        "episodes_sampled": report.episodes_sampled,
-        "clusters_formed": report.clusters_formed,
-        "gists_extracted": report.gists_extracted,
-    }
+    try:
+        report = await orchestrator.consolidation.consolidate(
+            tenant_id=auth.tenant_id,
+            user_id=user_id,
+        )
+        return {
+            "status": "consolidation_completed",
+            "user_id": user_id,
+            "episodes_sampled": report.episodes_sampled,
+            "clusters_formed": report.clusters_formed,
+            "gists_extracted": report.gists_extracted,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Consolidation failed: {e}")
 
 
 @admin_router.post("/forget/{user_id}")
@@ -41,15 +44,18 @@ async def trigger_forgetting(
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
     """Manually trigger forgetting for a user."""
-    report = await orchestrator.forgetting.run_forgetting(
-        tenant_id=auth.tenant_id,
-        user_id=user_id,
-        dry_run=dry_run,
-    )
-    return {
-        "status": "forgetting_completed",
-        "user_id": user_id,
-        "dry_run": dry_run,
-        "memories_scanned": report.memories_scanned,
-        "operations_applied": report.result.operations_applied,
-    }
+    try:
+        report = await orchestrator.forgetting.run_forgetting(
+            tenant_id=auth.tenant_id,
+            user_id=user_id,
+            dry_run=dry_run,
+        )
+        return {
+            "status": "forgetting_completed",
+            "user_id": user_id,
+            "dry_run": dry_run,
+            "memories_scanned": report.memories_scanned,
+            "operations_applied": report.result.operations_applied,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Forgetting failed: {e}")

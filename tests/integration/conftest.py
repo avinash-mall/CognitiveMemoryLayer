@@ -8,7 +8,6 @@ Otherwise the root conftest's pg_engine/db_session are used.
 
 from __future__ import annotations
 
-import asyncio
 import os
 from typing import AsyncGenerator, Generator
 
@@ -50,13 +49,6 @@ if HAS_TESTCONTAINERS and not _use_env_postgres():
         """Start Neo4j container for integration tests."""
         with Neo4jContainer("neo4j:5") as neo4j:
             yield neo4j
-
-    @pytest.fixture(scope="module")
-    def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-        """Event loop for module-scoped async fixtures."""
-        loop = asyncio.new_event_loop()
-        yield loop
-        loop.close()
 
     @pytest.fixture(scope="module")
     async def pg_engine(postgres_container: PostgresContainer):

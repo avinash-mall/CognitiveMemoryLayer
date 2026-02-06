@@ -91,6 +91,7 @@ class GraphStoreBase(ABC):
         entity: str,
         entity_type: str,
         properties: Optional[Dict[str, Any]] = None,
+        namespace: Optional[str] = None,
     ) -> str:
         """Create or update a node, return node ID."""
         ...
@@ -104,6 +105,7 @@ class GraphStoreBase(ABC):
         predicate: str,
         object: str,
         properties: Optional[Dict[str, Any]] = None,
+        namespace: Optional[str] = None,
     ) -> str:
         """Create or update an edge."""
         ...

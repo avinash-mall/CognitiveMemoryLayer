@@ -15,6 +15,7 @@ class InterferenceResult:
     similarity: float
     interference_type: str  # "duplicate", "conflicting", "overlapping"
     recommendation: str  # "merge", "keep_newer", "keep_higher_confidence"
+    keep_id: Optional[str] = None  # id of record to keep when deleting the other
 
 
 def _cosine_similarity(v1: List[float], v2: List[float]) -> float:
@@ -60,13 +61,16 @@ class InterferenceDetector:
                 if sim >= self.similarity_threshold:
                     r1 = next(r for r in records if str(r.id) == id1)
                     r2 = next(r for r in records if str(r.id) == id2)
+                    rec = self._recommend_resolution(r1, r2)
+                    keep_id = self._resolve_keep_id(r1, r2, rec)
                     results.append(
                         InterferenceResult(
                             memory_id=id1,
                             interfering_memory_id=id2,
                             similarity=sim,
                             interference_type="duplicate",
-                            recommendation=self._recommend_resolution(r1, r2),
+                            recommendation=rec,
+                            keep_id=keep_id,
                         )
                     )
         return results
@@ -82,13 +86,16 @@ class InterferenceDetector:
             for r2 in records[i + 1 :]:
                 overlap = self._text_overlap(r1.text, r2.text)
                 if overlap >= text_overlap_threshold:
+                    rec = self._recommend_resolution(r1, r2)
+                    keep_id = self._resolve_keep_id(r1, r2, rec)
                     results.append(
                         InterferenceResult(
                             memory_id=str(r1.id),
                             interfering_memory_id=str(r2.id),
                             similarity=overlap,
                             interference_type="overlapping",
-                            recommendation=self._recommend_resolution(r1, r2),
+                            recommendation=rec,
+                            keep_id=keep_id,
                         )
                     )
         return results
@@ -111,6 +118,16 @@ class InterferenceDetector:
         """Recommend how to resolve interference."""
         if abs(r1.confidence - r2.confidence) > 0.2:
             return "keep_higher_confidence"
-        if r1.timestamp > r2.timestamp or r2.timestamp > r1.timestamp:
+        if r1.timestamp != r2.timestamp:
             return "keep_newer"
         return "merge"
+
+    def _resolve_keep_id(self, r1: MemoryRecord, r2: MemoryRecord, recommendation: str) -> Optional[str]:
+        """Return the id of the record to keep; the other will be deleted."""
+        if recommendation == "merge":
+            return None
+        if recommendation == "keep_higher_confidence":
+            return str(r1.id) if r1.confidence >= r2.confidence else str(r2.id)
+        if recommendation == "keep_newer":
+            return str(r1.id) if (r1.timestamp or r1.written_at) >= (r2.timestamp or r2.written_at) else str(r2.id)
+        return None
