@@ -1,4 +1,5 @@
 """Semantic fact and schema definitions for neocortical store."""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum

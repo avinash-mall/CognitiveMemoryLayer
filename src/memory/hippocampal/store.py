@@ -1,4 +1,5 @@
 """Hippocampal store: episodic memory with write gate, embedding, and vector store."""
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -51,9 +52,7 @@ class HippocampalStore:
         existing_memories: Optional[List[Dict[str, Any]]] = None,
         namespace: Optional[str] = None,
     ) -> Optional[MemoryRecord]:
-        gate_result = self.write_gate.evaluate(
-            chunk, existing_memories=existing_memories
-        )
+        gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_memories)
         if gate_result.decision == WriteDecision.SKIP:
             return None
 
@@ -69,21 +68,16 @@ class HippocampalStore:
             entities = await self.entity_extractor.extract(text)
         elif chunk.entities:
             entities = [
-                EntityMention(text=e, normalized=e, entity_type="CONCEPT")
-                for e in chunk.entities
+                EntityMention(text=e, normalized=e, entity_type="CONCEPT") for e in chunk.entities
             ]
 
         relations: List[Relation] = []
         if self.relation_extractor:
             entity_texts = [e.normalized for e in entities]
-            relations = await self.relation_extractor.extract(
-                text, entities=entity_texts
-            )
+            relations = await self.relation_extractor.extract(text, entities=entity_texts)
 
         memory_type = (
-            gate_result.memory_types[0]
-            if gate_result.memory_types
-            else MemoryType.EPISODIC_EVENT
+            gate_result.memory_types[0] if gate_result.memory_types else MemoryType.EPISODIC_EVENT
         )
         key = self._generate_key(chunk, memory_type)
 
@@ -109,9 +103,7 @@ class HippocampalStore:
             importance=gate_result.importance,
             provenance=Provenance(
                 source=MemorySource.AGENT_INFERRED,
-                evidence_refs=(
-                    [chunk.source_turn_id] if chunk.source_turn_id else []
-                ),
+                evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
                 model_version=embedding_result.model,
             ),
         )
@@ -193,9 +185,7 @@ class HippocampalStore:
             limit=limit,
         )
 
-    def _generate_key(
-        self, chunk: SemanticChunk, memory_type: MemoryType
-    ) -> Optional[str]:
+    def _generate_key(self, chunk: SemanticChunk, memory_type: MemoryType) -> Optional[str]:
         if memory_type not in (
             MemoryType.PREFERENCE,
             MemoryType.SEMANTIC_FACT,

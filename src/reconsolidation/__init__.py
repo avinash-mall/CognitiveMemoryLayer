@@ -1,4 +1,5 @@
 """Reconsolidation and belief revision after retrieval."""
+
 from .labile_tracker import LabileMemory, LabileSession, LabileStateTracker
 from .conflict_detector import ConflictDetector, ConflictResult, ConflictType
 from .belief_revision import (

@@ -1,8 +1,16 @@
 """PostgreSQL memory store with pgvector."""
+
 import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
+
+from sqlalchemy import and_, delete, func, select, update
+
+from ..core.enums import MemoryStatus, MemoryType
+from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
+from .base import MemoryStoreBase
+from .models import MemoryRecordModel
 
 
 def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
@@ -13,20 +21,12 @@ def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt
 
-from sqlalchemy import and_, delete, func, select, update
-
-from ..core.enums import MemoryStatus, MemoryType
-from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
-from .base import MemoryStoreBase
-from .models import MemoryRecordModel
-
 
 class PostgresMemoryStore(MemoryStoreBase):
     """PostgreSQL-based memory store with pgvector."""
 
     def __init__(self, session_factory: Any) -> None:
         self.session_factory = session_factory
-
 
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
         content_hash = self._hash_content(record.text, record.tenant_id)
@@ -43,9 +43,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             if existing_record:
                 existing_record.access_count += 1
                 existing_record.last_accessed_at = _naive_utc(datetime.now(timezone.utc))
-                existing_record.confidence = max(
-                    existing_record.confidence, record.confidence
-                )
+                existing_record.confidence = max(existing_record.confidence, record.confidence)
                 await session.commit()
                 await session.refresh(existing_record)
                 return self._to_schema(existing_record)
@@ -100,9 +98,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 )
             )
             if context_filter:
-                q = q.where(
-                    MemoryRecordModel.context_tags.overlap(context_filter)
-                )
+                q = q.where(MemoryRecordModel.context_tags.overlap(context_filter))
             r = await session.execute(q)
             model = r.scalar_one_or_none()
             return self._to_schema(model) if model else None
@@ -111,9 +107,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         async with self.session_factory() as session:
             if hard:
                 r = await session.execute(
-                    delete(MemoryRecordModel).where(
-                        MemoryRecordModel.id == record_id
-                    )
+                    delete(MemoryRecordModel).where(MemoryRecordModel.id == record_id)
                 )
             else:
                 r = await session.execute(
@@ -132,18 +126,26 @@ class PostgresMemoryStore(MemoryStoreBase):
     ) -> Optional[MemoryRecord]:
         async with self.session_factory() as session:
             r = await session.execute(
-                select(MemoryRecordModel).where(
-                    MemoryRecordModel.id == record_id
-                )
+                select(MemoryRecordModel).where(MemoryRecordModel.id == record_id)
             )
             model = r.scalar_one_or_none()
             if not model:
                 return None
             key_allow = {
-                "access_count", "last_accessed_at", "confidence",
-                "importance", "status", "meta", "text", "embedding",
-                "valid_to", "metadata", "entities", "relations",
-                "context_tags", "source_session_id",
+                "access_count",
+                "last_accessed_at",
+                "confidence",
+                "importance",
+                "status",
+                "meta",
+                "text",
+                "embedding",
+                "valid_to",
+                "metadata",
+                "entities",
+                "relations",
+                "context_tags",
+                "source_session_id",
             }
             for key, value in patch.items():
                 if key == "metadata":
@@ -174,10 +176,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 base = and_(base, MemoryRecordModel.context_tags.overlap(context_filter))
             q = select(
                 MemoryRecordModel,
-                (
-                    1
-                    - MemoryRecordModel.embedding.cosine_distance(embedding)
-                ).label("similarity"),
+                (1 - MemoryRecordModel.embedding.cosine_distance(embedding)).label("similarity"),
             ).where(
                 and_(
                     base,
@@ -192,16 +191,10 @@ class PostgresMemoryStore(MemoryStoreBase):
                     else:
                         q = q.where(MemoryRecordModel.type == t)
                 if "since" in filters:
-                    q = q.where(
-                        MemoryRecordModel.timestamp >= filters["since"]
-                    )
+                    q = q.where(MemoryRecordModel.timestamp >= filters["since"])
                 if "until" in filters:
-                    q = q.where(
-                        MemoryRecordModel.timestamp <= filters["until"]
-                    )
-            q = q.order_by(
-                MemoryRecordModel.embedding.cosine_distance(embedding)
-            ).limit(top_k)
+                    q = q.where(MemoryRecordModel.timestamp <= filters["until"])
+            q = q.order_by(MemoryRecordModel.embedding.cosine_distance(embedding)).limit(top_k)
             result = await session.execute(q)
             records = []
             for row in result:
@@ -221,22 +214,14 @@ class PostgresMemoryStore(MemoryStoreBase):
         offset: int = 0,
     ) -> List[MemoryRecord]:
         async with self.session_factory() as session:
-            q = select(MemoryRecordModel).where(
-                MemoryRecordModel.tenant_id == tenant_id
-            )
+            q = select(MemoryRecordModel).where(MemoryRecordModel.tenant_id == tenant_id)
             if filters and "context_tags" in filters:
-                q = q.where(
-                    MemoryRecordModel.context_tags.overlap(filters["context_tags"])
-                )
+                q = q.where(MemoryRecordModel.context_tags.overlap(filters["context_tags"]))
             if filters and "source_session_id" in filters:
-                q = q.where(
-                    MemoryRecordModel.source_session_id == filters["source_session_id"]
-                )
+                q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
             if filters:
                 if "status" in filters:
-                    q = q.where(
-                        MemoryRecordModel.status == filters["status"]
-                    )
+                    q = q.where(MemoryRecordModel.status == filters["status"])
                 if "type" in filters:
                     t = filters["type"]
                     if isinstance(t, list):
@@ -251,9 +236,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 col_name = order_by.lstrip("-")
                 col = getattr(MemoryRecordModel, col_name, None)
                 if col is not None:
-                    q = q.order_by(
-                        col.desc() if order_by.startswith("-") else col
-                    )
+                    q = q.order_by(col.desc() if order_by.startswith("-") else col)
             q = q.offset(offset).limit(limit)
             r = await session.execute(q)
             return [self._to_schema(m) for m in r.scalars().all()]
@@ -268,17 +251,11 @@ class PostgresMemoryStore(MemoryStoreBase):
                 MemoryRecordModel.tenant_id == tenant_id
             )
             if filters and "context_tags" in filters:
-                q = q.where(
-                    MemoryRecordModel.context_tags.overlap(filters["context_tags"])
-                )
+                q = q.where(MemoryRecordModel.context_tags.overlap(filters["context_tags"]))
             if filters and "source_session_id" in filters:
-                q = q.where(
-                    MemoryRecordModel.source_session_id == filters["source_session_id"]
-                )
+                q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
             if filters and "status" in filters:
-                q = q.where(
-                    MemoryRecordModel.status == filters["status"]
-                )
+                q = q.where(MemoryRecordModel.status == filters["status"])
             r = await session.execute(q)
             return r.scalar() or 0
 
@@ -330,9 +307,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             text=model.text,
             key=model.key,
             embedding=list(model.embedding) if model.embedding is not None else None,
-            entities=[
-                EntityMention(**e) for e in (model.entities or [])
-            ],
+            entities=[EntityMention(**e) for e in (model.entities or [])],
             relations=[Relation(**r) for r in (model.relations or [])],
             metadata=model.meta or {},
             timestamp=model.timestamp,

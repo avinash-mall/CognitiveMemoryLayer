@@ -1,4 +1,5 @@
 """Memory packet builder for LLM consumption."""
+
 import json
 from typing import List
 
@@ -117,14 +118,17 @@ class MemoryPacketBuilder:
         """Format as JSON string."""
         data = {
             "facts": [
-                {"text": f.record.text, "confidence": f.record.confidence}
-                for f in packet.facts[:5]
+                {"text": f.record.text, "confidence": f.record.confidence} for f in packet.facts[:5]
             ],
             "preferences": [{"text": p.record.text} for p in packet.preferences[:5]],
             "recent": [
                 {
                     "text": e.record.text,
-                    "date": e.record.timestamp.isoformat() if hasattr(e.record.timestamp, "isoformat") else str(e.record.timestamp),
+                    "date": (
+                        e.record.timestamp.isoformat()
+                        if hasattr(e.record.timestamp, "isoformat")
+                        else str(e.record.timestamp)
+                    ),
                 }
                 for e in packet.recent_episodes[:5]
             ],

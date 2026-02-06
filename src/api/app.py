@@ -1,4 +1,5 @@
 """FastAPI application factory and entry point."""
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
 
     # Prometheus metrics endpoint
     from prometheus_client import make_asgi_app
+
     metrics_app = make_asgi_app()
     app.mount("/metrics", metrics_app)
 

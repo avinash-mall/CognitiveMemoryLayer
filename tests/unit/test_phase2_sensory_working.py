@@ -1,4 +1,5 @@
 """Unit tests for Phase 2: sensory buffer and working memory."""
+
 import pytest
 
 from src.memory.sensory.buffer import (
@@ -113,8 +114,7 @@ class TestShortTermMemory:
         config = ShortTermMemoryConfig(use_fast_chunker=True)
         stm = ShortTermMemory(config=config)
         result = await stm.ingest_turn(
-            "t1", "u1", "I prefer coffee and my name is Bob.",
-            turn_id="turn-1", role="user"
+            "t1", "u1", "I prefer coffee and my name is Bob.", turn_id="turn-1", role="user"
         )
         assert result["tokens_buffered"] > 0
         assert result["chunks_created"] >= 1

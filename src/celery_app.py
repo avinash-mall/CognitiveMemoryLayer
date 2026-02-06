@@ -1,4 +1,5 @@
 """Celery application and background tasks (e.g. active forgetting)."""
+
 import asyncio
 from typing import Any, Dict
 

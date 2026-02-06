@@ -1,4 +1,5 @@
 """Relation (OpenIE-style) extraction from text."""
+
 import json
 import re
 from typing import List, Optional
@@ -44,9 +45,7 @@ class RelationExtractor:
         if entities:
             prompt += f"\n\nKnown entities: {', '.join(entities)}"
         try:
-            response = await self.llm.complete(
-                prompt, temperature=0.0, max_tokens=500
-            )
+            response = await self.llm.complete(prompt, temperature=0.0, max_tokens=500)
             data = json.loads(response)
             if not isinstance(data, list):
                 data = [data]

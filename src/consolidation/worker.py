@@ -1,4 +1,5 @@
 """Consolidation worker orchestrating the full flow."""
+
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
@@ -68,9 +69,7 @@ class ConsolidationWorker:
         started = datetime.utcnow()
 
         episode_limit = task.episode_limit if task else 200
-        episodes = await self.sampler.sample(
-            tenant_id, user_id, max_episodes=episode_limit
-        )
+        episodes = await self.sampler.sample(tenant_id, user_id, max_episodes=episode_limit)
 
         if not episodes:
             return ConsolidationReport(

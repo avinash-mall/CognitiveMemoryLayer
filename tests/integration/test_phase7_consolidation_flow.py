@@ -1,4 +1,5 @@
 """Integration tests for Phase 7: consolidation flow."""
+
 from uuid import uuid4
 
 import pytest
@@ -25,7 +26,9 @@ class _MockGraphStore:
 class _MockLLM:
     """Returns invalid JSON so GistExtractor uses fallback summary."""
 
-    async def complete(self, prompt: str, temperature: float = 0.0, max_tokens: int = 500, system_prompt=None):
+    async def complete(
+        self, prompt: str, temperature: float = 0.0, max_tokens: int = 500, system_prompt=None
+    ):
         return "not valid json"
 
     async def complete_json(self, prompt: str, schema=None, temperature: float = 0.0):

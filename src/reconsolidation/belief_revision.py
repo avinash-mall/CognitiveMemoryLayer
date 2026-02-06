@@ -1,4 +1,5 @@
 """Belief revision strategies based on conflict detection."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -217,16 +218,12 @@ class BeliefRevisionEngine:
         evidence_id: Optional[str],
     ) -> RevisionPlan:
         """Plan resolution for direct contradictions. Holistic: inherit context_tags/source_session_id."""
-        old_is_user_confirmed = (
-            old_memory.provenance.source == MemorySource.USER_CONFIRMED
-        )
+        old_is_user_confirmed = old_memory.provenance.source == MemorySource.USER_CONFIRMED
         new_confidence = conflict.confidence
         if old_is_user_confirmed and old_memory.confidence > new_confidence:
             return self._plan_hypothesis(old_memory, conflict, tenant_id, evidence_id)
         if conflict.is_superseding or new_confidence > old_memory.confidence:
-            return self._plan_time_slice(
-                old_memory, conflict, new_type, tenant_id, evidence_id
-            )
+            return self._plan_time_slice(old_memory, conflict, new_type, tenant_id, evidence_id)
         return RevisionPlan(
             strategy=RevisionStrategy.ADD_HYPOTHESIS,
             operations=[

@@ -1,4 +1,5 @@
 """Event log repository - append-only event store."""
+
 from datetime import datetime
 from typing import AsyncIterator, List, Optional
 from uuid import UUID
@@ -92,9 +93,7 @@ class EventLogRepository:
         if from_event_id:
             from_event = await self.get_by_id(from_event_id)
             if from_event:
-                query = query.where(
-                    EventLogModel.created_at > from_event.created_at
-                )
+                query = query.where(EventLogModel.created_at > from_event.created_at)
 
         result = await self.session.stream(query)
         async for model in result.scalars():

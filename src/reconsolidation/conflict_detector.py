@@ -1,4 +1,5 @@
 """Conflict detection between new information and existing memories."""
+
 from dataclasses import dataclass
 from enum import Enum
 import json
@@ -72,9 +73,7 @@ class ConflictDetector:
         if fast_result and fast_result.confidence > 0.8:
             return fast_result
         if self.llm:
-            return await self._llm_detect(
-                old_memory.text, new_statement, context
-            )
+            return await self._llm_detect(old_memory.text, new_statement, context)
         return fast_result or ConflictResult(
             conflict_type=ConflictType.NONE,
             confidence=0.5,
@@ -91,9 +90,7 @@ class ConflictDetector:
         """Detect conflicts against multiple memories."""
         import asyncio
 
-        return await asyncio.gather(
-            *[self.detect(mem, new_statement) for mem in memories]
-        )
+        return await asyncio.gather(*[self.detect(mem, new_statement) for mem in memories])
 
     def _fast_detect(
         self,
@@ -129,9 +126,7 @@ class ConflictDetector:
             if neg in new_lower and neg not in old_lower:
                 old_words = set(old_lower.replace(neg, "").split())
                 new_words = set(new_lower.replace(neg, "").split())
-                overlap = len(old_words & new_words) / max(
-                    len(old_words | new_words), 1
-                )
+                overlap = len(old_words & new_words) / max(len(old_words | new_words), 1)
                 if overlap > 0.5:
                     return ConflictResult(
                         conflict_type=ConflictType.DIRECT_CONTRADICTION,
@@ -182,9 +177,7 @@ class ConflictDetector:
             text = response.strip()
             if text.startswith("```"):
                 lines = text.split("\n")
-                text = "\n".join(
-                    l for l in lines if not l.startswith("```")
-                ).strip()
+                text = "\n".join(line for line in lines if not line.startswith("```")).strip()
             data = json.loads(text)
             raw_type = data.get("conflict_type", "none")
             try:

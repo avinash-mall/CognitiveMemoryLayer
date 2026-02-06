@@ -1,4 +1,5 @@
 """Write gate: decide whether and how to store incoming information."""
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
@@ -108,9 +109,7 @@ class WriteGate:
 
         if importance >= self.config.sync_importance_threshold:
             decision = (
-                WriteDecision.REDACT_AND_STORE
-                if redaction_required
-                else WriteDecision.STORE_SYNC
+                WriteDecision.REDACT_AND_STORE if redaction_required else WriteDecision.STORE_SYNC
             )
         else:
             decision = WriteDecision.STORE_ASYNC

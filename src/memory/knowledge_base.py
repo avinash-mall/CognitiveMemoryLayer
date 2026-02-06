@@ -1,4 +1,5 @@
 """General-purpose knowledge storage (not user-specific)."""
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 

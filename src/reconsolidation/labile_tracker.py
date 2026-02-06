@@ -1,4 +1,5 @@
 """Labile state tracking for memories after retrieval."""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -180,9 +181,7 @@ class LabileStateTracker:
             if not session:
                 to_remove.append(sk)
                 continue
-            all_expired = all(
-                m.expires_at <= now for m in session.memories.values()
-            )
+            all_expired = all(m.expires_at <= now for m in session.memories.values())
             if all_expired:
                 to_remove.append(sk)
         for sk in to_remove:

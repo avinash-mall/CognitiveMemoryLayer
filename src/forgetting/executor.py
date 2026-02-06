@@ -1,4 +1,5 @@
 """Execution of forgetting operations on the memory store."""
+
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -55,9 +56,7 @@ class ForgettingExecutor:
                     msg = skip_reason or f"Failed to execute {op.action} on {op.memory_id}"
                     result.errors.append(msg)
             except Exception as e:
-                result.errors.append(
-                    f"Error executing {op.action} on {op.memory_id}: {e}"
-                )
+                result.errors.append(f"Error executing {op.action} on {op.memory_id}: {e}")
 
         return result
 
@@ -87,9 +86,7 @@ class ForgettingExecutor:
             "confidence": op.new_confidence,
             "metadata": {"last_decay": datetime.now(timezone.utc).isoformat()},
         }
-        result = await self.store.update(
-            op.memory_id, patch, increment_version=False
-        )
+        result = await self.store.update(op.memory_id, patch, increment_version=False)
         return result is not None
 
     async def _execute_silence(self, op: ForgettingOperation) -> bool:
