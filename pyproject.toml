@@ -37,6 +37,7 @@ factory-boy = "^3.3"
 faker = "^33.0"
 alembic = "^1.14"
 testcontainers = "^4.6"
+psycopg2-binary = "^2.9"
 
 [build-system]
 requires = ["poetry-core"]
