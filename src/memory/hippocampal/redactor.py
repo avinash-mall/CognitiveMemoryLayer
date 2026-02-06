@@ -37,7 +37,6 @@ class PIIRedactor:
         matches: List[Tuple[int, int, str, str]] = []  # start, end, pii_type, replacement
         for pii_type, pattern in self._compiled.items():
             for match in pattern.finditer(text):
-                replacement = f"[{pii_type}_REDACTED]"
                 matches.append((match.start(), match.end(), pii_type, match.group()))
 
         # Sort by start descending so we can replace without offset issues

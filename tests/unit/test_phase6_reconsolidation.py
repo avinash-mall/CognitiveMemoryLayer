@@ -7,8 +7,6 @@ import pytest
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance
 from src.reconsolidation.labile_tracker import (
-    LabileMemory,
-    LabileSession,
     LabileStateTracker,
 )
 from src.reconsolidation.conflict_detector import (
@@ -19,7 +17,6 @@ from src.reconsolidation.conflict_detector import (
 from src.reconsolidation.belief_revision import (
     BeliefRevisionEngine,
     RevisionStrategy,
-    RevisionPlan,
 )
 
 

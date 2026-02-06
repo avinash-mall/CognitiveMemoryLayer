@@ -169,7 +169,6 @@ class SeamlessMemoryProvider:
         retrieved_memories: list,
     ) -> dict:
         """Store assistant response and run reconsolidation."""
-        from ..core.schemas import MemoryRecord
 
         # Store assistant response
         write_result = await self.orchestrator.write(

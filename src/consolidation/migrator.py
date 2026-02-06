@@ -5,7 +5,6 @@ from typing import List
 from uuid import UUID
 
 from .schema_aligner import AlignmentResult
-from .summarizer import ExtractedGist
 from ..core.enums import MemoryStatus
 from ..memory.neocortical.store import NeocorticalStore
 from ..storage.postgres import PostgresMemoryStore
