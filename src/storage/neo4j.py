@@ -257,18 +257,26 @@ class Neo4jGraphStore(GraphStoreBase):
 
         async with self.driver.session() as session:
             try:
-                gds_query = """
+                node_query = (
+                    "MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.scope_id = $scope_id "
+                    "RETURN id(n) AS id"
+                )
+                rel_query = (
+                    "MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id "
+                    "AND n1.scope_id = $scope_id RETURN id(n1) AS source, id(n2) AS target"
+                )
+                gds_query = f"""
                 MATCH (source:Entity)
                 WHERE source.tenant_id = $tenant_id
                   AND source.scope_id = $scope_id
                   AND source.entity IN $seeds
 
-                CALL gds.pageRank.stream({
-                    nodeQuery: 'MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.scope_id = $scope_id RETURN id(n) AS id',
-                    relationshipQuery: 'MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id AND n1.scope_id = $scope_id RETURN id(n1) AS source, id(n2) AS target',
+                CALL gds.pageRank.stream({{
+                    nodeQuery: '{node_query}',
+                    relationshipQuery: '{rel_query}',
                     dampingFactor: $damping,
                     sourceNodes: collect(source)
-                })
+                }})
                 YIELD nodeId, score
 
                 MATCH (n:Entity) WHERE id(n) = nodeId
