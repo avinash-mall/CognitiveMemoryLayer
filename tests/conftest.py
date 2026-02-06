@@ -1,4 +1,5 @@
 """Pytest fixtures for Phase 1 and beyond."""
+
 import asyncio
 from datetime import datetime
 from typing import AsyncGenerator, Generator
@@ -10,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 # Allow importing src when run from project root or with PYTHONPATH
 try:
-    from src.storage.models import Base
+    from src.storage.models import Base  # noqa: F401
 except ImportError:
     import sys
     from pathlib import Path
+
     root = Path(__file__).resolve().parent.parent
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
@@ -21,6 +23,7 @@ except ImportError:
 
 def _get_postgres_url() -> str:
     from src.core.config import get_settings
+
     return get_settings().database.postgres_url
 
 
@@ -133,4 +136,5 @@ async def pg_session_factory(pg_engine):
 async def event_log_repo(db_session: AsyncSession):
     """Provide EventLogRepository with a live session."""
     from src.storage.event_log import EventLogRepository
+
     return EventLogRepository(db_session)

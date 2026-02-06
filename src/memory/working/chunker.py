@@ -1,4 +1,5 @@
 """Semantic chunking: LLM-based and rule-based."""
+
 import hashlib
 import json
 import re
@@ -49,14 +50,19 @@ def _compute_salience_boost_for_sentiment(text: str) -> float:
     """Boost salience for emotionally significant content. Cap at 0.3."""
     boost = 0.0
     # Excitement indicators
-    if text.count("!") >= 2 or any(
-        w.isupper() and len(w) > 2 for w in text.split()
-    ):
+    if text.count("!") >= 2 or any(w.isupper() and len(w) > 2 for w in text.split()):
         boost += 0.15
     # Strong emotion words
     emotion_words = [
-        "love", "hate", "amazing", "terrible", "excited",
-        "worried", "thrilled", "devastated", "passionate",
+        "love",
+        "hate",
+        "amazing",
+        "terrible",
+        "excited",
+        "worried",
+        "thrilled",
+        "devastated",
+        "passionate",
     ]
     if any(word in text.lower() for word in emotion_words):
         boost += 0.1
@@ -171,14 +177,26 @@ class RuleBasedChunker:
     """
 
     PREFERENCE_MARKERS = [
-        "i prefer", "i like", "i love", "i hate",
-        "i don't like", "i want",
+        "i prefer",
+        "i like",
+        "i love",
+        "i hate",
+        "i don't like",
+        "i want",
     ]
     FACT_MARKERS = [
-        "my name is", "i am", "i live", "i work", "i have",
+        "my name is",
+        "i am",
+        "i live",
+        "i work",
+        "i have",
     ]
     INSTRUCTION_MARKERS = [
-        "please", "can you", "could you", "i need", "help me",
+        "please",
+        "can you",
+        "could you",
+        "i need",
+        "help me",
     ]
 
     def chunk(

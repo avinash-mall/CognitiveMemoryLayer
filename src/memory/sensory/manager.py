@@ -1,4 +1,5 @@
 """Per-scope sensory buffer management."""
+
 from typing import Dict, Optional
 
 import asyncio

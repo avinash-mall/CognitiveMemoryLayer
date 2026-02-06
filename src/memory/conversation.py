@@ -1,4 +1,5 @@
 """Conversation memory: store and retrieve conversation history."""
+
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -39,7 +40,9 @@ class ConversationMemory:
             key=None,
             embedding=None,
             metadata=meta,
-            provenance=Provenance(source=MemorySource.USER_EXPLICIT if role == "user" else MemorySource.AGENT_INFERRED),
+            provenance=Provenance(
+                source=MemorySource.USER_EXPLICIT if role == "user" else MemorySource.AGENT_INFERRED
+            ),
         )
         created = await self.store.upsert(record)
         return created.id
@@ -64,13 +67,15 @@ class ConversationMemory:
         out: List[Dict[str, Any]] = []
         for r in reversed(records):
             meta = r.metadata or {}
-            out.append({
-                "id": r.id,
-                "role": meta.get("role", "user"),
-                "content": r.text,
-                "timestamp": r.timestamp,
-                "tool_calls": meta.get("tool_calls"),
-            })
+            out.append(
+                {
+                    "id": r.id,
+                    "role": meta.get("role", "user"),
+                    "content": r.text,
+                    "timestamp": r.timestamp,
+                    "tool_calls": meta.get("tool_calls"),
+                }
+            )
         return out
 
     async def summarize_and_compress(
@@ -91,8 +96,10 @@ class ConversationMemory:
             return "\n".join(lines)
         recent = history[-keep_recent:]
         if summary_text:
-            return summary_text.strip() + "\n\n--- Recent ---\n" + "\n".join(
-                f"{m['role']}: {m['content']}" for m in recent
+            return (
+                summary_text.strip()
+                + "\n\n--- Recent ---\n"
+                + "\n".join(f"{m['role']}: {m['content']}" for m in recent)
             )
         lines = [f"{m['role']}: {m['content']}" for m in recent]
         return "\n".join(lines)

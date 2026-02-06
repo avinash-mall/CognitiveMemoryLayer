@@ -1,4 +1,5 @@
 """Reconsolidation orchestrator service."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -81,20 +82,14 @@ class ReconsolidationService:
                 memory_ids=[m.id for m in retrieved_memories],
                 query=user_message,
                 retrieved_texts=[m.text for m in retrieved_memories],
-                relevance_scores=[
-                    m.metadata.get("_similarity", 0.5) for m in retrieved_memories
-                ],
+                relevance_scores=[m.metadata.get("_similarity", 0.5) for m in retrieved_memories],
                 confidences=[m.confidence for m in retrieved_memories],
             )
 
-        new_facts = await self._extract_new_facts(
-            user_message, assistant_response
-        )
+        new_facts = await self._extract_new_facts(user_message, assistant_response)
 
         if not new_facts:
-            await self.labile_tracker.release_labile(
-                tenant_id, scope_id, turn_id
-            )
+            await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
             elapsed = (datetime.utcnow() - start).total_seconds() * 1000
             return ReconsolidationResult(
                 turn_id=turn_id,
@@ -106,9 +101,7 @@ class ReconsolidationService:
 
         for new_fact in new_facts:
             for memory in retrieved_memories:
-                conflict = await self.conflict_detector.detect(
-                    memory, new_fact["text"]
-                )
+                conflict = await self.conflict_detector.detect(memory, new_fact["text"])
                 if conflict.conflict_type.value != "none":
                     conflicts_found += 1
 
@@ -128,12 +121,14 @@ class ReconsolidationService:
 
                 for op in plan.operations:
                     result = await self._apply_operation(op)
-                    operations_applied.append({
-                        "operation": op.op_type.value,
-                        "target_id": str(op.target_id) if op.target_id else None,
-                        "reason": op.reason,
-                        "success": result,
-                    })
+                    operations_applied.append(
+                        {
+                            "operation": op.op_type.value,
+                            "target_id": str(op.target_id) if op.target_id else None,
+                            "reason": op.reason,
+                            "success": result,
+                        }
+                    )
 
         await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
         elapsed = (datetime.utcnow() - start).total_seconds() * 1000
@@ -175,12 +170,16 @@ class ReconsolidationService:
                     "i prefer",
                 ]
             ):
-                facts.append({
-                    "text": sentence,
-                    "type": "semantic_fact"
-                    if "my name" in lower or "i live" in lower
-                    else "preference",
-                })
+                facts.append(
+                    {
+                        "text": sentence,
+                        "type": (
+                            "semantic_fact"
+                            if "my name" in lower or "i live" in lower
+                            else "preference"
+                        ),
+                    }
+                )
         return facts
 
     async def _apply_operation(self, op: RevisionOperation) -> bool:

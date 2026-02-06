@@ -10,6 +10,7 @@ These tests are skipped unless a vLLM OpenAI-compatible endpoint is available:
         pytest tests/integration/test_phase8_vllm_compression.py -v
   - Without a configured and reachable vLLM server, the tests are skipped with a clear message.
 """
+
 import os
 
 import pytest

@@ -1,4 +1,5 @@
 """Episode sampling for consolidation."""
+
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -60,8 +61,7 @@ class EpisodeSampler:
 
         if exclude_consolidated:
             candidates = [
-                c for c in candidates
-                if not (c.metadata and c.metadata.get("consolidated"))
+                c for c in candidates if not (c.metadata and c.metadata.get("consolidated"))
             ]
 
         candidates = [

@@ -1,4 +1,5 @@
 """Sensory buffer: high-fidelity short-term token storage with decay."""
+
 from collections import deque
 from dataclasses import dataclass
 from typing import Deque, List, Optional
@@ -144,6 +145,7 @@ class SensoryBuffer:
 
     async def start_cleanup_loop(self) -> None:
         """Start background cleanup task."""
+
         async def cleanup_loop() -> None:
             while True:
                 await asyncio.sleep(self.config.cleanup_interval_seconds)

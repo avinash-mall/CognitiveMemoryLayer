@@ -1,4 +1,5 @@
 """Schema management for neocortical fact types."""
+
 from typing import Dict, Optional
 
 from .schemas import DEFAULT_FACT_SCHEMAS, FactCategory, FactSchema
@@ -23,9 +24,7 @@ class SchemaManager:
 
     def get_schemas_for_category(self, category: FactCategory) -> Dict[str, FactSchema]:
         """Return all schemas in a category."""
-        return {
-            k: v for k, v in self.schemas.items() if v.category == category
-        }
+        return {k: v for k, v in self.schemas.items() if v.category == category}
 
     def register_schema(self, key_pattern: str, schema: FactSchema) -> None:
         """Register a new schema."""

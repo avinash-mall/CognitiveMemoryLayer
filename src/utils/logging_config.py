@@ -1,4 +1,5 @@
 """Structured logging configuration (Phase 10)."""
+
 import logging
 from typing import Any
 

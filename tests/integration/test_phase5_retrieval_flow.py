@@ -1,4 +1,5 @@
 """Integration test: full retrieval flow (classify -> plan -> retrieve -> rerank -> packet)."""
+
 from uuid import uuid4
 
 import pytest
@@ -16,8 +17,10 @@ from src.retrieval.memory_retriever import MemoryRetriever
 class _MockGraph:
     async def merge_edge(self, *args, **kwargs):
         return "mock"
+
     async def get_entity_facts(self, *args, **kwargs):
         return []
+
     async def personalized_pagerank(self, *args, **kwargs):
         return []
 
@@ -39,9 +42,7 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
 
     tenant_id = f"t-{uuid4().hex[:8]}"
 
-    await neocortical.store_fact(
-        tenant_id, "user:preference:cuisine", "Italian", confidence=0.9
-    )
+    await neocortical.store_fact(tenant_id, "user:preference:cuisine", "Italian", confidence=0.9)
 
     retriever = MemoryRetriever(
         hippocampal=hippocampal,
@@ -52,7 +53,9 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
 
     assert packet.query == "cuisine"
     all_mems = packet.all_memories
-    assert len(all_mems) >= 1, "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
+    assert (
+        len(all_mems) >= 1
+    ), "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
     texts = [m.record.text for m in all_mems]
     assert any("Italian" in t or "cuisine" in t.lower() for t in texts)
 

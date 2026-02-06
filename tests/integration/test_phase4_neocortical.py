@@ -1,4 +1,5 @@
 """Integration tests for Phase 4: NeocorticalStore (fact store + mock graph)."""
+
 from uuid import uuid4
 
 import pytest
@@ -28,9 +29,7 @@ async def test_neocortical_store_fact_and_profile(pg_session_factory):
 
     tenant_id = f"t-{uuid4().hex[:8]}"
 
-    fact = await store.store_fact(
-        tenant_id, "user:identity:name", "Diana", confidence=0.85
-    )
+    fact = await store.store_fact(tenant_id, "user:identity:name", "Diana", confidence=0.85)
     assert fact.value == "Diana"
 
     got = await store.get_fact(tenant_id, "user:identity:name")

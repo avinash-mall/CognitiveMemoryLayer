@@ -1,4 +1,5 @@
 """Gist extraction from episode clusters."""
+
 import json
 from dataclasses import dataclass
 from typing import Any, List, Optional
@@ -70,7 +71,9 @@ class GistExtractor:
             memory_texts.append(f"{i}. [{mem_type}] {ep.text}")
 
         memories_str = "\n".join(memory_texts)
-        themes_str = ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
+        themes_str = (
+            ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
+        )
 
         prompt = GIST_EXTRACTION_PROMPT.format(
             memories=memories_str,
@@ -122,9 +125,7 @@ class GistExtractor:
                 )
             ]
 
-    async def extract_from_clusters(
-        self, clusters: List[EpisodeCluster]
-    ) -> List[ExtractedGist]:
+    async def extract_from_clusters(self, clusters: List[EpisodeCluster]) -> List[ExtractedGist]:
         """Extract gists from all clusters."""
         import asyncio
 

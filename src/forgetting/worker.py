@@ -1,4 +1,5 @@
 """Forgetting worker and scheduler."""
+
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
@@ -86,9 +87,7 @@ class ForgettingWorker:
                 result=ForgettingResult(0, 0),
             )
 
-        dep_counts = await self._get_dependency_counts(
-            tenant_id, user_id, memories
-        )
+        dep_counts = await self._get_dependency_counts(tenant_id, user_id, memories)
         scores = self.scorer.score_batch(memories, dep_counts)
         operations = self.policy.plan_operations(scores)
 
@@ -145,9 +144,7 @@ class ForgettingWorker:
             if dup.memory_id in resolved_ids or dup.interfering_memory_id in resolved_ids:
                 continue
             to_delete = (
-                dup.interfering_memory_id
-                if dup.recommendation == "keep_newer"
-                else dup.memory_id
+                dup.interfering_memory_id if dup.recommendation == "keep_newer" else dup.memory_id
             )
             if dup.recommendation == "keep_higher_confidence":
                 to_delete = dup.interfering_memory_id

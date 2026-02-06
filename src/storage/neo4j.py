@@ -1,4 +1,5 @@
 """Neo4j knowledge graph store for semantic memory."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -38,14 +39,16 @@ class GraphEdge:
 
 def _sanitize_rel_type(predicate: str) -> str:
     """Sanitize predicate for Neo4j relationship type (alphanumeric + underscore only)."""
-    return "".join(c if c.isalnum() or c == "_" else "_" for c in predicate.upper().replace(" ", "_"))
+    return "".join(
+        c if c.isalnum() or c == "_" else "_" for c in predicate.upper().replace(" ", "_")
+    )
 
 
 class Neo4jGraphStore(GraphStoreBase):
     """
     Neo4j-based knowledge graph for semantic memory.
     Stores entities as nodes and relations as edges.
-    
+
     Note: The scope_id parameter is used as the identity key in the graph.
     Graph data is partitioned by tenant_id and scope_id.
     """

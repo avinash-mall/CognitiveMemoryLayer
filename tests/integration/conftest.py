@@ -5,6 +5,7 @@ containers are started (module-scoped). When running inside Docker (e.g. docker-
 or USE_ENV_DB=1, DATABASE__POSTGRES_URL from env is used instead (no testcontainers).
 Otherwise the root conftest's pg_engine/db_session are used.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +17,7 @@ import pytest
 try:
     from testcontainers.neo4j import Neo4jContainer
     from testcontainers.postgres import PostgresContainer
+
     HAS_TESTCONTAINERS = True
 except ImportError:
     HAS_TESTCONTAINERS = False
@@ -38,7 +40,9 @@ def _use_env_postgres() -> bool:
             return True
         try:
             # Docker socket typical paths
-            if not os.path.exists("/var/run/docker.sock") and not os.path.exists("//var/run/docker.sock"):
+            if not os.path.exists("/var/run/docker.sock") and not os.path.exists(
+                "//var/run/docker.sock"
+            ):
                 return True
         except OSError:
             return True

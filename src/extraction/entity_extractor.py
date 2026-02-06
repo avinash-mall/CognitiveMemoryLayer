@@ -1,4 +1,5 @@
 """Entity extraction from text (LLM-based)."""
+
 import json
 from typing import List, Optional
 
@@ -38,9 +39,7 @@ class EntityExtractor:
         if context:
             prompt = f"Context: {context}\n\n{prompt}"
         try:
-            response = await self.llm.complete(
-                prompt, temperature=0.0, max_tokens=500
-            )
+            response = await self.llm.complete(prompt, temperature=0.0, max_tokens=500)
             data = json.loads(response)
             if not isinstance(data, list):
                 data = [data]
@@ -56,8 +55,7 @@ class EntityExtractor:
         except (json.JSONDecodeError, KeyError, TypeError):
             return []
 
-    async def extract_batch(
-        self, texts: List[str]
-    ) -> List[List[EntityMention]]:
+    async def extract_batch(self, texts: List[str]) -> List[List[EntityMention]]:
         import asyncio
+
         return await asyncio.gather(*[self.extract(t) for t in texts])
