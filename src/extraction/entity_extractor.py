@@ -1,7 +1,6 @@
 """Entity extraction from text (LLM-based)."""
 
 import json
-import re
 from typing import List, Optional
 
 from ..core.schemas import EntityMention
@@ -20,6 +19,7 @@ def _strip_markdown_fences(text: str) -> str:
             lines = lines[1:]
         text = "\n".join(lines).strip()
     return text
+
 
 ENTITY_EXTRACTION_PROMPT = """Extract named entities from the following text.
 

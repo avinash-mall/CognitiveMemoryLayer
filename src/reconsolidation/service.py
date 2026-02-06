@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
-
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
 from ..storage.postgres import PostgresMemoryStore
@@ -14,6 +12,8 @@ from ..storage.postgres import PostgresMemoryStore
 from .belief_revision import RevisionOperation, RevisionPlan
 from .conflict_detector import ConflictDetector
 from .labile_tracker import LabileStateTracker
+
+logger = logging.getLogger(__name__)
 
 try:
     from ..extraction.fact_extractor import FactExtractor
@@ -54,9 +54,10 @@ class ReconsolidationService:
         memory_store: PostgresMemoryStore,
         llm_client: Optional[Any] = None,
         fact_extractor: Optional[Any] = None,
+        redis_client: Optional[Any] = None,
     ):
         self.store = memory_store
-        self.labile_tracker = LabileStateTracker()
+        self.labile_tracker = LabileStateTracker(redis_client=redis_client)
         self.conflict_detector = ConflictDetector(llm_client)
         from .belief_revision import BeliefRevisionEngine
 

@@ -3,8 +3,8 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from ..core.enums import MemoryStatus
-from ..core.schemas import MemoryRecord, MemoryRecordCreate
+from ..core.enums import MemorySource, MemoryStatus
+from ..core.schemas import MemoryRecord, MemoryRecordCreate, Provenance
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.llm import LLMClient
 
@@ -131,7 +131,14 @@ class ForgettingExecutor:
         return result is not None
 
     def _record_to_create_schema(self, record: MemoryRecord) -> MemoryRecordCreate:
-        """Convert MemoryRecord to MemoryRecordCreate for archive upsert."""
+        """Convert MemoryRecord to MemoryRecordCreate for archive upsert.
+
+        All fields required by MemoryRecordCreate are copied, including provenance.
+        Used as the single code path when archive_store is set (no data loss).
+        """
+        provenance = record.provenance
+        if provenance is None:
+            provenance = Provenance(source=MemorySource.AGENT_INFERRED)
         return MemoryRecordCreate(
             tenant_id=record.tenant_id,
             context_tags=record.context_tags or [],
@@ -148,7 +155,7 @@ class ForgettingExecutor:
             timestamp=record.timestamp,
             confidence=record.confidence,
             importance=record.importance,
-            provenance=record.provenance,
+            provenance=provenance,
         )
 
     async def _execute_archive(self, op: ForgettingOperation) -> bool:

@@ -157,9 +157,7 @@ class QueryClassifier:
             # Catch all errors including LLM network failures, rate limits, etc. (MED-26)
             import logging
 
-            logging.getLogger(__name__).warning(
-                "llm_classify_failed: %s", str(e)
-            )
+            logging.getLogger(__name__).warning("llm_classify_failed: %s", str(e))
             return QueryAnalysis(
                 original_query=query,
                 intent=QueryIntent.GENERAL_QUESTION,
