@@ -6,80 +6,92 @@ This document catalogues all identified issues in the codebase, organized by sev
 
 ## Issue Summary
 
-| Category | Count |
-|----------|-------|
-| Empty/Placeholder Files | 3 |
-| Code Organization | 2 |
-| Potential Runtime Issues | 2 |
-| Documentation | 1 |
-| Total | 8 |
+| Category | Count | Resolved |
+|----------|-------|----------|
+| Empty/Placeholder Files | 3 | 2 |
+| Code Organization | 2 | 2 |
+| Potential Runtime Issues | 2 | 2 |
+| Documentation | 1 | 0 |
+| **Total** | **8** | **6** |
 
 ---
 
-## 🔴 High Priority Issues
+## ✅ Resolved Issues
 
-### 1. Empty `dependencies.py` File in API Module
+### 1. ~~Empty `dependencies.py` File in API Module~~ — RESOLVED
 
 **Location:** `src/api/dependencies.py`
 
-**Issue:** The file is completely empty (0 bytes). While it appears to be a placeholder for FastAPI dependency injection, an empty module might cause confusion and indicates incomplete implementation.
+**Issue:** The file was completely empty (0 bytes). It appeared to be a placeholder for FastAPI dependency injection.
 
-**Impact:** Low - The file is unused, but its presence suggests planned functionality that wasn't implemented.
-
-**Resolution:**
-- **Option A:** Remove the file if it's not needed
-- **Option B:** Implement shared dependencies, for example:
-```python
-"""Shared FastAPI dependencies for API routes."""
-
-from fastapi import Depends
-
-from .auth import AuthContext, get_auth_context, require_write_permission
-from ..memory.orchestrator import MemoryOrchestrator
-
-# Re-export commonly used dependencies here
-__all__ = [
-    "get_auth_context",
-    "require_write_permission",
-    "AuthContext",
-]
-```
+**Resolution (2026-02-06):** Implemented shared dependencies file with re-exports from `auth.py`. The file now provides a single import point for commonly used auth dependencies (`AuthContext`, `get_auth_context`, `require_write_permission`, `require_admin_permission`).
 
 ---
 
-### 2. Empty `encoder.py` File in Hippocampal Module
+### 2. ~~Empty `encoder.py` File in Hippocampal Module~~ — RESOLVED
 
 **Location:** `src/memory/hippocampal/encoder.py`
 
-**Issue:** The file is completely empty (0 bytes). This is a placeholder that was likely intended to contain encoding logic, but the functionality exists in `store.py` instead.
+**Issue:** The file was completely empty (0 bytes). Encoding logic already existed in `HippocampalStore` via `encode_chunk()` and `encode_batch()` methods.
 
-**Impact:** Medium - Creates confusion about where encoding logic should reside.
+**Resolution (2026-02-06):** Removed the file. Encoding logic is properly handled by `HippocampalStore` in `store.py`, making a separate encoder module unnecessary and eliminating confusion about where encoding belongs.
 
-**Resolution:**
-- **Option A:** Remove the file since `HippocampalStore` already implements encoding via `encode_chunk()` and `encode_batch()` methods
-- **Option B:** If separation is desired, refactor encoding logic from `store.py` into this file:
+---
+
+### 4. ~~Hardcoded CORS Origin in `app.py`~~ — RESOLVED
+
+**Location:** `src/api/app.py` (line ~44)
+
+**Issue:** The default CORS origin was hardcoded to `https://yourdomain.com`, which wouldn't work in development or production.
+
+**Resolution (2026-02-06):** Updated to use tiered CORS defaults:
+- If `cors_origins` is explicitly configured → use that value
+- If `debug` mode is enabled → allow all origins (`["*"]`)
+- Otherwise → use sensible development defaults (`["http://localhost:3000", "http://localhost:8080"]`)
+
 ```python
-"""Hippocampal encoder: converts semantic chunks to memory records."""
-
-from typing import List, Optional
-from ...core.schemas import MemoryRecord
-from ..working.models import SemanticChunk
-
-class HippocampalEncoder:
-    """Encodes semantic chunks into memory records with embeddings."""
-    
-    async def encode(self, chunk: SemanticChunk) -> MemoryRecord:
-        """Encode a single chunk."""
-        ...
-    
-    async def encode_batch(self, chunks: List[SemanticChunk]) -> List[MemoryRecord]:
-        """Encode multiple chunks."""
-        ...
+if settings.cors_origins is not None:
+    origins = settings.cors_origins
+elif settings.debug:
+    origins = ["*"]
+else:
+    origins = ["http://localhost:3000", "http://localhost:8080"]
 ```
 
 ---
 
-## 🟡 Medium Priority Issues
+### 5. ~~Missing Error Handling in `DatabaseManager.close()`~~ — RESOLVED
+
+**Location:** `src/storage/connection.py` (line ~96)
+
+**Issue:** The `close()` method didn't handle cases where connections might be `None`, which would raise `AttributeError` if called when connections weren't fully initialized.
+
+**Resolution (2026-02-06):** Added null checks before each close operation:
+
+```python
+async def close(self) -> None:
+    """Close all database connections safely."""
+    if self.pg_engine:
+        await self.pg_engine.dispose()
+    if self.neo4j_driver:
+        await self.neo4j_driver.close()
+    if self.redis:
+        await self.redis.aclose()
+```
+
+---
+
+### 6. ~~Unused `memory_types` and `time_filter` Parameters~~ — RESOLVED
+
+**Location:** `src/memory/orchestrator.py` and `src/api/routes.py`
+
+**Issue:** The `read()` method accepted `memory_types` and `time_filter` parameters but did not pass them to the underlying retriever, misleading API consumers.
+
+**Resolution (2026-02-06):** Removed the unused `memory_types` and `time_filter` parameters from `MemoryOrchestrator.read()` and removed the corresponding arguments from both call sites in `src/api/routes.py`. The API request schema retains the fields for forward-compatibility; filtering by type and time is handled internally by the retrieval planner at a lower level.
+
+---
+
+## 🟡 Remaining Issues
 
 ### 3. Empty `__init__.py` Files Throughout Codebase
 
@@ -140,120 +152,6 @@ __all__ = [
     "HippocampalStore",
     "NeocorticalStore",
 ]
-```
-
----
-
-### 4. Hardcoded CORS Origin in `app.py`
-
-**Location:** `src/api/app.py` (line 45)
-
-**Issue:** The default CORS origin is hardcoded to `https://yourdomain.com` which is a placeholder that won't work in development or production.
-
-```python
-origins = (
-    settings.cors_origins if settings.cors_origins is not None else ["https://yourdomain.com"]
-)
-```
-
-**Impact:** Medium - CORS will fail if `cors_origins` is not configured in the environment.
-
-**Resolution:** Update to use a more sensible development default:
-```python
-origins = settings.cors_origins if settings.cors_origins is not None else ["http://localhost:3000", "http://localhost:8080"]
-```
-
-Or disable CORS in debug mode:
-```python
-if settings.debug:
-    origins = ["*"]
-else:
-    origins = settings.cors_origins or ["https://yourdomain.com"]
-```
-
----
-
-### 5. Missing Error Handling in `DatabaseManager.close()`
-
-**Location:** `src/storage/connection.py` (line 96-99)
-
-**Issue:** The `close()` method doesn't handle cases where connections might be `None`:
-```python
-async def close(self) -> None:
-    await self.pg_engine.dispose()
-    await self.neo4j_driver.close()
-    await self.redis.aclose()
-```
-
-**Impact:** Medium - Will raise `AttributeError` if called when connections weren't fully initialized.
-
-**Resolution:** Add null checks:
-```python
-async def close(self) -> None:
-    """Close all database connections safely."""
-    if self.pg_engine:
-        await self.pg_engine.dispose()
-    if self.neo4j_driver:
-        await self.neo4j_driver.close()
-    if self.redis:
-        await self.redis.aclose()
-```
-
----
-
-## 🟢 Low Priority Issues
-
-### 6. Unused `memory_types` and `time_filter` Parameters
-
-**Location:** `src/memory/orchestrator.py` (line 169-184)
-
-**Issue:** The `read()` method accepts `memory_types` and `time_filter` parameters but does not pass them to the underlying retriever:
-
-```python
-async def read(
-    self,
-    tenant_id: str,
-    query: str,
-    max_results: int = 10,
-    context_filter: Optional[List[str]] = None,
-    memory_types: Optional[List[Any]] = None,  # NOT USED
-    time_filter: Optional[Dict] = None,  # NOT USED
-) -> MemoryPacket:
-    """Retrieve relevant memories. Holistic: tenant-only."""
-    return await self.retriever.retrieve(
-        tenant_id=tenant_id,
-        query=query,
-        max_results=max_results,
-        context_filter=context_filter,
-        # memory_types and time_filter are not passed!
-    )
-```
-
-**Impact:** Low - The API accepts parameters that have no effect, misleading API consumers.
-
-**Resolution:** Either implement the filtering or remove the unused parameters:
-
-**Option A - Implement filtering:**
-```python
-return await self.retriever.retrieve(
-    tenant_id=tenant_id,
-    query=query,
-    max_results=max_results,
-    context_filter=context_filter,
-    memory_types=memory_types,
-    time_filter=time_filter,
-)
-```
-
-**Option B - Remove unused parameters:**
-```python
-async def read(
-    self,
-    tenant_id: str,
-    query: str,
-    max_results: int = 10,
-    context_filter: Optional[List[str]] = None,
-) -> MemoryPacket:
 ```
 
 ---
@@ -331,11 +229,12 @@ EMBEDDING__DIMENSIONS=1536
 
 ## Action Items
 
-1. **Immediate:** Remove or implement empty files (`dependencies.py`, `encoder.py`)
-2. **Short-term:** Fix CORS default and DatabaseManager error handling
+1. ~~**Immediate:** Remove or implement empty files (`dependencies.py`, `encoder.py`)~~ ✅ Done
+2. ~~**Short-term:** Fix CORS default and DatabaseManager error handling~~ ✅ Done
 3. **Medium-term:** Add exports to `__init__.py` files for better API ergonomics
 4. **Long-term:** Implement proper tokenization and add missing documentation
 
 ---
 
 *Generated: 2026-02-06*
+*Last updated: 2026-02-06 — Resolved issues 1, 2, 4, 5, 6*

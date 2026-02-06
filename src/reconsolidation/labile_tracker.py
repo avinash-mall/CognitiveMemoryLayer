@@ -80,10 +80,7 @@ def _serialize_session(s: LabileSession) -> Dict[str, Any]:
 
 
 def _deserialize_session(d: Dict[str, Any]) -> LabileSession:
-    memories = {
-        UUID(k): _deserialize_memory(v)
-        for k, v in (d.get("memories") or {}).items()
-    }
+    memories = {UUID(k): _deserialize_memory(v) for k, v in (d.get("memories") or {}).items()}
     created = d.get("created_at")
     created_at = (
         datetime.fromisoformat(created.replace("Z", "+00:00"))
@@ -209,9 +206,7 @@ class LabileStateTracker:
         """Get all currently labile memories for a scope."""
         if self._redis is not None:
             async with self._lock:
-                return await self._get_labile_memories_redis(
-                    tenant_id, scope_id, turn_id
-                )
+                return await self._get_labile_memories_redis(tenant_id, scope_id, turn_id)
         async with self._lock:
             scope_key = self._scope_key(tenant_id, scope_id)
             now = datetime.now(timezone.utc)
@@ -240,9 +235,7 @@ class LabileStateTracker:
         session_keys = [k.decode() if isinstance(k, bytes) else k for k in raw_list]
         now = datetime.now(timezone.utc)
         labile: List[LabileMemory] = []
-        target_session = (
-            self._session_key(tenant_id, scope_id, turn_id) if turn_id else None
-        )
+        target_session = self._session_key(tenant_id, scope_id, turn_id) if turn_id else None
         for sess_key in session_keys:
             if target_session and sess_key != target_session:
                 continue
@@ -295,9 +288,7 @@ class LabileStateTracker:
         scope_key = self._scope_key(tenant_id, scope_id)
         if self._redis is not None:
             async with self._lock:
-                await self._release_labile_redis(
-                    session_key, scope_key, memory_ids
-                )
+                await self._release_labile_redis(session_key, scope_key, memory_ids)
             return
         async with self._lock:
             session = self._sessions.get(session_key)
@@ -387,9 +378,7 @@ class LabileStateTracker:
             try:
                 doc = json.loads(data.decode() if isinstance(data, bytes) else data)
                 session = _deserialize_session(doc)
-                all_expired = all(
-                    m.expires_at <= now for m in session.memories.values()
-                )
+                all_expired = all(m.expires_at <= now for m in session.memories.values())
                 if all_expired:
                     to_remove.append(sess_key)
             except (json.JSONDecodeError, KeyError, TypeError):

@@ -131,10 +131,6 @@ async def read_memory(
             query=body.query,
             max_results=body.max_results,
             context_filter=body.context_filter,
-            memory_types=body.memory_types,
-            time_filter=(
-                {"since": body.since, "until": body.until} if body.since or body.until else None
-            ),
         )
 
         elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
@@ -314,10 +310,6 @@ async def session_read(
             query=body.query,
             max_results=body.max_results,
             context_filter=body.context_filter,
-            memory_types=body.memory_types,
-            time_filter=(
-                {"since": body.since, "until": body.until} if body.since or body.until else None
-            ),
         )
         elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
