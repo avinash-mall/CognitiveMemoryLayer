@@ -1,8 +1,23 @@
 """Configuration management with pydantic-settings."""
 
+import re
 from functools import lru_cache
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def ensure_asyncpg_url(url: str) -> str:
+    """Normalise a PostgreSQL URL to always use the asyncpg driver.
+
+    Handles ``postgresql://``, ``postgresql+psycopg2://``, ``postgresql+psycopg://``,
+    and any other ``postgresql+<driver>://`` variant, converting them all to
+    ``postgresql+asyncpg://``.  URLs that already contain ``+asyncpg`` are returned
+    unchanged.
+    """
+    if "+asyncpg" in url:
+        return url
+    return re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
 
 
 class DatabaseSettings(BaseSettings):

@@ -23,29 +23,17 @@ except ImportError:
     HAS_TESTCONTAINERS = False
 
 
-def _asyncpg_url(postgres_url: str) -> str:
-    """Convert postgresql:// URL to postgresql+asyncpg://."""
-    if postgres_url.startswith("postgresql://"):
-        return postgres_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return postgres_url
-
-
 def _use_env_postgres() -> bool:
-    """Use env Postgres (e.g. docker-compose) instead of testcontainers."""
+    """Use env Postgres (e.g. docker-compose / CI services) instead of testcontainers.
+
+    Returns True when the caller has explicitly provided a Postgres URL via
+    DATABASE__POSTGRES_URL or the USE_ENV_DB flag.  In those situations we
+    should honour the external database rather than spinning up testcontainers.
+    """
     if os.environ.get("USE_ENV_DB"):
         return True
-    # Inside Docker there is usually no Docker socket; use compose Postgres.
     if os.environ.get("DATABASE__POSTGRES_URL"):
-        if os.path.exists("/.dockerenv"):
-            return True
-        try:
-            # Docker socket typical paths
-            if not os.path.exists("/var/run/docker.sock") and not os.path.exists(
-                "//var/run/docker.sock"
-            ):
-                return True
-        except OSError:
-            return True
+        return True
     return False
 
 
@@ -75,7 +63,9 @@ if HAS_TESTCONTAINERS and not _use_env_postgres():
         """Override root pg_engine with Testcontainers Postgres for integration tests."""
         from sqlalchemy.ext.asyncio import create_async_engine
 
-        url = _asyncpg_url(postgres_container.get_connection_url())
+        from src.core.config import ensure_asyncpg_url
+
+        url = ensure_asyncpg_url(postgres_container.get_connection_url())
         engine = create_async_engine(url, pool_pre_ping=True)
 
         from src.storage.models import Base
