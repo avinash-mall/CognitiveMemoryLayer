@@ -94,6 +94,10 @@ class DatabaseManager:
             await session.close()
 
     async def close(self) -> None:
-        await self.pg_engine.dispose()
-        await self.neo4j_driver.close()
-        await self.redis.aclose()
+        """Close all database connections safely."""
+        if self.pg_engine:
+            await self.pg_engine.dispose()
+        if self.neo4j_driver:
+            await self.neo4j_driver.close()
+        if self.redis:
+            await self.redis.aclose()
