@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import MemoryScope, MemorySource, MemoryStatus, MemoryType, OperationType
+from .enums import MemorySource, MemoryStatus, MemoryType, OperationType
 
 
 class Provenance(BaseModel):
@@ -45,8 +45,8 @@ class MemoryRecord(BaseModel):
     # Identity
     id: UUID = Field(default_factory=uuid4)
     tenant_id: str
-    scope: MemoryScope
-    scope_id: str  # session_id, agent_id, namespace_id, etc.
+    context_tags: List[str] = Field(default_factory=list)  # Flexible categorization
+    source_session_id: Optional[str] = None  # Origin tracking (not retrieval filter)
     agent_id: Optional[str] = None
     namespace: Optional[str] = None
 
@@ -95,8 +95,8 @@ class MemoryRecordCreate(BaseModel):
     """Schema for creating a new memory."""
 
     tenant_id: str
-    scope: MemoryScope
-    scope_id: str
+    context_tags: List[str] = Field(default_factory=list)
+    source_session_id: Optional[str] = None
     agent_id: Optional[str] = None
     namespace: Optional[str] = None
     type: MemoryType

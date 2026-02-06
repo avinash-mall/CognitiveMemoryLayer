@@ -30,7 +30,6 @@ async def test_encode_chunk_stores_record(pg_session_factory):
     """Encode a chunk -> record in DB; search returns it."""
     hippocampal_store = _make_store(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
-    user_id = f"u-{uuid4().hex[:8]}"
     chunk = SemanticChunk(
         id="c1",
         text="I prefer dark mode for the interface.",
@@ -40,7 +39,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         timestamp=datetime.now(timezone.utc),
     )
     record = await hippocampal_store.encode_chunk(
-        tenant_id, user_id, chunk, existing_memories=None
+        tenant_id, chunk, existing_memories=None
     )
     assert record is not None
     assert record.text == chunk.text
@@ -48,12 +47,12 @@ async def test_encode_chunk_stores_record(pg_session_factory):
     assert len(record.embedding) == 1536
 
     # Verify we can retrieve the record (scan/get_recent)
-    recent = await hippocampal_store.get_recent(tenant_id, user_id, limit=10)
+    recent = await hippocampal_store.get_recent(tenant_id, limit=10)
     assert any(r.id == record.id for r in recent), "encoded record should appear in get_recent"
 
     # Vector search smoke test (no exception; may return 0 results depending on pgvector/embedding env)
     results = await hippocampal_store.search(
-        tenant_id, user_id, "user preference dark mode", top_k=5
+        tenant_id, "user preference dark mode", top_k=5
     )
     if results:
         assert any(r.id == record.id for r in results), "stored record should appear in search when results returned"
@@ -63,7 +62,6 @@ async def test_encode_chunk_stores_record(pg_session_factory):
 async def test_encode_chunk_skip_low_salience(pg_session_factory):
     hippocampal_store = _make_store(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
-    user_id = f"u-{uuid4().hex[:8]}"
     chunk = SemanticChunk(
         id="c2",
         text="Okay, sure.",
@@ -71,7 +69,7 @@ async def test_encode_chunk_skip_low_salience(pg_session_factory):
         salience=0.1,
     )
     record = await hippocampal_store.encode_chunk(
-        tenant_id, user_id, chunk, existing_memories=None
+        tenant_id, chunk, existing_memories=None
     )
     # May be None if write gate skips
     if record is None:

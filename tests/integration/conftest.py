@@ -1,13 +1,14 @@
 """Integration test fixtures; optionally use Testcontainers for Postgres and Neo4j.
 
-When testcontainers is installed, Postgres and Neo4j containers are started
-(module-scoped) and db_engine/db_session use them. Otherwise, these fixtures
-are not defined here and the root conftest's pg_engine/db_session are used
-(requires DATABASE__POSTGRES_URL from env, e.g. docker-compose or CI services).
+When testcontainers is installed and Docker socket is available, Postgres and Neo4j
+containers are started (module-scoped). When running inside Docker (e.g. docker-compose)
+or USE_ENV_DB=1, DATABASE__POSTGRES_URL from env is used instead (no testcontainers).
+Otherwise the root conftest's pg_engine/db_session are used.
 """
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import AsyncGenerator, Generator
 
 import pytest
@@ -27,7 +28,24 @@ def _asyncpg_url(postgres_url: str) -> str:
     return postgres_url
 
 
-if HAS_TESTCONTAINERS:
+def _use_env_postgres() -> bool:
+    """Use env Postgres (e.g. docker-compose) instead of testcontainers."""
+    if os.environ.get("USE_ENV_DB"):
+        return True
+    # Inside Docker there is usually no Docker socket; use compose Postgres.
+    if os.environ.get("DATABASE__POSTGRES_URL"):
+        if os.path.exists("/.dockerenv"):
+            return True
+        try:
+            # Docker socket typical paths
+            if not os.path.exists("/var/run/docker.sock") and not os.path.exists("//var/run/docker.sock"):
+                return True
+        except OSError:
+            return True
+    return False
+
+
+if HAS_TESTCONTAINERS and not _use_env_postgres():
 
     @pytest.fixture(scope="module")
     def postgres_container() -> Generator:

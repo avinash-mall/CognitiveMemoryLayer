@@ -67,4 +67,4 @@ class DatabaseManager:
     async def close(self) -> None:
         await self.pg_engine.dispose()
         await self.neo4j_driver.close()
-        await self.redis.close()
+        await self.redis.aclose()

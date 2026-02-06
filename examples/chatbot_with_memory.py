@@ -57,24 +57,20 @@ class MemoryPoweredChatbot:
         llm_model: str = "gpt-4o-mini",
         auto_remember: bool = True,
         memory_context_tokens: int = 1500,
-        scope: str = "session"
     ):
         """
         Initialize the chatbot.
-        
+
         Args:
-            session_id: Unique identifier for the session (used as scope_id)
+            session_id: Unique identifier for the session (used for origin tracking)
             llm_api_key: OpenAI API key (or set OPENAI_API_KEY env var)
             memory_api_url: URL of the Cognitive Memory Layer API
             memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
             llm_model: LLM model to use
             auto_remember: Automatically extract and store memorable info
             memory_context_tokens: Max tokens for memory context
-            scope: Memory scope to use (session, agent, namespace, global)
         """
         self.session_id = session_id
-        self.scope = scope
-        self.scope_id = session_id
         self.llm_model = llm_model
         self.auto_remember = auto_remember
         self.memory_context_tokens = memory_context_tokens
@@ -113,10 +109,10 @@ Be conversational and helpful. If you don't know something about the user, it's 
             info = message[10:].strip()
             if info:
                 result = self.memory.write(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    content=info,
-                    memory_type="semantic_fact"
+                    info,
+                    session_id=self.session_id,
+                    context_tags=["conversation"],
+                    memory_type="semantic_fact",
                 )
                 return f"✓ Stored: {info}" if result.success else f"✗ Failed: {result.message}"
             return "Usage: !remember <information to store>"
@@ -124,19 +120,14 @@ Be conversational and helpful. If you don't know something about the user, it's 
         elif message.startswith("!forget "):
             query = message[8:].strip()
             if query:
-                result = self.memory.forget(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    query=query,
-                    action="delete"
-                )
+                result = self.memory.forget(query=query, action="delete")
                 count = result.get("affected_count", 0)
                 return f"✓ Forgot {count} memories matching '{query}'"
             return "Usage: !forget <query>"
         
         elif message == "!stats":
-            stats = self.memory.stats(self.scope, self.scope_id)
-            return f"""📊 Memory Statistics for {self.scope}/{self.scope_id}:
+            stats = self.memory.stats()
+            return f"""📊 Memory Statistics:
 - Total memories: {stats.total_memories}
 - Active memories: {stats.active_memories}
 - Average confidence: {stats.avg_confidence:.0%}
@@ -145,12 +136,7 @@ Be conversational and helpful. If you don't know something about the user, it's 
         elif message.startswith("!search "):
             query = message[8:].strip()
             if query:
-                result = self.memory.read(
-                    scope=self.scope,
-                    scope_id=self.scope_id,
-                    query=query,
-                    max_results=5
-                )
+                result = self.memory.read(query=query, max_results=5)
                 if result.memories:
                     lines = [f"🔍 Found {result.total_count} memories:"]
                     for mem in result.memories[:5]:
@@ -175,19 +161,23 @@ Be conversational and helpful. If you don't know something about the user, it's 
         return None
     
     def _get_memory_context(self, message: str) -> str:
-        """Retrieve relevant memory context for the current message."""
+        """Retrieve relevant memory context (seamless: use process_turn for auto-context)."""
         try:
-            result = self.memory.read(
-                scope=self.scope,
-                scope_id=self.scope_id,
-                query=message,
-                max_results=10,
-                format="llm_context"
+            turn = self.memory.process_turn(
+                user_message=message,
+                session_id=self.session_id,
+                max_context_tokens=self.memory_context_tokens,
             )
-            return result.llm_context or ""
+            return turn.memory_context or ""
         except Exception as e:
-            print(f"Warning: Could not retrieve memories: {e}")
-            return ""
+            try:
+                result = self.memory.read(
+                    message, max_results=10, format="llm_context"
+                )
+                return result.llm_context or ""
+            except Exception as e2:
+                print(f"Warning: Could not retrieve memories: {e2}")
+                return ""
     
     def _extract_memorable_info(self, message: str, response: str) -> List[Tuple[str, str]]:
         """
@@ -289,10 +279,10 @@ Only extract clear, factual information. Don't make assumptions."""
             for content, memory_type in memories_to_store:
                 try:
                     self.memory.write(
-                        scope=self.scope,
-                        scope_id=self.scope_id,
-                        content=content,
-                        memory_type=memory_type
+                        content,
+                        session_id=self.session_id,
+                        context_tags=["conversation"],
+                        memory_type=memory_type,
                     )
                     print(f"  [Auto-stored: {memory_type}] {content[:50]}...")
                 except Exception as e:
@@ -325,11 +315,9 @@ Type 'quit' to exit.
         print("  export OPENAI_API_KEY=sk-...")
         return
     
-    # Create chatbot with session scope
     chatbot = MemoryPoweredChatbot(
         session_id="chatbot-demo-session",
         auto_remember=True,
-        scope="session"
     )
     
     try:

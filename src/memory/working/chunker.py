@@ -45,6 +45,28 @@ Rules:
 - Combine related short statements if they form one idea"""
 
 
+def _compute_salience_boost_for_sentiment(text: str) -> float:
+    """Boost salience for emotionally significant content. Cap at 0.3."""
+    boost = 0.0
+    # Excitement indicators
+    if text.count("!") >= 2 or any(
+        w.isupper() and len(w) > 2 for w in text.split()
+    ):
+        boost += 0.15
+    # Strong emotion words
+    emotion_words = [
+        "love", "hate", "amazing", "terrible", "excited",
+        "worried", "thrilled", "devastated", "passionate",
+    ]
+    if any(word in text.lower() for word in emotion_words):
+        boost += 0.1
+    # Personal significance markers
+    personal_markers = ["finally", "at last", "dream", "goal", "achieved"]
+    if any(marker in text.lower() for marker in personal_markers):
+        boost += 0.1
+    return min(boost, 0.3)
+
+
 class SemanticChunker:
     """
     Uses an LLM to break text into semantic chunks.
@@ -105,22 +127,26 @@ class SemanticChunker:
                     ctype = ChunkType(raw_type)
                 except ValueError:
                     ctype = ChunkType.STATEMENT
+                raw_text = cd.get("text", "")
+                base_salience = float(cd.get("salience", 0.5))
+                salience = min(1.0, base_salience + _compute_salience_boost_for_sentiment(raw_text))
                 chunks.append(
                     SemanticChunk(
                         id=chunk_id,
-                        text=cd.get("text", ""),
+                        text=raw_text,
                         chunk_type=ctype,
                         source_turn_id=turn_id,
                         source_role=role,
                         entities=cd.get("entities", []),
                         key_phrases=cd.get("key_phrases", []),
-                        salience=float(cd.get("salience", 0.5)),
+                        salience=salience,
                         confidence=float(cd.get("confidence", 0.8)),
                     )
                 )
             return chunks
 
         except (json.JSONDecodeError, KeyError, TypeError):
+            salience = 0.5 + _compute_salience_boost_for_sentiment(text)
             return [
                 SemanticChunk(
                     id=self._generate_chunk_id(text, 0),
@@ -128,7 +154,7 @@ class SemanticChunker:
                     chunk_type=ChunkType.STATEMENT,
                     source_turn_id=turn_id,
                     source_role=role,
-                    salience=0.5,
+                    salience=min(1.0, salience),
                     confidence=0.5,
                 )
             ]
@@ -184,6 +210,8 @@ class RuleBasedChunker:
             elif "?" in sentence:
                 chunk_type = ChunkType.QUESTION
                 salience = 0.4
+
+            salience = min(1.0, salience + _compute_salience_boost_for_sentiment(sentence))
 
             chunk_id = f"rule_{hash(sentence) % 10000}_{i}"
             chunks.append(

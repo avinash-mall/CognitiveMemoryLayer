@@ -71,7 +71,6 @@ class ForgettingWorker:
         started = datetime.now(timezone.utc)
         memories = await self.store.scan(
             tenant_id,
-            user_id,
             filters={"status": MemoryStatus.ACTIVE.value},
             limit=max_memories,
         )

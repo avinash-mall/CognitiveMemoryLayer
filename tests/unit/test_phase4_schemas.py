@@ -38,7 +38,7 @@ class TestSemanticFact:
         f = SemanticFact(
             id="f1",
             tenant_id="t1",
-            scope_id="s1",
+            context_tags=[],
             category=FactCategory.IDENTITY,
             key="user:identity:name",
             subject="user",

@@ -53,31 +53,28 @@ class BeliefRevisionEngine:
         old_memory: MemoryRecord,
         new_info_type: MemoryType,
         tenant_id: str,
-        scope_id: str,
         evidence_id: Optional[str] = None,
     ) -> RevisionPlan:
-        """Create a revision plan based on conflict analysis."""
+        """Create a revision plan based on conflict analysis. Holistic: uses old_memory context_tags/source_session_id."""
         if conflict.conflict_type == ConflictType.NONE:
             return self._plan_reinforcement(old_memory, conflict)
         if conflict.conflict_type == ConflictType.TEMPORAL_CHANGE:
             return self._plan_time_slice(
-                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.CORRECTION:
             return self._plan_correction(
-                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.DIRECT_CONTRADICTION:
             return self._plan_contradiction_resolution(
-                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.REFINEMENT:
             return self._plan_refinement(
-                old_memory, conflict, new_info_type, tenant_id, scope_id, evidence_id
+                old_memory, conflict, new_info_type, tenant_id, evidence_id
             )
-        return self._plan_hypothesis(
-            old_memory, conflict, tenant_id, scope_id, evidence_id
-        )
+        return self._plan_hypothesis(old_memory, conflict, tenant_id, evidence_id)
 
     def _plan_reinforcement(
         self,
@@ -110,10 +107,11 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
-        """Plan time-slice for temporal changes."""
+        """Plan time-slice for temporal changes. Archive old record (valid_to, status=archived)."""
+        from ..core.enums import MemoryStatus
+
         now = datetime.utcnow()
         meta = dict(old_memory.metadata)
         meta["superseded"] = True
@@ -125,16 +123,17 @@ class BeliefRevisionEngine:
                     target_id=old_memory.id,
                     patch={
                         "valid_to": now,
+                        "status": MemoryStatus.ARCHIVED.value,
                         "metadata": meta,
                     },
-                    reason="Marking as historical - superseded by newer information",
+                    reason="Archiving as historical - superseded by newer information",
                 ),
                 RevisionOperation(
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        scope=old_memory.scope,
-                        scope_id=scope_id,
+                        context_tags=old_memory.context_tags,
+                        source_session_id=old_memory.source_session_id,
                         type=new_type,
                         text=conflict.new_statement,
                         key=old_memory.key,
@@ -162,34 +161,35 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
-        """Plan correction when user explicitly corrects."""
+        """Plan correction when user explicitly corrects. Archive old record instead of delete."""
         from ..core.enums import MemoryStatus
 
+        now = datetime.utcnow()
         meta = dict(old_memory.metadata)
         meta["invalidated_by"] = evidence_id
-        meta["invalidated_at"] = datetime.utcnow().isoformat()
+        meta["invalidated_at"] = now.isoformat()
         return RevisionPlan(
-            strategy=RevisionStrategy.OVERWRITE,
+            strategy=RevisionStrategy.TIME_SLICE,
             operations=[
                 RevisionOperation(
                     op_type=OperationType.UPDATE,
                     target_id=old_memory.id,
                     patch={
-                        "status": MemoryStatus.DELETED.value,
+                        "valid_to": now,
+                        "status": MemoryStatus.ARCHIVED.value,
                         "confidence": 0.0,
                         "metadata": meta,
                     },
-                    reason="User correction - invalidating old memory",
+                    reason="User correction - archiving old memory",
                 ),
                 RevisionOperation(
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        scope=old_memory.scope,
-                        scope_id=scope_id,
+                        context_tags=old_memory.context_tags,
+                        source_session_id=old_memory.source_session_id,
                         type=new_type,
                         text=conflict.new_statement,
                         key=old_memory.key,
@@ -214,21 +214,18 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
-        """Plan resolution for direct contradictions."""
+        """Plan resolution for direct contradictions. Holistic: inherit context_tags/source_session_id."""
         old_is_user_confirmed = (
             old_memory.provenance.source == MemorySource.USER_CONFIRMED
         )
         new_confidence = conflict.confidence
         if old_is_user_confirmed and old_memory.confidence > new_confidence:
-            return self._plan_hypothesis(
-                old_memory, conflict, tenant_id, scope_id, evidence_id
-            )
+            return self._plan_hypothesis(old_memory, conflict, tenant_id, evidence_id)
         if conflict.is_superseding or new_confidence > old_memory.confidence:
             return self._plan_time_slice(
-                old_memory, conflict, new_type, tenant_id, scope_id, evidence_id
+                old_memory, conflict, new_type, tenant_id, evidence_id
             )
         return RevisionPlan(
             strategy=RevisionStrategy.ADD_HYPOTHESIS,
@@ -250,8 +247,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        scope=old_memory.scope,
-                        scope_id=scope_id,
+                        context_tags=old_memory.context_tags,
+                        source_session_id=old_memory.source_session_id,
                         type=MemoryType.HYPOTHESIS,
                         text=conflict.new_statement,
                         confidence=max(0.3, new_confidence - 0.2),
@@ -278,10 +275,9 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
-        """Plan refinement when new info adds to existing."""
+        """Plan refinement when new info adds to existing. Holistic: inherit context_tags/source_session_id."""
         return RevisionPlan(
             strategy=RevisionStrategy.MERGE,
             operations=[
@@ -298,8 +294,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        scope=old_memory.scope,
-                        scope_id=scope_id,
+                        context_tags=old_memory.context_tags,
+                        source_session_id=old_memory.source_session_id,
                         type=new_type,
                         text=conflict.new_statement,
                         confidence=conflict.confidence,
@@ -325,10 +321,9 @@ class BeliefRevisionEngine:
         old_memory: MemoryRecord,
         conflict: ConflictResult,
         tenant_id: str,
-        scope_id: str,
         evidence_id: Optional[str],
     ) -> RevisionPlan:
-        """Plan adding new info as hypothesis (uncertain)."""
+        """Plan adding new info as hypothesis (uncertain). Holistic: inherit context_tags/source_session_id."""
         return RevisionPlan(
             strategy=RevisionStrategy.ADD_HYPOTHESIS,
             operations=[
@@ -336,8 +331,8 @@ class BeliefRevisionEngine:
                     op_type=OperationType.ADD,
                     new_record=MemoryRecordCreate(
                         tenant_id=tenant_id,
-                        scope=old_memory.scope,
-                        scope_id=scope_id,
+                        context_tags=old_memory.context_tags,
+                        source_session_id=old_memory.source_session_id,
                         type=MemoryType.HYPOTHESIS,
                         text=conflict.new_statement,
                         confidence=min(0.5, conflict.confidence),

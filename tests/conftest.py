@@ -35,16 +35,15 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 
 @pytest.fixture
 def sample_memory_record():
-    """Sample memory record for testing."""
+    """Sample memory record for testing. Holistic: context_tags, source_session_id."""
     from src.core.schemas import MemoryRecord, Provenance
-    from src.core.enums import MemoryScope, MemoryType, MemorySource, MemoryStatus
+    from src.core.enums import MemoryType, MemorySource, MemoryStatus
 
     return MemoryRecord(
         id=uuid4(),
         tenant_id="test-tenant",
-        scope=MemoryScope.USER,
-        scope_id="test-user",
-        user_id="test-user",
+        context_tags=["personal"],
+        source_session_id="test-session",
         type=MemoryType.EPISODIC_EVENT,
         text="Test memory content",
         confidence=0.8,
