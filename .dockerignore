@@ -1,0 +1,41 @@
+# Git and version control
+.git
+.gitignore
+
+# Python
+**/__pycache__
+**/*.py[cod]
+*$py.class
+**/*.so
+.venv
+venv
+.env
+.env.*
+!.env.example
+
+# Build and packaging
+*.egg-info
+.eggs
+dist
+build
+*.egg
+
+# Testing and coverage
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov
+.tox
+.nox
+
+# IDE and misc
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Optional: exclude from build context (uncomment if desired)
+# examples/
+# ProjectPlan/

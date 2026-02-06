@@ -25,6 +25,10 @@ pydantic-settings = "^2.0"
 structlog = "^24.0"
 prometheus-client = "^0.21"
 
+[tool.poetry.extras]
+gemini = ["google-generativeai"]
+claude = ["anthropic"]
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 pytest-asyncio = "^0.24"
@@ -62,6 +66,7 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
 ]
-# Use session-scoped event loop by default (replaces deprecated custom event_loop fixtures)
+# Function-scoped event loop so async fixture teardown (db_session rollback, engine dispose)
+# runs while the loop is still open, avoiding "Event loop is closed" errors.
 # Requires pytest-asyncio >= 0.23
-asyncio_default_fixture_loop_scope = "session"
+asyncio_default_fixture_loop_scope = "function"
