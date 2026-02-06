@@ -22,7 +22,7 @@ class EventLogRepository:
         model = EventLogModel(
             id=event.id,
             tenant_id=event.tenant_id,
-            user_id=event.user_id,
+            scope_id=event.scope_id,
             agent_id=event.agent_id,
             event_type=event.event_type,
             operation=event.operation.value if event.operation else None,
@@ -57,7 +57,7 @@ class EventLogRepository:
         query = select(EventLogModel).where(
             and_(
                 EventLogModel.tenant_id == tenant_id,
-                EventLogModel.user_id == user_id,
+                EventLogModel.scope_id == user_id,
             )
         )
 
@@ -83,7 +83,7 @@ class EventLogRepository:
             .where(
                 and_(
                     EventLogModel.tenant_id == tenant_id,
-                    EventLogModel.user_id == user_id,
+                    EventLogModel.scope_id == user_id,
                 )
             )
             .order_by(EventLogModel.created_at.asc())
@@ -106,7 +106,7 @@ class EventLogRepository:
         return EventLog(
             id=model.id,
             tenant_id=model.tenant_id,
-            user_id=model.user_id,
+            scope_id=model.scope_id,
             agent_id=model.agent_id,
             event_type=model.event_type,
             operation=OperationType(model.operation) if model.operation else None,

@@ -58,12 +58,28 @@ class WorkingMemoryState:
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def add_chunk(self, chunk: SemanticChunk) -> None:
-        """Add chunk, evicting lowest salience if at capacity."""
+        """Add chunk. Eviction: keep most recent N by recency, evict from older by salience."""
         self.chunks.append(chunk)
-        if len(self.chunks) > self.max_chunks:
-            self.chunks.sort(key=lambda c: c.salience, reverse=True)
-            self.chunks = self.chunks[: self.max_chunks]
         self.last_updated = datetime.now(timezone.utc)
+
+        if len(self.chunks) <= self.max_chunks:
+            return
+
+        # Keep most recent N chunks regardless of salience
+        recent_keep = min(3, self.max_chunks // 3)
+        by_time = sorted(
+            self.chunks,
+            key=lambda c: c.timestamp,
+            reverse=True,
+        )
+        recent_chunks = by_time[:recent_keep]
+
+        # Evict from older chunks based on salience
+        older_chunks = [c for c in self.chunks if c not in recent_chunks]
+        older_chunks.sort(key=lambda c: c.salience, reverse=True)
+        keep_older = self.max_chunks - recent_keep
+        self.chunks = older_chunks[:keep_older] + recent_chunks
+        self.chunks.sort(key=lambda c: c.timestamp)
 
     def get_high_salience_chunks(
         self, min_salience: float = 0.5

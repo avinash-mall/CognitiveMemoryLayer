@@ -2,14 +2,14 @@
 from enum import Enum
 
 
-class MemoryScope(str, Enum):
-    """Scope of a memory record (replaces rigid user_id requirement)."""
+class MemoryContext(str, Enum):
+    """Context tags for memory retrieval (non-exclusive, can have multiple)."""
 
-    SESSION = "session"  # Conversation/interaction context
-    AGENT = "agent"  # Persistent memory for an agent
-    NAMESPACE = "namespace"  # Organized knowledge domains
-    GLOBAL = "global"  # Shared across entire tenant
-    USER = "user"  # Optional user personalization
+    PERSONAL = "personal"  # About the user
+    WORLD = "world"  # General world knowledge
+    CONVERSATION = "conversation"  # Recent dialogue
+    TASK = "task"  # Task-related
+    PROCEDURAL = "procedural"  # How-to knowledge
 
 
 class MemoryType(str, Enum):

@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from ..core.enums import MemoryScope, MemorySource, MemoryType
+from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance
 from ..storage.base import MemoryStoreBase
 
@@ -13,6 +13,7 @@ class ScratchPad:
     Ephemeral working memory for multi-step reasoning.
     Stores key-value data per session; values are JSON-serialized.
     Uses the same store as other memories with type=SCRATCH and key prefix.
+    Holistic: tenant-only, session_id for origin tracking.
     """
 
     SCRATCH_KEY_PREFIX = "scratch:"
@@ -20,8 +21,8 @@ class ScratchPad:
     def __init__(self, store: MemoryStoreBase) -> None:
         self.store = store
 
-    def _scratch_key(self, key: str) -> str:
-        return f"{self.SCRATCH_KEY_PREFIX}{key}"
+    def _scratch_key(self, session_id: str, key: str) -> str:
+        return f"{self.SCRATCH_KEY_PREFIX}{session_id}:{key}"
 
     async def set(
         self,
@@ -34,13 +35,11 @@ class ScratchPad:
         text = json.dumps(value) if not isinstance(value, str) else value
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
-            scope=MemoryScope.SESSION,
-            scope_id=session_id,
-            user_id=None,
-            session_id=session_id,
+            context_tags=["conversation", "scratch"],
+            source_session_id=session_id,
             type=MemoryType.SCRATCH,
             text=text,
-            key=self._scratch_key(key),
+            key=self._scratch_key(session_id, key),
             embedding=None,
             provenance=Provenance(source=MemorySource.AGENT_INFERRED),
         )
@@ -55,8 +54,7 @@ class ScratchPad:
         """Retrieve a scratch value by key."""
         record = await self.store.get_by_key(
             tenant_id=tenant_id,
-            user_id=session_id,
-            key=self._scratch_key(key),
+            key=self._scratch_key(session_id, key),
         )
         if not record or not record.text:
             return None
@@ -90,8 +88,11 @@ class ScratchPad:
         """Clear all scratch data for the session."""
         records = await self.store.scan(
             tenant_id=tenant_id,
-            user_id=session_id,
-            filters={"status": "active", "type": MemoryType.SCRATCH.value},
+            filters={
+                "status": "active",
+                "type": MemoryType.SCRATCH.value,
+                "source_session_id": session_id,
+            },
             limit=1000,
         )
         for r in records:

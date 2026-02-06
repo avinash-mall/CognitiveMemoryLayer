@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from ..core.enums import MemoryScope, MemorySource, MemoryType
+from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..utils.logging_config import get_logger
@@ -41,10 +41,10 @@ class HybridRetriever:
     async def retrieve(
         self,
         tenant_id: str,
-        scope_id: str,
         plan: RetrievalPlan,
+        context_filter: Optional[List[str]] = None,
     ) -> List[RetrievedMemory]:
-        """Execute a retrieval plan and return results."""
+        """Execute a retrieval plan and return results. Holistic: tenant-only."""
         all_results: List[Dict[str, Any]] = []
         for group_indices in plan.parallel_steps:
             group_steps = [
@@ -52,7 +52,7 @@ class HybridRetriever:
             ]
             group_results = await asyncio.gather(
                 *[
-                    self._execute_step(tenant_id, scope_id, step)
+                    self._execute_step(tenant_id, step, context_filter)
                     for step in group_steps
                 ],
                 return_exceptions=True,
@@ -69,20 +69,20 @@ class HybridRetriever:
     async def _execute_step(
         self,
         tenant_id: str,
-        scope_id: str,
         step: RetrievalStep,
+        context_filter: Optional[List[str]] = None,
     ) -> RetrievalResult:
-        """Execute a single retrieval step."""
+        """Execute a single retrieval step. Holistic: tenant-only."""
         start = datetime.utcnow()
         try:
             if step.source == RetrievalSource.FACTS:
-                items = await self._retrieve_facts(tenant_id, scope_id, step)
+                items = await self._retrieve_facts(tenant_id, step)
             elif step.source == RetrievalSource.VECTOR:
-                items = await self._retrieve_vector(tenant_id, scope_id, step)
+                items = await self._retrieve_vector(tenant_id, step, context_filter)
             elif step.source == RetrievalSource.GRAPH:
-                items = await self._retrieve_graph(tenant_id, scope_id, step)
+                items = await self._retrieve_graph(tenant_id, step)
             elif step.source == RetrievalSource.CACHE:
-                items = await self._retrieve_cache(tenant_id, scope_id, step)
+                items = await self._retrieve_cache(tenant_id, step)
             else:
                 items = []
             elapsed = (datetime.utcnow() - start).total_seconds() * 1000
@@ -105,13 +105,12 @@ class HybridRetriever:
     async def _retrieve_facts(
         self,
         tenant_id: str,
-        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
-        """Retrieve from semantic fact store."""
+        """Retrieve from semantic fact store. Holistic: tenant-only."""
         results: List[Dict[str, Any]] = []
         if step.key:
-            fact = await self.neocortical.get_fact(tenant_id, scope_id, step.key)
+            fact = await self.neocortical.get_fact(tenant_id, step.key)
             if fact:
                 results.append({
                     "type": "fact",
@@ -125,7 +124,7 @@ class HybridRetriever:
                 })
         if step.query:
             facts = await self.neocortical.text_search(
-                tenant_id, scope_id, step.query, limit=step.top_k
+                tenant_id, step.query, limit=step.top_k
             )
             for f in facts:
                 results.append({
@@ -143,10 +142,10 @@ class HybridRetriever:
     async def _retrieve_vector(
         self,
         tenant_id: str,
-        scope_id: str,
         step: RetrievalStep,
+        context_filter: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
-        """Retrieve via vector similarity search."""
+        """Retrieve via vector similarity search. Holistic: tenant-only."""
         filters = None
         if step.time_filter or step.memory_types or step.min_confidence > 0:
             filters = {}
@@ -156,9 +155,9 @@ class HybridRetriever:
                 filters["type"] = step.memory_types
         records = await self.hippocampal.search(
             tenant_id,
-            scope_id,
             query=step.query or "",
             top_k=step.top_k,
+            context_filter=context_filter,
             filters=filters,
         )
         return [
@@ -177,14 +176,13 @@ class HybridRetriever:
     async def _retrieve_graph(
         self,
         tenant_id: str,
-        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
-        """Retrieve via knowledge graph PPR."""
+        """Retrieve via knowledge graph PPR. Holistic: tenant-only."""
         if not step.seeds:
             return []
         results = await self.neocortical.multi_hop_query(
-            tenant_id, scope_id, seed_entities=step.seeds, max_hops=3
+            tenant_id, seed_entities=step.seeds, max_hops=3
         )
         return [
             {
@@ -201,13 +199,12 @@ class HybridRetriever:
     async def _retrieve_cache(
         self,
         tenant_id: str,
-        scope_id: str,
         step: RetrievalStep,
     ) -> List[Dict[str, Any]]:
-        """Retrieve from hot cache."""
+        """Retrieve from hot cache. Holistic: tenant-only."""
         if not self.cache:
             return []
-        cache_key = f"hot:{tenant_id}:{scope_id}"
+        cache_key = f"hot:{tenant_id}"
         try:
             cached = await self.cache.get(cache_key)
         except Exception:
@@ -265,15 +262,16 @@ class HybridRetriever:
         return "\n".join(lines)
 
     def _fact_to_record(self, fact: Any, item: Dict[str, Any]) -> MemoryRecord:
-        """Build MemoryRecord from SemanticFact-like object."""
+        """Build MemoryRecord from SemanticFact-like object. Holistic: context_tags."""
         from uuid import UUID
         text = item.get("text", "") or f"{getattr(fact, 'predicate', '')}: {getattr(fact, 'value', '')}"
         fid = getattr(fact, "id", None)
+        context_tags = getattr(fact, "context_tags", None) or []
         return MemoryRecord(
             id=UUID(fid) if fid else uuid4(),
             tenant_id=getattr(fact, "tenant_id", ""),
-            scope=MemoryScope.SESSION,
-            scope_id=getattr(fact, "scope_id", ""),
+            context_tags=list(context_tags),
+            source_session_id=None,
             type=MemoryType.SEMANTIC_FACT,
             text=text,
             key=getattr(fact, "key", None),
@@ -285,7 +283,7 @@ class HybridRetriever:
         )
 
     def _dict_to_record(self, item: Dict[str, Any]) -> MemoryRecord:
-        """Create minimal MemoryRecord from dict."""
+        """Create minimal MemoryRecord from dict. Holistic: context_tags."""
         mem_type = item.get("type", "episodic_event")
         try:
             mtype = MemoryType(mem_type)
@@ -294,8 +292,8 @@ class HybridRetriever:
         return MemoryRecord(
             id=uuid4(),
             tenant_id=item.get("tenant_id", ""),
-            scope=MemoryScope.SESSION,
-            scope_id=item.get("scope_id", ""),
+            context_tags=item.get("context_tags", []),
+            source_session_id=item.get("source_session_id"),
             type=mtype,
             text=item.get("text", ""),
             key=item.get("key"),
