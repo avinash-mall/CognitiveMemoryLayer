@@ -5,21 +5,17 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, text, update
 
 from ..core.enums import MemorySource, MemoryStatus, MemoryType
 from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
 from .base import MemoryStoreBase
 from .models import MemoryRecordModel
+from .utils import naive_utc as _naive_utc
 
-
-def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
-    """Convert to naive UTC for PostgreSQL TIMESTAMP WITHOUT TIME ZONE."""
-    if dt is None:
-        return None
-    if dt.tzinfo:
-        return dt.astimezone(timezone.utc).replace(tzinfo=None)
-    return dt
+_DATETIME_KEYS = frozenset(
+    {"last_accessed_at", "timestamp", "written_at", "valid_from", "valid_to"}
+)
 
 
 class PostgresMemoryStore(MemoryStoreBase):
@@ -150,6 +146,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                 if key == "metadata":
                     model.meta = value
                 elif key in key_allow and hasattr(model, key):
+                    if key in _DATETIME_KEYS and isinstance(value, datetime):
+                        value = _naive_utc(value)
                     setattr(model, key, value)
             if increment_version:
                 model.version += 1
@@ -270,8 +268,17 @@ class PostgresMemoryStore(MemoryStoreBase):
         Used to block delete when dependencies exist.
         """
         async with self.session_factory() as session:
+            # supersedes_id or metadata.evidence_refs array contains record_id
+            refs_contains = text(
+                "(metadata::jsonb)->'evidence_refs' IS NOT NULL AND EXISTS ("
+                "SELECT 1 FROM jsonb_array_elements_text((metadata::jsonb)->'evidence_refs') AS elem "
+                "WHERE elem = :rid)"
+            ).bindparams(rid=str(record_id))
             q = select(func.count(MemoryRecordModel.id)).where(
-                MemoryRecordModel.supersedes_id == record_id
+                or_(
+                    MemoryRecordModel.supersedes_id == record_id,
+                    refs_contains,
+                )
             )
             r = await session.execute(q)
             return r.scalar() or 0

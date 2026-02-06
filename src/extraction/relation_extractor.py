@@ -20,6 +20,7 @@ def _strip_markdown_fences(text: str) -> str:
         text = "\n".join(lines).strip()
     return text
 
+
 RELATION_EXTRACTION_PROMPT = """Extract relationships from the following text using Open Information Extraction.
 
 Text: {text}

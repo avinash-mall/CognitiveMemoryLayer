@@ -15,32 +15,36 @@ from src.memory.short_term import ShortTermMemory, ShortTermMemoryConfig
 class TestSensoryBuffer:
     """Sensory buffer operations."""
 
-    def test_ingest_returns_token_count(self):
+    @pytest.mark.asyncio
+    async def test_ingest_returns_token_count(self):
         config = SensoryBufferConfig(max_tokens=100, decay_seconds=60.0)
         buf = SensoryBuffer(config)
-        n = buf.ingest("hello world", turn_id="t1", role="user")
+        n = await buf.ingest("hello world", turn_id="t1", role="user")
         assert n == 2
         assert buf.size == 2
 
-    def test_get_text(self):
+    @pytest.mark.asyncio
+    async def test_get_text(self):
         buf = SensoryBuffer(SensoryBufferConfig(max_tokens=100))
-        buf.ingest("one two three")
-        assert buf.get_text() == "one two three"
-        assert buf.get_text(max_tokens=2) == "one two"
+        await buf.ingest("one two three")
+        assert await buf.get_text() == "one two three"
+        assert await buf.get_text(max_tokens=2) == "one two"
 
-    def test_clear(self):
+    @pytest.mark.asyncio
+    async def test_clear(self):
         buf = SensoryBuffer()
-        buf.ingest("foo bar")
-        buf.clear()
+        await buf.ingest("foo bar")
+        await buf.clear()
         assert buf.is_empty
-        assert buf.get_text() == ""
+        assert await buf.get_text() == ""
 
-    def test_capacity_enforced(self):
+    @pytest.mark.asyncio
+    async def test_capacity_enforced(self):
         config = SensoryBufferConfig(max_tokens=3, decay_seconds=60.0)
         buf = SensoryBuffer(config)
-        buf.ingest("a b c d e")
+        await buf.ingest("a b c d e")
         assert buf.size == 3
-        text = buf.get_text()
+        text = await buf.get_text()
         assert len(text.split()) == 3
 
 

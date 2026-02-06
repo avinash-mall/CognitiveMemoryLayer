@@ -91,6 +91,7 @@ class MemoryOrchestrator:
             memory_store=episodic_store,
             llm_client=llm_client,
             fact_extractor=LLMFactExtractor(llm_client),
+            redis_client=getattr(db_manager, "redis", None),
         )
 
         consolidation = ConsolidationWorker(
@@ -366,16 +367,12 @@ class MemoryOrchestrator:
         by_type: Dict[str, int] = {}
         if MemoryType is not None:
             for mt in MemoryType:
-                cnt = await self.hippocampal.store.count(
-                    tenant_id, filters={"type": mt.value}
-                )
+                cnt = await self.hippocampal.store.count(tenant_id, filters={"type": mt.value})
                 if cnt > 0:
                     by_type[mt.value] = cnt
 
         # Sample a limited set for aggregate statistics
-        records = await self.hippocampal.store.scan(
-            tenant_id, limit=1000, order_by="-timestamp"
-        )
+        records = await self.hippocampal.store.scan(tenant_id, limit=1000, order_by="-timestamp")
         timestamps = [r.timestamp for r in records if r.timestamp]
         confidences = [r.confidence for r in records]
         importances = [r.importance for r in records]

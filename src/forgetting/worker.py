@@ -144,7 +144,9 @@ class ForgettingWorker:
             if dup.memory_id in resolved_ids or dup.interfering_memory_id in resolved_ids:
                 continue
             if dup.keep_id:
-                to_delete = dup.interfering_memory_id if dup.keep_id == dup.memory_id else dup.memory_id
+                to_delete = (
+                    dup.interfering_memory_id if dup.keep_id == dup.memory_id else dup.memory_id
+                )
             else:
                 to_delete = dup.interfering_memory_id
             operations.append(
