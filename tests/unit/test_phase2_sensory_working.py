@@ -2,7 +2,6 @@
 import pytest
 
 from src.memory.sensory.buffer import (
-    BufferedToken,
     SensoryBuffer,
     SensoryBufferConfig,
 )

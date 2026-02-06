@@ -14,7 +14,6 @@ def _naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
     return dt
 
 from sqlalchemy import and_, delete, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.enums import MemoryStatus, MemoryType
 from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation

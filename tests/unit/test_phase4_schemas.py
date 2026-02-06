@@ -1,5 +1,4 @@
 """Unit tests for Phase 4: neocortical schemas and schema manager."""
-import pytest
 
 from src.memory.neocortical.schemas import (
     DEFAULT_FACT_SCHEMAS,

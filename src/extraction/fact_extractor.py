@@ -1,7 +1,7 @@
 """Fact extraction from conversation text (for reconsolidation)."""
 import json
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 from ..utils.llm import LLMClient
 

@@ -1,19 +1,11 @@
 """Unit tests for Phase 9 REST API components."""
-import pytest
-from fastapi import FastAPI
-from fastapi.security import APIKeyHeader
-from fastapi.testclient import TestClient
 
 from src.api.auth import (
-    AuthContext,
     _build_api_keys,
-    api_key_header,
 )
-from src.api.middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from src.api.schemas import (
     WriteMemoryRequest,
     ReadMemoryRequest,
-    MemoryItem,
 )
 
 

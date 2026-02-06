@@ -1,7 +1,6 @@
 """Ephemeral working memory (scratch pad) for multi-step reasoning."""
 import json
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance

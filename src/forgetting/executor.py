@@ -1,7 +1,6 @@
 """Execution of forgetting operations on the memory store."""
 from datetime import datetime, timezone
 from typing import List, Optional
-from uuid import UUID
 
 from ..core.enums import MemoryStatus
 from ..storage.postgres import PostgresMemoryStore

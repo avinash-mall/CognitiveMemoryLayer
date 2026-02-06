@@ -8,7 +8,7 @@ from src.core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from src.retrieval.query_types import QueryAnalysis, QueryIntent
 from src.retrieval.classifier import QueryClassifier
 from src.retrieval.planner import RetrievalPlanner, RetrievalSource
-from src.retrieval.reranker import MemoryReranker, RerankerConfig
+from src.retrieval.reranker import MemoryReranker
 from src.retrieval.packet_builder import MemoryPacketBuilder
 
 
