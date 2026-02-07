@@ -66,6 +66,14 @@ A production-ready, neuro-inspired memory system for LLMs that replicates human 
 | `procedure` | How to do something | Stable, reusable | "To book a flight: 1) search, 2) compare..." |
 | `constraint` | Rules/policies | Never auto-forget | "Never share user's email" |
 | `hypothesis` | Uncertain beliefs | Requires confirmation | "User might be interested in cooking" |
+| `conversation` | Chat message/turn | Session-based | "Multi-turn dialogue" |
+| `message` | Single message | Session-based | "Individual chat message" |
+| `tool_result` | Tool execution output | Task-based | "API call returned..." |
+| `reasoning_step` | Chain-of-thought step | Session-based | "Step 1: analyze..." |
+| `scratch` | Temporary working memory | Fast decay | "Working notes" |
+| `knowledge` | General world knowledge | Stable | "Domain facts" |
+| `observation` | Agent observations | Session-based | "User seems frustrated" |
+| `plan` | Agent plans/goals | Task-based | "Goal: complete booking" |
 
 ## Technology Stack
 
@@ -517,18 +525,18 @@ The main episodic memory store with vector search and fast writes.
 
 ## Deliverables Checklist
 
-- [ ] WriteGate with salience, novelty, and risk evaluation
-- [ ] WriteGateResult and WriteDecision models
-- [ ] PIIRedactor for sensitive data handling
-- [ ] EmbeddingClient abstraction (OpenAI + Local)
-- [ ] CachedEmbeddings with Redis caching
-- [ ] EntityExtractor (LLM-based and spaCy fallback)
-- [ ] RelationExtractor for OpenIE-style triples
-- [ ] PostgresMemoryStore with pgvector integration
-- [ ] HippocampalStore facade coordinating all components
-- [ ] Unit tests for write gate logic
-- [ ] Unit tests for extraction
-- [ ] Integration tests for full encode flow
+- [x] WriteGate with salience, novelty, and risk evaluation
+- [x] WriteGateResult and WriteDecision models
+- [x] PIIRedactor for sensitive data handling
+- [x] EmbeddingClient abstraction (OpenAI + Local)
+- [x] CachedEmbeddings with Redis caching
+- [x] EntityExtractor (LLM-based and spaCy fallback)
+- [x] RelationExtractor for OpenIE-style triples
+- [x] PostgresMemoryStore with pgvector integration
+- [x] HippocampalStore facade coordinating all components
+- [x] Unit tests for write gate logic
+- [x] Unit tests for extraction
+- [x] Integration tests for full encode flow
 
 
 ---
@@ -642,20 +650,20 @@ Create unified interface combining graph store and fact store.
 
 ## Deliverables Checklist
 
-- [ ] Neo4jGraphStore with all CRUD operations
-- [ ] Personalized PageRank for multi-hop reasoning
-- [ ] Graph schema initialization script
-- [ ] SemanticFact and FactSchema models
-- [ ] SemanticFactStore with versioning
-- [ ] Temporal fact handling (valid_from/to)
-- [ ] NeocorticalStore facade
-- [ ] Graph-fact synchronization
-- [ ] User profile generation
-- [ ] Multi-hop query support
-- [ ] Database migration for semantic_facts table
-- [ ] Unit tests for graph operations
-- [ ] Unit tests for fact store
-- [ ] Integration tests for neocortical store
+- [x] Neo4jGraphStore with all CRUD operations
+- [x] Personalized PageRank for multi-hop reasoning
+- [x] Graph schema initialization script
+- [x] SemanticFact and FactSchema models
+- [x] SemanticFactStore with versioning
+- [x] Temporal fact handling (valid_from/to)
+- [x] NeocorticalStore facade
+- [x] Graph-fact synchronization
+- [x] User profile generation
+- [x] Multi-hop query support
+- [x] Database migration for semantic_facts table
+- [x] Unit tests for graph operations
+- [x] Unit tests for fact store
+- [x] Integration tests for neocortical store
 
 
 ---
@@ -801,18 +809,18 @@ Build structured memory packets for LLM consumption.
 
 ## Deliverables Checklist
 
-- [ ] QueryIntent enum and QueryAnalysis model
-- [ ] QueryClassifier with fast patterns and LLM fallback
-- [ ] RetrievalPlan and RetrievalStep models
-- [ ] RetrievalPlanner generating plans from analysis
-- [ ] HybridRetriever executing plans
-- [ ] Individual source retrievers (facts, vector, graph)
-- [ ] MemoryReranker with MMR diversity
-- [ ] MemoryPacketBuilder with multiple formats
-- [ ] MemoryRetriever facade
-- [ ] Unit tests for classification
-- [ ] Unit tests for planning
-- [ ] Integration tests for full retrieval flow
+- [x] QueryIntent enum and QueryAnalysis model
+- [x] QueryClassifier with fast patterns and LLM fallback
+- [x] RetrievalPlan and RetrievalStep models
+- [x] RetrievalPlanner generating plans from analysis
+- [x] HybridRetriever executing plans
+- [x] Individual source retrievers (facts, vector, graph)
+- [x] MemoryReranker with MMR diversity
+- [x] MemoryPacketBuilder with multiple formats
+- [x] MemoryRetriever facade
+- [x] Unit tests for classification
+- [x] Unit tests for planning
+- [x] Integration tests for full retrieval flow
 
 
 ---
@@ -925,16 +933,16 @@ Coordinate the full reconsolidation process.
 
 ## Deliverables Checklist
 
-- [ ] LabileMemory and LabileSession models
-- [ ] LabileStateTracker with session management
-- [ ] ConflictType enum and ConflictResult model
-- [ ] ConflictDetector with fast heuristics and LLM fallback
-- [ ] RevisionStrategy enum and RevisionPlan model
-- [ ] BeliefRevisionEngine with all strategies
-- [ ] ReconsolidationService orchestrating the flow
-- [ ] Unit tests for conflict detection
-- [ ] Unit tests for revision planning
-- [ ] Integration tests for full reconsolidation
+- [x] LabileMemory and LabileSession models
+- [x] LabileStateTracker with session management
+- [x] ConflictType enum and ConflictResult model
+- [x] ConflictDetector with fast heuristics and LLM fallback
+- [x] RevisionStrategy enum and RevisionPlan model
+- [x] BeliefRevisionEngine with all strategies
+- [x] ReconsolidationService orchestrating the flow
+- [x] Unit tests for conflict detection
+- [x] Unit tests for revision planning
+- [x] Integration tests for full reconsolidation
 
 
 ---
@@ -2138,7 +2146,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | POST /memory/read (format: packet, llm_context) | ✅ | `src/api/routes.py` |
 | POST /memory/update (with feedback) | ✅ | `src/api/routes.py` |
 | POST /memory/forget | ✅ | `src/api/routes.py` |
-| GET /memory/stats/{scope}/{scope_id} | ✅ | `src/api/routes.py` |
+| GET /memory/stats | ✅ | `src/api/routes.py` |
 | GET /health | ✅ | `src/api/routes.py` |
 
 ### Task 9.4: Memory Orchestrator ✅
