@@ -664,6 +664,172 @@ CognitiveMemoryLayer/
 
 ---
 
+## 🚀 Future Roadmap: LLM Intrinsic Memory Integration
+
+> *"The brain does not simply store memories; it actively reconstructs them."*
+> — **Bartlett, 1932**
+
+The current CognitiveMemoryLayer operates as an advanced **external memory system** via REST APIs. Our next evolution is **intrinsic memory integration**—injecting memories directly into the LLM's computational graph rather than "stuffing" context into prompts.
+
+### 🎯 The Paradigm Shift: From Reading to Thinking
+
+| Approach | How Memory Works | Complexity | Privacy |
+|:---------|:-----------------|:-----------|:--------|
+| **RAG (Current Standard)** | Retrieved text concatenated to prompt → model "reads" it | O(n²) attention | 🔴 Raw text exposed |
+| **Cognitive Memory Layer** | Memory injected as steering vectors, KV-cache, or logit biases | O(1) injection | 🟢 Latent obfuscation |
+
+<details>
+<summary><h3>🔮 The Three Injection Interfaces</h3></summary>
+
+Our roadmap introduces three levels of memory integration, each deeper in the LLM's forward pass:
+
+```mermaid
+flowchart TB
+    subgraph Interfaces["Memory Injection Interfaces"]
+        direction TB
+        logit["🎯 LOGIT INTERFACE<br/>Token probability bias<br/>API-compatible • Safe"]
+        activation["⚡ ACTIVATION INTERFACE<br/>Steering vectors in residual stream<br/>Semantic control • Composable"]
+        synaptic["🧠 SYNAPTIC INTERFACE<br/>KV-Cache injection<br/>Virtual context • Deepest integration"]
+    end
+    
+    subgraph Depth["Integration Depth"]
+        shallow["Shallow (Output Layer)"]
+        mid["Mid (Hidden States)"]
+        deep["Deep (Attention Memory)"]
+    end
+    
+    logit --> shallow
+    activation --> mid
+    synaptic --> deep
+    
+    style logit fill:#e8f5e9,color:#000
+    style activation fill:#fff3e0,color:#000
+    style synaptic fill:#fce4ec,color:#000
+```
+
+#### 1️⃣ Logit Interface (Universal Compatibility)
+- **kNN-LM interpolation**: Blend model's predictions with memory-based token distributions
+- **Logit bias**: Boost probability of memory-relevant tokens ("Paris", "vegetarian")
+- **Works with**: OpenAI API, Claude, local models — any provider with `logit_bias` support
+
+#### 2️⃣ Activation Interface (Semantic Steering)
+- **Steering Vectors**: Inject concepts as directions in activation space
+- **Contrastive Direction Discovery**: Learn vectors from positive/negative prompt pairs
+- **Identity V**: Use model's own unembedding rows as semantic primes
+- **Layer targeting**: Early (syntactic) → Middle (semantic) → Late (formatting)
+
+#### 3️⃣ Synaptic Interface (Virtual Context)
+- **KV-Cache Injection**: Pre-compute Key-Value pairs for memories, inject into attention
+- **Temporal Decay**: Memories fade like biological synapses (SynapticRAG-inspired)
+- **Shadow in the Cache**: Privacy via latent obfuscation—vectors, not plaintext
+
+</details>
+
+<details>
+<summary><h3>📐 Technical Architecture (Planned)</h3></summary>
+
+```mermaid
+flowchart LR
+    subgraph MAL["Model Access Layer"]
+        registry["Model Registry"]
+        hooks["Hook Manager"]
+        inspector["Model Inspector"]
+    end
+    
+    subgraph Bus["Intrinsic Memory Bus"]
+        channels["Channels:<br/>logit_bias | steering | kv_inject"]
+    end
+    
+    subgraph Interfaces["Injection Interfaces"]
+        logit2["Logit Interface<br/>kNN-LM + Bias Engine"]
+        activation2["Activation Interface<br/>Steering Vectors"]
+        synaptic2["Synaptic Interface<br/>KV Encoder + Injector"]
+    end
+    
+    subgraph Cache["Memory Cache Hierarchy"]
+        l1["L1: GPU HBM<br/>Working Memory"]
+        l2["L2: CPU DRAM<br/>Short-term"]
+        l3["L3: NVMe SSD<br/>Long-term"]
+    end
+    
+    MAL --> Bus
+    Bus --> Interfaces
+    Interfaces --> Cache
+    
+    style MAL fill:#e3f2fd,color:#000
+    style Bus fill:#fff8e1,color:#000
+    style Interfaces fill:#f3e5f5,color:#000
+    style Cache fill:#e8f5e9,color:#000
+```
+
+**Key Components:**
+
+| Component | Function | Implementation |
+|:----------|:---------|:---------------|
+| **Model Backend** | Abstract LLM internals (local/API) | PyTorch hooks, vLLM, OpenAI |
+| **Hook Manager** | Safe hook lifecycle + safety guards | Norm explosion detection, NaN traps |
+| **Memory Encoder** | Text → steering vectors/KV pairs | Contrastive learning, PCA |
+| **Injection Scaler** | Maintain numerical stability | Norm preservation, adaptive α |
+
+</details>
+
+<details>
+<summary><h3>📚 Research Foundations</h3></summary>
+
+Our intrinsic memory roadmap builds on cutting-edge research:
+
+#### Core Architectures
+| Paper | Contribution | Link |
+|:------|:-------------|:-----|
+| **Prometheus Mind** | Identity V: Retrofitting memory using unembedding matrix | [ResearchGate](https://www.researchgate.net/publication/400002993_Prometheus_Mind_Retrofitting_Memory_to_Frozen_Language_Models) |
+| **SynapticRAG** | Temporal memory decay inspired by synaptic plasticity | [ACL Findings](https://aclanthology.org/2025.findings-acl.1048.pdf) |
+| **Titans (Google)** | Learning to memorize at test time | [arXiv:2501.00663](https://arxiv.org/abs/2501.00663) |
+| **Cognitive Workspace** | Active memory management for infinite context | [arXiv:2508.13171](https://arxiv.org/abs/2508.13171) |
+| **LongMem** | Decoupled long-term memory networks | [arXiv:2306.07174](https://arxiv.org/abs/2306.07174) |
+
+#### Techniques & Mechanisms
+| Paper | Contribution | Link |
+|:------|:-------------|:-----|
+| **kNN-LM** | Probabilistic interpolation with nearest-neighbor memory | [arXiv:1911.00172](https://arxiv.org/abs/1911.00172) |
+| **Shadow in the Cache** | KV-cache privacy via latent obfuscation | [arXiv:2508.09442](https://arxiv.org/abs/2508.09442) |
+| **Steering Vector Fields** | Context-aware LLM control | [arXiv:2602.01654](https://arxiv.org/html/2602.01654v1) |
+| **Activation Addition** | Steering via bias terms in activations | [OpenReview](https://openreview.net/forum?id=2XBPdPIcFK) |
+| **LMCache** | Efficient KV-cache storage & retrieval | [GitHub](https://github.com/LMCache/LMCache) |
+
+</details>
+
+<details>
+<summary><h3>🛣️ Development Phases</h3></summary>
+
+| Phase | Focus | Status |
+|:------|:------|:-------|
+| **Phase 1** | Model Access Layer & Hook System | 📋 Planned |
+| **Phase 2** | Logit Interface (kNN-LM, Bias Engine) | 📋 Planned |
+| **Phase 3** | Activation Interface (Steering Vectors) | 📋 Planned |
+| **Phase 4** | Synaptic Interface (KV-Cache Injection) | 📋 Planned |
+| **Phase 5** | Controller & Gating Unit | 📋 Planned |
+| **Phase 6** | Memory Encoding Pipeline | 📋 Planned |
+| **Phase 7** | Cache Hierarchy (L1/L2/L3) | 📋 Planned |
+| **Phase 8** | Weight Adaptation (Dynamic LoRA) | 📋 Planned |
+| **Phase 9** | Integration & Migration | 📋 Planned |
+| **Phase 10** | Observability & Benchmarking | 📋 Planned |
+
+> **📖 Detailed Plans**: See [ProjectPlan/](./ProjectPlan/) for comprehensive implementation specifications.
+
+</details>
+
+### 🌟 Why This Matters
+
+| Metric | RAG (Standard) | CML Intrinsic (Target) |
+|:-------|:--------------|:-----------------------|
+| **Retrieval Cost** | O(n²) attention on context | O(1) vector injection |
+| **Memory Utilization** | Passive (re-parsing tokens) | Active (steering cognition) |
+| **Privacy** | 🔴 Plaintext in prompt | 🟢 Latent vector obfuscation |
+| **Latency** | High (tokenization + prefill) | Low (zero-copy injection) |
+| **Mechanism** | Model "reads" retrieved text | Model "thinks" with memory |
+
+---
+
 ## 📄 License
 
 <p align="center">
