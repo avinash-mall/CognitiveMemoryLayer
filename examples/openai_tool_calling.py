@@ -47,7 +47,7 @@ MEMORY_TOOLS = [
                     },
                     "memory_type": {
                         "type": "string",
-                        "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis"],
+                        "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis", "conversation", "message", "tool_result", "reasoning_step", "scratch", "knowledge", "observation", "plan"],
                         "description": "Type of memory. Use 'semantic_fact' for facts, 'preference' for preferences, 'constraint' for rules that must be followed."
                     }
                 },
@@ -71,7 +71,7 @@ MEMORY_TOOLS = [
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis"]
+                            "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis", "conversation", "message", "tool_result", "reasoning_step", "scratch", "knowledge", "observation", "plan"]
                         },
                         "description": "Optional: filter by specific memory types"
                     }
@@ -144,7 +144,6 @@ class MemoryEnabledAssistant:
         memory_api_url: str = "http://localhost:8000",
         memory_api_key: Optional[str] = None,
         model: str = "gpt-4o-mini",
-        scope: str = "session"
     ):
         self.session_id = session_id
         self.model = model
@@ -304,7 +303,6 @@ def main():
     assistant = MemoryEnabledAssistant(
         session_id="openai-demo-session",
         model="gpt-4o-mini",  # or "gpt-4o" for better reasoning
-        scope="session"
     )
     
     try:
@@ -338,7 +336,6 @@ def example_programmatic():
     assistant = MemoryEnabledAssistant(
         session_id="demo-programmatic-session",
         model="gpt-4o-mini",
-        scope="session"
     )
     
     # Simulate a conversation
