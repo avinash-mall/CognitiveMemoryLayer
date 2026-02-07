@@ -262,8 +262,6 @@ Update or provide feedback on an existing memory. Holistic: tenant from auth.
 {
   "name": "memory_update",
   "arguments": {
-    "scope": "session",
-    "scope_id": "session-abc123",
     "memory_id": "550e8400-e29b-41d4-a716-446655440000",
     "feedback": "incorrect"
   }
@@ -569,13 +567,17 @@ Get memory statistics for the authenticated tenant.
 
 For session-scoped operations, convenience endpoints are available:
 
-**POST /session/{session_id}/context**
+**GET /session/{session_id}/context**
 
 Get full session context for LLM injection.
 
-**POST /session/{session_id}/ingest**
+**POST /session/{session_id}/write**
 
-Ingest a conversation turn (message + optional tool results).
+Write to memory with session_id for origin tracking.
+
+**POST /session/{session_id}/read**
+
+Read from memory (session_id for API compatibility).
 
 ---
 
@@ -614,6 +616,14 @@ Memory access is **holistic per tenant**: there are no scopes or partitions. All
 | `procedure` | How to do something | Store instructions, processes | Stable, reusable |
 | `constraint` | Rules and policies | Store must-follow rules | Never auto-forget |
 | `hypothesis` | Uncertain beliefs | Store inferences needing confirmation | Requires confirmation |
+| `conversation` | Chat message/turn | Multi-turn dialogue tracking | Session-based |
+| `message` | Single message | Individual message storage | Session-based |
+| `tool_result` | Output from tool execution | Store tool/function outputs | Task-based |
+| `reasoning_step` | Chain-of-thought step | Agent reasoning traces | Session-based |
+| `scratch` | Temporary working memory | Short-lived working notes | Fast decay |
+| `knowledge` | General world knowledge | Domain facts, procedures | Stable |
+| `observation` | Agent observations | Environment/context observations | Session-based |
+| `plan` | Agent plans/goals | Task planning, goals | Task-based |
 
 ### When to Use Each Type
 
@@ -677,7 +687,7 @@ X-User-ID: optional-user-id override
 The system supports multi-tenant isolation:
 - Each API key is associated with a default `tenant_id` (from config)
 - All operations are scoped to the tenant
-- Scopes cannot access other tenants' data
+- Tenants cannot access other tenants' data
 
 ---
 
@@ -740,11 +750,9 @@ This format is ideal for injecting into system prompts or context windows.
 
 ```python
 # Example conversation flow (matches POST /api/v1/memory/read)
-async def handle_message(scope: str, scope_id: str, message: str):
+async def handle_message(message: str):
     # First, read relevant context
     context = await memory_read(
-        scope=scope,
-        scope_id=scope_id,
         query=message,
         format="llm_context"
     )
@@ -779,8 +787,6 @@ async def handle_message(scope: str, scope_id: str, message: str):
 # After extracting important info from conversation
 if contains_personal_info(message):
     await memory_write(
-        scope=scope,
-        scope_id=scope_id,
         content=extracted_fact,
         memory_type="semantic_fact"
     )
@@ -791,7 +797,7 @@ if contains_personal_info(message):
 When memory read returns warnings about conflicts:
 
 ```python
-context = await memory_read(scope, scope_id, query, format="packet")
+context = await memory_read(query=query, format="packet")
 
 if context.warnings:
     # Ask user for clarification
@@ -832,12 +838,12 @@ Always check for constraints before generating responses:
 ```python
 context = await memory_read(
     query=current_topic,
-    memory_types=["constraint"],
+    context_filter=["constraint"],  # Filter by context_tags
     format="llm_context"
 )
 
-constraints = [m.text for m in context.constraints]
-# Include constraints in system prompt as hard rules
+# Constraints are included in llm_context output
+# Include in system prompt as hard rules
 ```
 
 ---
@@ -874,9 +880,9 @@ LLM__API_KEY=sk-your-key-here
 EMBEDDING__PROVIDER=local
 EMBEDDING__LOCAL_MODEL=all-MiniLM-L6-v2
 
-# Optional: vLLM for local LLM compression
-LLM__VLLM_BASE_URL=http://vllm:8000/v1
-LLM__VLLM_MODEL=meta-llama/Llama-3.2-1B-Instruct
+# Optional: Use alternative LLM endpoint (vLLM, Ollama, etc.)
+LLM__BASE_URL=http://vllm:8000/v1
+LLM__MODEL=meta-llama/Llama-3.2-1B-Instruct
 ```
 
 #### 3. Build and Start Services
@@ -905,7 +911,7 @@ curl http://localhost:8000/api/v1/health
 curl -X POST http://localhost:8000/api/v1/memory/write \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"scope": "session", "scope_id": "test-session", "content": "Test memory"}'
+  -d '{"content": "Test memory"}'
 ```
 
 ### Local Development Setup
@@ -981,7 +987,7 @@ docker compose -f docker/docker-compose.yml --profile vllm up -d vllm
 docker compose -f docker/docker-compose.yml --profile vllm-cpu up -d vllm-cpu
 
 # Set environment
-export LLM__VLLM_BASE_URL=http://localhost:8000/v1
+export LLM__BASE_URL=http://localhost:8000/v1
 ```
 
 ---
@@ -1016,23 +1022,18 @@ All configuration uses nested environment variables with `__` delimiter.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM__PROVIDER` | `openai` | Provider: `openai` or `vllm` |
+| `LLM__PROVIDER` | `openai` | Provider: `openai`, `vllm`, `ollama`, `gemini`, `claude` |
 | `LLM__MODEL` | `gpt-4o-mini` | Model name |
-| `LLM__TEMPERATURE` | `0.0` | Generation temperature |
 | `LLM__API_KEY` | None | API key |
-| `LLM__VLLM_BASE_URL` | None | vLLM server URL |
-| `LLM__VLLM_MODEL` | `meta-llama/Llama-3.2-1B-Instruct` | vLLM model |
+| `LLM__BASE_URL` | None | OpenAI-compatible endpoint (for vLLM, Ollama, or proxy) |
 
-#### Memory Settings
+#### Auth Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MEMORY__SENSORY_BUFFER_MAX_TOKENS` | `500` | Max tokens in sensory buffer |
-| `MEMORY__SENSORY_BUFFER_DECAY_SECONDS` | `30.0` | Buffer decay time |
-| `MEMORY__WORKING_MEMORY_MAX_CHUNKS` | `10` | Max working memory chunks |
-| `MEMORY__WRITE_GATE_THRESHOLD` | `0.3` | Importance threshold for storage |
-| `MEMORY__CONSOLIDATION_INTERVAL_HOURS` | `6` | Hours between consolidation |
-| `MEMORY__FORGETTING_INTERVAL_HOURS` | `24` | Hours between forgetting runs |
+| `AUTH__API_KEY` | None | API key for read/write access |
+| `AUTH__ADMIN_API_KEY` | None | API key with admin permission |
+| `AUTH__DEFAULT_TENANT_ID` | `default` | Default tenant for authenticated requests |
 
 ---
 
@@ -1048,10 +1049,10 @@ The consolidation engine runs periodically to:
 
 **Trigger manually (admin):**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admin/consolidate/SCOPE_ID" \
+curl -X POST "http://localhost:8000/api/v1/admin/consolidate/USER_ID" \
   -H "X-API-Key: YOUR_ADMIN_API_KEY"
 ```
-(Use the scope_id that identifies the memory space, e.g. a session or user identifier.)
+(Use the user_id to identify the user whose memories should be consolidated.)
 
 ### Active Forgetting
 
@@ -1063,7 +1064,7 @@ The forgetting system:
 
 **Trigger manually (admin):**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admin/forget/SCOPE_ID?dry_run=true" \
+curl -X POST "http://localhost:8000/api/v1/admin/forget/USER_ID?dry_run=true" \
   -H "X-API-Key: YOUR_ADMIN_API_KEY"
 ```
 
@@ -1089,7 +1090,7 @@ Available at `/metrics`:
 
 ### GDPR Compliance
 
-To delete all memories for a scope, use the memory forget endpoint with the desired scope/scope_id, or implement a dedicated GDPR endpoint that calls `orchestrator.delete_all_for_scope(tenant_id, scope_id)`. The admin API exposes consolidation and forgetting triggers only.
+To delete all memories for a tenant/user, use the memory forget endpoint with the desired `memory_ids` or `query`. The admin API exposes consolidation and forgetting triggers only.
 
 ---
 
@@ -1104,10 +1105,9 @@ To delete all memories for a scope, use the memory forget endpoint with the desi
 **2. "No significant information to store"**
 - The Write Gate filtered the content as low importance
 - Try more specific, factual content
-- Lower `MEMORY__WRITE_GATE_THRESHOLD` (not recommended for production)
 
 **3. Empty retrieval results**
-- Verify memories exist for the scope
+- Verify memories exist for the tenant
 - Check the query is semantically related to stored content
 - Ensure embeddings are being generated (check OpenAI key)
 
