@@ -18,6 +18,11 @@ try:
 except ImportError:
     Vector = None  # type: ignore
 
+from src.core.config import get_settings
+
+# Embedding vector dimension driven by EMBEDDING__DIMENSIONS in .env / config.
+_EMBEDDING_DIM = get_settings().embedding.dimensions
+
 revision = "001"
 down_revision = None
 branch_labels = None
@@ -55,7 +60,7 @@ def upgrade() -> None:
     # -------------------------------------------------------------------------
     # memory_records table (holistic tenant-based, with context_tags)
     # -------------------------------------------------------------------------
-    embedding_type = Vector(1536) if Vector else JSON
+    embedding_type = Vector(_EMBEDDING_DIM) if Vector else JSON
     op.create_table(
         "memory_records",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),

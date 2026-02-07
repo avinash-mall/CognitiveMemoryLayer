@@ -9,6 +9,11 @@ from sqlalchemy.orm import DeclarativeBase
 
 from pgvector.sqlalchemy import Vector
 
+from ..core.config import get_settings
+
+# Embedding vector dimension driven by EMBEDDING__DIMENSIONS in .env / config.
+_EMBEDDING_DIM = get_settings().embedding.dimensions
+
 
 class Base(DeclarativeBase):
     """Declarative base for all storage models."""
@@ -63,7 +68,7 @@ class MemoryRecordModel(Base):
     type = Column(String(30), nullable=False, index=True)
     text = Column(Text, nullable=False)
     key = Column(String(200), nullable=True, index=True)
-    embedding = Column(Vector(1536), nullable=True)
+    embedding = Column(Vector(_EMBEDDING_DIM), nullable=True)
 
     entities = Column(JSON, default=list)
     relations = Column(JSON, default=list)
