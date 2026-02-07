@@ -398,6 +398,14 @@ flowchart TB
 | 🔧 `procedure` | How to do something | Procedural memory | Stable |
 | 🚫 `constraint` | Rules/policies | Prefrontal inhibition | Never |
 | 💭 `hypothesis` | Uncertain beliefs | Predictive coding | Requires confirmation |
+| 💬 `conversation` | Chat message/turn | Dialogue memory | Session-based |
+| ✉️ `message` | Single message | Message storage | Session-based |
+| 🔧 `tool_result` | Tool execution output | Function results | Task-based |
+| 🧠 `reasoning_step` | Chain-of-thought step | Agent reasoning | Session-based |
+| 📝 `scratch` | Temporary working memory | Working notes | Fast |
+| 📖 `knowledge` | General world knowledge | Domain facts | Stable |
+| 👁️ `observation` | Agent observations | Environment context | Session-based |
+| 🎯 `plan` | Agent plans/goals | Task planning | Task-based |
 
 ### Technology Stack
 
