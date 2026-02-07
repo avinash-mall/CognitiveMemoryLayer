@@ -1670,9 +1670,9 @@ Update all documentation and examples to reflect the holistic, seamless API.
 
 # Cognitive Memory Layer – Project Status
 
-**Last updated:** 2026-02-06
+**Last updated:** 2026-02-07
 
-This document tracks what has been implemented against the plan in the `ProjectPlan` folder.
+This document tracks what has been implemented against the plan in the `ProjectPlan` folder. It includes both the original RAG-based phases (1–14) and the new **Intrinsic Memory System** phases (I1–I10), which are planned but not yet implemented.
 
 ```pseudo
 # Pseudo: Implementation as per task description.
@@ -2309,6 +2309,179 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ---
 
+# Intrinsic Memory System — Project Plan Status
+
+The following phases transform the system from external RAG to **intrinsic, active memory** integrated with the LLM's computation graph. All phases are **planned** (status: ⏳ Not Started).
+
+**Plan reference:** `Phase1_Foundation_ModelAccessLayer.md` through `Phase10_ObservabilityBenchmarking.md`
+
+---
+
+## Intrinsic Phase 1: Foundation & Model Access Layer ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase1_Foundation_ModelAccessLayer.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 1.1 | Model Backend Abstraction — `ModelBackend` ABC, `ModelSpec`, `HookHandle`, `InterfaceCapability` | ⏳ |
+| 1.2 | Hook Manager & Lifecycle — centralized hook registration, ordering, safety guards | ⏳ |
+| 1.3 | Model Inspector & Vocabulary Mapper — layer shapes, attention heads, vocab mapping | ⏳ |
+| 1.4 | Intrinsic Memory Bus — `InjectionChannel`, `MemoryVector`, `InjectionRequest` | ⏳ |
+| 1.5 | Configuration & Feature Flags — `IntrinsicMemoryConfig` | ⏳ |
+| 1.6 | Directory Structure & Module Scaffolding — `src/intrinsic/` layout | ⏳ |
+
+---
+
+## Intrinsic Phase 2: Logit Interface ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase2_LogitInterface.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 2.1 | Token-Memory Mapper — memory text → key tokens → token_ids → bias values | ⏳ |
+| 2.2 | Simple Logit Bias Engine — aggregate biases, apply logit_bias | ⏳ |
+| 2.3 | kNN-LM Interpolator — blend parametric and non-parametric distributions | ⏳ |
+| 2.4 | Logit Hook for Local Models — lm_head hook | ⏳ |
+| 2.5 | Memory Bus Integration — LogitInjectionHook, channel dispatch | ⏳ |
+| 2.6 | API Integration for Logit Bias — extend OpenAI client, SeamlessMemoryProvider | ⏳ |
+
+---
+
+## Intrinsic Phase 3: Activation Interface ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase3_ActivationInterface.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 3.1 | Steering Vector Derivation Engine — CDD, IdentityV, MeanCenteringPCA | ⏳ |
+| 3.2 | Activation Injection Engine — hidden state steering, norm preservation | ⏳ |
+| 3.3 | Multi-Layer Injection Strategy — layer selection, SteeringVectorField | ⏳ |
+| 3.4 | Memory Bus Integration — ActivationInjectionHook | ⏳ |
+| 3.5 | Steering Vector Cache & Pre-computation | ⏳ |
+
+---
+
+## Intrinsic Phase 4: Synaptic Interface ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase4_SynapticInterface.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 4.1 | KV Encoder Pipeline — memory text → precomputed KV pairs | ⏳ |
+| 4.2 | KV-Cache Injector — append/prepend virtual KV pairs | ⏳ |
+| 4.3 | Temporal Decay (SynapticRAG) — decay manager for injected memories | ⏳ |
+| 4.4 | Synaptic Interface — Complete Pipeline | ⏳ |
+| 4.5 | Position Encoding Remapping | ⏳ |
+
+---
+
+## Intrinsic Phase 5: Controller & Gating Unit ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase5_ControllerGatingUnit.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 5.1 | Relevance Gate — multi-factor memory filtering | ⏳ |
+| 5.2 | Interface Router — channel selection by memory type and backend capabilities | ⏳ |
+| 5.3 | Complete Controller Pipeline — gate → route → calibrate → dispatch | ⏳ |
+| 5.4 | Fallback Chain Manager — graceful degradation | ⏳ |
+| 5.5 | Integration with Existing Memory Pipeline | ⏳ |
+
+---
+
+## Intrinsic Phase 6: Memory Encoding Pipeline ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase6_MemoryEncodingPipeline.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 6.1 | Unified Encoded Memory Data Structure — `MemoryAnalysis`, `EncodedMemory` | ⏳ |
+| 6.2 | Hippocampal Encoder — Main Pipeline — logit, activation, KV in single pass | ⏳ |
+| 6.3 | Encoding Cache & Store — `EncodedMemoryStore` | ⏳ |
+| 6.4 | Projection Head — Learned Steering Vector generation | ⏳ |
+
+---
+
+## Intrinsic Phase 7: Memory Hierarchy & Cache Management ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase7_MemoryHierarchyCacheManagement.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 7.1 | Tiered Memory Store — L1 (GPU HBM), L2 (CPU DRAM), L3 (NVMe SSD) | ⏳ |
+| 7.2 | Predictive Pre-fetcher — anticipate memory needs | ⏳ |
+| 7.3 | Eviction Policies — EvicPress-inspired, importance-aware eviction | ⏳ |
+
+---
+
+## Intrinsic Phase 8: Weight Adaptation Interface ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase8_WeightAdaptationInterface.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 8.1 | Adapter Registry & Manager — LoRA adapter catalog, load/unload | ⏳ |
+| 8.2 | Adapter Router / Classifier — query classification for adapter selection | ⏳ |
+| 8.3 | Hypernetwork (Advanced) — on-the-fly LoRA weight generation | ⏳ |
+| 8.4 | Memory Bus Integration | ⏳ |
+
+---
+
+## Intrinsic Phase 9: Integration & Migration ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase9_IntegrationMigration.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 9.1 | Application Startup Integration — wire intrinsic system into FastAPI lifespan | ⏳ |
+| 9.2 | New API Endpoints — `/intrinsic/status`, `/intrinsic/diagnostics`, `/intrinsic/encode`, etc. | ⏳ |
+| 9.3 | Enhanced `/memory/turn` Endpoint — `IntrinsicInjectionInfo` in response | ⏳ |
+| 9.4 | Migration Strategy — `MigrationMode`, `MigrationManager` (RAG → hybrid → intrinsic) | ⏳ |
+| 9.5 | End-to-End Integration Tests | ⏳ |
+
+---
+
+## Intrinsic Phase 10: Observability & Benchmarking ⏳
+
+**Status:** Not Started  
+**Plan reference:** `Phase10_ObservabilityBenchmarking.md`
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 10.1 | Metrics & Monitoring — Prometheus metrics (injections, latency, cache hits, safety reverts) | ⏳ |
+| 10.2 | Benchmarking Framework — A/B testing (RAG vs. Intrinsic) | ⏳ |
+| 10.3 | Safety Guardrails — OutputQualityMonitor, EmergencyKillSwitch | ⏳ |
+| 10.4 | Interpretability Tools — InjectionAttributor | ⏳ |
+| 10.5 | Production Hardening Checklist | ⏳ |
+
+---
+
+## Intrinsic Memory Phases Summary
+
+| Phase | Name | Status |
+|-------|------|--------|
+| I1 | Foundation & Model Access Layer | ⏳ Not Started |
+| I2 | Logit Interface | ⏳ Not Started |
+| I3 | Activation Interface | ⏳ Not Started |
+| I4 | Synaptic Interface | ⏳ Not Started |
+| I5 | Controller & Gating Unit | ⏳ Not Started |
+| I6 | Memory Encoding Pipeline | ⏳ Not Started |
+| I7 | Memory Hierarchy & Cache Management | ⏳ Not Started |
+| I8 | Weight Adaptation Interface | ⏳ Not Started |
+| I9 | Integration & Migration | ⏳ Not Started |
+| I10 | Observability & Benchmarking | ⏳ Not Started |
+
+---
+
 ## Phases 3–10
 
 | Phase | Name | Status |
@@ -2372,6 +2545,7 @@ Or run only tests (Postgres must be up):
 - Phase 8 adds active forgetting: `RelevanceScorer`, `ForgettingPolicyEngine`, `ForgettingExecutor`, `InterferenceDetector`, `ForgettingWorker`, `ForgettingScheduler`; `PostgresMemoryStore.update()` supports `entities` and `relations` for compress. Optional: LLM-based compression via `summarize_for_compression` and `VLLMClient` (vLLM + Llama 3.2 1B in Docker); dependency check before delete via `count_references_to`; Celery task `run_forgetting_task` and beat schedule.
 - Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`; API key auth, multi-tenancy (X-Tenant-ID). Phase 11+ refactor: holistic (tenant-only) memory; no scopes. Phase 12 adds `/memory/turn` (seamless memory) and `SeamlessMemoryProvider`.
 - Phase 10 adds: conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings); E2E tests in `tests/e2e/test_api_flows.py`; integration test setup with testcontainers (`tests/integration/conftest.py`); multi-stage Dockerfile (`docker/Dockerfile`); GitHub Actions CI with lint, test (coverage + codecov), build/push to ghcr.io; API healthcheck in docker-compose; `src/utils/logging_config.py` for structured logging; `src/utils/metrics.py` for Prometheus (MEMORY_WRITES, MEMORY_READS, RETRIEVAL_LATENCY, MEMORY_COUNT) and `/metrics` endpoint.
+- **Intrinsic Memory System (I1–I10):** Plan documents exist (`Phase1_Foundation_ModelAccessLayer.md` through `Phase10_ObservabilityBenchmarking.md`). These phases define the architecture for moving from external RAG to intrinsic LLM memory integration (Model Access Layer, Logit/Activation/Synaptic/Weight interfaces, Controller, Hippocampal Encoder, Tiered Cache, Integration, Observability). Implementation has not yet started.
 
 
 ---
