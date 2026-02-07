@@ -39,7 +39,7 @@ MEMORY_TOOLS = [
                 },
                 "memory_type": {
                     "type": "string",
-                    "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis"],
+                    "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis", "conversation", "message", "tool_result", "reasoning_step", "scratch", "knowledge", "observation", "plan"],
                     "description": "Type of memory. Use 'semantic_fact' for facts, 'preference' for preferences, 'constraint' for rules that must be followed."
                 }
             },
@@ -60,7 +60,7 @@ MEMORY_TOOLS = [
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis"]
+                        "enum": ["episodic_event", "semantic_fact", "preference", "task_state", "procedure", "constraint", "hypothesis", "conversation", "message", "tool_result", "reasoning_step", "scratch", "knowledge", "observation", "plan"]
                     },
                     "description": "Optional: filter by specific memory types"
                 }

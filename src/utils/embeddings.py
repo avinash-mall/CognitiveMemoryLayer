@@ -37,7 +37,12 @@ class EmbeddingClient(ABC):
 
 
 class OpenAIEmbeddings(EmbeddingClient):
-    """OpenAI embedding client (supports any OpenAI-compatible embedding endpoint via base_url)."""
+    """OpenAI embedding client (supports any OpenAI-compatible embedding endpoint via base_url).
+
+    When ``pass_dimensions`` is *False* the ``dimensions`` parameter is omitted
+    from API requests.  This is needed for providers like Ollama whose
+    ``/v1/embeddings`` endpoint does not accept this OpenAI-specific parameter.
+    """
 
     def __init__(
         self,
@@ -45,6 +50,7 @@ class OpenAIEmbeddings(EmbeddingClient):
         model: Optional[str] = None,
         dimensions: int = 1536,
         base_url: Optional[str] = None,
+        pass_dimensions: bool = True,
     ) -> None:
         import os
 
@@ -54,6 +60,7 @@ class OpenAIEmbeddings(EmbeddingClient):
         key = api_key or settings.embedding.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.model = model or settings.embedding.model
         self._dimensions = dimensions
+        self._pass_dimensions = pass_dimensions
         url = base_url or settings.embedding.base_url
         if url:
             self.client = AsyncOpenAI(base_url=url, api_key=key)
@@ -65,11 +72,10 @@ class OpenAIEmbeddings(EmbeddingClient):
         return self._dimensions
 
     async def embed(self, text: str) -> EmbeddingResult:
-        response = await self.client.embeddings.create(
-            model=self.model,
-            input=text,
-            dimensions=self._dimensions,
-        )
+        kwargs: dict = dict(model=self.model, input=text)
+        if self._pass_dimensions:
+            kwargs["dimensions"] = self._dimensions
+        response = await self.client.embeddings.create(**kwargs)
         return EmbeddingResult(
             embedding=response.data[0].embedding,
             model=self.model,
@@ -78,11 +84,10 @@ class OpenAIEmbeddings(EmbeddingClient):
         )
 
     async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
-        response = await self.client.embeddings.create(
-            model=self.model,
-            input=texts,
-            dimensions=self._dimensions,
-        )
+        kwargs: dict = dict(model=self.model, input=texts)
+        if self._pass_dimensions:
+            kwargs["dimensions"] = self._dimensions
+        response = await self.client.embeddings.create(**kwargs)
         per_token = response.usage.total_tokens // len(texts) if texts else 0
         return [
             EmbeddingResult(
@@ -276,6 +281,18 @@ def get_embedding_client() -> EmbeddingClient:
             model=settings.embedding.model,
             dimensions=settings.embedding.dimensions,
             base_url=base_url,
+        )
+    if provider == "ollama":
+        # Ollama exposes an OpenAI-compatible /v1/embeddings endpoint but does
+        # NOT accept the ``dimensions`` parameter.
+        base_url = settings.embedding.base_url or "http://localhost:11434/v1"
+        api_key = settings.embedding.api_key or os.environ.get("OPENAI_API_KEY") or "ollama"
+        return OpenAIEmbeddings(
+            api_key=api_key,
+            model=settings.embedding.model,
+            dimensions=settings.embedding.dimensions,
+            base_url=base_url,
+            pass_dimensions=False,
         )
     if provider == "local":
         return LocalEmbeddings(model_name=settings.embedding.local_model)
