@@ -1,10 +1,14 @@
 """API routes for memory operations. Holistic: tenant-only, no scopes."""
 
 import json
+import traceback
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+logger = structlog.get_logger()
 
 from ..utils.metrics import MEMORY_READS, MEMORY_WRITES
 from .auth import AuthContext, get_auth_context, require_write_permission
@@ -82,6 +86,12 @@ async def write_memory(
         )
     except Exception as e:
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="error").inc()
+        logger.error(
+            "memory_write_failed",
+            tenant_id=auth.tenant_id,
+            error=str(e),
+            traceback=traceback.format_exc(),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
