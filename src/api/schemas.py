@@ -162,3 +162,186 @@ class MemoryStats(BaseModel):
     oldest_memory: Optional[datetime] = None
     newest_memory: Optional[datetime] = None
     estimated_size_mb: float
+
+
+# ---- Dashboard Schemas ----
+
+
+class DashboardOverview(BaseModel):
+    """Comprehensive dashboard overview stats."""
+
+    total_memories: int = 0
+    active_memories: int = 0
+    silent_memories: int = 0
+    compressed_memories: int = 0
+    archived_memories: int = 0
+    deleted_memories: int = 0
+    labile_memories: int = 0
+    by_type: Dict[str, int] = Field(default_factory=dict)
+    by_status: Dict[str, int] = Field(default_factory=dict)
+    avg_confidence: float = 0.0
+    avg_importance: float = 0.0
+    avg_access_count: float = 0.0
+    avg_decay_rate: float = 0.0
+    oldest_memory: Optional[datetime] = None
+    newest_memory: Optional[datetime] = None
+    estimated_size_mb: float = 0.0
+    total_semantic_facts: int = 0
+    current_semantic_facts: int = 0
+    facts_by_category: Dict[str, int] = Field(default_factory=dict)
+    avg_fact_confidence: float = 0.0
+    avg_evidence_count: float = 0.0
+    total_events: int = 0
+    events_by_type: Dict[str, int] = Field(default_factory=dict)
+    events_by_operation: Dict[str, int] = Field(default_factory=dict)
+
+
+class DashboardMemoryListItem(BaseModel):
+    """Memory item for dashboard list view."""
+
+    id: UUID
+    tenant_id: str
+    agent_id: Optional[str] = None
+    type: str
+    status: str
+    text: str
+    key: Optional[str] = None
+    namespace: Optional[str] = None
+    context_tags: List[str] = Field(default_factory=list)
+    confidence: float = 0.5
+    importance: float = 0.5
+    access_count: int = 0
+    decay_rate: float = 0.01
+    labile: bool = False
+    version: int = 1
+    timestamp: Optional[datetime] = None
+    written_at: Optional[datetime] = None
+
+
+class DashboardMemoryListResponse(BaseModel):
+    """Paginated memory list response."""
+
+    items: List[DashboardMemoryListItem]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class DashboardMemoryDetail(BaseModel):
+    """Full memory detail for dashboard."""
+
+    id: UUID
+    tenant_id: str
+    agent_id: Optional[str] = None
+    type: str
+    status: str
+    text: str
+    key: Optional[str] = None
+    namespace: Optional[str] = None
+    context_tags: List[str] = Field(default_factory=list)
+    source_session_id: Optional[str] = None
+    entities: Any = None
+    relations: Any = None
+    metadata: Any = None
+    confidence: float = 0.5
+    importance: float = 0.5
+    access_count: int = 0
+    last_accessed_at: Optional[datetime] = None
+    decay_rate: float = 0.01
+    labile: bool = False
+    provenance: Any = None
+    version: int = 1
+    supersedes_id: Optional[UUID] = None
+    content_hash: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    written_at: Optional[datetime] = None
+    valid_from: Optional[datetime] = None
+    valid_to: Optional[datetime] = None
+    related_events: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class DashboardEventItem(BaseModel):
+    """Event log item for dashboard."""
+
+    id: UUID
+    tenant_id: str
+    scope_id: str
+    agent_id: Optional[str] = None
+    event_type: str
+    operation: Optional[str] = None
+    payload: Any = None
+    memory_ids: List[UUID] = Field(default_factory=list)
+    parent_event_id: Optional[UUID] = None
+    created_at: Optional[datetime] = None
+
+
+class DashboardEventListResponse(BaseModel):
+    """Paginated event list response."""
+
+    items: List[DashboardEventItem]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class TimelinePoint(BaseModel):
+    """Single data point in a timeline."""
+
+    date: str
+    count: int
+
+
+class DashboardTimelineResponse(BaseModel):
+    """Timeline data for charts."""
+
+    points: List[TimelinePoint]
+    total: int
+
+
+class ComponentStatus(BaseModel):
+    """Health status for a single component."""
+
+    name: str
+    status: str  # "ok", "error", "degraded", "unknown"
+    latency_ms: Optional[float] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+
+
+class DashboardComponentsResponse(BaseModel):
+    """Component health report."""
+
+    components: List[ComponentStatus]
+
+
+class TenantInfo(BaseModel):
+    """Tenant summary info."""
+
+    tenant_id: str
+    memory_count: int = 0
+    fact_count: int = 0
+    event_count: int = 0
+
+
+class DashboardTenantsResponse(BaseModel):
+    """List of tenants."""
+
+    tenants: List[TenantInfo]
+
+
+class DashboardConsolidateRequest(BaseModel):
+    """Request to trigger consolidation."""
+
+    tenant_id: str
+    user_id: Optional[str] = None
+
+
+class DashboardForgetRequest(BaseModel):
+    """Request to trigger forgetting."""
+
+    tenant_id: str
+    user_id: Optional[str] = None
+    dry_run: bool = True
+    max_memories: int = 5000

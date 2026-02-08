@@ -118,6 +118,8 @@ CognitiveMemoryLayer/
 ├── src/
 │   ├── api/                    # REST API endpoints
 │   ├── core/                   # Core domain models
+│   ├── dashboard/              # Web dashboard (static SPA + API routes)
+│   │   └── static/             # HTML, CSS, JS (overview, memories, events, management)
 │   ├── memory/
 │   │   ├── sensory/            # Sensory buffer
 │   │   ├── working/            # Working memory
@@ -1670,7 +1672,7 @@ Update all documentation and examples to reflect the holistic, seamless API.
 
 # Cognitive Memory Layer – Project Status
 
-**Last updated:** 2026-02-07
+**Last updated:** 2026-02-08
 
 This document tracks what has been implemented against the plan in the `ProjectPlan` folder. It includes both the original RAG-based phases (1–14) and the new **Intrinsic Memory System** phases (I1–I10), which are planned but not yet implemented.
 
@@ -2163,6 +2165,22 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | POST /admin/consolidate/{user_id} | ✅ | `src/api/admin_routes.py` |
 | POST /admin/forget/{user_id} (dry_run) | ✅ | `src/api/admin_routes.py` |
 
+### Task 9.6: Web Dashboard (Monitoring & Management) ✅
+
+| Deliverable | Status | Location / Notes |
+|-------------|--------|------------------|
+| Dashboard API routes (admin-only) | ✅ | `src/api/dashboard_routes.py` – overview, memories list/detail, events, timeline, components health, tenants, consolidate, forget |
+| Dashboard Pydantic schemas | ✅ | `src/api/schemas.py` – DashboardOverview, DashboardMemoryListItem/Detail, DashboardEventItem, TimelinePoint, ComponentStatus, TenantInfo, etc. |
+| Static SPA (vanilla HTML/CSS/JS) | ✅ | `src/dashboard/static/` – index.html, css/styles.css, js/app.js, api.js, pages (overview, memories, detail, components, events, management), utils (formatters, charts) |
+| FastAPI integration | ✅ | `src/api/app.py` – dashboard_router at `/api/v1`, static mount at `/dashboard/static`, SPA catch-all at `/dashboard` |
+| Overview page | ✅ | KPI cards, type/status/timeline/facts charts (Chart.js), system health, recent events |
+| Memory Explorer | ✅ | Filterable, sortable, paginated table; click-through to detail |
+| Memory Detail | ✅ | Full record: content, metrics, provenance, entities/relations, metadata, related events |
+| Components page | ✅ | PostgreSQL, Neo4j, Redis health and metrics; architecture legend |
+| Events page | ✅ | Paginated event log, expandable payloads, auto-refresh toggle |
+| Management page | ✅ | Trigger consolidation and forgetting with tenant selector, dry-run, result display |
+| Auth | ✅ | Login overlay with admin API key; key stored in localStorage; all dashboard API calls use X-API-Key |
+
 ### Phase 9 Tests
 
 - **Unit:** `tests/unit/test_phase9_api.py` – Auth config (_build_api_keys), schemas
@@ -2187,6 +2205,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 - [x] OpenAPI documentation (via FastAPI)
 - [x] Unit tests for routes/auth
 - [x] Integration tests for API flow
+- [x] Web dashboard (monitoring & management) at /dashboard with admin-only API
 
 ---
 
@@ -2543,7 +2562,7 @@ Or run only tests (Postgres must be up):
 - Phase 6 adds reconsolidation: `LabileStateTracker`, `ConflictDetector`, `BeliefRevisionEngine`, `ReconsolidationService`; `PostgresMemoryStore.update()` supports `valid_to` and `metadata` for revision patches.
 - Phase 7 adds consolidation: `ConsolidationScheduler`, `EpisodeSampler`, `SemanticClusterer`, `GistExtractor`, `SchemaAligner`, `ConsolidationMigrator`, `ConsolidationWorker`; `PostgresMemoryStore.scan()` supports `since` filter for time-window sampling.
 - Phase 8 adds active forgetting: `RelevanceScorer`, `ForgettingPolicyEngine`, `ForgettingExecutor`, `InterferenceDetector`, `ForgettingWorker`, `ForgettingScheduler`; `PostgresMemoryStore.update()` supports `entities` and `relations` for compress. Optional: LLM-based compression via `summarize_for_compression` and `VLLMClient` (vLLM + Llama 3.2 1B in Docker); dependency check before delete via `count_references_to`; Celery task `run_forgetting_task` and beat schedule.
-- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`; API key auth, multi-tenancy (X-Tenant-ID). Phase 11+ refactor: holistic (tenant-only) memory; no scopes. Phase 12 adds `/memory/turn` (seamless memory) and `SeamlessMemoryProvider`.
+- Phase 9 adds REST API: `src/api/app.py`, `auth.py`, `middleware.py`, `schemas.py`, `routes.py`, `admin_routes.py`; `MemoryOrchestrator` in `src/memory/orchestrator.py`; endpoints `/api/v1/memory/write`, `/read`, `/update`, `/forget`, `/stats`, `/health`; admin endpoints `/api/v1/admin/consolidate`, `/forget`; API key auth, multi-tenancy (X-Tenant-ID). Phase 11+ refactor: holistic (tenant-only) memory; no scopes. Phase 12 adds `/memory/turn` (seamless memory) and `SeamlessMemoryProvider`. **Dashboard (Task 9.6):** Web app at `/dashboard` (vanilla HTML/CSS/JS SPA in `src/dashboard/static/`), dashboard API at `/api/v1/dashboard/*` (overview, memories, events, timeline, components, tenants, consolidate, forget); admin key required.
 - Phase 10 adds: conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings); E2E tests in `tests/e2e/test_api_flows.py`; integration test setup with testcontainers (`tests/integration/conftest.py`); multi-stage Dockerfile (`docker/Dockerfile`); GitHub Actions CI with lint, test (coverage + codecov), build/push to ghcr.io; API healthcheck in docker-compose; `src/utils/logging_config.py` for structured logging; `src/utils/metrics.py` for Prometheus (MEMORY_WRITES, MEMORY_READS, RETRIEVAL_LATENCY, MEMORY_COUNT) and `/metrics` endpoint.
 - **Intrinsic Memory System (I1–I10):** Plan documents exist (`Phase1_Foundation_ModelAccessLayer.md` through `Phase10_ObservabilityBenchmarking.md`). These phases define the architecture for moving from external RAG to intrinsic LLM memory integration (Model Access Layer, Logit/Activation/Synaptic/Weight interfaces, Controller, Hippocampal Encoder, Tiered Cache, Integration, Observability). Implementation has not yet started.
 
