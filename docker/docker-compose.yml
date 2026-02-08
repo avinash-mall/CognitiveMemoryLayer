@@ -90,10 +90,15 @@ services:
     command: sh -c "alembic upgrade head && pytest tests -v --tb=short"
 
   # API server (Phase 9). Run: docker compose up api (after building)
+  # Uses ../.env for AUTH__API_KEY, LLM__PROVIDER, EMBEDDING__* (e.g. Ollama).
+  # If Ollama runs on the host, set in .env: LLM__BASE_URL=http://host.docker.internal:11434/v1
+  # and EMBEDDING__BASE_URL=http://host.docker.internal:11434/v1 so the container can reach the host.
   api:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    env_file:
+      - ../.env
     environment:
       DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
       DATABASE__NEO4J_URL: bolt://neo4j:7687

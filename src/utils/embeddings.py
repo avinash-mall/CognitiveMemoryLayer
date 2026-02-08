@@ -48,7 +48,7 @@ class OpenAIEmbeddings(EmbeddingClient):
         self,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
-        dimensions: int = 1536,
+        dimensions: Optional[int] = None,
         base_url: Optional[str] = None,
         pass_dimensions: bool = True,
     ) -> None:
@@ -59,7 +59,7 @@ class OpenAIEmbeddings(EmbeddingClient):
         settings = get_settings()
         key = api_key or settings.embedding.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.model = model or settings.embedding.model
-        self._dimensions = dimensions
+        self._dimensions = dimensions if dimensions is not None else settings.embedding.dimensions
         self._pass_dimensions = pass_dimensions
         url = base_url or settings.embedding.base_url
         if url:
@@ -149,8 +149,8 @@ class LocalEmbeddings(EmbeddingClient):
 class MockEmbeddingClient(EmbeddingClient):
     """Deterministic mock for tests; no API calls."""
 
-    def __init__(self, dimensions: int = 1536) -> None:
-        self._dimensions = dimensions
+    def __init__(self, dimensions: Optional[int] = None) -> None:
+        self._dimensions = dimensions if dimensions is not None else get_settings().embedding.dimensions
 
     @property
     def dimensions(self) -> int:

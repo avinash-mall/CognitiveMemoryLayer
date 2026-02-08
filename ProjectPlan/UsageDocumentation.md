@@ -6,14 +6,15 @@
 2. [Quick Start](#quick-start)
 3. [LLM Tool Calling Interface](#llm-tool-calling-interface)
 4. [API Reference](#api-reference)
-5. [Holistic memory and context tags](#holistic-memory-and-context-tags)
-6. [Memory Types](#memory-types)
-7. [Authentication](#authentication)
-8. [Response Formats](#response-formats)
-9. [Best Practices for LLM Integration](#best-practices-for-llm-integration)
-10. [Setup and Deployment](#setup-and-deployment)
-11. [Configuration Reference](#configuration-reference)
-12. [Advanced Features](#advanced-features)
+5. [Dashboard (Monitoring & Management)](#dashboard-monitoring--management)
+6. [Holistic memory and context tags](#holistic-memory-and-context-tags)
+7. [Memory Types](#memory-types)
+8. [Authentication](#authentication)
+9. [Response Formats](#response-formats)
+10. [Best Practices for LLM Integration](#best-practices-for-llm-integration)
+11. [Setup and Deployment](#setup-and-deployment)
+12. [Configuration Reference](#configuration-reference)
+13. [Advanced Features](#advanced-features)
 
 ---
 
@@ -595,6 +596,56 @@ Health check endpoint.
 
 ---
 
+## Dashboard (Monitoring & Management)
+
+A web-based dashboard provides comprehensive monitoring and management of the memory system. It is served from the same FastAPI application and requires **admin** API key authentication.
+
+### Accessing the Dashboard
+
+1. Start the API server (e.g. `docker compose -f docker/docker-compose.yml up api` or `uvicorn src.api.app:app --port 8000`).
+2. Open a browser and go to **http://localhost:8000/dashboard**.
+3. Enter your **admin API key** (the value of `AUTH__ADMIN_API_KEY`). The key is stored in the browser’s `localStorage` for the session.
+4. Use the sidebar to switch between pages.
+
+### Dashboard Pages
+
+| Page | Description |
+|------|-------------|
+| **Overview** | KPI cards (total/active memories, avg confidence/importance, storage size, semantic facts), memory type/status charts, activity timeline, semantic facts by category, system health (PostgreSQL, Neo4j, Redis), recent events, events by type/operation, temporal range. |
+| **Memory Explorer** | Paginated, filterable table of memory records. Filter by type, status, search text; sort by timestamp, confidence, importance, access count. Click a row to open the memory detail view. |
+| **Memory Detail** | Full record view: content, key, namespace, context tags, entities/relations, metadata, confidence/importance gauges, access count, decay rate, provenance, version/supersedes, related events. |
+| **Components** | Health status for PostgreSQL, Neo4j, and Redis (connection, latency, row/key counts). Short architecture description of sensory buffer, working memory, hippocampal/neocortical stores, consolidation, and forgetting. |
+| **Events** | Paginated event log with filters (event type, operation). Expandable rows show full payload JSON. Optional auto-refresh every 5 seconds. |
+| **Management** | Trigger **consolidation** (tenant/user) and **active forgetting** (tenant/user, dry-run, max memories). Results displayed in place. |
+
+### Tenant Filtering
+
+Use the **tenant selector** in the top bar to restrict overview, memory list, events, and management to a single tenant. "All Tenants" shows aggregated data.
+
+### Dashboard API Endpoints
+
+All dashboard endpoints live under `/api/v1/dashboard` and require **admin** permission (`X-API-Key` must be the admin key).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/overview` | KPIs, type/status breakdowns, quality metrics, storage, semantic facts, event stats. Optional `tenant_id` query. |
+| GET | `/api/v1/dashboard/memories` | Paginated memory list. Query params: `page`, `per_page`, `type`, `status`, `search`, `tenant_id`, `sort_by`, `order`. |
+| GET | `/api/v1/dashboard/memories/{id}` | Full memory detail including related events. |
+| GET | `/api/v1/dashboard/events` | Paginated event log. Query params: `page`, `per_page`, `event_type`, `operation`, `tenant_id`. |
+| GET | `/api/v1/dashboard/timeline` | Memory counts per day for charts. Query params: `days`, `tenant_id`. |
+| GET | `/api/v1/dashboard/components` | Health check for PostgreSQL, Neo4j, Redis (latency, counts). |
+| GET | `/api/v1/dashboard/tenants` | List all tenants with memory/fact/event counts. |
+| POST | `/api/v1/dashboard/consolidate` | Trigger consolidation. Body: `{ "tenant_id": "...", "user_id": "..." }`. |
+| POST | `/api/v1/dashboard/forget` | Trigger forgetting. Body: `{ "tenant_id": "...", "user_id": "...", "dry_run": true, "max_memories": 5000 }`. |
+
+### Implementation Notes
+
+- **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/` (no build step). Chart.js is loaded via CDN for overview charts.
+- **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`).
+- **Static files**: Served at `/dashboard/static`; SPA fallback at `/dashboard` and `/dashboard/*` serves `index.html`.
+
+---
+
 ## Holistic memory and context tags
 
 Memory access is **holistic per tenant**: there are no scopes or partitions. All memories for a tenant live in a single unified store. You identify the tenant via the `X-Tenant-ID` header (or the default tenant from your API key).
@@ -1132,6 +1183,8 @@ View structured logs in JSON format for parsing.
 Interactive API documentation is available at:
 - **Swagger UI:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
+
+**Web Dashboard (monitoring and management):** http://localhost:8000/dashboard — use your admin API key to sign in. See [Dashboard (Monitoring & Management)](#dashboard-monitoring--management) for details.
 
 These provide full OpenAPI schema and allow testing endpoints directly in the browser.
 
