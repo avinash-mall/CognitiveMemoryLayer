@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.config import get_settings
 from src.memory.working.models import ChunkType, SemanticChunk
 from src.memory.hippocampal.store import HippocampalStore
 from src.memory.hippocampal.write_gate import WriteGate
@@ -15,7 +16,8 @@ from src.utils.embeddings import MockEmbeddingClient
 
 def _make_store(session_factory):
     pg_store = PostgresMemoryStore(session_factory)
-    embeddings = MockEmbeddingClient(dimensions=1536)
+    dims = get_settings().embedding.dimensions
+    embeddings = MockEmbeddingClient(dimensions=dims)
     return HippocampalStore(
         vector_store=pg_store,
         embedding_client=embeddings,
@@ -39,11 +41,12 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         confidence=0.9,
         timestamp=datetime.now(timezone.utc),
     )
+    dims = get_settings().embedding.dimensions
     record = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
     assert record is not None
     assert record.text == chunk.text
     assert record.embedding is not None
-    assert len(record.embedding) == 1536
+    assert len(record.embedding) == dims
 
     # Verify we can retrieve the record (scan/get_recent)
     recent = await hippocampal_store.get_recent(tenant_id, limit=10)

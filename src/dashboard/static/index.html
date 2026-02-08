@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cognitive Memory Layer - Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Login overlay -->
+    <div id="login-overlay" class="login-overlay hidden">
+        <div class="login-card">
+            <div class="login-logo">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                    <circle cx="24" cy="24" r="22" stroke="var(--accent)" stroke-width="2"/>
+                    <circle cx="24" cy="16" r="6" fill="var(--accent)" opacity="0.8"/>
+                    <circle cx="14" cy="30" r="5" fill="var(--accent)" opacity="0.6"/>
+                    <circle cx="34" cy="30" r="5" fill="var(--accent)" opacity="0.6"/>
+                    <line x1="24" y1="22" x2="14" y2="26" stroke="var(--accent)" stroke-width="1.5" opacity="0.5"/>
+                    <line x1="24" y1="22" x2="34" y2="26" stroke="var(--accent)" stroke-width="1.5" opacity="0.5"/>
+                    <line x1="14" y1="30" x2="34" y2="30" stroke="var(--accent)" stroke-width="1.5" opacity="0.3"/>
+                </svg>
+            </div>
+            <h2>Cognitive Memory Layer</h2>
+            <p class="login-subtitle">Enter your admin API key to access the dashboard</p>
+            <form id="login-form">
+                <input type="password" id="api-key-input" placeholder="Admin API Key" autocomplete="off" required>
+                <div id="login-error" class="login-error hidden"></div>
+                <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main app layout -->
+    <div id="app" class="app-layout hidden">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+                    <circle cx="24" cy="24" r="22" stroke="var(--accent)" stroke-width="2"/>
+                    <circle cx="24" cy="16" r="6" fill="var(--accent)" opacity="0.8"/>
+                    <circle cx="14" cy="30" r="5" fill="var(--accent)" opacity="0.6"/>
+                    <circle cx="34" cy="30" r="5" fill="var(--accent)" opacity="0.6"/>
+                    <line x1="24" y1="22" x2="14" y2="26" stroke="var(--accent)" stroke-width="1.5" opacity="0.5"/>
+                    <line x1="24" y1="22" x2="34" y2="26" stroke="var(--accent)" stroke-width="1.5" opacity="0.5"/>
+                </svg>
+                <span class="sidebar-title">CML Dashboard</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#overview" class="nav-item active" data-page="overview">
+                    <span class="nav-icon">&#9634;</span>
+                    <span class="nav-label">Overview</span>
+                </a>
+                <a href="#memories" class="nav-item" data-page="memories">
+                    <span class="nav-icon">&#9733;</span>
+                    <span class="nav-label">Memories</span>
+                </a>
+                <a href="#components" class="nav-item" data-page="components">
+                    <span class="nav-icon">&#9881;</span>
+                    <span class="nav-label">Components</span>
+                </a>
+                <a href="#events" class="nav-item" data-page="events">
+                    <span class="nav-icon">&#9776;</span>
+                    <span class="nav-label">Events</span>
+                </a>
+                <a href="#management" class="nav-item" data-page="management">
+                    <span class="nav-icon">&#9879;</span>
+                    <span class="nav-label">Management</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <button id="theme-toggle" class="btn btn-ghost btn-sm" title="Toggle theme">
+                    <span id="theme-icon">&#9790;</span>
+                </button>
+                <button id="logout-btn" class="btn btn-ghost btn-sm" title="Logout">
+                    &#10148; Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1 id="page-title" class="page-title">Overview</h1>
+                <div class="top-bar-actions">
+                    <select id="tenant-selector" class="select-sm" title="Filter by tenant">
+                        <option value="">All Tenants</option>
+                    </select>
+                    <button id="refresh-btn" class="btn btn-ghost btn-sm" title="Refresh data">&#8635; Refresh</button>
+                </div>
+            </header>
+            <div id="page-container" class="page-container">
+                <!-- Pages are rendered here dynamically -->
+                <div id="page-overview" class="page active"></div>
+                <div id="page-memories" class="page"></div>
+                <div id="page-detail" class="page"></div>
+                <div id="page-components" class="page"></div>
+                <div id="page-events" class="page"></div>
+                <div id="page-management" class="page"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts (ES modules) -->
+    <script type="module" src="/dashboard/static/js/app.js"></script>
+</body>
+</html>

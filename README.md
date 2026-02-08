@@ -70,6 +70,7 @@ Drop-in `/memory/turn` endpoint auto-retrieves context—no complex orchestratio
 - [Neuroscience-to-Implementation Mapping](#-neuroscience-to-implementation-mapping)
 - [System Components](#-system-components)
 - [Quick Start](#-quick-start)
+- [Monitoring Dashboard](#-monitoring-dashboard)
 - [API Documentation](#-api-documentation)
 - [Project Structure](#-project-structure)
 - [References](#-references)
@@ -477,6 +478,26 @@ curl -X POST http://localhost:8000/api/v1/memory/turn \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
+### 5. Monitoring Dashboard
+
+A web-based dashboard provides comprehensive monitoring and management of memories and system components.
+
+```bash
+# With the API running, open in a browser:
+# http://localhost:8000/dashboard
+```
+
+Sign in with your **admin API key** (`AUTH__ADMIN_API_KEY`). The dashboard includes:
+
+- **Overview** — KPIs, memory type/status charts, activity timeline, system health (PostgreSQL, Neo4j, Redis), recent events
+- **Memory Explorer** — Filterable, sortable, paginated table of memories; click a row for full detail
+- **Memory Detail** — Full record view: content, metrics, provenance, entities/relations, related events
+- **Components** — Health status and metrics for each storage backend
+- **Events** — Paginated event log with expandable payloads; optional auto-refresh
+- **Management** — Trigger consolidation and active forgetting (with dry-run) per tenant
+
+See [UsageDocumentation.md — Dashboard](./ProjectPlan/UsageDocumentation.md#dashboard-monitoring--management) for full details and API reference.
+
 ### Run Tests
 
 ```bash
@@ -512,6 +533,8 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 
 🔗 **Interactive Docs**: http://localhost:8000/docs
 
+📊 **Web Dashboard**: http://localhost:8000/dashboard — monitor memories, view component health, browse events, and trigger consolidation/forgetting (admin API key required).
+
 ### Key Endpoints
 
 | Endpoint | Method | Description |
@@ -524,8 +547,9 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 | `/api/v1/memory/stats` | GET | Get memory statistics |
 | `/api/v1/session/create` | POST | Create new session |
 | `/api/v1/health` | GET | Health check |
+| `/dashboard` | GET | **Web dashboard** (monitoring & management; admin key required) |
 
-> **🔐 Authentication**: Set `AUTH__API_KEY` in your environment and pass via `X-API-Key` header.
+> **🔐 Authentication**: Set `AUTH__API_KEY` in your environment and pass via `X-API-Key` header. The **dashboard** requires `AUTH__ADMIN_API_KEY`.
 
 ---
 
@@ -536,6 +560,8 @@ CognitiveMemoryLayer/
 ├── 📂 src/
 │   ├── api/                    # REST API endpoints
 │   ├── core/                   # Core schemas, enums, config
+│   ├── dashboard/              # 📊 Web dashboard (monitoring & management)
+│   │   └── static/             # HTML, CSS, JS SPA (overview, memories, events, management)
 │   ├── memory/
 │   │   ├── sensory/            # 👁️ Sensory buffer
 │   │   ├── working/            # 🧠 Working memory + chunker
