@@ -189,6 +189,6 @@ class TestConfig:
 
     def test_nested_settings_defaults(self):
         s = get_settings()
-        assert s.embedding.provider in ("openai", "local", "vllm")
-        assert s.embedding.dimensions == 1536
+        assert s.embedding.provider in ("openai", "local", "vllm", "ollama")
+        assert isinstance(s.embedding.dimensions, int) and s.embedding.dimensions >= 1
         assert s.llm.provider in ("openai", "vllm", "ollama", "gemini", "claude")

@@ -17,3 +17,6 @@ langchain-openai>=0.3.0,<0.4.0
 
 # Optional: for better async support
 anyio>=4.0.0
+
+# Streamlit chatbot (examples/ollama_chatbot_app.py)
+streamlit>=1.28.0

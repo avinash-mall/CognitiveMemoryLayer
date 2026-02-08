@@ -139,7 +139,17 @@ class CognitiveMemoryClient:
         response = self._client.request(
             method, url, headers=headers, **kwargs
         )
-        response.raise_for_status()
+        if not response.is_success:
+            body = response.text
+            try:
+                data = response.json()
+                detail = data.get("detail", body)
+            except Exception:
+                detail = body
+            msg = f"{response.status_code} {response.reason_phrase}"
+            if detail:
+                msg += f" — {detail}"
+            raise httpx.HTTPStatusError(msg, request=response.request, response=response)
         return response.json()
     
     def health(self) -> Dict[str, Any]:
