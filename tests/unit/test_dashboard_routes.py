@@ -82,8 +82,10 @@ def mock_db():
 
 def _override_get_db(mock_db):
     """Set dependency override for _get_db; caller must pop it in finally."""
+
     def _mock_get_db(request: Request):
         return mock_db
+
     app.dependency_overrides[_get_db] = _mock_get_db
 
 

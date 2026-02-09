@@ -13,6 +13,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select, text
+
 from ..core.config import get_settings
 from ..storage.connection import DatabaseManager
 from ..storage.models import EventLogModel, MemoryRecordModel, SemanticFactModel
@@ -230,7 +231,8 @@ async def dashboard_memories(
     search: Optional[str] = Query(None),
     tenant_id: Optional[str] = Query(None),
     sort_by: str = Query(
-        "timestamp", pattern="^(timestamp|confidence|importance|access_count|written_at|type|status)$"
+        "timestamp",
+        pattern="^(timestamp|confidence|importance|access_count|written_at|type|status)$",
     ),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     auth: AuthContext = Depends(require_admin_permission),
