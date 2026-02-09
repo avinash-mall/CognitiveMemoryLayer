@@ -171,9 +171,7 @@ class MemoryOrchestrator:
         scratch_pad = ScratchPad(store=episodic_store)
         conversation = ConversationMemory(store=episodic_store)
         tool_memory = ToolMemory(store=episodic_store)
-        knowledge_base = KnowledgeBase(
-            store=episodic_store, embedding_client=embedding_client
-        )
+        knowledge_base = KnowledgeBase(store=episodic_store, embedding_client=embedding_client)
 
         return cls(
             short_term=short_term,
