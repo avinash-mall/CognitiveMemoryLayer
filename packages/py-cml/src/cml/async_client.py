@@ -593,7 +593,7 @@ class AsyncCognitiveMemoryLayer:
             "dashboard/tenants",
             use_admin_key=True,
         )
-        return cast(list[dict[str, Any]], data.get("tenants", []))
+        return cast("list[dict[str, Any]]", data.get("tenants", []))
 
     # ---- Phase 5: Event log ----
 

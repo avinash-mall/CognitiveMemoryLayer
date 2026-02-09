@@ -61,7 +61,9 @@ def _check_embedded_deps() -> None:
             "Embedded mode requires aiosqlite. Install with: pip install py-cml[embedded]"
         ) from e
     try:
-        from src.memory.orchestrator import MemoryOrchestrator  # type: ignore[import-not-found]
+        from src.memory.orchestrator import (
+            MemoryOrchestrator,  # type: ignore[import-not-found]  # noqa: F401
+        )
     except ImportError as e:
         raise ImportError(
             "Embedded mode requires the CML engine. "
@@ -90,7 +92,9 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     episodes = [_retrieved_to_memory_item(m) for m in packet.recent_episodes]
     all_items = facts + preferences + episodes
     try:
-        from src.retrieval.packet_builder import MemoryPacketBuilder  # type: ignore[import-not-found]
+        from src.retrieval.packet_builder import (
+            MemoryPacketBuilder,  # type: ignore[import-not-found]
+        )
 
         builder = MemoryPacketBuilder()
         llm_context = builder.to_llm_context(packet, max_tokens=4000)
