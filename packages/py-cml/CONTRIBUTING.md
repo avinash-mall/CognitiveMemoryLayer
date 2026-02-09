@@ -116,7 +116,7 @@ Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The wo
 4. **Tag:** `git tag py-cml-v0.1.0` (use the same version number).
 5. **Push:** `git push origin main --tags`. The `py-cml-publish.yml` workflow runs and publishes to PyPI.
 6. **Optional:** Create a GitHub Release from the tag and paste the CHANGELOG section for that version.
-7. **Verify:** `pip install py-cml==0.1.0` and `from cml import CognitiveMemoryLayer`.
+7. **Verify:** `pip install cognitive-memory-layer==0.1.0` and `from cml import CognitiveMemoryLayer`.
 
 **TestPyPI:** Before the first production release, you can configure a trusted publisher for TestPyPI and run the same workflow from a branch (e.g. `release/*`) or trigger a test publish to verify the package builds and installs.
 
