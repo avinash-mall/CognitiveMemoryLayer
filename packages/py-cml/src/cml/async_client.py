@@ -44,6 +44,8 @@ class AsyncCognitiveMemoryLayer:
             result = await memory.read("user preferences")
     """
 
+    _loop: asyncio.AbstractEventLoop | None
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -591,7 +593,7 @@ class AsyncCognitiveMemoryLayer:
             "dashboard/tenants",
             use_admin_key=True,
         )
-        return data.get("tenants", [])
+        return cast(list[dict[str, Any]], data.get("tenants", []))
 
     # ---- Phase 5: Event log ----
 
