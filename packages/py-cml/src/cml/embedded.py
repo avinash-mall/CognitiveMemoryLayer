@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -61,7 +61,9 @@ def _check_embedded_deps() -> None:
             "Embedded mode requires aiosqlite. Install with: pip install py-cml[embedded]"
         ) from e
     try:
-        from src.memory.orchestrator import MemoryOrchestrator  # type: ignore[import-untyped]  # noqa: F401
+        from src.memory.orchestrator import (
+            MemoryOrchestrator,  # type: ignore[import-untyped]  # noqa: F401
+        )
     except ImportError as e:
         raise ImportError(
             "Embedded mode requires the CML engine. "
@@ -285,7 +287,9 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
-        from src.memory.seamless_provider import SeamlessMemoryProvider  # type: ignore[import-untyped]
+        from src.memory.seamless_provider import (
+            SeamlessMemoryProvider,  # type: ignore[import-untyped]
+        )
 
         provider = SeamlessMemoryProvider(
             self._orchestrator,
@@ -373,7 +377,7 @@ class EmbeddedCognitiveMemoryLayer:
         from uuid import uuid4
 
         session_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._session_store[session_id] = {
             "name": name,
             "created_at": now,
@@ -404,7 +408,7 @@ class EmbeddedCognitiveMemoryLayer:
             if isinstance(ts, str):
                 ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
             elif ts is None:
-                ts = datetime.now(timezone.utc)
+                ts = datetime.now(UTC)
             return MemoryItem(
                 id=mid,
                 text=m.get("text", ""),

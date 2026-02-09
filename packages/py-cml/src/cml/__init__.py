@@ -27,9 +27,8 @@ __all__ = [
     "AuthenticationError",
     "AuthorizationError",
     "CMLConfig",
-    "CMLOpenAIHelper",
-    "configure_logging",
     "CMLError",
+    "CMLOpenAIHelper",
     "CognitiveMemoryLayer",
     "ConnectionError",
     "EmbeddedCognitiveMemoryLayer",
@@ -43,4 +42,5 @@ __all__ = [
     "TimeoutError",
     "ValidationError",
     "__version__",
+    "configure_logging",
 ]

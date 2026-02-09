@@ -3,8 +3,6 @@
 from datetime import datetime
 from uuid import UUID
 
-import pytest
-
 from cml.models.requests import ReadRequest, WriteRequest
 from cml.models.responses import MemoryItem, ReadResponse, WriteResponse
 
