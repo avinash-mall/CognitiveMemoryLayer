@@ -48,4 +48,3 @@ async def live_client(integration_config: CMLConfig):
     with contextlib.suppress(Exception):
         await client.delete_all(confirm=True)
     await client.close()
-
