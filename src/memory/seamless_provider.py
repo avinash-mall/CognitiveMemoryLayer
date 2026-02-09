@@ -6,7 +6,7 @@ Makes memory recall unconscious, like human association.
 from dataclasses import dataclass
 from typing import List, Optional
 
-from ..core.schemas import MemoryPacket, MemoryRecord, RetrievedMemory
+from ..core.schemas import MemoryPacket, RetrievedMemory
 
 try:
     from ..memory.orchestrator import MemoryOrchestrator
@@ -182,6 +182,8 @@ class SeamlessMemoryProvider:
             and hasattr(self.orchestrator, "reconsolidation")
             and self.orchestrator.reconsolidation
         ):
+            from ..core.schemas import MemoryRecord
+
             records = [
                 m if isinstance(m, MemoryRecord) else getattr(m, "record", m)
                 for m in retrieved_memories
