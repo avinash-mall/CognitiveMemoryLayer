@@ -5,12 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 try:
-    from src.core.enums import MemorySource, MemoryStatus, MemoryType  # type: ignore[import-untyped]
+    from src.core.enums import (  # type: ignore[import-untyped]
+        MemorySource,
+        MemoryStatus,
+        MemoryType,
+    )
     from src.core.schemas import (  # type: ignore[import-untyped]
         EntityMention,
         MemoryRecord,
@@ -120,7 +124,7 @@ class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
         assert self._db is not None
         # Simple insert (no dedup by content_hash for lite; could add later)
         record_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ts = record.timestamp or now
         await self._db.execute(
             """
@@ -379,8 +383,8 @@ class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
             entities=entities,
             relations=relations,
             metadata=metadata or {},
-            timestamp=self._parse_dt(row.get("timestamp")) or datetime.now(timezone.utc),
-            written_at=self._parse_dt(row.get("written_at")) or datetime.now(timezone.utc),
+            timestamp=self._parse_dt(row.get("timestamp")) or datetime.now(UTC),
+            written_at=self._parse_dt(row.get("written_at")) or datetime.now(UTC),
             valid_from=self._parse_dt(row.get("valid_from")),
             valid_to=self._parse_dt(row.get("valid_to")),
             confidence=float(row.get("confidence", 0.5)),
