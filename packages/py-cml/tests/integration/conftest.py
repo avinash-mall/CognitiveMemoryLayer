@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -47,10 +48,8 @@ async def live_client(
         pytest.skip("CML server not reachable; set CML_TEST_URL and run server")
     client = AsyncCognitiveMemoryLayer(config=integration_config)
     yield client
-    try:
+    with contextlib.suppress(Exception):
         await client.delete_all(confirm=True)
-    except Exception:
-        pass
     await client.close()
 
 
@@ -63,8 +62,6 @@ def live_sync_client(
         pytest.skip("CML server not reachable; set CML_TEST_URL and run server")
     client = CognitiveMemoryLayer(config=integration_config)
     yield client
-    try:
+    with contextlib.suppress(Exception):
         client.delete_all(confirm=True)
-    except Exception:
-        pass
     client.close()

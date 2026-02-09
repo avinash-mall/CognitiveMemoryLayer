@@ -14,7 +14,6 @@ from cml.models import ReadResponse, StatsResponse, WriteResponse
 from cml.utils.deprecation import deprecated
 from cml.utils.serialization import CMLJSONEncoder, serialize_for_api
 
-
 # ---- Exceptions: suggestion and request_id ----
 
 

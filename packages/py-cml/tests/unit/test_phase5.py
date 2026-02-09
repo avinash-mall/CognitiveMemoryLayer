@@ -4,13 +4,10 @@ from datetime import datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
-
 from cml import CognitiveMemoryLayer, NamespacedClient
 from cml.config import CMLConfig
 from cml.integrations import CMLOpenAIHelper
 from cml.models import MemoryItem, ReadResponse, WriteResponse
-
 
 # ---- Admin operations ----
 
