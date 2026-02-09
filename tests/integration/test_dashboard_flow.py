@@ -88,7 +88,5 @@ class TestDashboardIntegration:
 
     def test_dashboard_memory_detail_404_for_unknown_id(self, admin_client: TestClient):
         """GET /dashboard/memories/{id} returns 404 for non-existent memory."""
-        resp = admin_client.get(
-            "/api/v1/dashboard/memories/00000000-0000-0000-0000-000000000001"
-        )
+        resp = admin_client.get("/api/v1/dashboard/memories/00000000-0000-0000-0000-000000000001")
         assert resp.status_code == 404
