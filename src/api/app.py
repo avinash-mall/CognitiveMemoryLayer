@@ -38,8 +38,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
 def create_app() -> FastAPI:
     """Create FastAPI application."""
-    get_settings()
-
     app = FastAPI(
         title="Cognitive Memory Layer",
         description="Neuro-inspired memory system for LLMs",
