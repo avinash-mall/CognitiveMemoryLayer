@@ -61,9 +61,7 @@ def _check_embedded_deps() -> None:
             "Embedded mode requires aiosqlite. Install with: pip install py-cml[embedded]"
         ) from e
     try:
-        from src.memory.orchestrator import (
-            MemoryOrchestrator,  # type: ignore[import-untyped]  # noqa: F401
-        )
+        from src.memory.orchestrator import MemoryOrchestrator  # type: ignore[import-not-found]
     except ImportError as e:
         raise ImportError(
             "Embedded mode requires the CML engine. "
@@ -92,7 +90,7 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     episodes = [_retrieved_to_memory_item(m) for m in packet.recent_episodes]
     all_items = facts + preferences + episodes
     try:
-        from src.retrieval.packet_builder import MemoryPacketBuilder  # type: ignore[import-untyped]
+        from src.retrieval.packet_builder import MemoryPacketBuilder  # type: ignore[import-not-found]
 
         builder = MemoryPacketBuilder()
         llm_context = builder.to_llm_context(packet, max_tokens=4000)
@@ -164,8 +162,8 @@ class EmbeddedCognitiveMemoryLayer:
         self._sqlite_store = SQLiteMemoryStore(db_path=path)
         await self._sqlite_store.initialize()
 
-        from src.utils.embeddings import LocalEmbeddings  # type: ignore[import-untyped]
-        from src.utils.llm import OpenAICompatibleClient  # type: ignore[import-untyped]
+        from src.utils.embeddings import LocalEmbeddings  # type: ignore[import-not-found]
+        from src.utils.llm import OpenAICompatibleClient  # type: ignore[import-not-found]
 
         embedding_client = LocalEmbeddings(model_name=self._config.embedding.model)
         llm_client = OpenAICompatibleClient(
@@ -174,7 +172,7 @@ class EmbeddedCognitiveMemoryLayer:
             api_key=self._config.llm.api_key or "dummy",
         )
 
-        from src.memory.orchestrator import MemoryOrchestrator
+        from src.memory.orchestrator import MemoryOrchestrator  # type: ignore[import-not-found]
 
         self._orchestrator = await MemoryOrchestrator.create_lite(
             self._sqlite_store,
@@ -288,7 +286,7 @@ class EmbeddedCognitiveMemoryLayer:
         """Process a conversational turn."""
         self._ensure_initialized()
         from src.memory.seamless_provider import (
-            SeamlessMemoryProvider,  # type: ignore[import-untyped]
+            SeamlessMemoryProvider,  # type: ignore[import-not-found]
         )
 
         provider = SeamlessMemoryProvider(

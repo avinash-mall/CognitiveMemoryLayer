@@ -100,12 +100,12 @@ async def retry_async(
 
 
 def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
-    delay = base_delay * (2**attempt) + random.uniform(0, base_delay)
+    delay: float = base_delay * (2**attempt) + random.uniform(0, base_delay)
     time.sleep(delay)
     return delay
 
 
 async def _async_sleep_with_backoff(attempt: int, base_delay: float) -> float:
-    delay = base_delay * (2**attempt) + random.uniform(0, base_delay)
+    delay: float = base_delay * (2**attempt) + random.uniform(0, base_delay)
     await asyncio.sleep(delay)
     return delay
