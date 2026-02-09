@@ -8,8 +8,8 @@ from uuid import uuid4
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-logger = structlog.get_logger()
-
+from ..memory.orchestrator import MemoryOrchestrator
+from ..memory.seamless_provider import SeamlessMemoryProvider
 from ..utils.metrics import MEMORY_READS, MEMORY_WRITES
 from .auth import AuthContext, get_auth_context, require_write_permission
 from .schemas import (
@@ -29,9 +29,8 @@ from .schemas import (
     WriteMemoryRequest,
     WriteMemoryResponse,
 )
-from ..memory.orchestrator import MemoryOrchestrator
-from ..memory.seamless_provider import SeamlessMemoryProvider
 
+logger = structlog.get_logger()
 router = APIRouter(tags=["memory"])
 
 
