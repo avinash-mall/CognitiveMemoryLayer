@@ -11,8 +11,8 @@ from cml.models.requests import (
 )
 from cml.models.responses import (
     ConsolidationResult,
-    ForgettingResult,
     ForgetResponse,
+    ForgettingResult,
     HealthResponse,
     MemoryItem,
     ReadResponse,

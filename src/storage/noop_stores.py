@@ -1,6 +1,6 @@
 """No-op storage implementations for embedded lite mode (no Neo4j/Postgres facts)."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .base import GraphStoreBase
@@ -75,7 +75,6 @@ class NoOpFactStore:
         valid_from: Optional[datetime] = None,
         context_tags: Optional[List[str]] = None,
     ) -> SemanticFact:
-        now = datetime.now(timezone.utc)
         parts = key.split(":")
         subject = parts[0] if len(parts) > 0 else "unknown"
         predicate = parts[-1] if len(parts) > 1 else key

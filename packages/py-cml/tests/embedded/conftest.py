@@ -7,7 +7,7 @@ import pytest
 # Optional: skip entire embedded dir if embedded extras not installed.
 # Actual engine (src.memory.orchestrator) may still be missing; tests skip on first use.
 try:
-    from cml.embedded import EmbeddedCognitiveMemoryLayer  # noqa: F401
+    from cml.embedded import EmbeddedCognitiveMemoryLayer
 except ImportError:
     EmbeddedCognitiveMemoryLayer = None  # type: ignore[misc, assignment]
 

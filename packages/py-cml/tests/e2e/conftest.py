@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import pytest
@@ -44,9 +45,7 @@ async def live_client(integration_config: CMLConfig):
         pytest.skip("CML server not reachable for e2e")
     client = AsyncCognitiveMemoryLayer(config=integration_config)
     yield client
-    try:
+    with contextlib.suppress(Exception):
         await client.delete_all(confirm=True)
-    except Exception:
-        pass
     await client.close()
 
