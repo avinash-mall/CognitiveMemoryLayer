@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 # Allow importing src when run from project root or with PYTHONPATH
 try:
-    from src.storage.models import Base  # noqa: F401
+    import src.storage.models  # noqa: F401 - ensure module loaded for fixtures
 except ImportError:
     import sys
     from pathlib import Path
