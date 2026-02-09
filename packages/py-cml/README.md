@@ -2,8 +2,8 @@
 
 **Python SDK for [CognitiveMemoryLayer](https://github.com/<org>/CognitiveMemoryLayer)** — neuro-inspired memory for AI applications.
 
-[![PyPI](https://img.shields.io/pypi/v/py-cml)](https://pypi.org/project/py-cml/)
-[![Python](https://img.shields.io/pypi/pyversions/py-cml)](https://pypi.org/project/py-cml/)
+[![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
+[![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License](https://img.shields.io/github/license/<org>/CognitiveMemoryLayer)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/<org>/CognitiveMemoryLayer/py-cml-test.yml?branch=main)](https://github.com/<org>/CognitiveMemoryLayer/actions)
 
@@ -23,13 +23,13 @@ Give your AI applications human-like memory — store, retrieve, consolidate, an
 ## Installation
 
 ```bash
-pip install py-cml
+pip install cognitive-memory-layer
 ```
 
 With optional embedded mode (run CML in-process without a server):
 
 ```bash
-pip install py-cml[embedded]
+pip install cognitive-memory-layer[embedded]
 ```
 
 ## Quickstart
@@ -68,7 +68,7 @@ async def main():
 
 ## Embedded mode
 
-Run the CML engine in-process (no server, no HTTP). Install with `pip install py-cml[embedded]` and, from the monorepo root, install the engine first: `pip install -e .` then `pip install -e packages/py-cml[embedded]`.
+Run the CML engine in-process (no server, no HTTP). Install with `pip install cognitive-memory-layer[embedded]` and, from the monorepo root, install the engine first: `pip install -e .` then `pip install -e packages/py-cml[embedded]`.
 
 ```python
 from cml import EmbeddedCognitiveMemoryLayer
