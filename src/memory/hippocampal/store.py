@@ -13,7 +13,7 @@ from ...core.schemas import (
 )
 from ...extraction.entity_extractor import EntityExtractor
 from ...extraction.relation_extractor import RelationExtractor
-from ...storage.postgres import PostgresMemoryStore
+from ...storage.base import MemoryStoreBase
 from ...utils.embeddings import EmbeddingClient
 from ..working.models import SemanticChunk
 from .redactor import PIIRedactor
@@ -28,7 +28,7 @@ class HippocampalStore:
 
     def __init__(
         self,
-        vector_store: PostgresMemoryStore,
+        vector_store: MemoryStoreBase,
         embedding_client: EmbeddingClient,
         entity_extractor: Optional[EntityExtractor] = None,
         relation_extractor: Optional[RelationExtractor] = None,

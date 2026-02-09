@@ -19,11 +19,13 @@ from ..memory.tool_memory import ToolMemory
 from ..extraction.fact_extractor import LLMFactExtractor
 from ..reconsolidation.service import ReconsolidationService
 from ..retrieval.memory_retriever import MemoryRetriever
+from ..storage.base import MemoryStoreBase
 from ..storage.connection import DatabaseManager
 from ..storage.neo4j import Neo4jGraphStore
+from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
 from ..storage.postgres import PostgresMemoryStore
-from ..utils.embeddings import get_embedding_client
-from ..utils.llm import get_llm_client
+from ..utils.embeddings import EmbeddingClient, get_embedding_client
+from ..utils.llm import LLMClient, get_llm_client
 
 try:
     from ..core.enums import MemoryType
@@ -109,6 +111,69 @@ class MemoryOrchestrator:
         conversation = ConversationMemory(store=episodic_store)
         tool_memory = ToolMemory(store=episodic_store)
         knowledge_base = KnowledgeBase(store=episodic_store, embedding_client=embedding_client)
+
+        return cls(
+            short_term=short_term,
+            hippocampal=hippocampal,
+            neocortical=neocortical,
+            retriever=retriever,
+            reconsolidation=reconsolidation,
+            consolidation=consolidation,
+            forgetting=forgetting,
+            scratch_pad=scratch_pad,
+            conversation=conversation,
+            tool_memory=tool_memory,
+            knowledge_base=knowledge_base,
+        )
+
+    @classmethod
+    async def create_lite(
+        cls,
+        episodic_store: MemoryStoreBase,
+        embedding_client: EmbeddingClient,
+        llm_client: LLMClient,
+    ) -> "MemoryOrchestrator":
+        """Factory for embedded lite mode: no PostgreSQL/Neo4j/Redis; uses provided episodic store and clients."""
+        graph_store = NoOpGraphStore()
+        fact_store = NoOpFactStore()
+        neocortical = NeocorticalStore(graph_store, fact_store)
+
+        short_term = ShortTermMemory(llm_client=llm_client)
+        hippocampal = HippocampalStore(
+            vector_store=episodic_store,
+            embedding_client=embedding_client,
+        )
+
+        retriever = MemoryRetriever(
+            hippocampal=hippocampal,
+            neocortical=neocortical,
+            llm_client=llm_client,
+        )
+
+        reconsolidation = ReconsolidationService(
+            memory_store=episodic_store,
+            llm_client=llm_client,
+            fact_extractor=LLMFactExtractor(llm_client),
+            redis_client=None,
+        )
+
+        consolidation = ConsolidationWorker(
+            episodic_store=episodic_store,
+            neocortical_store=neocortical,
+            llm_client=llm_client,
+        )
+
+        forgetting = ForgettingWorker(
+            store=episodic_store,
+            compression_llm_client=llm_client,
+        )
+
+        scratch_pad = ScratchPad(store=episodic_store)
+        conversation = ConversationMemory(store=episodic_store)
+        tool_memory = ToolMemory(store=episodic_store)
+        knowledge_base = KnowledgeBase(
+            store=episodic_store, embedding_client=embedding_client
+        )
 
         return cls(
             short_term=short_term,
