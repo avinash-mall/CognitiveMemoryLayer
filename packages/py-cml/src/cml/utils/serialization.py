@@ -38,10 +38,7 @@ def serialize_for_api(data: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, dict):
             result[key] = serialize_for_api(value)
         elif isinstance(value, list):
-            result[key] = [
-                serialize_for_api(v) if isinstance(v, dict) else v
-                for v in value
-            ]
+            result[key] = [serialize_for_api(v) if isinstance(v, dict) else v for v in value]
         else:
             result[key] = value
     return result

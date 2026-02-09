@@ -365,9 +365,7 @@ class CognitiveMemoryLayer:
                 sess.write("User is a Python developer")
                 result = sess.read("user preferences")
         """
-        session_response = self.create_session(
-            name=name, ttl_hours=ttl_hours, metadata=metadata
-        )
+        session_response = self.create_session(name=name, ttl_hours=ttl_hours, metadata=metadata)
         scope = SessionScope(self, session_response.session_id)
         try:
             yield scope
@@ -595,10 +593,7 @@ class CognitiveMemoryLayer:
         Returns:
             List of ReadResponse, one per query.
         """
-        return [
-            self.read(q, max_results=max_results, format=format)
-            for q in queries
-        ]
+        return [self.read(q, max_results=max_results, format=format) for q in queries]
 
     # ---- Phase 5: Tenant management ----
 
@@ -838,7 +833,17 @@ def _dashboard_item_to_memory_item(raw: dict[str, Any]) -> MemoryItem:
         metadata={
             k: v
             for k, v in raw.items()
-            if k not in ("id", "text", "type", "confidence", "relevance", "importance", "timestamp", "written_at")
+            if k
+            not in (
+                "id",
+                "text",
+                "type",
+                "confidence",
+                "relevance",
+                "importance",
+                "timestamp",
+                "written_at",
+            )
         },
     )
 
