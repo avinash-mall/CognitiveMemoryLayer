@@ -1,0 +1,73 @@
+"""Internal request models for constructing API payloads."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+from .enums import MemoryType
+
+
+class WriteRequest(BaseModel):
+    """Write memory request payload."""
+
+    content: str
+    context_tags: list[str] | None = None
+    session_id: str | None = None
+    memory_type: MemoryType | None = None
+    namespace: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    turn_id: str | None = None
+    agent_id: str | None = None
+
+
+class ReadRequest(BaseModel):
+    """Read memory request payload."""
+
+    query: str
+    max_results: int = Field(default=10, le=50)
+    context_filter: list[str] | None = None
+    memory_types: list[MemoryType] | None = None
+    since: datetime | None = None
+    until: datetime | None = None
+    format: Literal["packet", "list", "llm_context"] = "packet"
+
+
+class TurnRequest(BaseModel):
+    """Seamless turn request payload."""
+
+    user_message: str
+    assistant_response: str | None = None
+    session_id: str | None = None
+    max_context_tokens: int = 1500
+
+
+class UpdateRequest(BaseModel):
+    """Update memory request payload."""
+
+    memory_id: UUID
+    text: str | None = None
+    confidence: float | None = None
+    importance: float | None = None
+    metadata: dict[str, Any] | None = None
+    feedback: str | None = None
+
+
+class ForgetRequest(BaseModel):
+    """Forget memories request payload."""
+
+    memory_ids: list[UUID] | None = None
+    query: str | None = None
+    before: datetime | None = None
+    action: Literal["delete", "archive", "silence"] = "delete"
+
+
+class CreateSessionRequest(BaseModel):
+    """Request to create a new memory session."""
+
+    name: str | None = None
+    ttl_hours: int = 24
+    metadata: dict[str, Any] = Field(default_factory=dict)
