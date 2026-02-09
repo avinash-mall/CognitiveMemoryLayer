@@ -150,7 +150,9 @@ class MockEmbeddingClient(EmbeddingClient):
     """Deterministic mock for tests; no API calls."""
 
     def __init__(self, dimensions: Optional[int] = None) -> None:
-        self._dimensions = dimensions if dimensions is not None else get_settings().embedding.dimensions
+        self._dimensions = (
+            dimensions if dimensions is not None else get_settings().embedding.dimensions
+        )
 
     @property
     def dimensions(self) -> int:
