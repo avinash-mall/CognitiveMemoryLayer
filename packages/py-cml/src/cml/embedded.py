@@ -58,7 +58,7 @@ def _check_embedded_deps() -> None:
         import aiosqlite  # type: ignore[import-not-found]  # noqa: F401
     except ImportError as e:
         raise ImportError(
-            "Embedded mode requires aiosqlite. Install with: pip install py-cml[embedded]"
+            "Embedded mode requires aiosqlite. Install with: pip install cognitive-memory-layer[embedded]"
         ) from e
     try:
         from src.memory.orchestrator import (  # type: ignore[import-not-found]

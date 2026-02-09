@@ -8,13 +8,13 @@
 ## Installation
 
 ```bash
-pip install py-cml
+pip install cognitive-memory-layer
 ```
 
 For embedded mode (in-process, no server):
 
 ```bash
-pip install py-cml[embedded]
+pip install cognitive-memory-layer[embedded]
 ```
 
 ## Connect to a Server

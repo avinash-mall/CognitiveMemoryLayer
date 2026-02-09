@@ -21,4 +21,4 @@ def _embedded_available() -> bool:
 def embedded_skip():
     """Skip test if embedded not available."""
     if not _embedded_available():
-        pytest.skip("Embedded mode not installed (pip install py-cml[embedded])")
+        pytest.skip("Embedded mode not installed (pip install cognitive-memory-layer[embedded])")
