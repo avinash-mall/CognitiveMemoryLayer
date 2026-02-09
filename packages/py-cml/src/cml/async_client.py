@@ -567,10 +567,7 @@ class AsyncCognitiveMemoryLayer:
     ) -> list[ReadResponse]:
         """Execute multiple read queries concurrently."""
         self._ensure_same_loop()
-        tasks = [
-            self.read(q, max_results=max_results, format=format)
-            for q in queries
-        ]
+        tasks = [self.read(q, max_results=max_results, format=format) for q in queries]
         return list(await asyncio.gather(*tasks))
 
     # ---- Phase 5: Tenant management ----
@@ -981,9 +978,7 @@ class AsyncNamespacedClient:
         tenant_id: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        return await self._parent.consolidate(
-            tenant_id=tenant_id, user_id=user_id
-        )
+        return await self._parent.consolidate(tenant_id=tenant_id, user_id=user_id)
 
     async def run_forgetting(
         self,

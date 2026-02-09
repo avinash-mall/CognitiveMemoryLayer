@@ -71,9 +71,7 @@ class ReadResponse(BaseModel):
         return self.llm_context or ""
 
     def __str__(self) -> str:
-        lines = [
-            f"Query: {self.query} ({self.total_count} results, {self.elapsed_ms:.0f}ms)"
-        ]
+        lines = [f"Query: {self.query} ({self.total_count} results, {self.elapsed_ms:.0f}ms)"]
         for mem in self.memories[:10]:
             text_snippet = mem.text[:80] + "..." if len(mem.text) > 80 else mem.text
             lines.append(f"  [{mem.type}] {text_snippet} (rel={mem.relevance:.2f})")

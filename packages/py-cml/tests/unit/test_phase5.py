@@ -219,7 +219,12 @@ def test_namespaced_client_write_injects_namespace() -> None:
     config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
-        return_value={"success": True, "memory_id": str(uuid4()), "chunks_created": 1, "message": ""}
+        return_value={
+            "success": True,
+            "memory_id": str(uuid4()),
+            "chunks_created": 1,
+            "message": "",
+        }
     )
     ns = client.with_namespace("ns1")
     ns.write("hello")
@@ -291,10 +296,16 @@ def test_iter_memories_empty() -> None:
 
 
 def test_openai_helper_chat_flow() -> None:
-    memory = CognitiveMemoryLayer(config=CMLConfig(api_key="sk-test", base_url="http://localhost:8000"))
+    memory = CognitiveMemoryLayer(
+        config=CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    )
     memory._transport.request = MagicMock(  # type: ignore[method-assign]
         side_effect=[
-            {"memory_context": "No relevant memories.", "memories_retrieved": 0, "memories_stored": 0},
+            {
+                "memory_context": "No relevant memories.",
+                "memories_retrieved": 0,
+                "memories_stored": 0,
+            },
             {"memory_context": "", "memories_retrieved": 0, "memories_stored": 1},
         ]
     )
