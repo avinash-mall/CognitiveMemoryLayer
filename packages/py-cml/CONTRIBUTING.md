@@ -106,19 +106,65 @@ Hooks run ruff (check + format), mypy, and generic checks (trailing whitespace, 
 - `test(cml): ...` — tests
 - `chore(py-cml): ...` — build, CI, tooling
 
-## Releasing py-cml
+## Publishing the package to PyPI
 
-Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The workflow uses PyPI trusted publishing (OIDC); no API tokens in the repo.
+Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The workflow (`.github/workflows/py-cml.yml`) uses **PyPI trusted publishing (OIDC)**; no API tokens are stored in the repo.
 
-1. **Bump version** in `packages/py-cml/pyproject.toml` and `packages/py-cml/src/cml/_version.py`.
-2. **Update CHANGELOG.md** — add a new `## [X.Y.Z] - YYYY-MM-DD` section under Unreleased and move entries.
-3. **Commit:** e.g. `chore(py-cml): prepare release v0.1.0`
-4. **Tag:** `git tag py-cml-v0.1.0` (use the same version number).
-5. **Push:** `git push origin main --tags`. The `py-cml-publish.yml` workflow runs and publishes to PyPI.
-6. **Optional:** Create a GitHub Release from the tag and paste the CHANGELOG section for that version.
-7. **Verify:** `pip install cognitive-memory-layer==0.1.0` and `from cml import CognitiveMemoryLayer`.
+### Prerequisites (one-time)
 
-**TestPyPI:** Before the first production release, you can configure a trusted publisher for TestPyPI and run the same workflow from a branch (e.g. `release/*`) or trigger a test publish to verify the package builds and installs.
+- **PyPI:** Add a [trusted publisher](https://docs.pypi.org/trusted-publishers/) (or pending publisher) for the project `cognitive-memory-layer`:
+  - **Repository:** `owner/CognitiveMemoryLayer`
+  - **Workflow name:** `py-cml.yml`
+  - **Environment name:** `pypi`
+- **GitHub:** Create an environment named **`pypi`** under **Settings → Environments** (no secrets required for trusted publishing).
+
+### Before each release
+
+1. **Bump version** in `packages/py-cml/pyproject.toml` and `packages/py-cml/src/cml/_version.py` (e.g. `0.1.0` → `0.1.1`).
+2. **Update CHANGELOG.md** — add a `## [X.Y.Z] - YYYY-MM-DD` section and move entries from Unreleased.
+3. **Commit and push to `main`:** e.g. `chore(py-cml): prepare release v0.1.1`
+
+### Ways to publish
+
+**Option A — From GitHub Actions (no local tag needed)**
+
+1. Go to **Actions** → **py-cml: CI and release** → **Run workflow**.
+2. Choose branch **main** (or the branch you pushed the version bump to).
+3. Enter **Version to release** (e.g. `0.1.1`). Leave it empty only if you just want to run lint/test/build.
+4. Click **Run workflow**.
+5. **Two runs:** The first run (manual) only runs **Create release tag** and pushes the tag; lint/test/build/publish are skipped. The **tag push triggers a second run** where only **Build and publish to PyPI** runs. In the Actions list, find the run triggered by the tag (e.g. "Tag py-cml-v0.1.1 pushed" or similar) and confirm that job succeeded.
+
+**Option B — From the command line**
+
+1. From your repo root (on `main`, with the version bump already pushed):
+   ```bash
+   git pull origin main
+   git tag py-cml-v0.1.1   # use the same version as in pyproject.toml
+   git push origin py-cml-v0.1.1
+   ```
+2. The push triggers the workflow; the **Build and publish to PyPI** job runs and uploads the package.
+
+**Option C — From GitHub Releases**
+
+1. After pushing the version bump to `main`, go to **Releases** → **Draft a new release**.
+2. Choose **Tag:** create a new tag `py-cml-v0.1.1` from `main`.
+3. Set the release title (e.g. `v0.1.1`) and paste the CHANGELOG section. Publish the release.
+4. Creating the tag (via the release) pushes it; the workflow runs and publishes to PyPI.
+
+### After publishing
+
+- **Optional:** If you used Option B or A, create a **GitHub Release** from the new tag and paste the CHANGELOG section.
+- **Verify:** `pip install cognitive-memory-layer==0.1.1` then `python -c "from cml import CognitiveMemoryLayer; print('OK')"`.
+
+### Troubleshooting
+
+- **PyPI still shows "0 projects"**  
+  Check that the **tag-triggered** run (the second run after you used Option A) exists and that **Build and publish to PyPI** completed successfully. If that run is missing, the tag push may not have triggered the workflow (e.g. path filters); use Option B to push the tag from your machine and confirm the run appears.
+- **Pending publishers:** Use only the publisher for **workflow `py-cml.yml`** and **environment `pypi`**. If you have a pending publisher for `py-cml-publish.yml`, remove it (that workflow was merged into `py-cml.yml`).
+
+### TestPyPI (optional)
+
+To try the release flow without publishing to production PyPI: add a trusted publisher for **TestPyPI** with the same workflow and environment, then push a tag (e.g. `py-cml-v0.1.0a1`) or use **Run workflow** with a pre-release version. Install with `pip install -i https://test.pypi.org/simple/ cognitive-memory-layer==0.1.0a1`.
 
 ## General repository guidelines
 
