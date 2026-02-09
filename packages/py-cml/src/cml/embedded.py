@@ -61,8 +61,8 @@ def _check_embedded_deps() -> None:
             "Embedded mode requires aiosqlite. Install with: pip install py-cml[embedded]"
         ) from e
     try:
-        from src.memory.orchestrator import (
-            MemoryOrchestrator,  # type: ignore[import-not-found]  # noqa: F401
+        from src.memory.orchestrator import (  # type: ignore[import-not-found]
+            MemoryOrchestrator,  # noqa: F401
         )
     except ImportError as e:
         raise ImportError(
@@ -92,8 +92,8 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     episodes = [_retrieved_to_memory_item(m) for m in packet.recent_episodes]
     all_items = facts + preferences + episodes
     try:
-        from src.retrieval.packet_builder import (
-            MemoryPacketBuilder,  # type: ignore[import-not-found]
+        from src.retrieval.packet_builder import (  # type: ignore[import-not-found]
+            MemoryPacketBuilder,
         )
 
         builder = MemoryPacketBuilder()
@@ -176,7 +176,7 @@ class EmbeddedCognitiveMemoryLayer:
             api_key=self._config.llm.api_key or "dummy",
         )
 
-        from src.memory.orchestrator import MemoryOrchestrator  # type: ignore[import-not-found]
+        from src.memory.orchestrator import MemoryOrchestrator
 
         self._orchestrator = await MemoryOrchestrator.create_lite(
             self._sqlite_store,
@@ -289,8 +289,8 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
-        from src.memory.seamless_provider import (
-            SeamlessMemoryProvider,  # type: ignore[import-not-found]
+        from src.memory.seamless_provider import (  # type: ignore[import-not-found]
+            SeamlessMemoryProvider,
         )
 
         provider = SeamlessMemoryProvider(
