@@ -31,33 +31,6 @@
 <tr>
 <td width="50%">
 
-### 🔬 Neuroscience-Grounded
-Built on cognitive science research from McClelland, Tulving, and modern AI memory frameworks like HippoRAG and Mem0.
-
-</td>
-<td width="50%">
-
-### ⚡ Production-Ready
-Full REST API, Docker deployment, comprehensive test suite (138 tests), and battle-tested architecture.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-### 🧬 Dual-Store Architecture
-Complementary Learning Systems theory: fast hippocampal encoding + slow neocortical consolidation.
-
-</td>
-<td width="50%">
-
-### 🎯 Seamless Integration
-Drop-in `/memory/turn` endpoint auto-retrieves context—no complex orchestration needed.
-
-</td>
-</tr>
-</table>
-
 ---
 
 ## 📚 Table of Contents
@@ -91,12 +64,12 @@ Drop-in `/memory/turn` endpoint auto-retrieves context—no complex orchestratio
 
 Current Large Language Models operate with **fixed context windows** and **static weights**, lacking the dynamic, reconstructive nature of human memory:
 
-| Limitation | Impact |
-|:-----------|:-------|
-| ❌ Cannot dynamically update knowledge | Stale information persists |
+| Limitation                                        | Impact                                |
+| :------------------------------------------------ | :------------------------------------ |
+| ❌ Cannot dynamically update knowledge            | Stale information persists            |
 | ❌ No integration without catastrophic forgetting | Retraining required for new knowledge |
-| ❌ No relevance-based forgetting | Context bloat and inefficiency |
-| ❌ No episodic → semantic consolidation | All memories treated equally |
+| ❌ No relevance-based forgetting                  | Context bloat and inefficiency        |
+| ❌ No episodic → semantic consolidation          | All memories treated equally          |
 
 ### 💡 Our Approach: The Multi-Store Memory Model
 
@@ -104,12 +77,12 @@ Human memory is not a unitary faculty but an **orchestra of distinct functional 
 
 #### Key Research Frameworks Integrated
 
-| Framework | Year | Key Contribution | Our Implementation |
-|:----------|:----:|:-----------------|:-------------------|
-| 🧠 **HippoRAG** | 2024 | Hippocampal index using knowledge graphs with Personalized PageRank | Neo4j graph store with PPR algorithm |
-| 🧠 **HawkinsDB** | 2025 | Thousand Brains Theory - unified semantic/episodic/procedural memory | Multi-type memory records with structured schemas |
-| 🧠 **Mem0** | 2025 | A.U.D.N. operations (Add, Update, Delete, No-op) with graph memory | `ReconsolidationService` with belief revision |
-| 🧠 **CLS Theory** | 1995 | Dual-system: fast hippocampal + slow neocortical learning | `HippocampalStore` + `NeocorticalStore` |
+| Framework              | Year | Key Contribution                                                     | Our Implementation                                |
+| :--------------------- | :--: | :------------------------------------------------------------------- | :------------------------------------------------ |
+| 🧠**HippoRAG**   | 2024 | Hippocampal index using knowledge graphs with Personalized PageRank  | Neo4j graph store with PPR algorithm              |
+| 🧠**HawkinsDB**  | 2025 | Thousand Brains Theory - unified semantic/episodic/procedural memory | Multi-type memory records with structured schemas |
+| 🧠**Mem0**       | 2025 | A.U.D.N. operations (Add, Update, Delete, No-op) with graph memory   | `ReconsolidationService` with belief revision   |
+| 🧠**CLS Theory** | 1995 | Dual-system: fast hippocampal + slow neocortical learning            | `HippocampalStore` + `NeocorticalStore`       |
 
 ---
 
@@ -119,10 +92,10 @@ Human memory is not a unitary faculty but an **orchestra of distinct functional 
 
 Our architecture implements the **Complementary Learning Systems (CLS) theory**:
 
-| System | Learning Speed | Representation | Memory Type |
-|:-------|:--------------|:---------------|:------------|
-| 🔵 **Hippocampal** | Fast (one-shot) | Sparse | Episodic |
-| 🟣 **Neocortical** | Slow (gradual) | Distributed | Semantic |
+| System                  | Learning Speed  | Representation | Memory Type |
+| :---------------------- | :-------------- | :------------- | :---------- |
+| 🔵**Hippocampal** | Fast (one-shot) | Sparse         | Episodic    |
+| 🟣**Neocortical** | Slow (gradual)  | Distributed    | Semantic    |
 
 ```mermaid
 flowchart TB
@@ -189,11 +162,11 @@ flowchart LR
     style STM fill:#e3f2fd,color:#000
 ```
 
-| Biological Concept | Implementation | Location |
-|:------------------|:---------------|:---------|
-| Sensory buffer | `SensoryBuffer` with token-level storage | `src/memory/sensory/buffer.py` |
-| Working memory limit | `WorkingMemoryManager` (max_chunks=10) | `src/memory/working/manager.py` |
-| Semantic chunking | `SemanticChunker` with LLM segmentation | `src/memory/working/chunker.py` |
+| Biological Concept   | Implementation                             | Location                          |
+| :------------------- | :----------------------------------------- | :-------------------------------- |
+| Sensory buffer       | `SensoryBuffer` with token-level storage | `src/memory/sensory/buffer.py`  |
+| Working memory limit | `WorkingMemoryManager` (max_chunks=10)   | `src/memory/working/manager.py` |
+| Semantic chunking    | `SemanticChunker` with LLM segmentation  | `src/memory/working/chunker.py` |
 
 📖 **Reference**: Miller, G.A. (1956). "The Magical Number Seven, Plus or Minus Two"
 
@@ -210,21 +183,21 @@ flowchart TB
         input2["Input"] --> salience["Salience Scoring"]
         salience --> novelty["Novelty Check"]
         novelty --> risk["Risk Assessment"]
-        
+      
         salience -.-> q1{"importance > 0.3?"}
         novelty -.-> q2{"is_new?"}
         risk -.-> q3{"contains_pii?"}
-        
+      
         q1 & q2 & q3 --> decision["WriteDecision: STORE / SKIP"]
     end
     style WG fill:#fff8e1,color:#000
 ```
 
-| Biological Concept | Implementation | Location |
-|:------------------|:---------------|:---------|
-| CREB-mediated allocation | `WriteGate.evaluate()` | `src/memory/hippocampal/write_gate.py` |
-| Npas4 contextual gating | Write gate threshold (0.3) | `WriteGateConfig` |
-| PII redaction | `PIIRedactor` | `src/memory/hippocampal/redactor.py` |
+| Biological Concept       | Implementation             | Location                                 |
+| :----------------------- | :------------------------- | :--------------------------------------- |
+| CREB-mediated allocation | `WriteGate.evaluate()`   | `src/memory/hippocampal/write_gate.py` |
+| Npas4 contextual gating  | Write gate threshold (0.3) | `WriteGateConfig`                      |
+| PII redaction            | `PIIRedactor`            | `src/memory/hippocampal/redactor.py`   |
 
 📖 **Reference**: Han et al. (2007). "Neuronal Competition and Selection During Memory Formation"
 
@@ -248,11 +221,11 @@ flowchart TB
     style Hippo2 fill:#e3f2fd,color:#000
 ```
 
-| Biological Concept | Implementation | Location |
-|:------------------|:---------------|:---------|
-| Rapid one-shot encoding | `HippocampalStore.encode_chunk()` | `src/memory/hippocampal/store.py` |
-| Pattern separation | Content hashing + unique embeddings | `PostgresMemoryStore` |
-| Contextual binding | Metadata: timestamp, agent_id, turn_id | `MemoryRecord` schema |
+| Biological Concept      | Implementation                         | Location                            |
+| :---------------------- | :------------------------------------- | :---------------------------------- |
+| Rapid one-shot encoding | `HippocampalStore.encode_chunk()`    | `src/memory/hippocampal/store.py` |
+| Pattern separation      | Content hashing + unique embeddings    | `PostgresMemoryStore`             |
+| Contextual binding      | Metadata: timestamp, agent_id, turn_id | `MemoryRecord` schema             |
 
 📖 **Reference**: HippoRAG (2024) - "Neurobiologically Inspired Long-Term Memory for LLMs"
 
@@ -275,10 +248,10 @@ flowchart TB
     style user fill:#e1bee7,color:#000
 ```
 
-| Biological Concept | Implementation | Location |
-|:------------------|:---------------|:---------|
-| Schema-based storage | `FactSchema` and `FactCategory` | `src/memory/neocortical/schemas.py` |
-| Personalized PageRank | `Neo4jGraphStore.personalized_pagerank()` | `src/storage/neo4j.py` |
+| Biological Concept    | Implementation                              | Location                              |
+| :-------------------- | :------------------------------------------ | :------------------------------------ |
+| Schema-based storage  | `FactSchema` and `FactCategory`         | `src/memory/neocortical/schemas.py` |
+| Personalized PageRank | `Neo4jGraphStore.personalized_pagerank()` | `src/storage/neo4j.py`              |
 
 📖 **Reference**: HippoRAG uses PPR for "pattern completion across a whole graph structure"
 
@@ -301,10 +274,10 @@ flowchart TB
     style Retrieval fill:#e8eaf6,color:#000
 ```
 
-| Biological Concept | Implementation | Location |
-|:------------------|:---------------|:---------|
-| Ecphory | `MemoryRetriever.retrieve()` | `src/retrieval/memory_retriever.py` |
-| Hybrid search | `HybridRetriever` | `src/retrieval/retriever.py` |
+| Biological Concept | Implementation                 | Location                              |
+| :----------------- | :----------------------------- | :------------------------------------ |
+| Ecphory            | `MemoryRetriever.retrieve()` | `src/retrieval/memory_retriever.py` |
+| Hybrid search      | `HybridRetriever`            | `src/retrieval/retriever.py`        |
 
 📖 **Reference**: Tulving, E. (1983). "Elements of Episodic Memory" - Encoding Specificity Principle
 
@@ -329,10 +302,10 @@ flowchart TB
     style Recon fill:#fff3e0,color:#000
 ```
 
-| Biological Concept | Implementation | Location |
-|:------------------|:---------------|:---------|
-| Labile state tracking | `LabileStateTracker` | `src/reconsolidation/labile_tracker.py` |
-| Belief revision | `BeliefRevisionEngine` (6 strategies) | `src/reconsolidation/belief_revision.py` |
+| Biological Concept    | Implementation                          | Location                                   |
+| :-------------------- | :-------------------------------------- | :----------------------------------------- |
+| Labile state tracking | `LabileStateTracker`                  | `src/reconsolidation/labile_tracker.py`  |
+| Belief revision       | `BeliefRevisionEngine` (6 strategies) | `src/reconsolidation/belief_revision.py` |
 
 📖 **Reference**: Nader et al. (2000). "Fear memories require protein synthesis in the amygdala for reconsolidation"
 
@@ -370,7 +343,7 @@ flowchart TB
         bg["Background Process (24h)"] --> scorer["Relevance Scorer"]
         scorer --> policy["Policy Engine"]
         policy --> executor["Executor"]
-        
+      
         executor --> keep["KEEP (>0.7)"]
         executor --> decay["DECAY (>0.5)"]
         executor --> silent["SILENCE (>0.3)"]
@@ -390,35 +363,35 @@ flowchart TB
 
 ### Memory Types
 
-| Type | Description | Biological Analog | Decay Rate |
-|:-----|:------------|:------------------|:-----------|
-| 📝 `episodic_event` | What happened (full context) | Hippocampal trace | Fast |
-| 📚 `semantic_fact` | Durable distilled facts | Neocortical schema | Slow |
-| ❤️ `preference` | User preferences | Orbitofrontal cortex | Medium |
-| 📋 `task_state` | Current task progress | Working memory | Very Fast |
-| 🔧 `procedure` | How to do something | Procedural memory | Stable |
-| 🚫 `constraint` | Rules/policies | Prefrontal inhibition | Never |
-| 💭 `hypothesis` | Uncertain beliefs | Predictive coding | Requires confirmation |
-| 💬 `conversation` | Chat message/turn | Dialogue memory | Session-based |
-| ✉️ `message` | Single message | Message storage | Session-based |
-| 🔧 `tool_result` | Tool execution output | Function results | Task-based |
-| 🧠 `reasoning_step` | Chain-of-thought step | Agent reasoning | Session-based |
-| 📝 `scratch` | Temporary working memory | Working notes | Fast |
-| 📖 `knowledge` | General world knowledge | Domain facts | Stable |
-| 👁️ `observation` | Agent observations | Environment context | Session-based |
-| 🎯 `plan` | Agent plans/goals | Task planning | Task-based |
+| Type                 | Description                  | Biological Analog     | Decay Rate            |
+| :------------------- | :--------------------------- | :-------------------- | :-------------------- |
+| 📝`episodic_event` | What happened (full context) | Hippocampal trace     | Fast                  |
+| 📚`semantic_fact`  | Durable distilled facts      | Neocortical schema    | Slow                  |
+| ❤️`preference`   | User preferences             | Orbitofrontal cortex  | Medium                |
+| 📋`task_state`     | Current task progress        | Working memory        | Very Fast             |
+| 🔧`procedure`      | How to do something          | Procedural memory     | Stable                |
+| 🚫`constraint`     | Rules/policies               | Prefrontal inhibition | Never                 |
+| 💭`hypothesis`     | Uncertain beliefs            | Predictive coding     | Requires confirmation |
+| 💬`conversation`   | Chat message/turn            | Dialogue memory       | Session-based         |
+| ✉️`message`      | Single message               | Message storage       | Session-based         |
+| 🔧`tool_result`    | Tool execution output        | Function results      | Task-based            |
+| 🧠`reasoning_step` | Chain-of-thought step        | Agent reasoning       | Session-based         |
+| 📝`scratch`        | Temporary working memory     | Working notes         | Fast                  |
+| 📖`knowledge`      | General world knowledge      | Domain facts          | Stable                |
+| 👁️`observation`  | Agent observations           | Environment context   | Session-based         |
+| 🎯`plan`           | Agent plans/goals            | Task planning         | Task-based            |
 
 ### Technology Stack
 
-| Component | Technology | Rationale |
-|:----------|:-----------|:----------|
-| 🌐 API Framework | **FastAPI** | Async, OpenAPI documentation |
-| 💾 Episodic Store | **PostgreSQL + pgvector** | ACID, vector search, production-ready |
-| 🕸️ Semantic Store | **Neo4j** | Graph algorithms (PPR), relationship queries |
-| ⚡ Cache | **Redis** | Working memory cache, rate limiting |
-| 📮 Queue | **Redis + Celery** | Background workers |
-| 🧮 Embeddings | **OpenAI / sentence-transformers** | Configurable dense vectors |
-| 🤖 LLM | **OpenAI / vLLM** | Extraction, summarization, compression |
+| Component           | Technology                               | Rationale                                    |
+| :------------------ | :--------------------------------------- | :------------------------------------------- |
+| 🌐 API Framework    | **FastAPI**                        | Async, OpenAPI documentation                 |
+| 💾 Episodic Store   | **PostgreSQL + pgvector**          | ACID, vector search, production-ready        |
+| 🕸️ Semantic Store | **Neo4j**                          | Graph algorithms (PPR), relationship queries |
+| ⚡ Cache            | **Redis**                          | Working memory cache, rate limiting          |
+| 📮 Queue            | **Redis + Celery**                 | Background workers                           |
+| 🧮 Embeddings       | **OpenAI / sentence-transformers** | Configurable dense vectors                   |
+| 🤖 LLM              | **OpenAI / vLLM**                  | Extraction, summarization, compression       |
 
 ---
 
@@ -478,6 +451,8 @@ curl -X POST http://localhost:8000/api/v1/memory/turn \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
+**From Python:** `pip install py-cml` — see [packages/py-cml](packages/py-cml/) and [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-py-cml).
+
 ### 5. Monitoring Dashboard
 
 A web-based dashboard provides comprehensive monitoring and management of memories and system components.
@@ -509,19 +484,19 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 <details>
 <summary><strong>📊 Test Coverage by Phase</strong></summary>
 
-| Phase | Component | Tests |
-|:------|:----------|------:|
-| 1 | Foundation & Core Data Models | 19 |
-| 2 | Sensory Buffer & Working Memory | 14 |
-| 3 | Hippocampal Store | 12 |
-| 4 | Neocortical Store | 16 |
-| 5 | Retrieval System | 11 |
-| 6 | Reconsolidation & Belief Revision | 9 |
-| 7 | Consolidation Engine | 10 |
-| 8 | Active Forgetting | 28 |
-| 9 | REST API & Integration | 11 |
-| 10 | Testing & Deployment | 6 |
-| | **Total** | **138** |
+| Phase | Component                         |         Tests |
+| :---- | :-------------------------------- | ------------: |
+| 1     | Foundation & Core Data Models     |            19 |
+| 2     | Sensory Buffer & Working Memory   |            14 |
+| 3     | Hippocampal Store                 |            12 |
+| 4     | Neocortical Store                 |            16 |
+| 5     | Retrieval System                  |            11 |
+| 6     | Reconsolidation & Belief Revision |             9 |
+| 7     | Consolidation Engine              |            10 |
+| 8     | Active Forgetting                 |            28 |
+| 9     | REST API & Integration            |            11 |
+| 10    | Testing & Deployment              |             6 |
+|       | **Total**                   | **138** |
 
 </details>
 
@@ -531,23 +506,25 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 
 📚 **Full API Reference**: [UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md)
 
+🐍 **Python SDK (py-cml)**: Use CML from Python with `pip install py-cml` — [packages/py-cml](packages/py-cml/) | [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-py-cml)
+
 🔗 **Interactive Docs**: http://localhost:8000/docs
 
 📊 **Web Dashboard**: http://localhost:8000/dashboard — monitor memories, view component health, browse events, and trigger consolidation/forgetting (admin API key required).
 
 ### Key Endpoints
 
-| Endpoint | Method | Description |
-|:---------|:------:|:------------|
-| `/api/v1/memory/write` | POST | Store new information |
-| `/api/v1/memory/read` | POST | Retrieve relevant memories |
-| `/api/v1/memory/turn` | POST | **Seamless memory**: auto-retrieve + auto-store |
-| `/api/v1/memory/update` | POST | Update or provide feedback |
-| `/api/v1/memory/forget` | POST | Forget memories |
-| `/api/v1/memory/stats` | GET | Get memory statistics |
-| `/api/v1/session/create` | POST | Create new session |
-| `/api/v1/health` | GET | Health check |
-| `/dashboard` | GET | **Web dashboard** (monitoring & management; admin key required) |
+| Endpoint                   | Method | Description                                                           |
+| :------------------------- | :----: | :-------------------------------------------------------------------- |
+| `/api/v1/memory/write`   |  POST  | Store new information                                                 |
+| `/api/v1/memory/read`    |  POST  | Retrieve relevant memories                                            |
+| `/api/v1/memory/turn`    |  POST  | **Seamless memory**: auto-retrieve + auto-store                 |
+| `/api/v1/memory/update`  |  POST  | Update or provide feedback                                            |
+| `/api/v1/memory/forget`  |  POST  | Forget memories                                                       |
+| `/api/v1/memory/stats`   |  GET  | Get memory statistics                                                 |
+| `/api/v1/session/create` |  POST  | Create new session                                                    |
+| `/api/v1/health`         |  GET  | Health check                                                          |
+| `/dashboard`             |  GET  | **Web dashboard** (monitoring & management; admin key required) |
 
 > **🔐 Authentication**: Set `AUTH__API_KEY` in your environment and pass via `X-API-Key` header. The **dashboard** requires `AUTH__ADMIN_API_KEY`.
 
@@ -575,6 +552,8 @@ CognitiveMemoryLayer/
 │   ├── extraction/             # 📤 Entity/fact extraction
 │   ├── storage/                # 💾 Database adapters
 │   └── utils/                  # 🛠️ LLM, embeddings, metrics
+├── 📂 packages/
+│   └── py-cml/                 # 🐍 Python SDK (pip install py-cml)
 ├── 📂 tests/                   # Unit, integration, E2E tests
 ├── 📂 config/                  # Configuration files
 ├── 📂 migrations/              # Alembic database migrations
@@ -589,41 +568,31 @@ CognitiveMemoryLayer/
 <details>
 <summary><strong>🧠 Neuroscience Foundations</strong></summary>
 
-1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). ["Why there are complementary learning systems in the hippocampus and neocortex: Insights from the successes and failures of connectionist models of learning and memory."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
-
-2. **Tulving, E.** (1983). ["Elements of Episodic Memory."](https://books.google.com/books/about/Elements_of_episodic_memory.html?id=3nQ6AAAAMAAJ) Oxford University Press. — Encoding Specificity Principle.
-
-3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
-
-4. **Shuai, Y., Lu, B., Hu, Y., Wang, L., Sun, K., & Zhong, Y.** (2010). ["Forgetting is regulated through Rac activity in Drosophila."](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
-
-5. **Han, J.H., et al.** (2007). ["Neuronal competition and selection during memory formation."](https://doi.org/10.1126/science.1139438) *Science*, 316(5823), 457-460. — CREB and memory allocation.
-
-6. **Miller, G.A.** (1956). ["The magical number seven, plus or minus two: Some limits on our capacity for processing information."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
-
-7. **Bartlett, F.C.** (1932). ["Remembering: A Study in Experimental and Social Psychology."](https://archive.org/details/rememberingstudy00bart) Cambridge University Press. — Reconstructive memory.
+1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). [&#34;Why there are complementary learning systems in the hippocampus and neocortex: Insights from the successes and failures of connectionist models of learning and memory.&#34;](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
+2. **Tulving, E.** (1983). [&#34;Elements of Episodic Memory.&#34;](https://books.google.com/books/about/Elements_of_episodic_memory.html?id=3nQ6AAAAMAAJ) Oxford University Press. — Encoding Specificity Principle.
+3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). [&#34;Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval.&#34;](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
+4. **Shuai, Y., Lu, B., Hu, Y., Wang, L., Sun, K., & Zhong, Y.** (2010). [&#34;Forgetting is regulated through Rac activity in Drosophila.&#34;](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
+5. **Han, J.H., et al.** (2007). [&#34;Neuronal competition and selection during memory formation.&#34;](https://doi.org/10.1126/science.1139438) *Science*, 316(5823), 457-460. — CREB and memory allocation.
+6. **Miller, G.A.** (1956). [&#34;The magical number seven, plus or minus two: Some limits on our capacity for processing information.&#34;](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
+7. **Bartlett, F.C.** (1932). [&#34;Remembering: A Study in Experimental and Social Psychology.&#34;](https://archive.org/details/rememberingstudy00bart) Cambridge University Press. — Reconstructive memory.
 
 </details>
 
 <details>
 <summary><strong>🤖 AI Memory Frameworks</strong></summary>
 
-8. **HippoRAG** (2024). ["Neurobiologically Inspired Long-Term Memory for Large Language Models."](https://arxiv.org/abs/2405.14831) *arXiv:2405.14831*. — Knowledge graph as hippocampal index with Personalized PageRank.
-
-9. **Mem0** (2024). ["Mem0: The Memory Layer for AI Applications."](https://github.com/mem0ai/mem0) *GitHub Repository*. — A.U.D.N. operations, 90%+ token reduction.
-
-10. **HawkinsDB** (2024). ["HawkinsDB: A Thousand Brains Theory inspired Database."](https://github.com/harishsg993010/HawkinsDB) *GitHub Repository*. — Based on Jeff Hawkins' Thousand Brains Theory.
-
-11. **Wu, T., et al.** (2024). ["From Human Memory to AI Memory: A Survey on Memory Mechanisms in the Era of LLMs."](https://arxiv.org/abs/2404.15965) *arXiv:2404.15965*.
+8. **HippoRAG** (2024). [&#34;Neurobiologically Inspired Long-Term Memory for Large Language Models.&#34;](https://arxiv.org/abs/2405.14831) *arXiv:2405.14831*. — Knowledge graph as hippocampal index with Personalized PageRank.
+9. **Mem0** (2024). [&#34;Mem0: The Memory Layer for AI Applications.&#34;](https://github.com/mem0ai/mem0) *GitHub Repository*. — A.U.D.N. operations, 90%+ token reduction.
+10. **HawkinsDB** (2024). [&#34;HawkinsDB: A Thousand Brains Theory inspired Database.&#34;](https://github.com/harishsg993010/HawkinsDB) *GitHub Repository*. — Based on Jeff Hawkins' Thousand Brains Theory.
+11. **Wu, T., et al.** (2024). [&#34;From Human Memory to AI Memory: A Survey on Memory Mechanisms in the Era of LLMs.&#34;](https://arxiv.org/abs/2404.15965) *arXiv:2404.15965*.
 
 </details>
 
 <details>
 <summary><strong>📖 Implementation Guides</strong></summary>
 
-12. **Matlin, M.W.** (2012). ["Cognition"](https://books.google.com/books?id=i9i3EAAAQBAJ) (8th ed.). John Wiley & Sons.
-
-13. **Rasch, B., & Born, J.** (2013). ["About sleep's role in memory."](https://doi.org/10.1152/physrev.00032.2012) *Physiological Reviews*, 93(2), 681-766.
+12. **Matlin, M.W.** (2012). [&#34;Cognition&#34;](https://books.google.com/books?id=i9i3EAAAQBAJ) (8th ed.). John Wiley & Sons.
+13. **Rasch, B., & Born, J.** (2013). [&#34;About sleep&#39;s role in memory.&#34;](https://doi.org/10.1152/physrev.00032.2012) *Physiological Reviews*, 93(2), 681-766.
 
 </details>
 
@@ -631,6 +600,7 @@ CognitiveMemoryLayer/
 <summary><strong>📚 Additional Readings & Resources</strong></summary>
 
 ### Academic Journals & Databases
+
 * [Cellular and molecular mechanisms of memory: the LTP connection](https://pubmed.ncbi.nlm.nih.gov/10377283/)
 * [Cognitive neuroscience perspective on memory: overview and summary](https://pmc.ncbi.nlm.nih.gov/articles/PMC10410470/)
 * [Comprehensive exploration of visual working memory mechanisms](https://pmc.ncbi.nlm.nih.gov/articles/PMC11799313/)
@@ -657,33 +627,37 @@ CognitiveMemoryLayer/
 * [The neurobiological foundation of memory retrieval](https://pmc.ncbi.nlm.nih.gov/articles/PMC6903648/)
 
 ### Frontiers Journals
+
 * [Advancements in Neural Coding](https://www.frontiersin.org/research-topics/61027/advancements-in-neural-coding-sensory-perception-and-multiplexed-encoding-strategies)
 * [Memory consolidation from a reinforcement learning perspective](https://www.frontiersin.org/journals/computational-neuroscience/articles/10.3389/fncom.2024.1538741/full)
 * [Molecular Mechanisms of Memory Consolidation Including Sleep](https://www.frontiersin.org/journals/molecular-neuroscience/articles/10.3389/fnmol.2021.767384/full)
 * [Neural, Cellular and Molecular Mechanisms of Active Forgetting](https://www.frontiersin.org/journals/systems-neuroscience/articles/10.3389/fnsys.2018.00003/full)
 
 ### University and Educational Resources
+
 * [18.4 Synaptic Mechanisms of Long-Term Memory (OpenStax)](https://openstax.org/books/introduction-behavioral-neuroscience/pages/18-4-synaptic-mechanisms-of-long-term-memory)
 * [9.1 Memories as Types and Stages (OpenTextBC)](https://opentextbc.ca/introductiontopsychology/chapter/8-1-memories-as-types-and-stages/)
 * [Engrams: Memory Consolidation and Retrieval (PDF)](https://sowmyamanojna.github.io/reports/engrams-termpaper.pdf)
 * [Learning and Memory (Neuroscience Online)](https://nba.uth.tmc.edu/neuroscience/m/s4/chapter07.html)
-* [Memory in Psychology | Definition, Types & Stages](https://study.com/academy/lesson/three-stages-of-memory-in-psychology-explanation-lesson-quiz.html)
-* [Memory Retrieval: Mechanisms & Disorders](https://www.studysmarter.co.uk/explanations/medicine/neuroscience/memory-retrieval/)
+* [Memory in Psychology | Definition, Types &amp; Stages](https://study.com/academy/lesson/three-stages-of-memory-in-psychology-explanation-lesson-quiz.html)
+* [Memory Retrieval: Mechanisms &amp; Disorders](https://www.studysmarter.co.uk/explanations/medicine/neuroscience/memory-retrieval/)
 * [Molecular and systems mechanisms of memory consolidation](https://augusta.elsevierpure.com/en/publications/molecular-and-systems-mechanisms-of-memory-consolidation-and-stor/)
 * [Parts of the Brain Involved with Memory](https://courses.lumenlearning.com/waymaker-psychology/chapter/parts-of-the-brain-involved-with-memory/)
 
 ### News, Medical, and General Information
+
 * [Brain Anatomy (Mayfield Clinic)](https://mayfieldclinic.com/pe-anatbrain.htm)
 * [Dynamic memory engrams reveal how the brain forms memories](https://www.eurekalert.org/news-releases/1084413)
 * [How we recall the past (MIT News)](https://news.mit.edu/2017/neuroscientists-discover-brain-circuit-retrieving-memories-0817)
 * [Introduction to Brain Anatomy](https://www.buildingbrains.ca/blog/kfsmzpicacg0e47rv0574k8jzk4adc)
 * [Learn more about the different types of memory](https://www.medicalnewstoday.com/articles/types-of-memory)
-* [Memory: What It Is, How It Works & Types](https://my.clevelandclinic.org/health/articles/memory)
+* [Memory: What It Is, How It Works &amp; Types](https://my.clevelandclinic.org/health/articles/memory)
 * [Molecular mechanisms of memory formation revealed](https://www.sciencedaily.com/releases/2018/02/180208120925.htm)
 * [Research into the nature of memory (UB News)](https://www.buffalo.edu/news/releases/2024/01/How-memory-cells-engrams-stabilize.html)
 * [Sensory transduction](https://taylorandfrancis.com/knowledge/Medicine_and_healthcare/Physiology/Sensory_transduction/)
 
 ### Preprints
+
 * [Autophagy in DG engrams mediates Rac1-dependent forgetting](https://www.biorxiv.org/content/10.1101/2021.08.26.457763.full)
 
 </details>
@@ -699,10 +673,10 @@ The current CognitiveMemoryLayer operates as an advanced **external memory syste
 
 ### 🎯 The Paradigm Shift: From Reading to Thinking
 
-| Approach | How Memory Works | Complexity | Privacy |
-|:---------|:-----------------|:-----------|:--------|
-| **RAG (Current Standard)** | Retrieved text concatenated to prompt → model "reads" it | O(n²) attention | 🔴 Raw text exposed |
-| **Cognitive Memory Layer** | Memory injected as steering vectors, KV-cache, or logit biases | O(1) injection | 🟢 Latent obfuscation |
+| Approach                         | How Memory Works                                               | Complexity       | Privacy               |
+| :------------------------------- | :------------------------------------------------------------- | :--------------- | :-------------------- |
+| **RAG (Current Standard)** | Retrieved text concatenated to prompt → model "reads" it      | O(n²) attention | 🔴 Raw text exposed   |
+| **Cognitive Memory Layer** | Memory injected as steering vectors, KV-cache, or logit biases | O(1) injection   | 🟢 Latent obfuscation |
 
 <details>
 <summary><h3>🔮 The Three Injection Interfaces</h3></summary>
@@ -717,34 +691,37 @@ flowchart TB
         activation["⚡ ACTIVATION INTERFACE<br/>Steering vectors in residual stream<br/>Semantic control • Composable"]
         synaptic["🧠 SYNAPTIC INTERFACE<br/>KV-Cache injection<br/>Virtual context • Deepest integration"]
     end
-    
+  
     subgraph Depth["Integration Depth"]
         shallow["Shallow (Output Layer)"]
         mid["Mid (Hidden States)"]
         deep["Deep (Attention Memory)"]
     end
-    
+  
     logit --> shallow
     activation --> mid
     synaptic --> deep
-    
+  
     style logit fill:#e8f5e9,color:#000
     style activation fill:#fff3e0,color:#000
     style synaptic fill:#fce4ec,color:#000
 ```
 
 #### 1️⃣ Logit Interface (Universal Compatibility)
+
 - **kNN-LM interpolation**: Blend model's predictions with memory-based token distributions
 - **Logit bias**: Boost probability of memory-relevant tokens ("Paris", "vegetarian")
 - **Works with**: OpenAI API, Claude, local models — any provider with `logit_bias` support
 
 #### 2️⃣ Activation Interface (Semantic Steering)
+
 - **Steering Vectors**: Inject concepts as directions in activation space
 - **Contrastive Direction Discovery**: Learn vectors from positive/negative prompt pairs
 - **Identity V**: Use model's own unembedding rows as semantic primes
 - **Layer targeting**: Early (syntactic) → Middle (semantic) → Late (formatting)
 
 #### 3️⃣ Synaptic Interface (Virtual Context)
+
 - **KV-Cache Injection**: Pre-compute Key-Value pairs for memories, inject into attention
 - **Temporal Decay**: Memories fade like biological synapses (SynapticRAG-inspired)
 - **Shadow in the Cache**: Privacy via latent obfuscation—vectors, not plaintext
@@ -761,27 +738,27 @@ flowchart LR
         hooks["Hook Manager"]
         inspector["Model Inspector"]
     end
-    
+  
     subgraph Bus["Intrinsic Memory Bus"]
         channels["Channels:<br/>logit_bias | steering | kv_inject"]
     end
-    
+  
     subgraph Interfaces["Injection Interfaces"]
         logit2["Logit Interface<br/>kNN-LM + Bias Engine"]
         activation2["Activation Interface<br/>Steering Vectors"]
         synaptic2["Synaptic Interface<br/>KV Encoder + Injector"]
     end
-    
+  
     subgraph Cache["Memory Cache Hierarchy"]
         l1["L1: GPU HBM<br/>Working Memory"]
         l2["L2: CPU DRAM<br/>Short-term"]
         l3["L3: NVMe SSD<br/>Long-term"]
     end
-    
+  
     MAL --> Bus
     Bus --> Interfaces
     Interfaces --> Cache
-    
+  
     style MAL fill:#e3f2fd,color:#000
     style Bus fill:#fff8e1,color:#000
     style Interfaces fill:#f3e5f5,color:#000
@@ -790,12 +767,12 @@ flowchart LR
 
 **Key Components:**
 
-| Component | Function | Implementation |
-|:----------|:---------|:---------------|
-| **Model Backend** | Abstract LLM internals (local/API) | PyTorch hooks, vLLM, OpenAI |
-| **Hook Manager** | Safe hook lifecycle + safety guards | Norm explosion detection, NaN traps |
-| **Memory Encoder** | Text → steering vectors/KV pairs | Contrastive learning, PCA |
-| **Injection Scaler** | Maintain numerical stability | Norm preservation, adaptive α |
+| Component                  | Function                            | Implementation                      |
+| :------------------------- | :---------------------------------- | :---------------------------------- |
+| **Model Backend**    | Abstract LLM internals (local/API)  | PyTorch hooks, vLLM, OpenAI         |
+| **Hook Manager**     | Safe hook lifecycle + safety guards | Norm explosion detection, NaN traps |
+| **Memory Encoder**   | Text → steering vectors/KV pairs   | Contrastive learning, PCA           |
+| **Injection Scaler** | Maintain numerical stability        | Norm preservation, adaptive α      |
 
 </details>
 
@@ -805,54 +782,56 @@ flowchart LR
 Our intrinsic memory roadmap builds on cutting-edge research:
 
 #### Core Architectures
-| Paper | Contribution | Link |
-|:------|:-------------|:-----|
-| **Prometheus Mind** | Identity V: Retrofitting memory using unembedding matrix | [ResearchGate](https://www.researchgate.net/publication/400002993_Prometheus_Mind_Retrofitting_Memory_to_Frozen_Language_Models) |
-| **SynapticRAG** | Temporal memory decay inspired by synaptic plasticity | [ACL Findings](https://aclanthology.org/2025.findings-acl.1048.pdf) |
-| **Titans (Google)** | Learning to memorize at test time | [arXiv:2501.00663](https://arxiv.org/abs/2501.00663) |
-| **Cognitive Workspace** | Active memory management for infinite context | [arXiv:2508.13171](https://arxiv.org/abs/2508.13171) |
-| **LongMem** | Decoupled long-term memory networks | [arXiv:2306.07174](https://arxiv.org/abs/2306.07174) |
+
+| Paper                         | Contribution                                             | Link                                                                                                                          |
+| :---------------------------- | :------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| **Prometheus Mind**     | Identity V: Retrofitting memory using unembedding matrix | [ResearchGate](https://www.researchgate.net/publication/400002993_Prometheus_Mind_Retrofitting_Memory_to_Frozen_Language_Models) |
+| **SynapticRAG**         | Temporal memory decay inspired by synaptic plasticity    | [ACL Findings](https://aclanthology.org/2025.findings-acl.1048.pdf)                                                              |
+| **Titans (Google)**     | Learning to memorize at test time                        | [arXiv:2501.00663](https://arxiv.org/abs/2501.00663)                                                                             |
+| **Cognitive Workspace** | Active memory management for infinite context            | [arXiv:2508.13171](https://arxiv.org/abs/2508.13171)                                                                             |
+| **LongMem**             | Decoupled long-term memory networks                      | [arXiv:2306.07174](https://arxiv.org/abs/2306.07174)                                                                             |
 
 #### Techniques & Mechanisms
-| Paper | Contribution | Link |
-|:------|:-------------|:-----|
-| **kNN-LM** | Probabilistic interpolation with nearest-neighbor memory | [arXiv:1911.00172](https://arxiv.org/abs/1911.00172) |
-| **Shadow in the Cache** | KV-cache privacy via latent obfuscation | [arXiv:2508.09442](https://arxiv.org/abs/2508.09442) |
-| **Steering Vector Fields** | Context-aware LLM control | [arXiv:2602.01654](https://arxiv.org/html/2602.01654v1) |
-| **Activation Addition** | Steering via bias terms in activations | [OpenReview](https://openreview.net/forum?id=2XBPdPIcFK) |
-| **LMCache** | Efficient KV-cache storage & retrieval | [GitHub](https://github.com/LMCache/LMCache) |
+
+| Paper                            | Contribution                                             | Link                                                  |
+| :------------------------------- | :------------------------------------------------------- | :---------------------------------------------------- |
+| **kNN-LM**                 | Probabilistic interpolation with nearest-neighbor memory | [arXiv:1911.00172](https://arxiv.org/abs/1911.00172)     |
+| **Shadow in the Cache**    | KV-cache privacy via latent obfuscation                  | [arXiv:2508.09442](https://arxiv.org/abs/2508.09442)     |
+| **Steering Vector Fields** | Context-aware LLM control                                | [arXiv:2602.01654](https://arxiv.org/html/2602.01654v1)  |
+| **Activation Addition**    | Steering via bias terms in activations                   | [OpenReview](https://openreview.net/forum?id=2XBPdPIcFK) |
+| **LMCache**                | Efficient KV-cache storage & retrieval                   | [GitHub](https://github.com/LMCache/LMCache)             |
 
 </details>
 
 <details>
 <summary><h3>🛣️ Development Phases</h3></summary>
 
-| Phase | Focus | Status |
-|:------|:------|:-------|
-| **Phase 1** | Model Access Layer & Hook System | 📋 Planned |
-| **Phase 2** | Logit Interface (kNN-LM, Bias Engine) | 📋 Planned |
-| **Phase 3** | Activation Interface (Steering Vectors) | 📋 Planned |
-| **Phase 4** | Synaptic Interface (KV-Cache Injection) | 📋 Planned |
-| **Phase 5** | Controller & Gating Unit | 📋 Planned |
-| **Phase 6** | Memory Encoding Pipeline | 📋 Planned |
-| **Phase 7** | Cache Hierarchy (L1/L2/L3) | 📋 Planned |
-| **Phase 8** | Weight Adaptation (Dynamic LoRA) | 📋 Planned |
-| **Phase 9** | Integration & Migration | 📋 Planned |
-| **Phase 10** | Observability & Benchmarking | 📋 Planned |
+| Phase              | Focus                                   | Status     |
+| :----------------- | :-------------------------------------- | :--------- |
+| **Phase 1**  | Model Access Layer & Hook System        | 📋 Planned |
+| **Phase 2**  | Logit Interface (kNN-LM, Bias Engine)   | 📋 Planned |
+| **Phase 3**  | Activation Interface (Steering Vectors) | 📋 Planned |
+| **Phase 4**  | Synaptic Interface (KV-Cache Injection) | 📋 Planned |
+| **Phase 5**  | Controller & Gating Unit                | 📋 Planned |
+| **Phase 6**  | Memory Encoding Pipeline                | 📋 Planned |
+| **Phase 7**  | Cache Hierarchy (L1/L2/L3)              | 📋 Planned |
+| **Phase 8**  | Weight Adaptation (Dynamic LoRA)        | 📋 Planned |
+| **Phase 9**  | Integration & Migration                 | 📋 Planned |
+| **Phase 10** | Observability & Benchmarking            | 📋 Planned |
 
-> **📖 Detailed Plans**: See [ProjectPlan/](./ProjectPlan/) for comprehensive implementation specifications.
+> **📖 Detailed Plans**: See [ProjectPlan/ActiveCML/](./ProjectPlan/ActiveCML/) for comprehensive implementation specifications.
 
 </details>
 
 ### 🌟 Why This Matters
 
-| Metric | RAG (Standard) | CML Intrinsic (Target) |
-|:-------|:--------------|:-----------------------|
-| **Retrieval Cost** | O(n²) attention on context | O(1) vector injection |
-| **Memory Utilization** | Passive (re-parsing tokens) | Active (steering cognition) |
-| **Privacy** | 🔴 Plaintext in prompt | 🟢 Latent vector obfuscation |
-| **Latency** | High (tokenization + prefill) | Low (zero-copy injection) |
-| **Mechanism** | Model "reads" retrieved text | Model "thinks" with memory |
+| Metric                       | RAG (Standard)                | CML Intrinsic (Target)       |
+| :--------------------------- | :---------------------------- | :--------------------------- |
+| **Retrieval Cost**     | O(n²) attention on context   | O(1) vector injection        |
+| **Memory Utilization** | Passive (re-parsing tokens)   | Active (steering cognition)  |
+| **Privacy**            | 🔴 Plaintext in prompt        | 🟢 Latent vector obfuscation |
+| **Latency**            | High (tokenization + prefill) | Low (zero-copy injection)    |
+| **Mechanism**          | Model "reads" retrieved text  | Model "thinks" with memory   |
 
 ---
 
