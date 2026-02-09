@@ -55,6 +55,21 @@ jobs:
           file: packages/py-cml/coverage.xml
           flags: py-cml
 
+  build:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    name: Build package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/py-cml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+
   publish:
     if: startsWith(github.ref, 'refs/tags/py-cml-v')
     name: Build and publish
