@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -75,12 +76,10 @@ class CognitiveMemoryLayer:
 
     def __del__(self) -> None:
         if not getattr(self, "_closed", True):
-            try:
+            with contextlib.suppress(Exception):
                 logger.warning(
                     "CognitiveMemoryLayer was not closed; call close() or use 'with' to avoid connection leaks"
                 )
-            except Exception:
-                pass
 
     def __enter__(self) -> CognitiveMemoryLayer:
         return self
@@ -745,8 +744,7 @@ class CognitiveMemoryLayer:
             if memory_types:
                 if len(memory_types) > 1:
                     raise ValueError(
-                        "iter_memories currently supports at most one memory_types filter; got %d types"
-                        % len(memory_types),
+                        f"iter_memories currently supports at most one memory_types filter; got {len(memory_types)} types"
                     )
                 params["type"] = memory_types[0].value
             data = self._transport.request(

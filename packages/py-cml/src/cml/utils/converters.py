@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from cml.models.responses import MemoryItem
@@ -19,7 +19,7 @@ def dashboard_item_to_memory_item(raw: dict[str, Any]) -> MemoryItem:
         type=raw.get("type", "memory"),
         confidence=float(raw.get("confidence", 0.5)),
         relevance=float(raw.get("importance", raw.get("relevance", 0.5))),
-        timestamp=ts or datetime.now(timezone.utc),
+        timestamp=ts or datetime.now(UTC),
         metadata={
             k: v
             for k, v in raw.items()

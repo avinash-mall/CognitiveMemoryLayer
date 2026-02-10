@@ -9,7 +9,6 @@ from typing import Any
 from uuid import UUID
 
 from cml.embedded_config import EmbeddedConfig
-from cml.utils.logging import logger
 from cml.models import (
     ForgetResponse,
     MemoryItem,
@@ -22,6 +21,7 @@ from cml.models import (
     WriteResponse,
 )
 from cml.models.enums import MemoryType
+from cml.utils.logging import logger
 
 CONSOLIDATION_INTERVAL_SEC = 24 * 3600  # 24 hours
 FORGETTING_INTERVAL_SEC = 24 * 3600  # 24 hours

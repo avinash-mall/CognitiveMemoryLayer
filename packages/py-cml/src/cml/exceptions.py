@@ -124,8 +124,8 @@ TimeoutError = CMLTimeoutError
 __all__ = [
     "AuthenticationError",
     "AuthorizationError",
-    "CMLError",
     "CMLConnectionError",
+    "CMLError",
     "CMLTimeoutError",
     "ConnectionError",
     "NotFoundError",
