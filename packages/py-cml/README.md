@@ -1,19 +1,10 @@
 # cognitive-memory-layer
 
-<<<<<<< HEAD
-**Python SDK for [CognitiveMemoryLayer](https://github.com/avinash-mall/CognitiveMemoryLayer)** — neuro-inspired memory for AI applications.
-
-[![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
-[![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
-[![License](https://img.shields.io/github/license/avinash-mall/CognitiveMemoryLayer)](LICENSE)
-[![Tests](https://img.shields.io/github/actions/workflow/status/avinash-mall/CognitiveMemoryLayer/py-cml.yml?branch=main)](https://github.com/avinash-mall/CognitiveMemoryLayer/actions)
-=======
 **Python SDK for the Cognitive Memory Layer** — neuro-inspired memory for AI applications. Give your apps human-like memory: store, retrieve, consolidate, and forget information just like the brain does.
 
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
->>>>>>> 42897739dbe59559f3754da63c76f08f1e7a6549
 
 **Source code:** [GitHub — CognitiveMemoryLayer](https://github.com/avinash-mall/CognitiveMemoryLayer) (repository and full documentation)
 
@@ -35,11 +26,12 @@ pip install cognitive-memory-layer[embedded]
 
 ## Quick start
 
-**Sync client** (connect to a CML server):
+**Sync client** (connect to a CML server). Set `CML_BASE_URL` and `CML_API_KEY` in `.env` (no hardcoded defaults):
 
 ```python
 from cml import CognitiveMemoryLayer
 
+# Uses CML_BASE_URL and CML_API_KEY from .env when omitted
 with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as memory:
     memory.write("User prefers vegetarian food.")
     result = memory.read("What does the user eat?")
@@ -79,7 +71,7 @@ async def main():
 
 - **Client mode** — HTTP client for a running CML server (sync and async, context managers)
 - **Embedded mode** — run the full CML engine in-process (optional extra: `cognitive-memory-layer[embedded]`)
-- **Configuration** — API key, base URL, tenant via constructor, env vars (`CML_*`), or `.env`
+- **Configuration** — API key, base URL, and (for OpenAI helper) model via constructor or `.env`; no hardcoded URLs or model names
 - **Memory API** — write, read, turn, update, forget, stats; sessions; `get_context(query)` for LLM injection
 - **Typed** — Pydantic models, type hints, `py.typed` marker
 - **Advanced** — batch write/read, tenant management, namespace isolation, OpenAI helper, admin operations (consolidate, forgetting)
@@ -88,12 +80,12 @@ async def main():
 
 ## Configuration
 
-**Environment variables:** `CML_API_KEY`, `CML_BASE_URL` (default `http://localhost:8000`), `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, etc. Or pass directly:
+**Environment variables:** Set in `.env` (no hardcoded defaults in code). Use `CML_API_KEY`, `CML_BASE_URL`, `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, etc. For the OpenAI helper, set `OPENAI_MODEL` or `LLM__MODEL`. Or pass directly:
 
 ```python
 memory = CognitiveMemoryLayer(
     api_key="sk-...",
-    base_url="http://localhost:8000",
+    base_url="http://localhost:8000",  # or set CML_BASE_URL in .env
     tenant_id="my-tenant",
 )
 ```
@@ -108,18 +100,7 @@ memory = CognitiveMemoryLayer(
 - **Package docs (on GitHub):** [Getting started](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/getting-started.md), [API reference](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/api-reference.md), [Configuration](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/configuration.md), [Examples](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/examples.md)
 - **Changelog:** [CHANGELOG.md](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md) on GitHub
 
-<<<<<<< HEAD
-config = CMLConfig(
-    api_key="sk-...",
-    base_url="http://localhost:8000",
-    tenant_id="my-tenant",
-    timeout=30.0,
-    max_retries=3,
-)
-memory = CognitiveMemoryLayer(config=config)
-```
-
-**Base URL:** Use the server root (e.g. `http://localhost:8000`). The client sends requests to `/api/v1/*` automatically.
+**Base URL:** Set `CML_BASE_URL` in `.env` or pass to the client; the client sends requests to `/api/v1/*` automatically.
 
 ## Phase 5: Advanced features
 
@@ -135,15 +116,15 @@ memory = CognitiveMemoryLayer(config=config)
 
 **Memory iteration:** `iter_memories(memory_types=..., status="active", batch_size=100)` yields `MemoryItem` with automatic pagination (admin only). Sync client returns a generator; async client an async generator.
 
-**OpenAI integration:** Use `CMLOpenAIHelper(memory_client, openai_client, model="gpt-4o")` and `helper.chat(user_message, session_id=..., system_prompt=...)` to run chat completions with automatic memory context injection and exchange storage.
+**OpenAI integration:** Use `CMLOpenAIHelper(memory_client, openai_client, model=...)` and `helper.chat(...)`. Set `OPENAI_MODEL` or `LLM__MODEL` in `.env`, or pass `model=` explicitly.
 
 ```python
 from cml import CognitiveMemoryLayer, CMLOpenAIHelper
 from openai import OpenAI
 
-memory = CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000")
+memory = CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000")  # or set CML_BASE_URL in .env
 openai_client = OpenAI()
-helper = CMLOpenAIHelper(memory, openai_client)
+helper = CMLOpenAIHelper(memory, openai_client)  # uses OPENAI_MODEL or LLM__MODEL from .env if model not passed
 reply = helper.chat("What should I eat tonight?", session_id="s1")
 ```
 
@@ -163,7 +144,7 @@ reply = helper.chat("What should I eat tonight?", session_id="s1")
 
 ## Testing
 
-The SDK uses **pytest** with shared fixtures and markers. CI runs **unit tests only** by default (no server required).
+The SDK uses **pytest** with shared fixtures and markers. **Status:** 142 unit tests (pass without server). CI runs unit tests by default; integration and e2e require a running CML server.
 
 **Run unit tests** (fast, no server):
 
@@ -210,9 +191,6 @@ pytest tests/embedded/ -v -m embedded
 - [Examples](docs/examples.md)
 
 See also the [CognitiveMemoryLayer project](https://github.com/avinash-mall/CognitiveMemoryLayer) for server and architecture.
-=======
----
->>>>>>> 42897739dbe59559f3754da63c76f08f1e7a6549
 
 ## License
 

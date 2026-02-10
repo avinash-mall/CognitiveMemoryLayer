@@ -1,7 +1,8 @@
-"""OpenAI integration helper for py-cml."""
+"""OpenAI integration helper for py-cml. Use OPENAI_MODEL or LLM__MODEL in .env for model."""
 
 from __future__ import annotations
 
+import os
 from typing import Any, Protocol, runtime_checkable
 
 from cml.client import CognitiveMemoryLayer
@@ -49,11 +50,11 @@ class CMLOpenAIHelper:
         memory_client: CognitiveMemoryLayer,
         openai_client: Any,
         *,
-        model: str = "gpt-4o",
+        model: str | None = None,
     ) -> None:
         self.memory = memory_client
         self.openai = openai_client
-        self.model = model
+        self.model = model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
 
     def chat(
         self,
@@ -96,6 +97,8 @@ class CMLOpenAIHelper:
             messages.extend(extra_messages)
         messages.append({"role": "user", "content": user_message})
 
+        if not self.model:
+            raise ValueError("Model not set; pass model= to CMLOpenAIHelper() or set OPENAI_MODEL or LLM__MODEL in .env")
         response = self.openai.chat.completions.create(
             model=self.model,
             messages=messages,

@@ -19,7 +19,9 @@ from src.storage.models import Base
 
 config = context.config
 
-# Set SQLAlchemy URL from application settings
+# Set SQLAlchemy URL from application settings (ROOT-MIG-01: do not leave invalid URL)
+import logging
+_log = logging.getLogger(__name__)
 try:
     from src.core.config import ensure_asyncpg_url, get_settings
 
@@ -27,8 +29,15 @@ try:
     config.set_main_option(
         "sqlalchemy.url", ensure_asyncpg_url(settings.database.postgres_url)
     )
-except Exception:
-    pass  # Use sqlalchemy.url from alembic.ini if config not available
+except Exception as e:
+    _log.warning(
+        "Could not load database URL from settings: %s. Set DATABASE__POSTGRES_URL or fix config.",
+        e,
+    )
+    config.set_main_option(
+        "sqlalchemy.url",
+        "postgresql+asyncpg://localhost/memory",  # explicit placeholder; will fail if used
+    )
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

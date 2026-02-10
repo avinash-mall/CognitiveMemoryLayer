@@ -2,16 +2,16 @@
 Ollama Chat Test - Cognitive Memory Layer
 
 Automated end-to-end test that exercises the full memory pipeline using
-local Ollama models:
-  - LLM:       gpt-oss:20b   (chat + tool calling)
-  - Embedding: mxbai-embed-large (1024-dim vectors)
+local Ollama models. LLM and embedding models are read from the repo root
+.env (LLM__MODEL, EMBEDDING__MODEL). If not set, defaults to llama3.2:1b
+for the LLM.
 
 The script is NON-INTERACTIVE: it runs a scripted conversation, prints
 every tool call and response, and verifies that memories were stored and
 retrieved correctly.
 
 Prerequisites:
-    1. Ollama running locally with gpt-oss:20b and mxbai-embed-large
+    1. Ollama running locally; ensure the model in LLM__MODEL (or default) is pulled
     2. Infrastructure services:
        docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
     3. API server running:
@@ -37,17 +37,26 @@ if sys.stderr.encoding != "utf-8":
 # Allow running from the examples/ directory
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Load repo root .env so LLM__MODEL and other vars are respected (not just shell env)
+try:
+    from pathlib import Path
+    from dotenv import load_dotenv
+    _repo_root = Path(__file__).resolve().parent.parent
+    load_dotenv(_repo_root / ".env")
+except ImportError:
+    pass
+
 from openai import OpenAI
 from memory_client import CognitiveMemoryClient
 
 
 # ---------------------------------------------------------------------------
-# Configuration - read from environment / .env, with sensible local defaults
+# Configuration - from .env only (no hardcoded defaults)
 # ---------------------------------------------------------------------------
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.environ.get("LLM__MODEL", "gpt-oss:20b")
-MEMORY_API_URL = os.environ.get("MEMORY_API_URL", "http://localhost:8000")
-MEMORY_API_KEY = os.environ.get("AUTH__API_KEY", "test-api-key")
+OLLAMA_BASE_URL = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+OLLAMA_MODEL = (os.environ.get("LLM__MODEL") or "").strip()
+MEMORY_API_URL = (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+MEMORY_API_KEY = (os.environ.get("AUTH__API_KEY") or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +239,10 @@ def separator(title: str):
 
 def run_test():
     separator("Ollama + Cognitive Memory Layer - End-to-End Test")
+
+    if not OLLAMA_BASE_URL or not OLLAMA_MODEL or not MEMORY_API_URL:
+        print("Set OLLAMA_BASE_URL (or OPENAI_BASE_URL), LLM__MODEL, and MEMORY_API_URL (or CML_BASE_URL) in .env")
+        return
 
     # Longer timeout for local models (first call loads the model into RAM).
     api_timeout = float(os.environ.get("MEMORY_API_TIMEOUT", "120"))

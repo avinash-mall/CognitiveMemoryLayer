@@ -379,6 +379,28 @@ class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
             row = await cursor.fetchone()
         return row[0] if row else 0
 
+    async def delete_by_filter(
+        self,
+        tenant_id: str,
+        filters: dict[str, Any],
+    ) -> int:
+        """Delete records matching filters. Returns count of deleted records."""
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        q = "DELETE FROM memories WHERE tenant_id = ?"
+        params: list[Any] = [tenant_id]
+        if filters:
+            if filters.get("status"):
+                q += " AND status = ?"
+                params.append(filters["status"])
+            if filters.get("type"):
+                q += " AND type = ?"
+                params.append(filters["type"])
+        cursor = await self._db.execute(q, params)
+        await self._db.commit()
+        return cursor.rowcount if cursor.rowcount is not None else 0
+
     def _row_to_record(self, row: dict[str, Any]) -> MemoryRecord:
         try:
             mem_type = MemoryType(row["type"])

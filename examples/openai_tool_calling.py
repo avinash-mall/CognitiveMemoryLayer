@@ -10,20 +10,29 @@ The LLM can autonomously decide when to:
 - Update memories based on user corrections
 - Forget information when requested
 
+Set in .env: OPENAI_API_KEY, MEMORY_API_URL or CML_BASE_URL, OPENAI_MODEL or LLM__MODEL, AUTH__API_KEY.
+
 Prerequisites:
     1. Start the API server:
        docker compose -f docker/docker-compose.yml up api
     
     2. Install dependencies:
-       pip install openai httpx
+       pip install openai httpx python-dotenv
     
-    3. Set your OpenAI API key:
-       export OPENAI_API_KEY=sk-...
+    3. Configure .env (see .env.example)
 """
 
 import json
 import os
+from pathlib import Path
 from typing import Optional
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 from openai import OpenAI
 from memory_client import CognitiveMemoryClient
 
@@ -141,20 +150,21 @@ class MemoryEnabledAssistant:
         self,
         session_id: str,
         openai_api_key: Optional[str] = None,
-        memory_api_url: str = "http://localhost:8000",
+        memory_api_url: Optional[str] = None,
         memory_api_key: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: Optional[str] = None,
     ):
         self.session_id = session_id
-        self.model = model
-        
+        self.model = (model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+        _base = (memory_api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+
         # Initialize OpenAI client
         self.openai = OpenAI(api_key=openai_api_key or os.getenv("OPENAI_API_KEY"))
         
         # Initialize memory client
         self.memory = CognitiveMemoryClient(
-            base_url=memory_api_url,
-            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", "")
+            base_url=_base or None,
+            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", ""),
         )
         
         # Conversation history
@@ -293,16 +303,17 @@ def main():
     print("Try telling it about yourself, then ask questions later!")
     print("Type 'quit' to exit.\n")
     
-    # Check for OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
-        print("Warning: OPENAI_API_KEY not set. Please set it:")
-        print("  export OPENAI_API_KEY=sk-...")
+        print("Set OPENAI_API_KEY in .env")
         return
-    
-    # Create assistant with session scope
+    model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+    if not model:
+        print("Set OPENAI_MODEL or LLM__MODEL in .env")
+        return
+
     assistant = MemoryEnabledAssistant(
         session_id="openai-demo-session",
-        model="gpt-4o-mini",  # or "gpt-4o" for better reasoning
+        model=model,
     )
     
     try:
@@ -332,10 +343,12 @@ def main():
 # Example of programmatic usage
 def example_programmatic():
     """Example showing programmatic usage of the assistant."""
-    
+    model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+    if not model:
+        raise SystemExit("Set OPENAI_MODEL or LLM__MODEL in .env")
     assistant = MemoryEnabledAssistant(
         session_id="demo-programmatic-session",
-        model="gpt-4o-mini",
+        model=model,
     )
     
     # Simulate a conversation

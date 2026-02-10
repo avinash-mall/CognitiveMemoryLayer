@@ -1,5 +1,5 @@
 # Minimal deps for Phase 1 Docker build and test (no torch/sentence-transformers).
-# This image does not support EMBEDDING__PROVIDER=local; use openai or vllm for embeddings.
+# This image does not support EMBEDDING__PROVIDER=local; use openai or openai_compatible for embeddings.
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.0

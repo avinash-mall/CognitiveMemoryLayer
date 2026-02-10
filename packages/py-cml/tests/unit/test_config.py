@@ -24,9 +24,9 @@ def test_config_direct_params() -> None:
 
 
 def test_config_defaults() -> None:
-    """CMLConfig has correct defaults."""
+    """CMLConfig has correct defaults; base_url has no hardcoded default (set CML_BASE_URL in .env)."""
     config = CMLConfig()
-    assert config.base_url == "http://localhost:8000"
+    assert config.base_url == ""  # from env when set; no hardcoded default
     assert config.tenant_id == "default"
     assert config.timeout == 30.0
     assert config.max_retries == 3

@@ -274,8 +274,8 @@ def get_embedding_client() -> EmbeddingClient:
             dimensions=settings.embedding.dimensions,
             base_url=settings.embedding.base_url,
         )
-    if provider == "vllm":
-        # OpenAI-compatible embedding endpoint (e.g. local vLLM with embedding model)
+    if provider in ("openai_compatible", "vllm"):
+        # OpenAI-compatible embedding endpoint (local server, proxy, etc.)
         base_url = settings.embedding.base_url or "http://localhost:8000/v1"
         api_key = settings.embedding.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
         return OpenAIEmbeddings(

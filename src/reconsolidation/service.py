@@ -1,6 +1,7 @@
 """Reconsolidation orchestrator service."""
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -156,8 +157,10 @@ class ReconsolidationService:
             facts = await self.fact_extractor.extract(text)
             return [{"text": f.text, "type": getattr(f, "type", "semantic_fact")} for f in facts]
 
+        # BUG-13: split on . ! ? ; BUG-09: include assistant_response in fallback
         facts = []
-        for sentence in user_message.split("."):
+        combined = f"{user_message} {assistant_response or ''}".strip()
+        for sentence in re.split(r"[.!?]+", combined):
             sentence = sentence.strip()
             if not sentence:
                 continue
@@ -205,7 +208,9 @@ class ReconsolidationService:
                 if op.target_id:
                     await self.store.delete(op.target_id, hard=False)
                 return True
-            return True
+            # BUG-14: unknown operation type — do not report success
+            logger.warning("revision_unknown_operation_type", op_type=op.op_type.value)
+            return False
         except Exception as e:
             logger.error(
                 "revision_operation_failed",
