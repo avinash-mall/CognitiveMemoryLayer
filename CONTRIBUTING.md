@@ -42,10 +42,26 @@ Thank you for your interest in contributing. This document outlines how to get s
 ## Project structure
 
 - `src/` — Application code: `core`, `api`, `memory`, `storage`, `retrieval`, `consolidation`, `forgetting`, `reconsolidation`, `extraction`, `utils`.
+- `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
 - `tests/` — Pytest tests.
 - `ProjectPlan/` — Design docs and issue tracking (e.g. `CurrentIssues.md`, `ProjectPlan_Complete.md`).
 
 For full architecture and API details, see [README](README.md) and [Usage Documentation](ProjectPlan/UsageDocumentation.md).
+
+## Publishing the Python SDK (py-cml)
+
+To publish the `cognitive-memory-layer` package to PyPI:
+
+1. Bump version in `packages/py-cml/pyproject.toml` and `packages/py-cml/src/cml/_version.py`, update CHANGELOG, commit and push to `main`.
+2. From the repository root, push the tag:
+   ```bash
+   git pull origin main
+   git tag py-cml-v0.1.0   # use the same version as in pyproject.toml
+   git push origin py-cml-v0.1.0
+   ```
+3. The tag push triggers the workflow; **Build and publish to PyPI** runs. Verify in **Actions** and on [pypi.org/project/cognitive-memory-layer](https://pypi.org/project/cognitive-memory-layer/).
+
+For prerequisites (PyPI trusted publisher, GitHub pypi environment), alternative methods (GitHub Actions Run workflow, GitHub Releases), and troubleshooting, see [packages/py-cml/CONTRIBUTING.md#publishing-the-package-to-pypi](packages/py-cml/CONTRIBUTING.md#publishing-the-package-to-pypi).
 
 ## Questions
 
