@@ -8,7 +8,6 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
-from cml.models.enums import MemoryType
 from cml.models.requests import (
     CreateSessionRequest,
     ForgetRequest,

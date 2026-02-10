@@ -1,7 +1,6 @@
 """Dashboard API routes for monitoring and management."""
 
 import math
-import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
