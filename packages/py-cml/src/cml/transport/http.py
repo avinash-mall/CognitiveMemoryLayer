@@ -154,9 +154,7 @@ class HTTPTransport:
         use_admin_key: bool = False,
     ) -> dict[str, Any]:
         url = API_PREFIX + path
-        headers: dict[str, str] = (
-            self._build_headers(use_admin_key=True) if use_admin_key else {}
-        )
+        headers: dict[str, str] = self._build_headers(use_admin_key=True) if use_admin_key else {}
         if json is not None:
             json = serialize_for_api(json)
         start = time.perf_counter()

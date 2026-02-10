@@ -21,11 +21,13 @@ class _MockLLMClient:
         system_prompt: str | None = None,
     ) -> str:
         # Return valid chunk JSON so SemanticChunker parses it
-        text = (prompt.split("Text to chunk:")[-1] if "Text to chunk:" in prompt else prompt)
+        text = prompt.split("Text to chunk:")[-1] if "Text to chunk:" in prompt else prompt
         text = text.strip()[:500]
-        return json.dumps([
-            {"type": "statement", "text": text, "salience": 0.7, "confidence": 0.8},
-        ])
+        return json.dumps(
+            [
+                {"type": "statement", "text": text, "salience": 0.7, "confidence": 0.8},
+            ]
+        )
 
     async def complete_json(self, prompt: str, schema=None, temperature: float = 0.0):
         return {"result": "ok"}
@@ -119,9 +121,13 @@ def test_unauthorized_access():
         resp = client_no_auth.post(
             "/api/v1/memory/write",
             json={"content": "test"},
-            headers={"X-Tenant-ID": "e2e-unauth"},  # distinct tenant so rate limit bucket is separate
+            headers={
+                "X-Tenant-ID": "e2e-unauth"
+            },  # distinct tenant so rate limit bucket is separate
         )
-        assert resp.status_code == 401, f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
+        assert (
+            resp.status_code == 401
+        ), f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
 
 
 def test_health_response_structure(client):

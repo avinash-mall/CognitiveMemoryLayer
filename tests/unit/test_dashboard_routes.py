@@ -100,7 +100,9 @@ class TestDashboardAuth:
         get_settings.cache_clear()
         try:
             with TestClient(app) as client:
-                resp = client.get("/api/v1/dashboard/overview", headers={"X-Tenant-ID": "unit-dash-no-key"})
+                resp = client.get(
+                    "/api/v1/dashboard/overview", headers={"X-Tenant-ID": "unit-dash-no-key"}
+                )
             assert resp.status_code == 401
         finally:
             get_settings.cache_clear()

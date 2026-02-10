@@ -70,7 +70,11 @@ class CMLConfig(BaseModel):
             "verify_ssl": "CML_VERIFY_SSL",
         }
         for field, env_var in env_map.items():
-            if field not in values or values[field] is None or (field == "base_url" and values.get(field) == ""):
+            if (
+                field not in values
+                or values[field] is None
+                or (field == "base_url" and values.get(field) == "")
+            ):
                 env_val = os.environ.get(env_var)
                 if env_val is not None and (field != "base_url" or env_val.strip()):
                     if field == "verify_ssl":

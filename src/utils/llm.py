@@ -88,9 +88,11 @@ class OpenAICompatibleClient(LLMClient):
             self._base_url = settings.llm.base_url or (
                 _OPENAI_DEFAULT_BASE
                 if provider == "openai"
-                else _OPENAI_COMPATIBLE_DEFAULT_BASE
-                if provider in ("openai_compatible", "vllm")
-                else _OLLAMA_DEFAULT_BASE
+                else (
+                    _OPENAI_COMPATIBLE_DEFAULT_BASE
+                    if provider in ("openai_compatible", "vllm")
+                    else _OLLAMA_DEFAULT_BASE
+                )
             )
         if self._api_key is None:
             if base_url is not None:

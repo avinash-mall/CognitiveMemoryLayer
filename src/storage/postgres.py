@@ -32,7 +32,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         async with self.session_factory() as session:
             # BUG-06: Check by key first if provided (stable identity), then by content_hash (deduplication)
             existing_record = None
-            
+
             if record.key:
                 existing_key = await session.execute(
                     select(MemoryRecordModel).where(
@@ -44,7 +44,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                     )
                 )
                 existing_record = existing_key.scalar_one_or_none()
-            
+
             if not existing_record:
                 existing_hash = await session.execute(
                     select(MemoryRecordModel).where(
@@ -61,15 +61,19 @@ class PostgresMemoryStore(MemoryStoreBase):
                 existing_record.access_count += 1
                 existing_record.last_accessed_at = _naive_utc(datetime.now(timezone.utc))
                 existing_record.confidence = max(existing_record.confidence, record.confidence)
-                
+
                 # If we found it by key but content changed, update content & hash
-                if record.key and existing_record.key == record.key and existing_record.content_hash != content_hash:
+                if (
+                    record.key
+                    and existing_record.key == record.key
+                    and existing_record.content_hash != content_hash
+                ):
                     existing_record.text = record.text
                     existing_record.content_hash = content_hash
                     existing_record.embedding = record.embedding
                     # Update other fields that might have changed
                     existing_record.meta = record.metadata
-                    
+
                 await session.commit()
                 await session.refresh(existing_record)
                 return self._to_schema(existing_record)
@@ -312,11 +316,11 @@ class PostgresMemoryStore(MemoryStoreBase):
                     q = q.where(MemoryRecordModel.type.in_(t))
                 else:
                     q = q.where(MemoryRecordModel.type == t)
-            
-            # Additional safety: ensure at least one filter besides tenant_id is applied 
-            # to prevent accidental wipe of all tenant data if filters is empty? 
+
+            # Additional safety: ensure at least one filter besides tenant_id is applied
+            # to prevent accidental wipe of all tenant data if filters is empty?
             # The interface implies filters are required, but let's trust the caller for now.
-            
+
             r = await session.execute(q)
             await session.commit()
             return r.rowcount

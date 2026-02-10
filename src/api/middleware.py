@@ -59,7 +59,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._redis_warning_logged = False
 
     async def dispatch(self, request: Request, call_next):
-        tenant_id = request.headers.get("X-Tenant-Id") or request.headers.get("X-Tenant-ID", "default")
+        tenant_id = request.headers.get("X-Tenant-Id") or request.headers.get(
+            "X-Tenant-ID", "default"
+        )
         redis = self._get_redis(request)
         allowed = await self._check_rate_limit(tenant_id, redis)
         if not allowed:

@@ -98,7 +98,9 @@ class CMLOpenAIHelper:
         messages.append({"role": "user", "content": user_message})
 
         if not self.model:
-            raise ValueError("Model not set; pass model= to CMLOpenAIHelper() or set OPENAI_MODEL or LLM__MODEL in .env")
+            raise ValueError(
+                "Model not set; pass model= to CMLOpenAIHelper() or set OPENAI_MODEL or LLM__MODEL in .env"
+            )
         response = self.openai.chat.completions.create(
             model=self.model,
             messages=messages,

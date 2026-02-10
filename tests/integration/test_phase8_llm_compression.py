@@ -11,10 +11,7 @@ import pytest
 from src.forgetting.compression import summarize_for_compression
 from src.utils.llm import get_llm_client
 
-
-SKIP_NO_LLM = (
-    "Default LLM not configured for completion: set LLM__PROVIDER and LLM__BASE_URL or LLM__API_KEY in .env."
-)
+SKIP_NO_LLM = "Default LLM not configured for completion: set LLM__PROVIDER and LLM__BASE_URL or LLM__API_KEY in .env."
 
 
 @pytest.fixture(scope="module")
