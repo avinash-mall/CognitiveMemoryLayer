@@ -6,8 +6,6 @@ from src.api.auth import (
     AuthContext,
     _build_api_keys,
     get_auth_context,
-    require_admin_permission,
-    require_write_permission,
 )
 from src.api.app import app
 from src.api.schemas import (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -80,12 +81,10 @@ class AsyncCognitiveMemoryLayer:
 
     def __del__(self) -> None:
         if not getattr(self, "_closed", True):
-            try:
+            with contextlib.suppress(Exception):
                 logger.warning(
                     "AsyncCognitiveMemoryLayer was not closed; use 'async with' or call close() to avoid connection leaks"
                 )
-            except Exception:
-                pass
 
     async def __aenter__(self) -> AsyncCognitiveMemoryLayer:
         return self
@@ -684,8 +683,7 @@ class AsyncCognitiveMemoryLayer:
             if memory_types:
                 if len(memory_types) > 1:
                     raise ValueError(
-                        "iter_memories currently supports at most one memory_types filter; got %d types"
-                        % len(memory_types),
+                        f"iter_memories currently supports at most one memory_types filter; got {len(memory_types)} types"
                     )
                 params["type"] = memory_types[0].value
             data = await self._transport.request(

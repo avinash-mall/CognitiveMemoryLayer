@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from cml.exceptions import (
     AuthenticationError,
-    CMLError,
     CMLConnectionError,
+    CMLError,
     CMLTimeoutError,
     ConnectionError,
     RateLimitError,
