@@ -80,22 +80,24 @@ class ForgettingExecutor:
         return (False, None)
 
     async def _execute_decay(self, op: ForgettingOperation) -> bool:
-        """Reduce confidence of a memory."""
+        """Reduce confidence of a memory. BUG-05: merge metadata."""
         if op.new_confidence is None:
             return False
-        patch = {
-            "confidence": op.new_confidence,
-            "metadata": {"last_decay": datetime.now(timezone.utc).isoformat()},
-        }
+        record = await self.store.get_by_id(op.memory_id)
+        if not record:
+            return False
+        merged_meta = {**(record.metadata or {}), "last_decay": datetime.now(timezone.utc).isoformat()}
+        patch = {"confidence": op.new_confidence, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch, increment_version=False)
         return result is not None
 
     async def _execute_silence(self, op: ForgettingOperation) -> bool:
-        """Mark memory as silent (hard to retrieve)."""
-        patch = {
-            "status": MemoryStatus.SILENT.value,
-            "metadata": {"silenced_at": datetime.now(timezone.utc).isoformat()},
-        }
+        """Mark memory as silent (hard to retrieve). BUG-05: merge metadata."""
+        record = await self.store.get_by_id(op.memory_id)
+        if not record:
+            return False
+        merged_meta = {**(record.metadata or {}), "silenced_at": datetime.now(timezone.utc).isoformat()}
+        patch = {"status": MemoryStatus.SILENT.value, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch)
         return result is not None
 
@@ -159,19 +161,29 @@ class ForgettingExecutor:
         )
 
     async def _execute_archive(self, op: ForgettingOperation) -> bool:
-        """Move to archive store or mark archived."""
+        """Move to archive store or mark archived. BUG-04: two-phase for atomicity."""
+        record = await self.store.get_by_id(op.memory_id)
+        if not record:
+            return False
+        now_iso = datetime.now(timezone.utc).isoformat()
+        merged_meta = {**(record.metadata or {}), "archived_at": now_iso}
+
         if not self.archive_store:
             patch = {
                 "status": MemoryStatus.ARCHIVED.value,
-                "metadata": {"archived_at": datetime.now(timezone.utc).isoformat()},
+                "metadata": merged_meta,
             }
             result = await self.store.update(op.memory_id, patch)
             return result is not None
 
-        record = await self.store.get_by_id(op.memory_id)
-        if not record:
-            return False
+        # Phase 1: mark ARCHIVED in primary so failure after this doesn't lose data
+        await self.store.update(
+            op.memory_id,
+            {"status": MemoryStatus.ARCHIVED.value, "metadata": merged_meta},
+        )
+        # Phase 2: copy to archive
         await self.archive_store.upsert(self._record_to_create_schema(record))
+        # Phase 3: hard delete from primary
         await self.store.delete(op.memory_id, hard=True)
         return True
 

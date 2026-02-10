@@ -4,7 +4,7 @@ from typing import Optional
 
 from ..utils.llm import LLMClient
 
-# System prompt for one-sentence gist extraction (fits small models like Llama 3.2 1B)
+# System prompt for one-sentence gist extraction (fits small models / short summary)
 COMPRESSION_SYSTEM = (
     "You summarize text into one short sentence (under 100 characters). "
     "Keep only the main fact or idea. Output nothing else."

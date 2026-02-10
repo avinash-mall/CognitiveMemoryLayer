@@ -86,15 +86,26 @@ class ScratchPad:
         session_id: str,
     ) -> None:
         """Clear all scratch data for the session."""
-        records = await self.store.scan(
-            tenant_id=tenant_id,
-            filters={
-                "status": "active",
-                "type": MemoryType.SCRATCH.value,
-                "source_session_id": session_id,
-            },
-            limit=1000,
-        )
-        for r in records:
-            if r.key and r.key.startswith(self.SCRATCH_KEY_PREFIX):
-                await self.store.delete(r.id, hard=True)
+        if hasattr(self.store, "delete_by_filter"):
+            await self.store.delete_by_filter(
+                tenant_id=tenant_id,
+                filters={
+                    "status": "active",
+                    "type": MemoryType.SCRATCH.value,
+                    "source_session_id": session_id,
+                },
+            )
+        else:
+            # Fallback for stores that don't implement delete_by_filter yet
+            records = await self.store.scan(
+                tenant_id=tenant_id,
+                filters={
+                    "status": "active",
+                    "type": MemoryType.SCRATCH.value,
+                    "source_session_id": session_id,
+                },
+                limit=1000,
+            )
+            for r in records:
+                if r.key and r.key.startswith(self.SCRATCH_KEY_PREFIX):
+                    await self.store.delete(r.id, hard=True)

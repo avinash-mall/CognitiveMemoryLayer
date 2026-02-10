@@ -8,6 +8,7 @@ from uuid import uuid4
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..core.config import get_settings
 from ..memory.orchestrator import MemoryOrchestrator
 from ..memory.seamless_provider import SeamlessMemoryProvider
 from ..utils.metrics import MEMORY_READS, MEMORY_WRITES
@@ -37,6 +38,11 @@ router = APIRouter(tags=["memory"])
 def get_orchestrator(request: Request) -> MemoryOrchestrator:
     """Get memory orchestrator from app state."""
     return request.app.state.orchestrator
+
+
+def _safe_500_detail(e: Exception) -> str:
+    """SEC-04: avoid leaking internal details in 500 responses unless debug."""
+    return str(e) if get_settings().debug else "Internal server error"
 
 
 def _to_memory_item(mem) -> MemoryItem:
@@ -91,7 +97,7 @@ async def write_memory(
             error=str(e),
             traceback=traceback.format_exc(),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.post("/memory/turn", response_model=ProcessTurnResponse)
@@ -106,23 +112,27 @@ async def process_turn(
     - Auto-stores salient information (user message and optional assistant response)
     - Returns formatted memory context for LLM injection
     """
-    provider = SeamlessMemoryProvider(
-        orchestrator,
-        max_context_tokens=body.max_context_tokens,
-        auto_store=True,
-    )
-    result = await provider.process_turn(
-        tenant_id=auth.tenant_id,
-        user_message=body.user_message,
-        assistant_response=body.assistant_response,
-        session_id=body.session_id,
-    )
-    return ProcessTurnResponse(
-        memory_context=result.memory_context,
-        memories_retrieved=len(result.injected_memories),
-        memories_stored=result.stored_count,
-        reconsolidation_applied=result.reconsolidation_applied,
-    )
+    try:
+        provider = SeamlessMemoryProvider(
+            orchestrator,
+            max_context_tokens=body.max_context_tokens,
+            auto_store=True,
+        )
+        result = await provider.process_turn(
+            tenant_id=auth.tenant_id,
+            user_message=body.user_message,
+            assistant_response=body.assistant_response,
+            session_id=body.session_id,
+        )
+        return ProcessTurnResponse(
+            memory_context=result.memory_context,
+            memories_retrieved=len(result.injected_memories),
+            memories_stored=result.stored_count,
+            reconsolidation_applied=result.reconsolidation_applied,
+        )
+    except Exception as e:
+        logger.exception("process_turn_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.post("/memory/read", response_model=ReadMemoryResponse)
@@ -167,7 +177,8 @@ async def read_memory(
             elapsed_ms=elapsed_ms,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("read_memory_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.post("/memory/update", response_model=UpdateMemoryResponse)
@@ -196,7 +207,8 @@ async def update_memory(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("update_memory_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.post("/memory/forget", response_model=ForgetResponse)
@@ -220,7 +232,8 @@ async def forget_memory(
             message=f"{result.get('affected_count', 0)} memories {body.action}d",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("forget_memory_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.get("/memory/stats", response_model=MemoryStats)
@@ -233,7 +246,8 @@ async def get_memory_stats(
         stats = await orchestrator.get_stats(tenant_id=auth.tenant_id)
         return MemoryStats(**stats)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("get_memory_stats_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 # ---- Session-based API (convenience for scope=SESSION) ----
@@ -300,7 +314,8 @@ async def session_write(
         )
     except Exception as e:
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="error").inc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("session_write_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.post("/session/{session_id}/read", response_model=ReadMemoryResponse)
@@ -344,7 +359,8 @@ async def session_read(
             elapsed_ms=elapsed_ms,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("session_read_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.get("/session/{session_id}/context", response_model=SessionContextResponse)
@@ -379,7 +395,8 @@ async def session_context(
             context_string=ctx.get("context_string", ""),
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("session_context_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.get("/health")

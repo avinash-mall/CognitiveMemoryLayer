@@ -1,6 +1,7 @@
 """Neo4j knowledge graph store for semantic memory."""
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -41,8 +42,15 @@ class GraphEdge:
     created_at: datetime
 
 
+_REL_TYPE_ALLOWLIST = re.compile(r"^[A-Za-z0-9_\s]+$")
+
+
 def _sanitize_rel_type(predicate: str) -> str:
-    """Sanitize predicate for Neo4j relationship type (alphanumeric + underscore only)."""
+    """Sanitize predicate for Neo4j relationship type (SEC-01: strict allowlist, reject invalid)."""
+    if not _REL_TYPE_ALLOWLIST.match(predicate):
+        raise ValueError(
+            "Invalid relationship type: only alphanumeric characters, underscores, and spaces allowed"
+        )
     sanitized = "".join(
         c if c.isalnum() or c == "_" else "_" for c in predicate.upper().replace(" ", "_")
     )

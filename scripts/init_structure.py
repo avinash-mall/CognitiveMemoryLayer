@@ -159,7 +159,7 @@ STRUCTURE = {
             "test_phase6_reconsolidation_flow.py",
             "test_phase7_consolidation_flow.py",
             "test_phase8_forgetting_flow.py",
-            "test_phase8_vllm_compression.py",
+            "test_phase8_llm_compression.py",
             "test_phase9_api_flow.py",
         ],
         "e2e": ["__init__.py", "test_api_flows.py"],

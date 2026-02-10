@@ -1,30 +1,32 @@
 """
 Complete Chatbot with Memory - Cognitive Memory Layer
 
-A full-featured chatbot that demonstrates all memory capabilities:
-- Automatic context injection before every response
-- Intelligent memory storage based on conversation
-- Memory management commands
-- Works with any LLM provider
-
-This example can be used as a template for production chatbots.
+A full-featured chatbot that demonstrates all memory capabilities.
+Set in .env: OPENAI_API_KEY, OPENAI_MODEL or LLM__MODEL, MEMORY_API_URL or CML_BASE_URL, AUTH__API_KEY.
 
 Prerequisites:
     1. Start the API server:
        docker compose -f docker/docker-compose.yml up api
     
     2. Install dependencies:
-       pip install openai httpx
+       pip install openai httpx python-dotenv
     
-    3. Set your OpenAI API key:
-       export OPENAI_API_KEY=sk-...
+    3. Configure .env (see .env.example)
 """
 
 import os
 import re
+from pathlib import Path
 from typing import Optional, List, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 from openai import OpenAI
 from memory_client import CognitiveMemoryClient
 
@@ -52,9 +54,9 @@ class MemoryPoweredChatbot:
         self,
         session_id: str,
         llm_api_key: Optional[str] = None,
-        memory_api_url: str = "http://localhost:8000",
+        memory_api_url: Optional[str] = None,
         memory_api_key: Optional[str] = None,
-        llm_model: str = "gpt-4o-mini",
+        llm_model: Optional[str] = None,
         auto_remember: bool = True,
         memory_context_tokens: int = 1500,
     ):
@@ -64,22 +66,23 @@ class MemoryPoweredChatbot:
         Args:
             session_id: Unique identifier for the session (used for origin tracking)
             llm_api_key: OpenAI API key (or set OPENAI_API_KEY env var)
-            memory_api_url: URL of the Cognitive Memory Layer API
+            memory_api_url: URL of the Cognitive Memory Layer API (or MEMORY_API_URL / CML_BASE_URL from env)
             memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
-            llm_model: LLM model to use
+            llm_model: LLM model (or OPENAI_MODEL / LLM__MODEL from env)
             auto_remember: Automatically extract and store memorable info
             memory_context_tokens: Max tokens for memory context
         """
         self.session_id = session_id
-        self.llm_model = llm_model
+        self.llm_model = (llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
         self.auto_remember = auto_remember
         self.memory_context_tokens = memory_context_tokens
-        
+        _base = (memory_api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+
         # Initialize clients
         self.llm = OpenAI(api_key=llm_api_key or os.getenv("OPENAI_API_KEY"))
         self.memory = CognitiveMemoryClient(
-            base_url=memory_api_url,
-            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", "")
+            base_url=_base or None,
+            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", ""),
         )
         
         # Conversation history (current session only)
@@ -311,14 +314,16 @@ Type 'quit' to exit.
 """)
     
     if not os.getenv("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY not set")
-        print("  export OPENAI_API_KEY=sk-...")
+        print("Set OPENAI_API_KEY in .env")
         return
-    
-    chatbot = MemoryPoweredChatbot(
-        session_id="chatbot-demo-session",
-        auto_remember=True,
-    )
+    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL")):
+        print("Set OPENAI_MODEL or LLM__MODEL in .env")
+        return
+    if not (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL")):
+        print("Set MEMORY_API_URL or CML_BASE_URL in .env")
+        return
+
+    chatbot = MemoryPoweredChatbot(session_id="chatbot-demo-session", auto_remember=True)
     
     try:
         print("Bot: Hello! I'm your personal assistant. I remember things about you across our conversations. How can I help you today?")

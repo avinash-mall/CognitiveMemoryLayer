@@ -1,6 +1,6 @@
 # Examples
 
-The `examples/` directory contains runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. Set `CML_API_KEY` and `CML_BASE_URL` (e.g. `http://localhost:8000`) when using client mode.
+The `examples/` directory contains runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM__MODEL`. No hardcoded URLs or model names in code.
 
 ## Quickstart
 
@@ -16,7 +16,7 @@ python examples/quickstart.py
 
 **File:** [examples/chat_with_memory.py](../examples/chat_with_memory.py)
 
-A simple chatbot that uses OpenAI and cognitive-memory-layer for persistent memory. Each turn retrieves relevant memories and injects them into the system prompt, then stores the exchange. Requires `openai` and a CML server. Type `quit` to exit.
+A simple chatbot that uses OpenAI and cognitive-memory-layer for persistent memory. Each turn retrieves relevant memories and injects them into the system prompt, then stores the exchange. Requires `openai`, a CML server, and `.env` with `CML_BASE_URL`, `CML_API_KEY`, `OPENAI_MODEL` (or `LLM__MODEL`). Type `quit` to exit.
 
 ```bash
 pip install openai

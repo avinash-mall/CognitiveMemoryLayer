@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Configuration and examples:** No hardcoded API URLs or model names. Set `CML_BASE_URL`, `CML_API_KEY`, and (for OpenAI helper and chat examples) `OPENAI_MODEL` or `LLM__MODEL` in `.env`. Embedded config reads `LLM__MODEL`, `EMBEDDING__MODEL`, `LLM__BASE_URL`, `EMBEDDING__BASE_URL` from env. See [Configuration](docs/configuration.md) and [.env.example](../../.env.example).
+
 ### Added
 
 #### Phase 1: Project setup

@@ -1,6 +1,7 @@
 """PostgreSQL memory store with pgvector."""
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -12,6 +13,8 @@ from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Prov
 from .base import MemoryStoreBase
 from .models import MemoryRecordModel
 from .utils import naive_utc as _naive_utc
+
+_logger = logging.getLogger(__name__)
 
 _DATETIME_KEYS = frozenset(
     {"last_accessed_at", "timestamp", "written_at", "valid_from", "valid_to"}
@@ -27,19 +30,46 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
         content_hash = self._hash_content(record.text, record.tenant_id)
         async with self.session_factory() as session:
-            existing = await session.execute(
-                select(MemoryRecordModel).where(
-                    and_(
-                        MemoryRecordModel.content_hash == content_hash,
-                        MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+            # BUG-06: Check by key first if provided (stable identity), then by content_hash (deduplication)
+            existing_record = None
+            
+            if record.key:
+                existing_key = await session.execute(
+                    select(MemoryRecordModel).where(
+                        and_(
+                            MemoryRecordModel.tenant_id == record.tenant_id,
+                            MemoryRecordModel.key == record.key,
+                            MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                        )
                     )
                 )
-            )
-            existing_record = existing.scalar_one_or_none()
+                existing_record = existing_key.scalar_one_or_none()
+            
+            if not existing_record:
+                existing_hash = await session.execute(
+                    select(MemoryRecordModel).where(
+                        and_(
+                            MemoryRecordModel.content_hash == content_hash,
+                            MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                        )
+                    )
+                )
+                existing_record = existing_hash.scalar_one_or_none()
+
             if existing_record:
+                # Update existing record
                 existing_record.access_count += 1
                 existing_record.last_accessed_at = _naive_utc(datetime.now(timezone.utc))
                 existing_record.confidence = max(existing_record.confidence, record.confidence)
+                
+                # If we found it by key but content changed, update content & hash
+                if record.key and existing_record.key == record.key and existing_record.content_hash != content_hash:
+                    existing_record.text = record.text
+                    existing_record.content_hash = content_hash
+                    existing_record.embedding = record.embedding
+                    # Update other fields that might have changed
+                    existing_record.meta = record.metadata
+                    
                 await session.commit()
                 await session.refresh(existing_record)
                 return self._to_schema(existing_record)
@@ -262,6 +292,35 @@ class PostgresMemoryStore(MemoryStoreBase):
             r = await session.execute(q)
             return r.scalar() or 0
 
+    async def delete_by_filter(
+        self,
+        tenant_id: str,
+        filters: Dict[str, Any],
+    ) -> int:
+        """Delete records matching filters. Used for efficient ScratchPad clearing (BUG-07)."""
+        async with self.session_factory() as session:
+            q = delete(MemoryRecordModel).where(MemoryRecordModel.tenant_id == tenant_id)
+            if "context_tags" in filters:
+                q = q.where(MemoryRecordModel.context_tags.overlap(filters["context_tags"]))
+            if "source_session_id" in filters:
+                q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
+            if "status" in filters:
+                q = q.where(MemoryRecordModel.status == filters["status"])
+            if "type" in filters:
+                t = filters["type"]
+                if isinstance(t, list):
+                    q = q.where(MemoryRecordModel.type.in_(t))
+                else:
+                    q = q.where(MemoryRecordModel.type == t)
+            
+            # Additional safety: ensure at least one filter besides tenant_id is applied 
+            # to prevent accidental wipe of all tenant data if filters is empty? 
+            # The interface implies filters are required, but let's trust the caller for now.
+            
+            r = await session.execute(q)
+            await session.commit()
+            return r.rowcount
+
     async def count_references_to(self, record_id: UUID) -> int:
         """
         Count how many other memory records reference this one (supersedes_id or evidence_refs).
@@ -283,6 +342,24 @@ class PostgresMemoryStore(MemoryStoreBase):
             r = await session.execute(q)
             return r.scalar() or 0
 
+    async def increment_access_counts(
+        self, record_ids: List[UUID], last_accessed_at: Optional[datetime] = None
+    ) -> None:
+        """Atomic increment of access_count for given records (BUG-02: avoid lost update)."""
+        if not record_ids:
+            return
+        now = _naive_utc(last_accessed_at or datetime.now(timezone.utc))
+        async with self.session_factory() as session:
+            await session.execute(
+                update(MemoryRecordModel)
+                .where(MemoryRecordModel.id.in_(record_ids))
+                .values(
+                    access_count=MemoryRecordModel.access_count + 1,
+                    last_accessed_at=now,
+                )
+            )
+            await session.commit()
+
     def _hash_content(self, text: str, tenant_id: str) -> str:
         content = f"{tenant_id}:{text.lower().strip()}"
         return hashlib.sha256(content.encode()).hexdigest()
@@ -293,10 +370,20 @@ class PostgresMemoryStore(MemoryStoreBase):
         try:
             mem_type = MemoryType(model.type)
         except ValueError:
+            _logger.warning(
+                "unknown_memory_type_in_db",
+                record_id=str(model.id),
+                value=model.type,
+            )
             mem_type = MemoryType.EPISODIC_EVENT
         try:
             status = MemoryStatus(model.status)
         except ValueError:
+            _logger.warning(
+                "unknown_memory_status_in_db",
+                record_id=str(model.id),
+                value=model.status,
+            )
             status = MemoryStatus.ACTIVE
         try:
             provenance = Provenance(**(model.provenance or {}))

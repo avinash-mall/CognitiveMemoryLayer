@@ -574,6 +574,11 @@ class CognitiveMemoryLayer:
         Returns:
             List of WriteResponse, one per item.
         """
+        for i, item in enumerate(items):
+            if not isinstance(item, dict) or "content" not in item:
+                raise ValueError(
+                    f"Each item must be a dict with a 'content' key; item at index {i} is invalid"
+                )
         result: list[WriteResponse] = []
         for item in items:
             resp = self.write(

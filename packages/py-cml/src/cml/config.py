@@ -35,8 +35,8 @@ class CMLConfig(BaseModel):
 
     api_key: str | None = Field(default=None, description="API key for authentication")
     base_url: str = Field(
-        default="http://localhost:8000",
-        description="Base URL of the CML server",
+        default="",
+        description="Base URL of the CML server (set CML_BASE_URL in .env)",
     )
     tenant_id: str = Field(default="default", description="Tenant identifier")
     timeout: float = Field(default=30.0, description="Request timeout in seconds")
@@ -70,9 +70,9 @@ class CMLConfig(BaseModel):
             "verify_ssl": "CML_VERIFY_SSL",
         }
         for field, env_var in env_map.items():
-            if field not in values or values[field] is None:
+            if field not in values or values[field] is None or (field == "base_url" and values.get(field) == ""):
                 env_val = os.environ.get(env_var)
-                if env_val is not None:
+                if env_val is not None and (field != "base_url" or env_val.strip()):
                     if field == "verify_ssl":
                         values[field] = env_val.strip().lower() in ("1", "true", "yes")
                     else:
@@ -82,8 +82,10 @@ class CMLConfig(BaseModel):
     @model_validator(mode="after")
     def validate_and_normalize(self) -> CMLConfig:
         """Normalize base_url and validate numeric fields."""
-        self.base_url = self.base_url.rstrip("/")
-        if not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
+        self.base_url = (self.base_url or "").rstrip("/")
+        if self.base_url and not (
+            self.base_url.startswith("http://") or self.base_url.startswith("https://")
+        ):
             raise ValueError("base_url must start with http:// or https://")
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")

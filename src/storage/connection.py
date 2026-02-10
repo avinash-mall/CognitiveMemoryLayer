@@ -1,5 +1,6 @@
 """Database connection manager for PostgreSQL, Neo4j, and Redis."""
 
+import threading
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -14,6 +15,7 @@ class DatabaseManager:
     """Singleton manager for all database connections."""
 
     _instance: "DatabaseManager | None" = None
+    _lock: "threading.Lock" = threading.Lock()
 
     def __init__(self) -> None:
         settings = get_settings()
@@ -70,8 +72,9 @@ class DatabaseManager:
 
     @classmethod
     def get_instance(cls) -> "DatabaseManager":
-        if cls._instance is None:
-            cls._instance = cls()
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = cls()
         return cls._instance
 
     @asynccontextmanager
@@ -79,6 +82,7 @@ class DatabaseManager:
         session = self.pg_session_factory()
         try:
             yield session
+            await session.commit()
         except Exception:
             await session.rollback()
             raise
@@ -87,6 +91,8 @@ class DatabaseManager:
 
     @asynccontextmanager
     async def neo4j_session(self):
+        if self.neo4j_driver is None:
+            raise RuntimeError("DatabaseManager is closed; cannot create Neo4j session")
         session = self.neo4j_driver.session()
         try:
             yield session
@@ -97,7 +103,14 @@ class DatabaseManager:
         """Close all database connections safely."""
         if self.pg_engine:
             await self.pg_engine.dispose()
+            self.pg_engine = None
         if self.neo4j_driver:
             await self.neo4j_driver.close()
+            self.neo4j_driver = None
         if self.redis:
             await self.redis.aclose()
+            self.redis = None
+        # Reset singleton so next get_instance() creates a fresh manager (avoids using closed driver).
+        with self._lock:
+            if DatabaseManager._instance is self:
+                DatabaseManager._instance = None

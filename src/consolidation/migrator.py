@@ -117,15 +117,16 @@ class ConsolidationMigrator:
         compress: bool = False,
     ) -> int:
         marked = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
         for ep_id in episode_ids:
             try:
                 ep_uuid = UUID(ep_id)
-                patch: dict = {
-                    "metadata": {
-                        "consolidated": True,
-                        "consolidated_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                }
+                episode = await self.episodic.get_by_id(ep_uuid)
+                if not episode:
+                    continue
+                # BUG-03: merge with existing metadata instead of replacing
+                merged_metadata = {**(episode.metadata or {}), "consolidated": True, "consolidated_at": now_iso}
+                patch: dict = {"metadata": merged_metadata}
                 if compress:
                     patch["status"] = MemoryStatus.COMPRESSED.value
                 await self.episodic.update(ep_uuid, patch, increment_version=False)

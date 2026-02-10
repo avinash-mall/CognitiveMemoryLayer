@@ -40,7 +40,7 @@ class FactExtractor:
 
 
 class LLMFactExtractor(FactExtractor):
-    """LLM-based fact extraction using the same client as summarization (e.g. vLLM)."""
+    """LLM-based fact extraction using the same client as summarization (e.g. default LLM)."""
 
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm = llm_client

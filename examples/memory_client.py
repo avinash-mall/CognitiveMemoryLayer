@@ -5,12 +5,12 @@ A simple client for interacting with the Cognitive Memory Layer REST API.
 This client can be used directly or integrated with LLM tool calling.
 
 Usage:
-    Set AUTH__API_KEY in your environment, or pass api_key when creating the client.
+    Set AUTH__API_KEY and MEMORY_API_URL (or CML_BASE_URL) in .env, or pass when creating the client.
 
     from memory_client import CognitiveMemoryClient
     import os
 
-    client = CognitiveMemoryClient(api_key=os.environ.get("AUTH__API_KEY", "your-key"))
+    client = CognitiveMemoryClient(api_key=os.environ.get("AUTH__API_KEY"), base_url=os.environ.get("CML_BASE_URL"))
 
     # Store a memory (holistic: tenant from auth; optional context_tags, session_id)
     result = client.write("User prefers vegetarian food", session_id="session-123", context_tags=["preference"])
@@ -18,6 +18,16 @@ Usage:
     # Retrieve memories
     memories = client.read("What food does the user like?")
 """
+
+import os
+
+try:
+    from pathlib import Path
+    from dotenv import load_dotenv
+    _repo_root = Path(__file__).resolve().parent.parent
+    load_dotenv(_repo_root / ".env")
+except ImportError:
+    pass
 
 import httpx
 from typing import Optional, List, Dict, Any
@@ -86,8 +96,8 @@ class CognitiveMemoryClient:
     Example:
         import os
         client = CognitiveMemoryClient(
-            base_url="http://localhost:8000",
-            api_key=os.environ.get("AUTH__API_KEY", "")
+            base_url=os.environ.get("CML_BASE_URL"),
+            api_key=os.environ.get("AUTH__API_KEY"),
         )
         client.write("The user lives in Paris", session_id="session-123", context_tags=["personal"])
         result = client.read("Where does the user live?", format="llm_context")
@@ -99,7 +109,7 @@ class CognitiveMemoryClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         timeout: float = 30.0
     ):
@@ -107,12 +117,12 @@ class CognitiveMemoryClient:
         Initialize the memory client.
 
         Args:
-            base_url: API server URL
+            base_url: API server URL (default: MEMORY_API_URL or CML_BASE_URL from env)
             api_key: API key (default: AUTH__API_KEY from environment)
             timeout: Request timeout in seconds
         """
-        import os
-        self.base_url = base_url.rstrip("/")
+        _url = (base_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+        self.base_url = _url.rstrip("/") if _url else ""
         self.api_key = api_key if api_key is not None else os.environ.get("AUTH__API_KEY", "")
         self.timeout = timeout
         self._client = httpx.Client(timeout=timeout)
@@ -354,12 +364,12 @@ class AsyncCognitiveMemoryClient:
     
     def __init__(
         self,
-        base_url: str = "http://localhost:8000",
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         timeout: float = 30.0
     ):
-        import os
-        self.base_url = base_url.rstrip("/")
+        _url = (base_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+        self.base_url = _url.rstrip("/") if _url else ""
         self.api_key = api_key if api_key is not None else os.environ.get("AUTH__API_KEY", "")
         self.timeout = timeout
         self._client = httpx.AsyncClient(timeout=timeout)
