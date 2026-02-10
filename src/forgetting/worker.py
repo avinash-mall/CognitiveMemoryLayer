@@ -1,6 +1,7 @@
 """Forgetting worker and scheduler."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
@@ -19,6 +20,8 @@ from .actions import (
 from .executor import ForgettingExecutor
 from .interference import InterferenceDetector, InterferenceResult
 from .scorer import RelevanceScorer, ScorerConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -206,14 +209,8 @@ class ForgettingScheduler:
         return None
 
     async def _scheduler_loop(self) -> None:
-        """Background scheduler loop.
-
-        Iterates over all previously-seen tenants/users and triggers forgetting
-        for those that haven't been run within the configured interval (MED-32).
-        """
+        """Background scheduler loop. DES-09: check first then sleep so first run is immediate."""
         while self._running:
-            await asyncio.sleep(self.interval.total_seconds())
-            # Trigger forgetting for all known users whose last run is stale
             now = datetime.now(timezone.utc)
             for key, last_run in list(self._user_last_run.items()):
                 if (now - last_run) >= self.interval:
@@ -224,4 +221,5 @@ class ForgettingScheduler:
                             await self.worker.run_forgetting(tenant_id, user_id)
                             self._user_last_run[key] = now
                     except Exception:
-                        pass  # Individual failures shouldn't stop the loop
+                        logger.exception("forgetting_run_failed", extra={"key": key})
+            await asyncio.sleep(self.interval.total_seconds())

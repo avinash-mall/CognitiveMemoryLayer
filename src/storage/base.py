@@ -79,6 +79,15 @@ class MemoryStoreBase(ABC):
         """Count records matching filters. Holistic: tenant-only."""
         ...
 
+    @abstractmethod
+    async def delete_by_filter(
+        self,
+        tenant_id: str,
+        filters: Dict[str, Any],
+    ) -> int:
+        """Delete records matching filters. Holistic: tenant-only. Returns count of deleted records."""
+        ...
+
 
 class GraphStoreBase(ABC):
     """Abstract base for knowledge graph storage."""

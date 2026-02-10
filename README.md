@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests"><img src="https://img.shields.io/badge/Tests-138%20Passed-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="./tests"><img src="https://img.shields.io/badge/Tests-248%20Passed-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
 </p>
 
 <p align="center">
@@ -391,7 +391,7 @@ flowchart TB
 | ⚡ Cache            | **Redis**                          | Working memory cache, rate limiting          |
 | 📮 Queue            | **Redis + Celery**                 | Background workers                           |
 | 🧮 Embeddings       | **OpenAI / sentence-transformers** | Configurable dense vectors                   |
-| 🤖 LLM              | **OpenAI / vLLM**                  | Extraction, summarization, compression       |
+| 🤖 LLM              | **OpenAI / OpenAI-compatible**     | Extraction, summarization, compression       |
 
 ---
 
@@ -400,7 +400,7 @@ flowchart TB
 ### Prerequisites
 
 - Docker & Docker Compose
-- (Optional) API keys for OpenAI/vLLM
+- (Optional) API keys for OpenAI or default LLM
 
 ### 1. Start Services
 
@@ -476,7 +476,7 @@ See [UsageDocumentation.md — Dashboard](./ProjectPlan/UsageDocumentation.md#da
 ### Run Tests
 
 ```bash
-# Build and run all 138 tests
+# Build and run project tests (248 unit + e2e; exclude integration for no DB: pytest tests -v --ignore=tests/integration)
 docker compose -f docker/docker-compose.yml build app
 docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade head && pytest tests -v --tb=short"
 ```
@@ -769,7 +769,7 @@ flowchart LR
 
 | Component                  | Function                            | Implementation                      |
 | :------------------------- | :---------------------------------- | :---------------------------------- |
-| **Model Backend**    | Abstract LLM internals (local/API)  | PyTorch hooks, vLLM, OpenAI         |
+| **Model Backend**    | Abstract LLM internals (local/API)  | PyTorch hooks, OpenAI-compatible, OpenAI |
 | **Hook Manager**     | Safe hook lifecycle + safety guards | Norm explosion detection, NaN traps |
 | **Memory Encoder**   | Text → steering vectors/KV pairs   | Contrastive learning, PCA           |
 | **Injection Scaler** | Maintain numerical stability        | Norm preservation, adaptive α      |

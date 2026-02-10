@@ -1,5 +1,6 @@
 """E2E tests for full API memory lifecycle."""
 
+import json
 import os
 
 import pytest
@@ -9,13 +10,48 @@ from src.api.app import app
 from src.core.config import get_settings
 
 
+class _MockLLMClient:
+    """Mock LLM for e2e tests so no real API/Ollama is required."""
+
+    async def complete(
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int = 500,
+        system_prompt: str | None = None,
+    ) -> str:
+        # Return valid chunk JSON so SemanticChunker parses it
+        text = (prompt.split("Text to chunk:")[-1] if "Text to chunk:" in prompt else prompt)
+        text = text.strip()[:500]
+        return json.dumps([
+            {"type": "statement", "text": text, "salience": 0.7, "confidence": 0.8},
+        ])
+
+    async def complete_json(self, prompt: str, schema=None, temperature: float = 0.0):
+        return {"result": "ok"}
+
+
 @pytest.fixture
 def client(monkeypatch):
-    """Test client with auth headers. Auth keys from config (set for tests)."""
+    """Test client with auth headers. Uses mock embeddings and mock LLM when no real API keys."""
     monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
     monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
     monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "demo")
     get_settings.cache_clear()
+    mock_llm = _MockLLMClient()
+    monkeypatch.setattr(
+        "src.memory.orchestrator.get_llm_client",
+        lambda: mock_llm,
+    )
+    if not os.environ.get("OPENAI_API_KEY"):
+        from src.utils.embeddings import MockEmbeddingClient
+
+        dims = get_settings().embedding.dimensions
+        mock_emb = MockEmbeddingClient(dimensions=dims)
+        monkeypatch.setattr(
+            "src.memory.orchestrator.get_embedding_client",
+            lambda: mock_emb,
+        )
     try:
         with TestClient(
             app,
@@ -29,10 +65,6 @@ def client(monkeypatch):
         get_settings.cache_clear()
 
 
-@pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OpenAI API key required for full E2E (embeddings)",
-)
 def test_full_memory_lifecycle(client):
     """Test write -> read -> update -> forget flow."""
     session_id = "e2e-test-session"
@@ -82,15 +114,14 @@ def test_full_memory_lifecycle(client):
 
 
 def test_unauthorized_access():
-    """Test that unauthorized requests are rejected."""
+    """Test that unauthorized requests are rejected (401). Use a distinct tenant so rate limit doesn't apply."""
     with TestClient(app) as client_no_auth:
         resp = client_no_auth.post(
             "/api/v1/memory/write",
-            json={
-                "content": "test",
-            },
+            json={"content": "test"},
+            headers={"X-Tenant-ID": "e2e-unauth"},  # distinct tenant so rate limit bucket is separate
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 401, f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
 
 
 def test_health_response_structure(client):

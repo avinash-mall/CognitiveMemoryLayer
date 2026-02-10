@@ -1,6 +1,6 @@
 """
 Basic Usage Example - Cognitive Memory Layer.
-Set AUTH__API_KEY in your environment before running.
+Set AUTH__API_KEY and MEMORY_API_URL (or CML_BASE_URL) in .env before running.
 
 This example demonstrates the fundamental operations:
 1. Storing memories
@@ -13,19 +13,29 @@ Prerequisites:
        docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
        docker compose -f docker/docker-compose.yml up api
     
-    2. Install httpx:
-       pip install httpx
+    2. Install httpx and python-dotenv:
+       pip install httpx python-dotenv
 """
 
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 from memory_client import CognitiveMemoryClient
 
 
 def main():
-    # Initialize the client (uses AUTH__API_KEY from env if api_key not passed)
+    base_url = (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+    if not base_url:
+        raise SystemExit("Set MEMORY_API_URL or CML_BASE_URL in .env")
     client = CognitiveMemoryClient(
-        base_url="http://localhost:8000",
-        api_key=os.environ.get("AUTH__API_KEY", "")
+        base_url=base_url,
+        api_key=os.environ.get("AUTH__API_KEY", ""),
     )
     
     session_id = "example-session-001"

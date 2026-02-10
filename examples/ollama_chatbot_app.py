@@ -10,7 +10,8 @@ Memory reads and writes are shown in the "Memory activity" section so you can
 see what was stored and recalled.
 
 Prerequisites:
-  - Ollama running (e.g. gpt-oss:20b), memory API running, .env configured.
+  - Ollama running; set LLM__MODEL in repo root .env (default llama3.2:1b).
+  - Memory API running, .env configured.
   - Run: streamlit run examples/ollama_chatbot_app.py
 """
 
@@ -20,18 +21,27 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Load repo root .env so LLM__MODEL and other vars are respected (not just shell env)
+try:
+    from pathlib import Path
+    from dotenv import load_dotenv
+    _repo_root = Path(__file__).resolve().parent.parent
+    load_dotenv(_repo_root / ".env")
+except ImportError:
+    pass
+
 import streamlit as st
 from openai import OpenAI
 from memory_client import CognitiveMemoryClient
 
 
 # ---------------------------------------------------------------------------
-# Config (from env / .env)
+# Config (from .env only; no hardcoded defaults)
 # ---------------------------------------------------------------------------
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.environ.get("LLM__MODEL", "gpt-oss:20b")
-MEMORY_API_URL = os.environ.get("MEMORY_API_URL", "http://localhost:8000")
-MEMORY_API_KEY = os.environ.get("AUTH__API_KEY", "test-api-key")
+OLLAMA_BASE_URL = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+OLLAMA_MODEL = (os.environ.get("LLM__MODEL") or "").strip()
+MEMORY_API_URL = (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+MEMORY_API_KEY = (os.environ.get("AUTH__API_KEY") or "").strip()
 
 MEMORY_TOOLS = [
     {
@@ -188,6 +198,10 @@ def chat_turn(user_message: str) -> str:
 
 def main():
     st.set_page_config(page_title="Memory Chat", page_icon="🧠", layout="wide")
+
+    if not OLLAMA_BASE_URL or not OLLAMA_MODEL or not MEMORY_API_URL:
+        st.error("Set OLLAMA_BASE_URL (or OPENAI_BASE_URL), LLM__MODEL, and MEMORY_API_URL (or CML_BASE_URL) in .env")
+        return
 
     st.title("🧠 Memory-powered chatbot")
     st.caption("Context comes from memory only — no conversation history is sent to the model.")
