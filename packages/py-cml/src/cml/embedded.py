@@ -72,7 +72,7 @@ def _check_embedded_deps() -> None:
 
 
 def _retrieved_to_memory_item(rec: Any) -> MemoryItem:
-    """Map engine RetrievedMemory to py-cml MemoryItem."""
+    """Map engine RetrievedMemory to cognitive-memory-layer MemoryItem."""
     r = rec.record
     return MemoryItem(
         id=r.id,

@@ -11,6 +11,6 @@
 
 Please report security vulnerabilities via GitHub Security Advisories:
 
-https://github.com/<org>/CognitiveMemoryLayer/security/advisories/new
+https://github.com/avinash-mall/CognitiveMemoryLayer/security/advisories/new
 
 Do NOT open a public issue for security vulnerabilities.
