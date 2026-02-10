@@ -69,6 +69,7 @@ class TestAuthContextPermissions:
 
     def test_require_write_permission_returns_403_when_can_write_false(self):
         """When AuthContext has can_write=False, write endpoint returns 403."""
+
         async def no_write_context():
             return AuthContext(
                 tenant_id="t1",
@@ -92,6 +93,7 @@ class TestAuthContextPermissions:
 
     def test_require_admin_permission_returns_403_when_can_admin_false(self):
         """When AuthContext has can_admin=False, dashboard admin endpoint returns 403."""
+
         async def no_admin_context():
             return AuthContext(
                 tenant_id="t1",

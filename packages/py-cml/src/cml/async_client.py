@@ -585,7 +585,9 @@ class AsyncCognitiveMemoryLayer:
     ) -> list[ReadResponse]:
         """Execute multiple read queries concurrently."""
         self._ensure_same_loop()
-        tasks = [self.read(q, max_results=max_results, response_format=response_format) for q in queries]
+        tasks = [
+            self.read(q, max_results=max_results, response_format=response_format) for q in queries
+        ]
         return list(await asyncio.gather(*tasks))
 
     # ---- Phase 5: Tenant management ----
