@@ -30,6 +30,6 @@ async def test_write_multiple_then_read(live_client):
 async def test_read_llm_context_format(live_client):
     """Read with format llm_context returns context string."""
     await live_client.write("User prefers dark mode")
-    r = await live_client.read("preferences", format="llm_context")
+    r = await live_client.read("preferences", response_format="llm_context")
     assert r.llm_context is not None or r.total_count >= 0
     assert hasattr(r, "context")

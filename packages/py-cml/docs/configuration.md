@@ -12,6 +12,7 @@ Unset options are loaded from the environment (or a `.env` file). Use the `CML_`
 | `CML_TIMEOUT` | Request timeout in seconds | `30.0` |
 | `CML_MAX_RETRIES` | Maximum retry attempts | `3` |
 | `CML_RETRY_DELAY` | Base delay between retries (seconds) | `1.0` |
+| `CML_MAX_RETRY_DELAY` | Maximum backoff delay (seconds); caps exponential backoff | `60.0` |
 | `CML_ADMIN_API_KEY` | Admin API key (for admin operations) | — |
 | `CML_VERIFY_SSL` | Verify SSL certificates (`true`/`false`) | `true` |
 
@@ -48,6 +49,7 @@ config = CMLConfig(
     timeout=30.0,
     max_retries=3,
     retry_delay=1.0,
+    max_retry_delay=60.0,
     admin_api_key=None,
     verify_ssl=True,
 )
@@ -63,6 +65,10 @@ memory = CognitiveMemoryLayer(config=config)
 3. **.env file** — Loaded by python-dotenv when available
 4. **Defaults** — `base_url`, `tenant_id`, `timeout`, `max_retries`, `retry_delay`, `verify_ssl` as in the table
 
+## Testing (integration and e2e)
+
+Integration and e2e tests use **`CML_TEST_URL`** (default `http://localhost:8000`) and **`CML_TEST_API_KEY`**. If `CML_TEST_API_KEY` is not set, the test conftests load the repository root `.env` and use **`AUTH__API_KEY`** and **`AUTH__ADMIN_API_KEY`** so the same keys as the server can be used. The project `.env.example` sets both to `test-key` for local development and testing.
+
 ## Embedded Configuration
 
 For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor args).
@@ -70,7 +76,7 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 | Area | Options |
 |------|--------|
 | **storage_mode** | `lite` (default), `standard`, `full` — only `lite` is implemented (SQLite + local embeddings) |
-| **database** | `EmbeddedDatabaseConfig`: `postgres_url` (default SQLite), optional Neo4j/Redis |
+| **database** | `EmbeddedDatabaseConfig`: `database_url` (default SQLite), optional Neo4j/Redis |
 | **embedding** | `EmbeddedEmbeddingConfig`: `provider` (`local`, `openai`, `vllm`), `model`, `dimensions`, `api_key`, `base_url` |
 | **llm** | `EmbeddedLLMConfig`: `provider`, `model`, `api_key`, `base_url` |
 | **auto_consolidate** / **auto_forget** | Optional background tasks (default `False`) |

@@ -1,11 +1,16 @@
 """Async usage of py-cml with asyncio."""
 
 import asyncio
+import os
+
 from cml import AsyncCognitiveMemoryLayer
 
 
 async def main():
-    async with AsyncCognitiveMemoryLayer(api_key="your-key", base_url="http://localhost:8000") as memory:
+    async with AsyncCognitiveMemoryLayer(
+        api_key=os.environ.get("CML_API_KEY", "your-key"),
+        base_url=os.environ.get("CML_BASE_URL", "http://localhost:8000"),
+    ) as memory:
         await asyncio.gather(
             memory.write("User likes hiking in the mountains"),
             memory.write("User prefers morning workouts"),

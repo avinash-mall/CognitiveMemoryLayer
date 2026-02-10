@@ -31,6 +31,7 @@ from cml.models import (
     WriteResponse,
 )
 from cml.transport import AsyncHTTPTransport
+from cml.utils.converters import dashboard_item_to_memory_item
 from cml.utils.logging import logger
 
 
@@ -71,10 +72,20 @@ class AsyncCognitiveMemoryLayer:
                 verify_ssl=verify_ssl,
             )
         self._transport = AsyncHTTPTransport(self._config)
+        self._closed = False
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
             self._loop = None
+
+    def __del__(self) -> None:
+        if not getattr(self, "_closed", True):
+            try:
+                logger.warning(
+                    "AsyncCognitiveMemoryLayer was not closed; use 'async with' or call close() to avoid connection leaks"
+                )
+            except Exception:
+                pass
 
     async def __aenter__(self) -> AsyncCognitiveMemoryLayer:
         return self
@@ -85,6 +96,7 @@ class AsyncCognitiveMemoryLayer:
     async def close(self) -> None:
         """Close the underlying HTTP connection."""
         await self._transport.close()
+        self._closed = True
 
     def _ensure_same_loop(self) -> None:
         """Raise if the current event loop is not the one this client was created in."""
@@ -136,7 +148,7 @@ class AsyncCognitiveMemoryLayer:
             metadata=metadata or {},
             turn_id=turn_id,
             agent_id=agent_id,
-        ).model_dump(exclude_none=True)
+        ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/write", json=body)
         return WriteResponse(**data)
 
@@ -149,7 +161,7 @@ class AsyncCognitiveMemoryLayer:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> ReadResponse:
         """Retrieve memories by query.
 
@@ -160,7 +172,7 @@ class AsyncCognitiveMemoryLayer:
             memory_types: Optional types to include.
             since: Optional start of time range.
             until: Optional end of time range.
-            format: "packet", "list", or "llm_context".
+            response_format: "packet", "list", or "llm_context".
 
         Returns:
             ReadResponse with memories, facts, preferences, episodes, context.
@@ -173,8 +185,8 @@ class AsyncCognitiveMemoryLayer:
             memory_types=memory_types,
             since=since,
             until=until,
-            format=format,
-        ).model_dump(exclude_none=True)
+            response_format=response_format,
+        ).model_dump(exclude_none=True, by_alias=True, mode="json")
         data = await self._transport.request("POST", "/memory/read", json=body)
         return ReadResponse(**data)
 
@@ -187,7 +199,7 @@ class AsyncCognitiveMemoryLayer:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> ReadResponse:
         """Read with graceful degradation — returns empty result on connection/timeout failure."""
         self._ensure_same_loop()
@@ -199,7 +211,7 @@ class AsyncCognitiveMemoryLayer:
                 memory_types=memory_types,
                 since=since,
                 until=until,
-                format=format,
+                response_format=response_format,
             )
         except ConnectionError:
             logger.warning("CML server unreachable, returning empty context", exc_info=False)
@@ -243,7 +255,7 @@ class AsyncCognitiveMemoryLayer:
             assistant_response=assistant_response,
             session_id=session_id,
             max_context_tokens=max_context_tokens,
-        ).model_dump(exclude_none=True)
+        ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/turn", json=body)
         return TurnResponse(**data)
 
@@ -278,7 +290,7 @@ class AsyncCognitiveMemoryLayer:
             importance=importance,
             metadata=metadata,
             feedback=feedback,
-        ).model_dump(exclude_none=True)
+        ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/update", json=body)
         return UpdateResponse(**data)
 
@@ -312,7 +324,7 @@ class AsyncCognitiveMemoryLayer:
             query=query,
             before=before,
             action=action,
-        ).model_dump(exclude_none=True)
+        ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/forget", json=body)
         return ForgetResponse(**data)
 
@@ -348,7 +360,7 @@ class AsyncCognitiveMemoryLayer:
             name=name,
             ttl_hours=ttl_hours,
             metadata=metadata or {},
-        ).model_dump(exclude_none=True)
+        ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/session/create", json=body)
         return SessionResponse(**data)
 
@@ -437,7 +449,7 @@ class AsyncCognitiveMemoryLayer:
             memory_types=memory_types,
             since=since,
             until=until,
-            format="llm_context",
+            response_format="llm_context",
         )
         return result.context
 
@@ -475,7 +487,7 @@ class AsyncCognitiveMemoryLayer:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> ReadResponse:
         """Alias for read(): retrieve memories by query."""
         self._ensure_same_loop()
@@ -486,7 +498,7 @@ class AsyncCognitiveMemoryLayer:
             memory_types=memory_types,
             since=since,
             until=until,
-            format=format,
+            response_format=response_format,
         )
 
     # ---- Phase 5: Admin operations ----
@@ -506,7 +518,7 @@ class AsyncCognitiveMemoryLayer:
             payload["user_id"] = user_id
         return await self._transport.request(
             "POST",
-            "dashboard/consolidate",
+            "/dashboard/consolidate",
             json=payload,
             use_admin_key=True,
         )
@@ -530,7 +542,7 @@ class AsyncCognitiveMemoryLayer:
             payload["user_id"] = user_id
         return await self._transport.request(
             "POST",
-            "dashboard/forget",
+            "/dashboard/forget",
             json=payload,
             use_admin_key=True,
         )
@@ -565,11 +577,11 @@ class AsyncCognitiveMemoryLayer:
         queries: list[str],
         *,
         max_results: int = 10,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> list[ReadResponse]:
         """Execute multiple read queries concurrently."""
         self._ensure_same_loop()
-        tasks = [self.read(q, max_results=max_results, format=format) for q in queries]
+        tasks = [self.read(q, max_results=max_results, response_format=response_format) for q in queries]
         return list(await asyncio.gather(*tasks))
 
     # ---- Phase 5: Tenant management ----
@@ -590,7 +602,7 @@ class AsyncCognitiveMemoryLayer:
         self._ensure_same_loop()
         data = await self._transport.request(
             "GET",
-            "dashboard/tenants",
+            "/dashboard/tenants",
             use_admin_key=True,
         )
         return cast("list[dict[str, Any]]", data.get("tenants", []))
@@ -614,7 +626,7 @@ class AsyncCognitiveMemoryLayer:
             params["since"] = since.isoformat()
         return await self._transport.request(
             "GET",
-            "dashboard/events",
+            "/dashboard/events",
             params=params,
             use_admin_key=True,
         )
@@ -626,7 +638,7 @@ class AsyncCognitiveMemoryLayer:
         self._ensure_same_loop()
         return await self._transport.request(
             "GET",
-            "dashboard/components",
+            "/dashboard/components",
             use_admin_key=True,
         )
 
@@ -645,7 +657,16 @@ class AsyncCognitiveMemoryLayer:
         status: str | None = "active",
         batch_size: int = 100,
     ) -> AsyncIterator[MemoryItem]:
-        """Iterate over all memories with automatic pagination (admin only)."""
+        """Iterate over all memories with automatic pagination (admin only).
+
+        Raises:
+            ValueError: If more than one memory type is requested (API supports single type only).
+        """
+        if memory_types and len(memory_types) > 1:
+            raise ValueError(
+                "iter_memories() supports at most one memory type; "
+                f"got {len(memory_types)}. Pass a single type or None."
+            )
         self._ensure_same_loop()
         page = 1
         while True:
@@ -655,11 +676,16 @@ class AsyncCognitiveMemoryLayer:
             }
             if status is not None:
                 params["status"] = status
-            if memory_types and len(memory_types) == 1:
+            if memory_types:
+                if len(memory_types) > 1:
+                    raise ValueError(
+                        "iter_memories currently supports at most one memory_types filter; got %d types"
+                        % len(memory_types),
+                    )
                 params["type"] = memory_types[0].value
             data = await self._transport.request(
                 "GET",
-                "dashboard/memories",
+                "/dashboard/memories",
                 params=params,
                 use_admin_key=True,
             )
@@ -667,7 +693,7 @@ class AsyncCognitiveMemoryLayer:
             if not items:
                 break
             for raw in items:
-                yield _dashboard_item_to_memory_item(raw)
+                yield dashboard_item_to_memory_item(raw)
             if page >= data.get("total_pages", 1):
                 break
             page += 1
@@ -711,7 +737,7 @@ class AsyncSessionScope:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> ReadResponse:
         return await self._parent.read(
             query,
@@ -720,7 +746,7 @@ class AsyncSessionScope:
             memory_types=memory_types,
             since=since,
             until=until,
-            format=format,
+            response_format=response_format,
         )
 
     async def turn(
@@ -757,36 +783,6 @@ class AsyncSessionScope:
             turn_id=turn_id,
             agent_id=agent_id,
         )
-
-
-def _dashboard_item_to_memory_item(raw: dict[str, Any]) -> MemoryItem:
-    """Map dashboard memory list item to MemoryItem."""
-    ts = raw.get("timestamp") or raw.get("written_at")
-    if isinstance(ts, str):
-        ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    return MemoryItem(
-        id=raw["id"],
-        text=raw.get("text", ""),
-        type=raw.get("type", "memory"),
-        confidence=float(raw.get("confidence", 0.5)),
-        relevance=float(raw.get("importance", raw.get("relevance", 0.5))),
-        timestamp=ts or datetime.now(),
-        metadata={
-            k: v
-            for k, v in raw.items()
-            if k
-            not in (
-                "id",
-                "text",
-                "type",
-                "confidence",
-                "relevance",
-                "importance",
-                "timestamp",
-                "written_at",
-            )
-        },
-    )
 
 
 class AsyncNamespacedClient:
@@ -828,7 +824,7 @@ class AsyncNamespacedClient:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> ReadResponse:
         return await self._parent.read(
             query,
@@ -837,7 +833,7 @@ class AsyncNamespacedClient:
             memory_types=memory_types,
             since=since,
             until=until,
-            format=format,
+            response_format=response_format,
         )
 
     async def turn(
@@ -962,7 +958,7 @@ class AsyncNamespacedClient:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> ReadResponse:
         return await self.read(
             query,
@@ -971,7 +967,7 @@ class AsyncNamespacedClient:
             memory_types=memory_types,
             since=since,
             until=until,
-            format=format,
+            response_format=response_format,
         )
 
     async def consolidate(
@@ -1015,12 +1011,12 @@ class AsyncNamespacedClient:
         queries: list[str],
         *,
         max_results: int = 10,
-        format: Literal["packet", "list", "llm_context"] = "packet",
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
     ) -> list[ReadResponse]:
         return await self._parent.batch_read(
             queries,
             max_results=max_results,
-            format=format,
+            response_format=response_format,
         )
 
     async def set_tenant(self, tenant_id: str) -> None:

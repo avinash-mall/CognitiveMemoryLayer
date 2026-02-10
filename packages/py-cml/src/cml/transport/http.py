@@ -23,6 +23,7 @@ from cml.exceptions import (
 )
 from cml.transport.retry import retry_async, retry_sync
 from cml.utils.logging import logger
+from cml.utils.serialization import serialize_for_api
 
 API_PREFIX = "/api/v1"
 
@@ -153,9 +154,11 @@ class HTTPTransport:
         use_admin_key: bool = False,
     ) -> dict[str, Any]:
         url = API_PREFIX + path
-        headers = {}
-        if use_admin_key and self._config.admin_api_key:
-            headers["X-API-Key"] = self._config.admin_api_key
+        headers: dict[str, str] = (
+            self._build_headers(use_admin_key=True) if use_admin_key else {}
+        )
+        if json is not None:
+            json = serialize_for_api(json)
         start = time.perf_counter()
         try:
             response = self.client.request(
@@ -257,9 +260,9 @@ class AsyncHTTPTransport:
         use_admin_key: bool = False,
     ) -> dict[str, Any]:
         url = API_PREFIX + path
-        headers = {}
-        if use_admin_key and self._config.admin_api_key:
-            headers["X-API-Key"] = self._config.admin_api_key
+        headers = self._build_headers(use_admin_key=True) if use_admin_key else {}
+        if json is not None:
+            json = serialize_for_api(json)
         start = time.perf_counter()
         try:
             response = await self.client.request(

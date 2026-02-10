@@ -17,7 +17,15 @@ For embedded mode (in-process, no server):
 pip install cognitive-memory-layer[embedded]
 ```
 
-## Connect to a Server
+## First memory in 5 steps
+
+1. **Install** — `pip install cognitive-memory-layer`
+2. **Start the CML server** — See the CognitiveMemoryLayer project for server setup (or use embedded mode and skip this). From the repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`.
+3. **Get your API key** — From your CML server or dashboard. For local development, the project `.env.example` uses `AUTH__API_KEY=test-key`; copy to `.env` so the server accepts that key.
+4. **Create the client** — `CognitiveMemoryLayer(api_key="...", base_url="http://localhost:8000")`
+5. **Write and read** — `memory.write("...")` then `memory.read("query")` or `memory.get_context("query")`
+
+## Connect to a Server (detailed)
 
 1. **Start the CML server** — See the CognitiveMemoryLayer project for server setup.
 2. **Get your API key** — From your CML server or dashboard.

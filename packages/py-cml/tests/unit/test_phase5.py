@@ -1,13 +1,18 @@
 """Unit tests for Phase 5 advanced features (admin, batch, tenant, events, health, namespace, iter_memories, OpenAI helper)."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
+
 from cml import CognitiveMemoryLayer, NamespacedClient
 from cml.config import CMLConfig
 from cml.integrations import CMLOpenAIHelper
-from cml.models import MemoryItem, ReadResponse, WriteResponse
+from cml.models import MemoryItem, ReadResponse, TurnResponse, WriteResponse
+from cml.models.enums import MemoryType
 
 # ---- Admin operations ----
 
@@ -27,7 +32,7 @@ def test_consolidate_calls_dashboard_consolidate() -> None:
     assert out["episodes_sampled"] == 10
     client._transport.request.assert_called_once()
     call = client._transport.request.call_args
-    assert call[0] == ("POST", "dashboard/consolidate")
+    assert call[0] == ("POST", "/dashboard/consolidate")
     assert call[1]["json"]["tenant_id"] == "t1"
     assert call[1]["use_admin_key"] is True
 
@@ -58,7 +63,7 @@ def test_run_forgetting_calls_dashboard_forget() -> None:
     out = client.run_forgetting(dry_run=True, max_memories=500)
     assert out["memories_scanned"] == 100
     call = client._transport.request.call_args
-    assert call[0] == ("POST", "dashboard/forget")
+    assert call[0] == ("POST", "/dashboard/forget")
     assert call[1]["json"]["tenant_id"] == "t1"
     assert call[1]["json"]["dry_run"] is True
     assert call[1]["json"]["max_memories"] == 500
@@ -140,7 +145,7 @@ def test_list_tenants_calls_dashboard_tenants() -> None:
     assert tenants[0]["tenant_id"] == "t1"
     assert tenants[0]["memory_count"] == 10
     call = client._transport.request.call_args
-    assert call[0] == ("GET", "dashboard/tenants")
+    assert call[0] == ("GET", "/dashboard/tenants")
     assert call[1]["use_admin_key"] is True
 
 
@@ -163,7 +168,7 @@ def test_get_events_calls_dashboard_events() -> None:
     assert out["page"] == 2
     assert out["per_page"] == 25
     call = client._transport.request.call_args
-    assert call[0] == ("GET", "dashboard/events")
+    assert call[0] == ("GET", "/dashboard/events")
     assert call[1]["params"]["per_page"] == 25
     assert call[1]["params"]["page"] == 2
     assert call[1]["params"]["event_type"] == "memory_op"
@@ -199,7 +204,7 @@ def test_component_health_calls_dashboard_components() -> None:
     assert "components" in out
     assert out["components"][0]["name"] == "PostgreSQL"
     call = client._transport.request.call_args
-    assert call[0] == ("GET", "dashboard/components")
+    assert call[0] == ("GET", "/dashboard/components")
     assert call[1]["use_admin_key"] is True
 
 
@@ -276,7 +281,7 @@ def test_iter_memories_one_page() -> None:
     assert items[0].text == "a memory"
     assert items[0].type == "semantic_fact"
     call = client._transport.request.call_args
-    assert call[0] == ("GET", "dashboard/memories")
+    assert call[0] == ("GET", "/dashboard/memories")
     assert call[1]["params"]["per_page"] == 100
     assert call[1]["params"]["status"] == "active"
     assert call[1]["use_admin_key"] is True
@@ -292,6 +297,41 @@ def test_iter_memories_empty() -> None:
     assert len(items) == 0
 
 
+def test_iter_memories_raises_when_multiple_memory_types() -> None:
+    """iter_memories() raises ValueError when more than one memory type is requested."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = CognitiveMemoryLayer(config=config)
+    with pytest.raises(ValueError, match="at most one memory type"):
+        list(
+            client.iter_memories(
+                memory_types=[MemoryType.PREFERENCE, MemoryType.SEMANTIC_FACT]
+            )
+        )
+
+
+def test_session_scope_turn_injects_session_id() -> None:
+    """SessionScope.turn() calls parent.turn() with session_id injected."""
+    from cml.client import SessionScope
+
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    parent = CognitiveMemoryLayer(config=config)
+    parent.turn = MagicMock(  # type: ignore[method-assign]
+        return_value=TurnResponse(
+            memory_context="",
+            memories_retrieved=0,
+            memories_stored=1,
+            reconsolidation_applied=False,
+        )
+    )
+    scope = SessionScope(parent, "sess-456")
+    scope.turn("User said hi", assistant_response="Assistant replied")
+    parent.turn.assert_called_once()
+    call_args, call_kw = parent.turn.call_args
+    assert call_args[0] == "User said hi"
+    assert call_kw["session_id"] == "sess-456"
+    assert call_kw["assistant_response"] == "Assistant replied"
+
+
 # ---- OpenAI helper ----
 
 
@@ -299,12 +339,18 @@ def test_openai_helper_chat_flow() -> None:
     memory = CognitiveMemoryLayer(
         config=CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
     )
+    # First call: get_context() -> read(); second call: turn() to store exchange
     memory._transport.request = MagicMock(  # type: ignore[method-assign]
         side_effect=[
             {
-                "memory_context": "No relevant memories.",
-                "memories_retrieved": 0,
-                "memories_stored": 0,
+                "query": "What should I eat?",
+                "memories": [],
+                "facts": [],
+                "preferences": [],
+                "episodes": [],
+                "llm_context": "No relevant memories.",
+                "total_count": 0,
+                "elapsed_ms": 1.0,
             },
             {"memory_context": "", "memories_retrieved": 0, "memories_stored": 1},
         ]
