@@ -22,7 +22,7 @@ pip install cognitive-memory-layer[embedded]
 1. **Install** — `pip install cognitive-memory-layer`
 2. **Start the CML server** — See the CognitiveMemoryLayer project for server setup (or use embedded mode and skip this). From the repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`.
 3. **Get your API key** — From your CML server or dashboard. For local development, the project `.env.example` uses `AUTH__API_KEY=test-key`; copy to `.env` so the server accepts that key.
-4. **Create the client** — `CognitiveMemoryLayer(api_key="...", base_url="http://localhost:8000")`
+4. **Create the client** — Set `CML_BASE_URL` and `CML_API_KEY` in `.env`, then `CognitiveMemoryLayer(api_key="...", base_url="...")` (or omit `base_url` to use `CML_BASE_URL` from env).
 5. **Write and read** — `memory.write("...")` then `memory.read("query")` or `memory.get_context("query")`
 
 ## Connect to a Server (detailed)
@@ -36,7 +36,7 @@ from cml import CognitiveMemoryLayer
 
 memory = CognitiveMemoryLayer(
     api_key="your-api-key",
-    base_url="http://localhost:8000",
+    base_url="http://localhost:8000",  # or set CML_BASE_URL in .env and omit
 )
 memory.write("User prefers vegetarian food and lives in Paris.")
 result = memory.read("What does the user eat?")
@@ -48,7 +48,7 @@ memory.close()
 4. Or use a context manager so the client is closed automatically:
 
 ```python
-with CognitiveMemoryLayer(api_key="...", base_url="http://localhost:8000") as memory:
+with CognitiveMemoryLayer(api_key="...", base_url="http://localhost:8000") as memory:  # or set CML_BASE_URL in .env
     memory.write("User works at a tech startup.")
     result = memory.read("user job")
 ```
@@ -69,7 +69,7 @@ From the repo root, with a virtual environment:
    - In the repo `.env` set `AUTH__API_KEY=your-api-key` and `OPENAI_API_KEY=sk-your-key` (server uses OpenAI for embeddings by default).
    - From repo root:  
      `python packages/py-cml/examples/quickstart.py`  
-   The example uses `api_key="your-api-key"` and `base_url="http://localhost:8000"` by default.
+   Set `CML_API_KEY`, `CML_BASE_URL`, and (for chat examples) `OPENAI_MODEL` or `LLM__MODEL` in `.env`; examples read these and do not use hardcoded URLs or models.
 
 ## Next Steps
 

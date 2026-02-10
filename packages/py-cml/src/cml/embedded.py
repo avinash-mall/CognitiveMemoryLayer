@@ -174,6 +174,17 @@ class EmbeddedCognitiveMemoryLayer:
         from src.utils.embeddings import LocalEmbeddings  # type: ignore[import-not-found]
         from src.utils.llm import OpenAICompatibleClient  # type: ignore[import-not-found]
 
+        # When running in repo, use project LLM settings from env so tests use local Ollama etc.
+        try:
+            from src.core.config import get_settings  # type: ignore[import-not-found]
+            s = get_settings()
+            if s.llm.base_url:
+                self._config.llm.base_url = s.llm.base_url
+                self._config.llm.model = s.llm.model
+                self._config.llm.provider = s.llm.provider  # type: ignore[assignment]
+        except Exception:
+            pass
+
         embedding_client = LocalEmbeddings(model_name=self._config.embedding.model)
         llm_client = OpenAICompatibleClient(
             model=self._config.llm.model,

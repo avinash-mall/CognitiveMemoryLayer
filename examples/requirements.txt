@@ -1,6 +1,9 @@
 # Requirements for Cognitive Memory Layer Examples
 # Install with: pip install -r examples/requirements.txt
 
+# Load repo root .env so LLM__MODEL etc. are respected (ollama_chat_test, ollama_chatbot_app)
+python-dotenv>=1.0
+
 # HTTP client (required for all examples)
 httpx>=0.28.0
 

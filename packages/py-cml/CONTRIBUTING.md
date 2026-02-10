@@ -39,7 +39,7 @@ Unit tests cover config, exceptions, retry logic, transport (including 403/422/4
 **Integration and E2E tests** (require a running CML server):
 
 1. From the **repository root**, start the API: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`
-2. Use the same API key for server and tests: the repo **.env.example** sets `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key`. Copy to `.env` or set these in your `.env` so the API accepts `test-key`. Alternatively set `CML_TEST_API_KEY` (and optionally `CML_TEST_URL`) to match your server’s key.
+2. Use the same API key for server and tests: the repo **.env.example** sets `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key`. Copy to `.env` or set these in your `.env` so the API accepts `test-key`. Set `CML_BASE_URL` (or `CML_TEST_URL`) for the client; no hardcoded URLs. Alternatively set `CML_TEST_API_KEY` (and optionally `CML_TEST_URL`) to match your server’s key.
 3. From `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`
 
 If `CML_TEST_API_KEY` is unset, the integration and e2e conftests load the repo root `.env` and use `AUTH__API_KEY` / `AUTH__ADMIN_API_KEY`, so one key works for both. If the server is unreachable, tests are skipped.

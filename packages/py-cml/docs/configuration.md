@@ -2,12 +2,12 @@
 
 ## Environment Variables
 
-Unset options are loaded from the environment (or a `.env` file). Use the `CML_` prefix.
+Unset options are loaded from the environment (or a `.env` file). Use the `CML_` prefix. **No hardcoded defaults for URLs or model names** — set `CML_BASE_URL` (and for the OpenAI helper, `OPENAI_MODEL` or `LLM__MODEL`) in `.env`.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CML_API_KEY` | API key for authentication | — |
-| `CML_BASE_URL` | Base URL of the CML server | `http://localhost:8000` |
+| `CML_BASE_URL` | Base URL of the CML server (required for client) | — (set in .env) |
 | `CML_TENANT_ID` | Tenant identifier | `default` |
 | `CML_TIMEOUT` | Request timeout in seconds | `30.0` |
 | `CML_MAX_RETRIES` | Maximum retry attempts | `3` |
@@ -15,6 +15,8 @@ Unset options are loaded from the environment (or a `.env` file). Use the `CML_`
 | `CML_MAX_RETRY_DELAY` | Maximum backoff delay (seconds); caps exponential backoff | `60.0` |
 | `CML_ADMIN_API_KEY` | Admin API key (for admin operations) | — |
 | `CML_VERIFY_SSL` | Verify SSL certificates (`true`/`false`) | `true` |
+
+For **CMLOpenAIHelper**, set `OPENAI_MODEL` or `LLM__MODEL` in `.env` (or pass `model=` to the helper); no default model in code.
 
 ## Direct Initialization
 
@@ -63,7 +65,7 @@ memory = CognitiveMemoryLayer(config=config)
 1. **Direct parameters** — Values passed to the constructor or `CMLConfig(...)`
 2. **Environment variables** — `CML_API_KEY`, `CML_BASE_URL`, etc.
 3. **.env file** — Loaded by python-dotenv when available
-4. **Defaults** — `base_url`, `tenant_id`, `timeout`, `max_retries`, `retry_delay`, `verify_ssl` as in the table
+4. **Defaults** — `tenant_id`, `timeout`, `max_retries`, `retry_delay`, `verify_ssl` as in the table. `base_url` has no default; set `CML_BASE_URL` in `.env` or pass it.
 
 ## Testing (integration and e2e)
 
@@ -77,8 +79,8 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 |------|--------|
 | **storage_mode** | `lite` (default), `standard`, `full` — only `lite` is implemented (SQLite + local embeddings) |
 | **database** | `EmbeddedDatabaseConfig`: `database_url` (default SQLite), optional Neo4j/Redis |
-| **embedding** | `EmbeddedEmbeddingConfig`: `provider` (`local`, `openai`, `vllm`), `model`, `dimensions`, `api_key`, `base_url` |
-| **llm** | `EmbeddedLLMConfig`: `provider`, `model`, `api_key`, `base_url` |
+| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING__MODEL` in .env), `dimensions`, `api_key`, `base_url` |
+| **llm** | `EmbeddedLLMConfig`: `provider`, `model` (set `LLM__MODEL` in .env), `api_key`, `base_url` |
 | **auto_consolidate** / **auto_forget** | Optional background tasks (default `False`) |
 
 **Lite mode** uses SQLite (in-memory or file via `db_path`) and local sentence-transformers embeddings. **Standard** and **full** modes require PostgreSQL, Neo4j, and Redis and are not yet implemented in the SDK.

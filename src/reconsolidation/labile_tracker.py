@@ -16,6 +16,14 @@ _SESSION_PREFIX = _LABILE_PREFIX + "session:"
 _SCOPE_PREFIX = _LABILE_PREFIX + "scope:"
 _SESSION_TTL_MULTIPLIER = 2  # Redis TTL so keys expire after labile window
 
+# CON-03: Lua script for atomic SETEX + LPUSH + LTRIM (no inter-worker race)
+_LUA_MARK_LABILE = """
+redis.call('SETEX', KEYS[1], ARGV[1], ARGV[2])
+redis.call('LPUSH', KEYS[2], ARGV[3])
+redis.call('LTRIM', KEYS[2], 0, ARGV[4])
+return 1
+"""
+
 
 @dataclass
 class LabileMemory:
@@ -192,9 +200,23 @@ class LabileStateTracker:
         rk = self._redis_session_key(session_key)
         sk = self._redis_scope_key(scope_key)
         payload = json.dumps(_serialize_session(session))
-        await self._redis.setex(rk, ttl, payload)
-        await self._redis.lpush(sk, session_key)
-        await self._redis.ltrim(sk, 0, self.max_sessions - 1)
+        # CON-03: atomic SETEX + LPUSH + LTRIM so other workers cannot interleave
+        try:
+            await self._redis.eval(
+                _LUA_MARK_LABILE,
+                2,
+                rk,
+                sk,
+                ttl,
+                payload,
+                session_key,
+                self.max_sessions - 1,
+            )
+        except Exception as e:
+            logger.warning("labile_redis_lua_failed falling back to non-atomic", error=str(e))
+            await self._redis.setex(rk, ttl, payload)
+            await self._redis.lpush(sk, session_key)
+            await self._redis.ltrim(sk, 0, self.max_sessions - 1)
         await self._cleanup_old_sessions_redis(scope_key)
 
     async def get_labile_memories(

@@ -4,26 +4,31 @@ LangChain Integration - Cognitive Memory Layer
 This example demonstrates how to integrate the Cognitive Memory Layer
 with LangChain as a custom memory class.
 
-The CognitiveMemory class can be used with any LangChain chain or agent,
-providing persistent long-term memory across sessions.
+Set in .env: OPENAI_API_KEY, OPENAI_MODEL or LLM__MODEL, MEMORY_API_URL or CML_BASE_URL, AUTH__API_KEY.
 
 Prerequisites:
     1. Start the API server:
        docker compose -f docker/docker-compose.yml up api
     
     2. Install dependencies:
-       pip install langchain>=0.3.0,<0.4.0 langchain-core langchain-openai httpx
+       pip install langchain>=0.3.0,<0.4.0 langchain-core langchain-openai httpx python-dotenv
     
-    3. Set your OpenAI API key:
-       export OPENAI_API_KEY=sk-...
+    3. Configure .env (see .env.example)
 """
 
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Path fixup so 'from memory_client import ...' works regardless of CWD
 sys.path.insert(0, os.path.dirname(__file__))
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 from langchain_core.memory import BaseMemory
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -57,8 +62,8 @@ class CognitiveMemory(BaseMemory):
 
     session_id: str = "default"
     memory_client: Optional[CognitiveMemoryClient] = None
-    api_url: str = "http://localhost:8000"
-    api_key: str = ""  # Default: set AUTH__API_KEY in env or pass when constructing
+    api_url: str = ""  # Set MEMORY_API_URL or CML_BASE_URL in .env
+    api_key: str = ""  # Set AUTH__API_KEY in env or pass when constructing
 
     # Control what gets stored
     auto_store: bool = True
@@ -79,8 +84,9 @@ class CognitiveMemory(BaseMemory):
         super().__init__(**kwargs)
         if self.memory_client is None:
             key = self.api_key or os.environ.get("AUTH__API_KEY", "")
+            url = (self.api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
             self.memory_client = CognitiveMemoryClient(
-                base_url=self.api_url,
+                base_url=url or None,
                 api_key=key,
             )
 
@@ -190,8 +196,8 @@ Assistant:""",
 
 def create_memory_chain(
     session_id: str = "default",
-    llm_model: str = "gpt-4o-mini",
-    memory_api_url: str = "http://localhost:8000",
+    llm_model: Optional[str] = None,
+    memory_api_url: Optional[str] = None,
     memory_api_key: Optional[str] = None,
 ) -> ConversationChain:
     """
@@ -199,24 +205,28 @@ def create_memory_chain(
 
     Args:
         session_id: Session identifier for origin tracking
-        llm_model: OpenAI model to use
-        memory_api_url: Cognitive Memory Layer API URL
+        llm_model: OpenAI model (default: OPENAI_MODEL or LLM__MODEL from env)
+        memory_api_url: Cognitive Memory Layer API URL (default: MEMORY_API_URL or CML_BASE_URL from env)
         memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
 
     Returns:
         A ConversationChain with persistent memory
     """
     key = memory_api_key or os.environ.get("AUTH__API_KEY", "")
+    url = (memory_api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+    model = (llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+    if not model:
+        raise ValueError("Set OPENAI_MODEL or LLM__MODEL in .env")
     memory = CognitiveMemory(
         session_id=session_id,
-        api_url=memory_api_url,
+        api_url=url,
         api_key=key,
         auto_store=True,
         store_human=True,
         store_ai=False,
     )
 
-    llm = ChatOpenAI(model=llm_model, temperature=0.7)
+    llm = ChatOpenAI(model=model, temperature=0.7)
 
     chain = ConversationChain(
         llm=llm,
@@ -236,15 +246,14 @@ def main() -> None:
     print("=" * 60)
 
     if not os.getenv("OPENAI_API_KEY"):
-        print("\nError: OPENAI_API_KEY not set")
-        print("  export OPENAI_API_KEY=sk-...")
+        print("\nSet OPENAI_API_KEY in .env")
+        return
+    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL")):
+        print("\nSet OPENAI_MODEL or LLM__MODEL in .env")
         return
 
     print("\nCreating conversation chain with persistent memory...")
-    chain = create_memory_chain(
-        session_id="langchain-demo-session",
-        llm_model="gpt-4o-mini",
-    )
+    chain = create_memory_chain(session_id="langchain-demo-session")
 
     print(
         "\nType 'quit' to exit.\n"

@@ -34,7 +34,7 @@ def _build_api_keys() -> dict:
             tenant_id=auth.default_tenant_id,
             can_read=True,
             can_write=True,
-            can_admin=False,
+            can_admin=(auth.api_key == auth.admin_api_key and bool(auth.admin_api_key)),
             api_key=auth.api_key,
         )
     if auth.admin_api_key and auth.admin_api_key != auth.api_key:
@@ -70,8 +70,8 @@ async def get_auth_context(
     if not context:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    # Apply header overrides (MED-30)
-    tenant_id = x_tenant_id or context.tenant_id
+    # Apply header overrides: X-Tenant-Id only for admin keys (SEC-03)
+    tenant_id = (x_tenant_id if (x_tenant_id and context.can_admin) else None) or context.tenant_id
     user_id = x_user_id or context.user_id
     if tenant_id != context.tenant_id or user_id != context.user_id:
         context = AuthContext(

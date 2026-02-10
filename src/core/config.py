@@ -33,7 +33,7 @@ class DatabaseSettings(PydanticBaseModel):
 class EmbeddingSettings(PydanticBaseModel):
     """Embedding provider settings."""
 
-    provider: str = Field(default="openai")  # openai | local | vllm
+    provider: str = Field(default="openai")  # openai | local | openai_compatible | ollama
     model: str = Field(default="text-embedding-3-small")
     dimensions: int = Field(default=1536)
     local_model: str = Field(default="all-MiniLM-L6-v2")
@@ -44,12 +44,12 @@ class EmbeddingSettings(PydanticBaseModel):
 class LLMSettings(PydanticBaseModel):
     """LLM provider settings."""
 
-    provider: str = Field(default="openai")  # openai | vllm | ollama | gemini | claude
+    provider: str = Field(default="openai")  # openai | openai_compatible | ollama | gemini | claude
     model: str = Field(default="gpt-4o-mini")
     api_key: str | None = Field(default=None)  # API key; can use OPENAI_API_KEY env
     base_url: str | None = Field(
         default=None
-    )  # OpenAI-compatible endpoint; for vllm/ollama or proxy
+    )  # OpenAI-compatible endpoint; for openai_compatible/ollama or proxy
 
 
 class AuthSettings(PydanticBaseModel):
