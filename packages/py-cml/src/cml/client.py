@@ -610,8 +610,7 @@ class CognitiveMemoryLayer:
             List of ReadResponse, one per query.
         """
         return [
-            self.read(q, max_results=max_results, response_format=response_format)
-            for q in queries
+            self.read(q, max_results=max_results, response_format=response_format) for q in queries
         ]
 
     # ---- Phase 5: Tenant management ----

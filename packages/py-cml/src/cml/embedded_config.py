@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -56,7 +57,9 @@ class EmbeddedEmbeddingConfig(BaseModel):
 class EmbeddedLLMConfig(BaseModel):
     """LLM configuration for embedded mode. Set LLM__MODEL, LLM__BASE_URL in .env."""
 
-    provider: Literal["openai", "openai_compatible", "vllm", "ollama", "gemini", "claude"] = Field(default="openai")
+    provider: Literal["openai", "openai_compatible", "vllm", "ollama", "gemini", "claude"] = Field(
+        default="openai"
+    )
     model: str = Field(default="", description="Set LLM__MODEL in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)

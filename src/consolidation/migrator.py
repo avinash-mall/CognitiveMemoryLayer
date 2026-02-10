@@ -125,7 +125,11 @@ class ConsolidationMigrator:
                 if not episode:
                     continue
                 # BUG-03: merge with existing metadata instead of replacing
-                merged_metadata = {**(episode.metadata or {}), "consolidated": True, "consolidated_at": now_iso}
+                merged_metadata = {
+                    **(episode.metadata or {}),
+                    "consolidated": True,
+                    "consolidated_at": now_iso,
+                }
                 patch: dict = {"metadata": merged_metadata}
                 if compress:
                     patch["status"] = MemoryStatus.COMPRESSED.value
