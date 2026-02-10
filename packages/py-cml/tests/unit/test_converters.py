@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
-
-import pytest
 
 from cml.models.responses import MemoryItem
 from cml.utils.converters import dashboard_item_to_memory_item
@@ -28,7 +26,7 @@ def test_dashboard_item_to_memory_item_full() -> None:
     assert item.type == "preference"
     assert item.confidence == 0.9
     assert item.relevance == 0.85
-    assert item.timestamp == datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    assert item.timestamp == datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
     assert item.metadata == {}
 
 
@@ -40,7 +38,7 @@ def test_dashboard_item_uses_written_at_when_no_timestamp() -> None:
         "written_at": "2025-02-01T00:00:00+00:00",
     }
     item = dashboard_item_to_memory_item(raw)
-    assert item.timestamp == datetime(2025, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+    assert item.timestamp == datetime(2025, 2, 1, 0, 0, 0, tzinfo=UTC)
     assert item.text == "A fact"
     assert item.type == "memory"
     assert item.confidence == 0.5
@@ -63,7 +61,7 @@ def test_dashboard_item_fallback_timestamp_timezone_aware() -> None:
     raw = {"id": "00000000-0000-0000-0000-000000000004", "text": "No time"}
     item = dashboard_item_to_memory_item(raw)
     assert item.timestamp.tzinfo is not None
-    assert item.timestamp.tzinfo == timezone.utc
+    assert item.timestamp.tzinfo == UTC
 
 
 def test_dashboard_item_metadata_passthrough() -> None:

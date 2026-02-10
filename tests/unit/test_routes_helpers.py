@@ -3,8 +3,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-import pytest
-
 from src.api.routes import _safe_500_detail, _to_memory_item
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance, RetrievedMemory
