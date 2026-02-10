@@ -1,5 +1,8 @@
 """Unit tests for client memory operations with mocked transport."""
 
+from __future__ import annotations
+
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -7,7 +10,12 @@ import pytest
 
 from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer
 from cml.config import CMLConfig
-from cml.models import ReadResponse, WriteResponse
+from cml.models import (
+    ForgetResponse,
+    ReadResponse,
+    UpdateResponse,
+    WriteResponse,
+)
 
 # ---- Sync client ----
 
@@ -214,3 +222,108 @@ async def test_async_get_context_returns_str() -> None:
     result = await client.get_context("x")
     assert isinstance(result, str)
     assert result == "## Memory\n(none)"
+
+
+# ---- Sync update / forget / read params ----
+
+
+def test_sync_update_returns_update_response() -> None:
+    """Sync client update() returns UpdateResponse."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = CognitiveMemoryLayer(config=config)
+    mid = uuid4()
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"success": True, "memory_id": str(mid), "version": 2, "message": "ok"}
+    )
+    result = client.update(memory_id=mid, text="Updated")
+    assert isinstance(result, UpdateResponse)
+    assert result.success is True
+    assert result.version == 2
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/memory/update")
+    assert call[1]["json"]["memory_id"] == str(mid)
+    assert call[1]["json"]["text"] == "Updated"
+
+
+def test_sync_forget_with_memory_ids() -> None:
+    """Sync client forget(memory_ids=[...]) sends POST /memory/forget with serialized UUIDs."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = CognitiveMemoryLayer(config=config)
+    mid = uuid4()
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"success": True, "affected_count": 1, "message": "ok"}
+    )
+    result = client.forget(memory_ids=[mid])
+    assert isinstance(result, ForgetResponse)
+    assert result.affected_count == 1
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/memory/forget")
+    assert call[1]["json"]["memory_ids"] == [str(mid)]
+
+
+def test_sync_forget_with_query() -> None:
+    """Sync client forget(query=...) sends query in body."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = CognitiveMemoryLayer(config=config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"success": True, "affected_count": 3, "message": "ok"}
+    )
+    result = client.forget(query="obsolete")
+    assert result.affected_count == 3
+    assert client._transport.request.call_args[1]["json"]["query"] == "obsolete"
+
+
+def test_sync_read_passes_response_format_and_since_until() -> None:
+    """Sync client read() passes response_format, since, until in request body."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = CognitiveMemoryLayer(config=config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"query": "q", "memories": [], "total_count": 0, "elapsed_ms": 0.0}
+    )
+    since = datetime(2025, 1, 1, 0, 0, 0)
+    until = datetime(2025, 12, 31, 23, 59, 59)
+    client.read("q", response_format="llm_context", since=since, until=until)
+    call = client._transport.request.call_args
+    body = call[1]["json"]
+    assert body.get("format") == "llm_context" or body.get("response_format") == "llm_context"
+    assert "since" in body
+    assert "until" in body
+
+
+def test_sync_get_context_returns_empty_when_llm_context_missing() -> None:
+    """get_context() returns empty string when llm_context is None/omitted."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = CognitiveMemoryLayer(config=config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"query": "x", "memories": [], "total_count": 0, "elapsed_ms": 0.0}
+    )
+    result = client.get_context("x")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_async_update_returns_update_response() -> None:
+    """Async client update() returns UpdateResponse."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = AsyncCognitiveMemoryLayer(config=config)
+    mid = uuid4()
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={"success": True, "memory_id": str(mid), "version": 2, "message": "ok"}
+    )
+    result = await client.update(memory_id=mid, text="Updated")
+    assert isinstance(result, UpdateResponse)
+    assert result.version == 2
+
+
+@pytest.mark.asyncio
+async def test_async_forget_with_before() -> None:
+    """Async client forget(before=...) sends before in body."""
+    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    client = AsyncCognitiveMemoryLayer(config=config)
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={"success": True, "affected_count": 0, "message": "ok"}
+    )
+    before = datetime(2024, 6, 1, 0, 0, 0)
+    await client.forget(before=before)
+    call = client._transport.request.call_args
+    assert call[1]["json"]["before"] == before.isoformat()

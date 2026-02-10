@@ -1,6 +1,7 @@
 """Integrate py-cml with an AI agent framework."""
 
 import asyncio
+import os
 
 from cml import AsyncCognitiveMemoryLayer
 
@@ -40,8 +41,8 @@ class MemoryAgent:
 
 async def main():
     async with AsyncCognitiveMemoryLayer(
-        api_key="...",
-        base_url="http://localhost:8000",
+        api_key=os.environ.get("CML_API_KEY", "..."),
+        base_url=os.environ.get("CML_BASE_URL", "http://localhost:8000"),
     ) as memory:
         agent = MemoryAgent(memory, agent_id="agent-001")
 

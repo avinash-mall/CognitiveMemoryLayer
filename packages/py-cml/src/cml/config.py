@@ -45,6 +45,10 @@ class CMLConfig(BaseModel):
         default=1.0,
         description="Base delay between retries (seconds)",
     )
+    max_retry_delay: float = Field(
+        default=60.0,
+        description="Maximum delay for backoff (seconds); caps exponential backoff",
+    )
     admin_api_key: str | None = Field(default=None, description="Admin API key")
     verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
 
@@ -61,6 +65,7 @@ class CMLConfig(BaseModel):
             "timeout": "CML_TIMEOUT",
             "max_retries": "CML_MAX_RETRIES",
             "retry_delay": "CML_RETRY_DELAY",
+            "max_retry_delay": "CML_MAX_RETRY_DELAY",
             "admin_api_key": "CML_ADMIN_API_KEY",
             "verify_ssl": "CML_VERIFY_SSL",
         }

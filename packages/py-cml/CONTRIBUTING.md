@@ -36,24 +36,18 @@ pytest tests/unit/ -v --cov=cml --cov-report=term-missing --cov-branch
 
 Unit tests cover config, exceptions, retry logic, transport (including 403/422/429/500 and connection/timeout mapping), models (serialization), client health and memory operations (mocked), serialization, and logging. CI runs only unit tests on every push.
 
-**Integration tests** (require a running CML server):
+**Integration and E2E tests** (require a running CML server):
 
-```bash
-export CML_TEST_URL=http://localhost:8000   # optional
-export CML_TEST_API_KEY=your-key            # optional
-pytest tests/integration/ -v -m integration
-```
+1. From the **repository root**, start the API: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`
+2. Use the same API key for server and tests: the repo **.env.example** sets `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key`. Copy to `.env` or set these in your `.env` so the API accepts `test-key`. Alternatively set `CML_TEST_API_KEY` (and optionally `CML_TEST_URL`) to match your server’s key.
+3. From `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`
+
+If `CML_TEST_API_KEY` is unset, the integration and e2e conftests load the repo root `.env` and use `AUTH__API_KEY` / `AUTH__ADMIN_API_KEY`, so one key works for both. If the server is unreachable, tests are skipped.
 
 **Embedded tests** (require `pip install -e ".[dev,embedded]"` and CML engine):
 
 ```bash
 pytest tests/embedded/ -v -m embedded
-```
-
-**E2E tests** (require live server):
-
-```bash
-pytest tests/e2e/ -v -m e2e
 ```
 
 **Run everything except integration/embedded/e2e:**
