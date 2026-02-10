@@ -1,4 +1,4 @@
-"""Logging configuration for py-cml."""
+"""Logging configuration for cognitive-memory-layer."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ def configure_logging(
     level: str = "WARNING",
     handler: logging.Handler | None = None,
 ) -> None:
-    """Configure py-cml logging.
+    """Configure cognitive-memory-layer logging.
 
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR).
