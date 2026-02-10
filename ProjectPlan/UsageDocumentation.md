@@ -4,7 +4,7 @@
 
 1. [Overview](#overview)
 2. [Quick Start](#quick-start)
-3. [Python SDK (py-cml)](#python-sdk-py-cml)
+3. [Python SDK (cognitive-memory-layer)](#python-sdk-cognitive-memory-layer)
 4. [LLM Tool Calling Interface](#llm-tool-calling-interface)
 5. [API Reference](#api-reference)
 6. [Dashboard (Monitoring & Management)](#dashboard-monitoring--management)
@@ -121,15 +121,15 @@ curl -X POST http://localhost:8000/api/v1/memory/turn \
 ```
 Response includes `memory_context` (ready to inject into your LLM prompt), `memories_retrieved`, and `memories_stored`.
 
-You can do the same flow from Python using the **py-cml** SDK; see [Python SDK (py-cml)](#python-sdk-py-cml) below.
+You can do the same flow from Python using the **cognitive-memory-layer** SDK; see [Python SDK (cognitive-memory-layer)](#python-sdk-cognitive-memory-layer) below.
 
 ---
 
-## Python SDK (py-cml)
+## Python SDK (cognitive-memory-layer)
 
-The **py-cml** package is the official Python SDK for the Cognitive Memory Layer. It provides a pip-installable client for both **client mode** (connecting to a running CML server) and **embedded mode** (running the memory engine in-process with no server).
+The **cognitive-memory-layer** package is the official Python SDK for the Cognitive Memory Layer. It provides a pip-installable client for both **client mode** (connecting to a running CML server) and **embedded mode** (running the memory engine in-process with no server).
 
-- **Package:** `py-cml` on PyPI; import as `cml`
+- **Package:** `cognitive-memory-layer` on PyPI; import as `cml`
 - **Docs and examples:** `packages/py-cml/` in this repo ([README](../packages/py-cml/README.md), [docs](../packages/py-cml/docs/), [examples](../packages/py-cml/examples/))
 - **Full project plan:** [CreatePackage/CreatePackageStatus.md](CreatePackage/CreatePackageStatus.md)
 
@@ -137,10 +137,10 @@ The **py-cml** package is the official Python SDK for the Cognitive Memory Layer
 
 ```bash
 # Client mode (connect to CML server)
-pip install py-cml
+pip install cognitive-memory-layer
 
 # Embedded mode (run CML in-process, no server)
-pip install py-cml[embedded]
+pip install cognitive-memory-layer[embedded]
 ```
 
 ### Quick start (sync client)
@@ -192,7 +192,7 @@ async def main():
 # asyncio.run(main())
 ```
 
-Requires `pip install py-cml[embedded]`. See [packages/py-cml/README.md](../packages/py-cml/README.md) and [examples/embedded_mode.py](../packages/py-cml/examples/embedded_mode.py).
+Requires `pip install cognitive-memory-layer[embedded]`. See [packages/py-cml/README.md](../packages/py-cml/README.md) and [examples/embedded_mode.py](../packages/py-cml/examples/embedded_mode.py).
 
 ### Configuration
 
@@ -241,14 +241,14 @@ Aliases: `remember()` = `write()`, `search()` = `read()`. For full signatures an
 | File | Description |
 |------|-------------|
 | [quickstart.py](../packages/py-cml/examples/quickstart.py) | Sync client: write, read, get_context, stats |
-| [chat_with_memory.py](../packages/py-cml/examples/chat_with_memory.py) | Chatbot with OpenAI + py-cml: turn, inject memory_context into prompt |
+| [chat_with_memory.py](../packages/py-cml/examples/chat_with_memory.py) | Chatbot with OpenAI + cognitive-memory-layer: turn, inject memory_context into prompt |
 | [async_example.py](../packages/py-cml/examples/async_example.py) | Async client, concurrent writes, batch_read |
 | [embedded_mode.py](../packages/py-cml/examples/embedded_mode.py) | Embedded mode: zero-config and persistent db_path |
 | [agent_integration.py](../packages/py-cml/examples/agent_integration.py) | Minimal agent: observe, plan, reflect using memory |
 
 Run from repo root: `python packages/py-cml/examples/quickstart.py` (set `CML_API_KEY`, `CML_BASE_URL` for client examples).
 
-### Advanced features (py-cml)
+### Advanced features (cognitive-memory-layer)
 
 - **Admin:** `consolidate()`, `run_forgetting()` (require admin API key)
 - **Batch:** `batch_write(items)`, `batch_read(queries)`
@@ -960,7 +960,7 @@ async def handle_message(message: str):
     return response
 ```
 
-**With py-cml:** Use the **turn** endpoint for chat — it retrieves context and returns `memory_context` ready for your prompt. Or call **read** explicitly:
+**With cognitive-memory-layer:** Use the **turn** endpoint for chat — it retrieves context and returns `memory_context` ready for your prompt. Or call **read** explicitly:
 
 ```python
 from cml import CognitiveMemoryLayer
@@ -997,7 +997,7 @@ if contains_personal_info(message):
     )
 ```
 
-**With py-cml:** Use `memory.write(...)` or store the exchange in one go with `memory.turn(..., assistant_response=assistant_msg)` so the server can extract and store new facts from the assistant reply.
+**With cognitive-memory-layer:** Use `memory.write(...)` or store the exchange in one go with `memory.turn(..., assistant_response=assistant_msg)` so the server can extract and store new facts from the assistant reply.
 
 ### 3. Handling Conflicts
 
@@ -1038,7 +1038,7 @@ await memory_write(
 )
 ```
 
-**With py-cml:** Same flow using `memory.update(memory_id, feedback="correct"|"incorrect"|"outdated")` and `memory.write(content, ...)`.
+**With cognitive-memory-layer:** Same flow using `memory.update(memory_id, feedback="correct"|"incorrect"|"outdated")` and `memory.write(content, ...)`.
 
 ### 5. Respecting Constraints
 
@@ -1062,16 +1062,16 @@ context = await memory_read(
 ### Prerequisites
 
 - Docker and Docker Compose (for running the CML server)
-- Python 3.11+ (for local development and for the py-cml SDK)
+- Python 3.11+ (for local development and for the cognitive-memory-layer SDK)
 - OpenAI API key (for embeddings and LLM features)
 
-### Using the Python SDK (py-cml)
+### Using the Python SDK (cognitive-memory-layer)
 
 To use CML from Python without writing HTTP calls yourself:
 
-1. **Install the SDK:** `pip install py-cml` (or `pip install py-cml[embedded]` for embedded mode).
+1. **Install the SDK:** `pip install cognitive-memory-layer` (or `pip install cognitive-memory-layer[embedded]` for embedded mode).
 2. **Configure:** Set `CML_API_KEY` and `CML_BASE_URL` (e.g. `http://localhost:8000`), or pass them to `CognitiveMemoryLayer(...)`.
-3. **Use the client:** See [Python SDK (py-cml)](#python-sdk-py-cml) and the [packages/py-cml](../packages/py-cml/) docs and examples (`getting-started.md`, `api-reference.md`, `examples/`).
+3. **Use the client:** See [Python SDK (cognitive-memory-layer)](#python-sdk-cognitive-memory-layer) and the [packages/py-cml](../packages/py-cml/) docs and examples (`getting-started.md`, `api-reference.md`, `examples/`).
 
 ### Docker Deployment (Recommended)
 
@@ -1373,14 +1373,14 @@ These provide full OpenAPI schema and allow testing endpoints directly in the br
 
 The Cognitive Memory Layer provides LLMs with a sophisticated memory system that mimics human memory architecture. Key points:
 
-1. **Use `memory_read` before responding** to get relevant context (or use **py-cml** `turn()` for seamless retrieve + store).
-2. **Use `memory_write` for important information** — the system filters noise (py-cml: `write()` or `remember()`).
-3. **Use `memory_update` with feedback** to learn from corrections (py-cml: `update(..., feedback="correct"|"incorrect"|"outdated")`).
-4. **Use `memory_forget` for explicit deletion** requests (py-cml: `forget()`).
-5. **Request `format: "llm_context"`** for easy system prompt injection (py-cml: `read(..., format="llm_context")` or `get_context(query)`).
+1. **Use `memory_read` before responding** to get relevant context (or use **cognitive-memory-layer** `turn()` for seamless retrieve + store).
+2. **Use `memory_write` for important information** — the system filters noise (cognitive-memory-layer: `write()` or `remember()`).
+3. **Use `memory_update` with feedback** to learn from corrections (cognitive-memory-layer: `update(..., feedback="correct"|"incorrect"|"outdated")`).
+4. **Use `memory_forget` for explicit deletion** requests (cognitive-memory-layer: `forget()`).
+5. **Request `format: "llm_context"`** for easy system prompt injection (cognitive-memory-layer: `read(..., format="llm_context")` or `get_context(query)`).
 6. **Respect `constraints`** — they are safety-critical rules.
 7. **Use context tags** to categorize memories (e.g., "conversation", "preferences", "project_X").
 
-**Python users:** Use the **py-cml** package (`pip install py-cml`) for a typed, Pythonic API; see [Python SDK (py-cml)](#python-sdk-py-cml), [packages/py-cml](../packages/py-cml/), and [CreatePackage/CreatePackageStatus.md](CreatePackage/CreatePackageStatus.md) for full documentation and examples.
+**Python users:** Use the **cognitive-memory-layer** package (`pip install cognitive-memory-layer`) for a typed, Pythonic API; see [Python SDK (cognitive-memory-layer)](#python-sdk-cognitive-memory-layer), [packages/py-cml](../packages/py-cml/), and [CreatePackage/CreatePackageStatus.md](CreatePackage/CreatePackageStatus.md) for full documentation and examples.
 
 For questions or issues, refer to the project documentation in the `ProjectPlan` folder.
