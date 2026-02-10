@@ -126,23 +126,25 @@ Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The wo
 
 ### Ways to publish
 
-**Option A — From GitHub Actions (no local tag needed)**
+**Option A — From the command line (recommended)**
+
+From the repository root, after the version bump is pushed to `main`:
+
+```bash
+git pull origin main
+git tag py-cml-v0.1.0   # use the same version as in pyproject.toml
+git push origin py-cml-v0.1.0
+```
+
+The tag push triggers the workflow; the **Build and publish to PyPI** job runs and uploads the package. Check **Actions** for the run triggered by the tag and confirm the job succeeded.
+
+**Option B — From GitHub Actions (no local tag needed)**
 
 1. Go to **Actions** → **py-cml: CI and release** → **Run workflow**.
 2. Choose branch **main** (or the branch you pushed the version bump to).
-3. Enter **Version to release** (e.g. `0.1.1`). Leave it empty only if you just want to run lint/test/build.
+3. Enter **Version to release** (e.g. `0.1.0`). Leave it empty only if you just want to run lint/test/build.
 4. Click **Run workflow**.
-5. **Two runs:** The first run (manual) only runs **Create release tag** and pushes the tag; lint/test/build/publish are skipped. The **tag push triggers a second run** where only **Build and publish to PyPI** runs. In the Actions list, find the run triggered by the tag (e.g. "Tag py-cml-v0.1.1 pushed" or similar) and confirm that job succeeded.
-
-**Option B — From the command line**
-
-1. From your repo root (on `main`, with the version bump already pushed):
-   ```bash
-   git pull origin main
-   git tag py-cml-v0.1.1   # use the same version as in pyproject.toml
-   git push origin py-cml-v0.1.1
-   ```
-2. The push triggers the workflow; the **Build and publish to PyPI** job runs and uploads the package.
+5. **Two runs:** The first run (manual) only runs **Create release tag** and pushes the tag; lint/test/build/publish are skipped. The **tag push triggers a second run** where only **Build and publish to PyPI** runs. In the Actions list, find the run triggered by the tag and confirm that job succeeded.
 
 **Option C — From GitHub Releases**
 
@@ -153,13 +155,13 @@ Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The wo
 
 ### After publishing
 
-- **Optional:** If you used Option B or A, create a **GitHub Release** from the new tag and paste the CHANGELOG section.
+- **Optional:** If you used Option A or B, create a **GitHub Release** from the new tag and paste the CHANGELOG section.
 - **Verify:** `pip install cognitive-memory-layer==0.1.1` then `python -c "from cml import CognitiveMemoryLayer; print('OK')"`.
 
 ### Troubleshooting
 
 - **PyPI still shows "0 projects"**  
-  Check that the **tag-triggered** run (the second run after you used Option A) exists and that **Build and publish to PyPI** completed successfully. If that run is missing, the tag push may not have triggered the workflow (e.g. path filters); use Option B to push the tag from your machine and confirm the run appears.
+  Check that the **tag-triggered** run exists and that **Build and publish to PyPI** completed successfully. If using Option A (command line), the run should appear shortly after you push the tag. If using Option B (GitHub Actions) and the second run is missing, use Option A to push the tag from your machine and confirm the run appears.
 - **Pending publishers:** Use only the publisher for **workflow `py-cml.yml`** and **environment `pypi`**. If you have a pending publisher for `py-cml-publish.yml`, remove it (that workflow was merged into `py-cml.yml`).
 
 ### TestPyPI (optional)
