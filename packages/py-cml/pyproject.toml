@@ -60,11 +60,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/<org>/CognitiveMemoryLayer"
-Documentation = "https://github.com/<org>/CognitiveMemoryLayer/tree/main/packages/py-cml#readme"
-Repository = "https://github.com/<org>/CognitiveMemoryLayer"
-Issues = "https://github.com/<org>/CognitiveMemoryLayer/issues"
-Changelog = "https://github.com/<org>/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md"
+Homepage = "https://github.com/avinash-mall/CognitiveMemoryLayer"
+Documentation = "https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml#readme"
+Repository = "https://github.com/avinash-mall/CognitiveMemoryLayer"
+Issues = "https://github.com/avinash-mall/CognitiveMemoryLayer/issues"
+Changelog = "https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cml"]

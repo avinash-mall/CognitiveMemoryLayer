@@ -48,7 +48,7 @@ Thank you for your interest in contributing. This document outlines how to get s
 
 For full architecture and API details, see [README](README.md) and [Usage Documentation](ProjectPlan/UsageDocumentation.md).
 
-## Publishing the Python SDK (py-cml)
+## Publishing the Python SDK (cognitive-memory-layer)
 
 To publish the `cognitive-memory-layer` package to PyPI:
 

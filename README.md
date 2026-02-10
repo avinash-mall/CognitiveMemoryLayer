@@ -451,7 +451,7 @@ curl -X POST http://localhost:8000/api/v1/memory/turn \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
-**From Python:** `pip install py-cml` — see [packages/py-cml](packages/py-cml/) and [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-py-cml).
+**From Python:** `pip install cognitive-memory-layer` — see [packages/py-cml](packages/py-cml/) and [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-cognitive-memory-layer).
 
 ### 5. Monitoring Dashboard
 
@@ -506,7 +506,7 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 
 📚 **Full API Reference**: [UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md)
 
-🐍 **Python SDK (py-cml)**: Use CML from Python with `pip install py-cml` — [packages/py-cml](packages/py-cml/) | [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-py-cml)
+🐍 **Python SDK (cognitive-memory-layer)**: Use CML from Python with `pip install cognitive-memory-layer` — [packages/py-cml](packages/py-cml/) | [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-cognitive-memory-layer)
 
 🔗 **Interactive Docs**: http://localhost:8000/docs
 
@@ -553,7 +553,7 @@ CognitiveMemoryLayer/
 │   ├── storage/                # 💾 Database adapters
 │   └── utils/                  # 🛠️ LLM, embeddings, metrics
 ├── 📂 packages/
-│   └── py-cml/                 # 🐍 Python SDK (pip install py-cml)
+│   └── py-cml/                 # 🐍 Python SDK (pip install cognitive-memory-layer)
 ├── 📂 tests/                   # Unit, integration, E2E tests
 ├── 📂 config/                  # Configuration files
 ├── 📂 migrations/              # Alembic database migrations
