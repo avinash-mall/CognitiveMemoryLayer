@@ -1,4 +1,4 @@
-"""Shared test fixtures for py-cml."""
+"""Shared test fixtures for cognitive-memory-layer."""
 
 from __future__ import annotations
 

@@ -1,10 +1,10 @@
-# py-cml: Python Package for CognitiveMemoryLayer — Complete Project Plan
+# cognitive-memory-layer: Python Package for CognitiveMemoryLayer — Complete Project Plan
 
 Merged from all ProjectPlan/CreatePackage documents.
 
 ---
 
-# py-cml: Python Package for CognitiveMemoryLayer
+# cognitive-memory-layer: Python Package for CognitiveMemoryLayer
 
 ## Master Project Plan
 
@@ -12,7 +12,7 @@ Merged from all ProjectPlan/CreatePackage documents.
 
 ## 1. Vision
 
-**py-cml** is a pip-installable Python package that lets any Python application use the CognitiveMemoryLayer with a single import. It provides a clean, Pythonic API for all memory operations — write, read, update, forget, consolidate, and more — with both a **client mode** (connecting to a running CML server) and an **embedded mode** (running the full memory system in-process without infrastructure dependencies).
+**cognitive-memory-layer** is a pip-installable Python package that lets any Python application use the CognitiveMemoryLayer with a single import. It provides a clean, Pythonic API for all memory operations — write, read, update, forget, consolidate, and more — with both a **client mode** (connecting to a running CML server) and an **embedded mode** (running the full memory system in-process without infrastructure dependencies).
 
 ```python
 from cml import CognitiveMemoryLayer
@@ -40,9 +40,9 @@ print(turn.memory_context)  # Auto-retrieved, ready to inject
 
 | Field | Value |
 |:------|:------|
-| **Package Name** | `py-cml` |
+| **Package Name** | `cognitive-memory-layer` |
 | **Import Name** | `cml` |
-| **PyPI Name** | `py-cml` |
+| **PyPI Name** | `cognitive-memory-layer` |
 | **GitHub Repo** | Existing `CognitiveMemoryLayer` repo (monorepo) |
 | **Package Location** | `packages/py-cml/` subdirectory |
 | **License** | GPL-3.0 (matches parent project) |
@@ -51,7 +51,7 @@ print(turn.memory_context)  # Auto-retrieved, ready to inject
 
 ### 2.1 Monorepo Strategy
 
-The py-cml package lives inside the existing CognitiveMemoryLayer repository as a subdirectory under `packages/py-cml/`. This approach:
+The cognitive-memory-layer package lives inside the existing CognitiveMemoryLayer repository as a subdirectory under `packages/py-cml/`. This approach:
 
 - **Shares git history** — all changes tracked in one place
 - **Simplifies CI** — one repo, one set of workflows
@@ -257,7 +257,7 @@ memory = CognitiveMemoryLayer(config=config)
 | `pydantic >= 2.0` | Request/response validation |
 | `python-dotenv` | Environment variable loading |
 
-### Embedded Mode (optional, `pip install py-cml[embedded]`)
+### Embedded Mode (optional, `pip install cognitive-memory-layer[embedded]`)
 | Package | Purpose |
 |:--------|:--------|
 | `sqlalchemy[asyncio]` | Database ORM |
@@ -312,7 +312,7 @@ The following phase documents are merged into this single file below: Phase 1 (P
 
 ## Objective
 
-Establish the py-cml package directory within the existing CognitiveMemoryLayer monorepo, with a modern Python packaging structure, its own build system, development tooling, and CI/CD pipeline scoped to the SDK.
+Establish the cognitive-memory-layer package directory within the existing CognitiveMemoryLayer monorepo, with a modern Python packaging structure, its own build system, development tooling, and CI/CD pipeline scoped to the SDK.
 
 ---
 
@@ -500,7 +500,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "py-cml"
+name = "cognitive-memory-layer"
 version = "0.1.0"
 description = "Python SDK for CognitiveMemoryLayer — neuro-inspired memory for AI"
 readme = "README.md"
@@ -810,7 +810,7 @@ jobs:
    b. Build wheel and sdist from packages/py-cml/
    c. Publish to PyPI using trusted publishing (OIDC)
 6. Developer creates GitHub Release from tag (optional, for notes)
-7. Users can install: pip install py-cml
+7. Users can install: pip install cognitive-memory-layer
 ```
 
 ---
@@ -827,8 +827,8 @@ jobs:
 2. One-line description
 3. Features list (bullet points)
 4. Installation:
-   - pip install py-cml
-   - pip install py-cml[embedded]
+   - pip install cognitive-memory-layer
+   - pip install cognitive-memory-layer[embedded]
 5. Quickstart:
    - Import and initialize
    - Write a memory
@@ -2636,7 +2636,7 @@ Provide an in-process CognitiveMemoryLayer engine that runs entirely within the 
 ```
 1. FULL ENGINE: Re-use the complete CML engine, not a simplified version
 2. SAME API: Same method signatures as HTTP client (write, read, turn, etc.)
-3. OPTIONAL DEPS: Only installed with `pip install py-cml[embedded]`
+3. OPTIONAL DEPS: Only installed with `pip install cognitive-memory-layer[embedded]`
 4. LIGHTWEIGHT OPTION: Support SQLite+local embeddings for zero-infra dev
 5. FULL OPTION: Support PostgreSQL+Neo4j+Redis for production embedded use
 ```
@@ -2925,7 +2925,7 @@ class EmbeddedCognitiveMemoryLayer:
     Runs the full CML engine within your Python process.
     No server, no Docker, no HTTP overhead.
 
-    Install with: pip install py-cml[embedded]
+    Install with: pip install cognitive-memory-layer[embedded]
 
     Usage:
         async with EmbeddedCognitiveMemoryLayer() as memory:
@@ -2977,7 +2977,7 @@ class EmbeddedCognitiveMemoryLayer:
         except ImportError:
             raise ImportError(
                 "Embedded mode requires additional dependencies. "
-                "Install with: pip install py-cml[embedded]"
+                "Install with: pip install cognitive-memory-layer[embedded]"
             )
 
     async def __aenter__(self):
@@ -3281,6 +3281,7 @@ async def import_memories(
 
 ## Acceptance Criteria
 
+<<<<<<< HEAD
 - [x] `pip install py-cml[embedded]` installs all required dependencies
 - [x] `EmbeddedCognitiveMemoryLayer()` works with zero configuration (lite mode)
 - [x] Lite mode uses SQLite + local embeddings (no external services)
@@ -3292,6 +3293,19 @@ async def import_memories(
 - [x] Export/import utilities support data migration
 - [x] Missing `[embedded]` dependencies produce clear error message
 - [x] Embedded mode passes the same functional tests as HTTP client
+=======
+- [ ] `pip install cognitive-memory-layer[embedded]` installs all required dependencies
+- [ ] `EmbeddedCognitiveMemoryLayer()` works with zero configuration (lite mode)
+- [ ] Lite mode uses SQLite + local embeddings (no external services)
+- [ ] Standard mode connects to PostgreSQL with pgvector
+- [ ] Full mode uses PostgreSQL + Neo4j + Redis
+- [ ] Same API surface as HTTP client (write, read, turn, update, forget, stats)
+- [ ] Context manager protocol (`async with`) handles init/teardown
+- [ ] Background consolidation/forgetting works via asyncio tasks
+- [ ] Export/import utilities support data migration
+- [ ] Missing `[embedded]` dependencies produce clear error message
+- [ ] Embedded mode passes the same functional tests as HTTP client
+>>>>>>> 42897739dbe59559f3754da63c76f08f1e7a6549
 
 
 ---
@@ -5520,12 +5534,12 @@ Give your AI applications human-like memory — store, retrieve, consolidate, an
 ## Installation
 
 ```bash
-pip install py-cml
+pip install cognitive-memory-layer
 ```
 
 For embedded mode (no server required):
 ```bash
-pip install py-cml[embedded]
+pip install cognitive-memory-layer[embedded]
 ```
 
 ## Quick Start
@@ -5624,7 +5638,7 @@ GPL-3.0 — See [LICENSE](LICENSE) for details.
 SECTIONS:
 1. Title + badges (PyPI, Python versions, license, CI)
 2. One-line description
-3. Installation (pip install py-cml / py-cml[embedded])
+3. Installation (pip install cognitive-memory-layer / py-cml[embedded])
 4. Quick Start (sync, 5 lines)
 5. Async Support (async context manager, 4 lines)
 6. Embedded Mode (zero config, 4 lines)
@@ -5651,7 +5665,7 @@ SECTIONS:
 - A running CML server (or use embedded mode)
 
 ## Installation
-pip install py-cml
+pip install cognitive-memory-layer
 
 ## Connect to a Server
 1. Start CML server (link to parent project docs)
@@ -6162,7 +6176,7 @@ RELEASE PROCESS (from existing CognitiveMemoryLayer repo):
    gh release create py-cml-v0.1.0 \
      --title "py-cml v0.1.0 — Initial Release" \
      --notes-file packages/py-cml/CHANGELOG.md
-8. Verify: pip install py-cml==0.1.0
+8. Verify: pip install cognitive-memory-layer==0.1.0
 ```
 
 ### Sub-Task 8.5.2: PyPI Configuration
@@ -6172,7 +6186,7 @@ RELEASE PROCESS (from existing CognitiveMemoryLayer repo):
 **Pseudo-code for setup**:
 ```
 1. Create PyPI account (if not exists)
-2. Reserve package name "py-cml" on PyPI:
+2. Reserve package name "cognitive-memory-layer" on PyPI:
    a. Go to pypi.org/manage/account/publishing/
    b. Add new pending publisher:
       - PyPI project name: py-cml
@@ -6314,6 +6328,7 @@ Do NOT open a public issue for security vulnerabilities.
 
 ## Acceptance Criteria
 
+<<<<<<< HEAD
 - [x] README.md on GitHub/PyPI conveys value in < 10 seconds
 - [x] Quickstart works in < 60 seconds (pip install + 5 lines of code)
 - [x] API reference documents all public methods, parameters, return types
@@ -6333,6 +6348,27 @@ Do NOT open a public issue for security vulnerabilities.
 - [x] CI workflows scoped to `packages/py-cml/**` path changes
 - [x] Publish workflow triggers on `py-cml-v*` tag pattern
 - [x] PyPI trusted publisher configured for the CognitiveMemoryLayer repo
+=======
+- [ ] README.md on GitHub/PyPI conveys value in < 10 seconds
+- [ ] Quickstart works in < 60 seconds (pip install + 5 lines of code)
+- [ ] API reference documents all public methods, parameters, return types
+- [ ] Getting started guide covers install → first memory in 5 steps
+- [ ] Configuration guide covers all options (env vars, direct, config object)
+- [ ] 5+ usage examples covering common patterns
+- [ ] GitHub issue templates for bugs and features
+- [ ] PR template with checklist
+- [ ] CONTRIBUTING.md with dev setup and PR process
+- [ ] SECURITY.md with reporting instructions
+- [ ] CHANGELOG.md follows Keep a Changelog format
+- [ ] CI publishes to PyPI on GitHub Release
+- [ ] TestPyPI verified before first real release
+- [ ] Package installable: `pip install cognitive-memory-layer`
+- [ ] Package importable: `from cml import CognitiveMemoryLayer`
+- [ ] All SDK files live under `packages/py-cml/` in the existing repo
+- [ ] CI workflows scoped to `packages/py-cml/**` path changes
+- [ ] Publish workflow triggers on `py-cml-v*` tag pattern
+- [ ] PyPI trusted publisher configured for the CognitiveMemoryLayer repo
+>>>>>>> 42897739dbe59559f3754da63c76f08f1e7a6549
 
 ---
 
@@ -6348,7 +6384,7 @@ The following has been implemented:
 
 **GitHub templates**: .github/ISSUE_TEMPLATE/bug_report.md, .github/ISSUE_TEMPLATE/feature_request.md, .github/pull_request_template.md (Summary, Changes, Testing, Documentation checklists).
 
-**Package**: packages/py-cml/SECURITY.md (supported versions, report via Security Advisories). CONTRIBUTING.md updated with fork/venv in development setup, PR checklist alignment, and Releasing py-cml section (version bump, CHANGELOG, tag py-cml-v*, push, optional GitHub Release, verify; TestPyPI note).
+**Package**: packages/py-cml/SECURITY.md (supported versions, report via Security Advisories). CONTRIBUTING.md updated with fork/venv in development setup, PR checklist alignment, and Releasing cognitive-memory-layer section (version bump, CHANGELOG, tag py-cml-v*, push, optional GitHub Release, verify; TestPyPI note).
 
 **Publishing**: .github/workflows/py-cml-publish.yml was already in place; triggers on push of tags matching py-cml-v*, uses environment pypi and OIDC. No workflow changes.
 
