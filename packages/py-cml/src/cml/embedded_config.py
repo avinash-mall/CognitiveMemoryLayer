@@ -1,10 +1,21 @@
-"""Configuration for embedded CML mode."""
+"""Configuration for embedded CML mode. All URLs and model names come from env when not set."""
 
 from __future__ import annotations
 
+import os
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+
+def _env(key: str, default: str = "") -> str:
+    return (os.environ.get(key) or "").strip()
 
 
 class EmbeddedDatabaseConfig(BaseModel):
@@ -22,22 +33,44 @@ class EmbeddedDatabaseConfig(BaseModel):
 
 
 class EmbeddedEmbeddingConfig(BaseModel):
-    """Embedding configuration for embedded mode."""
+    """Embedding configuration for embedded mode. Set EMBEDDING__MODEL, EMBEDDING__BASE_URL in .env."""
 
-    provider: Literal["openai", "local", "vllm"] = Field(default="local")
-    model: str = Field(default="all-MiniLM-L6-v2")
+    provider: Literal["openai", "local", "openai_compatible", "vllm"] = Field(default="local")
+    model: str = Field(default="", description="Set EMBEDDING__MODEL in .env")
     dimensions: int = Field(default=384)
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 
+    @model_validator(mode="before")
+    @classmethod
+    def from_env(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING__MODEL"):
+            data = {**data, "model": _env("EMBEDDING__MODEL")}
+        if data.get("base_url") is None and _env("EMBEDDING__BASE_URL"):
+            data = {**data, "base_url": _env("EMBEDDING__BASE_URL")}
+        return data
+
 
 class EmbeddedLLMConfig(BaseModel):
-    """LLM configuration for embedded mode."""
+    """LLM configuration for embedded mode. Set LLM__MODEL, LLM__BASE_URL in .env."""
 
-    provider: Literal["openai", "vllm", "ollama", "gemini", "claude"] = Field(default="openai")
-    model: str = Field(default="gpt-4o-mini")
+    provider: Literal["openai", "openai_compatible", "vllm", "ollama", "gemini", "claude"] = Field(default="openai")
+    model: str = Field(default="", description="Set LLM__MODEL in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def from_env(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if (not data.get("model") or data.get("model") == "") and _env("LLM__MODEL"):
+            data = {**data, "model": _env("LLM__MODEL")}
+        if data.get("base_url") is None and _env("LLM__BASE_URL"):
+            data = {**data, "base_url": _env("LLM__BASE_URL")}
+        return data
 
 
 class EmbeddedConfig(BaseModel):

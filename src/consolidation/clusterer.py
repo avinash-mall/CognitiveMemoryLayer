@@ -1,6 +1,6 @@
 """Semantic clustering of episodes (pure Python, no sklearn)."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from ..core.schemas import MemoryRecord
@@ -28,19 +28,15 @@ def _centroid(embeddings: List[List[float]]) -> List[float]:
 
 @dataclass
 class EpisodeCluster:
-    """A cluster of related episodes."""
+    """A cluster of related episodes. BUG-11: use default_factory for mutable default."""
 
     cluster_id: int
     episodes: List[MemoryRecord]
     centroid: Optional[List[float]] = None
 
-    common_entities: List[str] = None
+    common_entities: List[str] = field(default_factory=list)
     dominant_type: str = "unknown"
     avg_confidence: float = 0.0
-
-    def __post_init__(self):
-        if self.common_entities is None:
-            self.common_entities = []
 
 
 class SemanticClusterer:

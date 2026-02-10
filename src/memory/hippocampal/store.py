@@ -158,28 +158,30 @@ class HippocampalStore:
             context_filter=context_filter,
             filters=filters,
         )
-        # Batch update access tracking for all returned results
+        # Batch update access tracking: atomic increment to avoid lost update (BUG-02)
         now = datetime.now(timezone.utc)
         for record in results:
             record.access_count += 1
             record.last_accessed_at = now
-        # Fire off updates concurrently; don't block on stale pre-update data
         if results:
-            import asyncio
+            if hasattr(self.store, "increment_access_counts"):
+                await self.store.increment_access_counts([r.id for r in results], now)
+            else:
+                import asyncio
 
-            await asyncio.gather(
-                *[
-                    self.store.update(
-                        record.id,
-                        {
-                            "access_count": record.access_count,
-                            "last_accessed_at": now,
-                        },
-                        increment_version=False,
-                    )
-                    for record in results
-                ]
-            )
+                await asyncio.gather(
+                    *[
+                        self.store.update(
+                            record.id,
+                            {
+                                "access_count": record.access_count,
+                                "last_accessed_at": now,
+                            },
+                            increment_version=False,
+                        )
+                        for record in results
+                    ]
+                )
         return results
 
     async def get_recent(

@@ -7,7 +7,7 @@
 ```python
 CognitiveMemoryLayer(
     api_key: str | None = None,
-    base_url: str = "http://localhost:8000",
+    base_url: str = "",   # from CML_BASE_URL in .env when unset; no hardcoded default
     tenant_id: str = "default",
     *,
     config: CMLConfig | None = None,
@@ -18,7 +18,7 @@ CognitiveMemoryLayer(
 )
 ```
 
-Use `with CognitiveMemoryLayer(...) as memory:` or call `memory.close()` when done.
+Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with CognitiveMemoryLayer(...) as memory:` or call `memory.close()` when done.
 
 ### Methods
 

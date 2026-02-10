@@ -19,26 +19,32 @@ class CMLJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+def _serialize_value(value: Any) -> Any:
+    """PY-BUG-02: Recursively serialize UUID/datetime/dict/list for JSON."""
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return serialize_for_api(value)
+    if isinstance(value, list):
+        return [_serialize_value(v) for v in value]
+    return value
+
+
 def serialize_for_api(data: dict[str, Any]) -> dict[str, Any]:
     """Prepare a dict for API transmission.
 
     - Converts UUID to string
     - Converts datetime to ISO format
     - Removes None values
-    - Recurses into nested dicts and lists (list elements: only recurse if dict)
+    - Recurses into nested dicts and lists (including UUID/datetime inside lists)
     """
     result: dict[str, Any] = {}
     for key, value in data.items():
         if value is None:
             continue
-        if isinstance(value, UUID):
-            result[key] = str(value)
-        elif isinstance(value, datetime):
-            result[key] = value.isoformat()
-        elif isinstance(value, dict):
-            result[key] = serialize_for_api(value)
-        elif isinstance(value, list):
-            result[key] = [serialize_for_api(v) if isinstance(v, dict) else v for v in value]
-        else:
-            result[key] = value
+        result[key] = _serialize_value(value)
     return result

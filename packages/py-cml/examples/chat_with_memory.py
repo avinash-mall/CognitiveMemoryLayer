@@ -1,6 +1,15 @@
-"""Build a chatbot with persistent memory using py-cml and OpenAI."""
+"""Build a chatbot with persistent memory using py-cml and OpenAI.
+
+Set in .env: CML_BASE_URL, CML_API_KEY, OPENAI_MODEL or LLM__MODEL (and OPENAI_API_KEY).
+"""
 
 import os
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from openai import OpenAI
 
@@ -8,11 +17,13 @@ from cml import CognitiveMemoryLayer
 
 
 def chat_with_memory():
-    # Use CML_API_KEY and OPENAI_API_KEY env vars in production
-    # Initialize clients (use CML_API_KEY and CML_BASE_URL env vars in production)
+    base_url = (os.environ.get("CML_BASE_URL") or "").strip()
+    model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+    if not base_url or not model:
+        raise SystemExit("Set CML_BASE_URL and OPENAI_MODEL (or LLM__MODEL) in .env")
     memory = CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY", "cml-key"),
-        base_url=os.environ.get("CML_BASE_URL", "http://localhost:8000"),
+        api_key=os.environ.get("CML_API_KEY"),
+        base_url=base_url,
     )
     openai_client = OpenAI()
 
@@ -45,7 +56,7 @@ def chat_with_memory():
 
         # Call OpenAI
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=messages,
         )
         assistant_msg = response.choices[0].message.content

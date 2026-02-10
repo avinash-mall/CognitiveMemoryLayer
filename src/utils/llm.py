@@ -26,7 +26,7 @@ class LLMResponse:
 
 # Default base URLs per OpenAI-compatible provider (used when base_url not set in config)
 _OPENAI_DEFAULT_BASE = "https://api.openai.com/v1"
-_VLLM_DEFAULT_BASE = "http://localhost:8000/v1"
+_OPENAI_COMPATIBLE_DEFAULT_BASE = "http://localhost:8000/v1"
 _OLLAMA_DEFAULT_BASE = "http://localhost:11434/v1"
 
 
@@ -67,7 +67,7 @@ def _parse_json_from_response(response: str) -> Dict[str, Any]:
 
 
 class OpenAICompatibleClient(LLMClient):
-    """Single client for any OpenAI-compatible API (OpenAI, vLLM, Ollama, proxies)."""
+    """Single client for any OpenAI-compatible API (OpenAI, local server, Ollama, proxies)."""
 
     def __init__(
         self,
@@ -88,7 +88,9 @@ class OpenAICompatibleClient(LLMClient):
             self._base_url = settings.llm.base_url or (
                 _OPENAI_DEFAULT_BASE
                 if provider == "openai"
-                else _VLLM_DEFAULT_BASE if provider == "vllm" else _OLLAMA_DEFAULT_BASE
+                else _OPENAI_COMPATIBLE_DEFAULT_BASE
+                if provider in ("openai_compatible", "vllm")
+                else _OLLAMA_DEFAULT_BASE
             )
         if self._api_key is None:
             if base_url is not None:
@@ -277,13 +279,13 @@ def get_llm_client() -> LLMClient:
     api_key = settings.llm.api_key or os.environ.get("OPENAI_API_KEY", "")
     base_url = settings.llm.base_url
 
-    if provider in ("openai", "vllm", "ollama"):
+    if provider in ("openai", "openai_compatible", "vllm", "ollama"):
         if base_url:
             url = base_url
         elif provider == "openai":
             url = _OPENAI_DEFAULT_BASE
-        elif provider == "vllm":
-            url = _VLLM_DEFAULT_BASE
+        elif provider in ("openai_compatible", "vllm"):
+            url = _OPENAI_COMPATIBLE_DEFAULT_BASE
         else:
             url = _OLLAMA_DEFAULT_BASE
         key = api_key if provider == "openai" else (api_key or "dummy")
@@ -302,6 +304,5 @@ def get_llm_client() -> LLMClient:
     raise ValueError(f"Unknown LLM provider: {provider}")
 
 
-# Backward-compatibility aliases (for tests/docs that referenced the old class names)
+# Backward-compatibility alias
 OpenAIClient = OpenAICompatibleClient
-VLLMClient = OpenAICompatibleClient

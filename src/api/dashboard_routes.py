@@ -2,7 +2,6 @@
 
 import math
 import os
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -249,7 +248,9 @@ async def dashboard_memories(
             if status:
                 filters.append(MemoryRecordModel.status == status)
             if search:
-                filters.append(MemoryRecordModel.text.ilike(f"%{search}%"))
+                # SEC-05: escape SQL wildcards so ilike does not match arbitrarily
+                escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                filters.append(MemoryRecordModel.text.ilike(f"%{escaped}%", escape="\\"))
 
             # Total count
             count_q = select(func.count()).select_from(MemoryRecordModel)
@@ -732,7 +733,7 @@ def _project_root() -> Path:
 async def dashboard_database_reset(
     auth: AuthContext = Depends(require_admin_permission),
 ):
-    """Drop all tables and re-run migrations. Uses current .env (e.g. EMBEDDING__DIMENSIONS)."""
+    """Drop all tables and re-run migrations (SEC-06: uses Alembic API, no subprocess)."""
     root = _project_root()
     alembic_ini = root / "alembic.ini"
     if not alembic_ini.is_file():
@@ -740,38 +741,16 @@ async def dashboard_database_reset(
             status_code=500,
             detail="alembic.ini not found; cannot run migrations",
         )
-    env = os.environ.copy()
-    # Ensure Python path includes project root for 'src' imports during migrations
-    env.setdefault("PYTHONPATH", str(root))
-    if "PYTHONPATH" in env and str(root) not in env["PYTHONPATH"].split(os.pathsep):
-        env["PYTHONPATH"] = os.pathsep.join([str(root), env["PYTHONPATH"]])
-
-    def run_alembic(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            [sys.executable, "-m", "alembic"] + list(args),
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=120,
-        )
-
     try:
-        down = run_alembic("downgrade", "base")
-        if down.returncode != 0:
-            logger.error("database_reset_downgrade_failed", stderr=down.stderr, stdout=down.stdout)
-            raise HTTPException(
-                status_code=500,
-                detail=f"alembic downgrade base failed: {down.stderr or down.stdout or 'unknown'}",
-            )
-        up = run_alembic("upgrade", "head")
-        if up.returncode != 0:
-            logger.error("database_reset_upgrade_failed", stderr=up.stderr, stdout=up.stdout)
-            raise HTTPException(
-                status_code=500,
-                detail=f"alembic upgrade head failed: {up.stderr or up.stdout or 'unknown'}",
-            )
+        from alembic import command
+        from alembic.config import Config
+
+        config = Config(str(alembic_ini))
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        command.downgrade(config, "base")
+        command.upgrade(config, "head")
         return {"success": True, "message": "Database reset and recreated."}
-    except subprocess.TimeoutExpired as e:
-        logger.error("database_reset_timeout", error=str(e))
-        raise HTTPException(status_code=500, detail="Migration timed out.")
+    except Exception as e:
+        logger.exception("database_reset_failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Database reset failed.")
