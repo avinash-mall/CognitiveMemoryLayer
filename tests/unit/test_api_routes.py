@@ -66,7 +66,9 @@ class TestAuthMiddleware:
         monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "t1")
         get_settings.cache_clear()
         try:
-            with TestClient(app, headers={"X-API-Key": "wrong-key", "X-Tenant-ID": "unit-auth-invalid-key"}) as client:
+            with TestClient(
+                app, headers={"X-API-Key": "wrong-key", "X-Tenant-ID": "unit-auth-invalid-key"}
+            ) as client:
                 resp = client.post(
                     "/api/v1/memory/write",
                     json={"content": "test"},

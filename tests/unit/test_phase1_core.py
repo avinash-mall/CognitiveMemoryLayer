@@ -191,4 +191,11 @@ class TestConfig:
         s = get_settings()
         assert s.embedding.provider in ("openai", "local", "openai_compatible", "vllm", "ollama")
         assert isinstance(s.embedding.dimensions, int) and s.embedding.dimensions >= 1
-        assert s.llm.provider in ("openai", "openai_compatible", "vllm", "ollama", "gemini", "claude")
+        assert s.llm.provider in (
+            "openai",
+            "openai_compatible",
+            "vllm",
+            "ollama",
+            "gemini",
+            "claude",
+        )

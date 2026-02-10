@@ -44,6 +44,7 @@ class TestTrackRetrievalLatency:
         @track_retrieval_latency(tenant_id="t1")
         def get_value():
             return 42
+
         assert get_value() == 42
 
     @pytest.mark.asyncio
@@ -51,5 +52,6 @@ class TestTrackRetrievalLatency:
         @track_retrieval_latency(tenant_id="t2")
         async def get_async():
             return 99
+
         result = await get_async()
         assert result == 99
