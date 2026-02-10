@@ -94,6 +94,10 @@ CognitiveMemoryLayer/               # Existing repo (unchanged)
 
 **Current implementation:** Phase 1 (package layout, Hatchling, CI), Phase 2 (Pydantic config, env/.env, exceptions, httpx transport, retry, request/response models, `health()`, context managers), Phase 3 (memory operations: write, read, turn, update, forget, stats, create_session, get_session_context, get_context, remember, search, delete_all), Phase 4 (embedded mode: EmbeddedCognitiveMemoryLayer, lite SQLite + local embeddings, optional background workers, export/import), Phase 5 (advanced features: consolidate, run_forgetting, batch_write, batch_read, set_tenant, list_tenants, get_events, component_health, with_namespace, iter_memories, CMLOpenAIHelper), Phase 6 (developer experience: structured errors with suggestion/request_id, configure_logging, read_safe, TypedDicts, response __str__, serialization, session() context manager, HTTP/2 and limits, deprecation decorator, thread-safe set_tenant, async event-loop check), and Phase 7 (testing: shared conftest fixtures and mock helpers, unit tests including test_models, extended transport/retry, test_serialization/test_logging, integration tests with live_client, embedded tests for lite mode and lifecycle, e2e chat flow and migration, pytest markers and coverage in pyproject.toml, CI running unit-only by default), and Phase 8 (README with PyPI/Python badges and tagline, docs/getting-started, api-reference, configuration, examples; examples/quickstart, chat_with_memory, async_example, embedded_mode, agent_integration; GitHub issue and PR templates; SECURITY.md; CONTRIBUTING with releasing section and PR checklist; publish workflow on py-cml-v* already in place) are implemented in `packages/py-cml/`.
 
+**Code review (2026-02-10):** The issues in [Issues.md](Issues.md) have been addressed. Resolved items include: admin endpoint URL paths (leading slash), shared `dashboard_item_to_memory_item` in `cml.utils.converters`, CML exception names (`CMLConnectionError`/`CMLTimeoutError` with aliases), retry logic for `RateLimitError` and max delay cap, request body serialization (datetime/UUID), SQLite upsert by content_hash, OpenAI helper single-turn flow, background task logging, `database_url` rename, `iter_memories` multi-type validation, conftest type hints, examples using env vars for API keys, `__del__` warning for unclosed clients, and `pyproject.toml` project URLs. See Issues.md for full resolution summary.
+
+**Testing (integration and e2e):** Integration and e2e tests require a running CML server. Start with `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api` from the repo root. The project `.env.example` uses `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key`; use the same in `.env` so the API accepts the key. If `CML_TEST_API_KEY` is unset, test conftests load the repo `.env` and use `AUTH__API_KEY`/`AUTH__ADMIN_API_KEY`. Run from `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`.
+
 ---
 
 ## 4. Architecture Overview
@@ -874,19 +878,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Acceptance Criteria
 
-- [ ] `packages/py-cml/` directory created in existing CognitiveMemoryLayer repo
-- [ ] `pip install -e "packages/py-cml[dev]"` succeeds from repo root
-- [ ] `import cml` works without errors
-- [ ] `python -m build` (from `packages/py-cml/`) produces valid wheel and sdist
-- [ ] Ruff linting passes with zero errors
-- [ ] mypy strict mode passes
-- [ ] CI workflows trigger only on `packages/py-cml/**` file changes
-- [ ] CI workflows use `working-directory: packages/py-cml`
-- [ ] Publish workflow triggers on `py-cml-v*` tag pattern
-- [ ] SDK `README.md` at `packages/py-cml/README.md` includes installation and quickstart
-- [ ] `.gitignore`, `.editorconfig` in place
-- [ ] `py.typed` marker file present at `packages/py-cml/src/cml/py.typed`
-- [ ] Server's existing `pyproject.toml`, `src/`, `tests/` remain untouched
+- [x] `packages/py-cml/` directory created in existing CognitiveMemoryLayer repo
+- [x] `pip install -e "packages/py-cml[dev]"` succeeds from repo root
+- [x] `import cml` works without errors
+- [x] `python -m build` (from `packages/py-cml/`) produces valid wheel and sdist
+- [x] Ruff linting passes with zero errors
+- [x] mypy strict mode passes
+- [x] CI workflows trigger only on `packages/py-cml/**` file changes
+- [x] CI workflows use `working-directory: packages/py-cml`
+- [x] Publish workflow triggers on `py-cml-v*` tag pattern
+- [x] SDK `README.md` at `packages/py-cml/README.md` includes installation and quickstart
+- [x] `.gitignore`, `.editorconfig` in place
+- [x] `py.typed` marker file present at `packages/py-cml/src/cml/py.typed`
+- [x] Server's existing `pyproject.toml`, `src/`, `tests/` remain untouched
 
 
 ---
@@ -1846,18 +1850,18 @@ METHOD verify_connection() -> bool:
 
 ## Acceptance Criteria
 
-- [ ] `CMLConfig` loads from direct params, env vars, and `.env` files
-- [ ] Config validation rejects invalid values (bad URLs, negative timeouts)
-- [ ] Exception hierarchy covers all HTTP status codes
-- [ ] `HTTPTransport` sends requests with correct headers (API key, tenant ID)
-- [ ] `AsyncHTTPTransport` works with `async/await`
-- [ ] Retry logic retries on 5xx, 429, connection errors
-- [ ] Retry uses exponential backoff with jitter
-- [ ] `RateLimitError` respects `Retry-After` header
-- [ ] Both sync and async clients support context manager protocol
-- [ ] All response models parse server JSON correctly
-- [ ] `health()` method returns `HealthResponse`
-- [ ] Type annotations pass `mypy --strict`
+- [x] `CMLConfig` loads from direct params, env vars, and `.env` files
+- [x] Config validation rejects invalid values (bad URLs, negative timeouts)
+- [x] Exception hierarchy covers all HTTP status codes
+- [x] `HTTPTransport` sends requests with correct headers (API key, tenant ID)
+- [x] `AsyncHTTPTransport` works with `async/await`
+- [x] Retry logic retries on 5xx, 429, connection errors
+- [x] Retry uses exponential backoff with jitter
+- [x] `RateLimitError` respects `Retry-After` header
+- [x] Both sync and async clients support context manager protocol
+- [x] All response models parse server JSON correctly
+- [x] `health()` method returns `HealthResponse`
+- [x] Type annotations pass `mypy --strict`
 
 
 ---
@@ -2572,16 +2576,16 @@ class CMLMemory(BaseMemory):
 
 ## Acceptance Criteria
 
-- [ ] All 13 methods implemented on both async and sync clients
-- [ ] All methods have comprehensive docstrings with Args, Returns, Raises
-- [ ] Request payloads use Pydantic models with exclude_none serialization
-- [ ] Response parsing handles all fields from the CML API
-- [ ] `forget()` validates at least one selector provided
-- [ ] `delete_all()` requires explicit `confirm=True`
-- [ ] `get_context()` returns just the formatted string
-- [ ] Convenience aliases (`remember`, `search`) delegate correctly
-- [ ] Type annotations are complete and pass mypy
-- [ ] Integration patterns documented for OpenAI and LangChain
+- [x] All 13 methods implemented on both async and sync clients
+- [x] All methods have comprehensive docstrings with Args, Returns, Raises
+- [x] Request payloads use Pydantic models with exclude_none serialization
+- [x] Response parsing handles all fields from the CML API
+- [x] `forget()` validates at least one selector provided
+- [x] `delete_all()` requires explicit `confirm=True`
+- [x] `get_context()` returns just the formatted string
+- [x] Convenience aliases (`remember`, `search`) delegate correctly
+- [x] Type annotations are complete and pass mypy
+- [x] Integration patterns documented for OpenAI and LangChain
 
 
 ---
@@ -3277,17 +3281,17 @@ async def import_memories(
 
 ## Acceptance Criteria
 
-- [ ] `pip install py-cml[embedded]` installs all required dependencies
-- [ ] `EmbeddedCognitiveMemoryLayer()` works with zero configuration (lite mode)
-- [ ] Lite mode uses SQLite + local embeddings (no external services)
-- [ ] Standard mode connects to PostgreSQL with pgvector
-- [ ] Full mode uses PostgreSQL + Neo4j + Redis
-- [ ] Same API surface as HTTP client (write, read, turn, update, forget, stats)
-- [ ] Context manager protocol (`async with`) handles init/teardown
-- [ ] Background consolidation/forgetting works via asyncio tasks
-- [ ] Export/import utilities support data migration
-- [ ] Missing `[embedded]` dependencies produce clear error message
-- [ ] Embedded mode passes the same functional tests as HTTP client
+- [x] `pip install py-cml[embedded]` installs all required dependencies
+- [x] `EmbeddedCognitiveMemoryLayer()` works with zero configuration (lite mode)
+- [x] Lite mode uses SQLite + local embeddings (no external services)
+- [x] Standard mode connects to PostgreSQL with pgvector
+- [x] Full mode uses PostgreSQL + Neo4j + Redis
+- [x] Same API surface as HTTP client (write, read, turn, update, forget, stats)
+- [x] Context manager protocol (`async with`) handles init/teardown
+- [x] Background consolidation/forgetting works via asyncio tasks
+- [x] Export/import utilities support data migration
+- [x] Missing `[embedded]` dependencies produce clear error message
+- [x] Embedded mode passes the same functional tests as HTTP client
 
 
 ---
@@ -5433,18 +5437,18 @@ exclude_lines = [
 
 ## Acceptance Criteria
 
-- [ ] Unit tests cover all public methods (sync and async)
-- [ ] Transport tests verify all HTTP status code → exception mappings
-- [ ] Retry tests verify backoff, jitter, and exhaustion behavior
-- [ ] Model tests verify serialization and deserialization
-- [ ] Integration tests pass against a running CML server
-- [ ] Embedded tests verify lite mode with zero config
-- [ ] E2E tests simulate realistic multi-turn conversations
-- [ ] Test markers allow selective test execution
-- [ ] CI runs unit tests on every push (< 2 minutes)
-- [ ] CI runs integration tests on main branch
-- [ ] Code coverage >= 85% overall
-- [ ] All tests use fixtures (no hardcoded URLs or keys)
+- [x] Unit tests cover all public methods (sync and async)
+- [x] Transport tests verify all HTTP status code → exception mappings
+- [x] Retry tests verify backoff, jitter, and exhaustion behavior
+- [x] Model tests verify serialization and deserialization
+- [x] Integration tests pass against a running CML server
+- [x] Embedded tests verify lite mode with zero config
+- [x] E2E tests simulate realistic multi-turn conversations
+- [x] Test markers allow selective test execution
+- [x] CI runs unit tests on every push (< 2 minutes)
+- [x] CI runs integration tests on main branch
+- [x] Code coverage >= 85% overall
+- [x] All tests use fixtures (no hardcoded URLs or keys)
 
 ---
 
@@ -6310,25 +6314,25 @@ Do NOT open a public issue for security vulnerabilities.
 
 ## Acceptance Criteria
 
-- [ ] README.md on GitHub/PyPI conveys value in < 10 seconds
-- [ ] Quickstart works in < 60 seconds (pip install + 5 lines of code)
-- [ ] API reference documents all public methods, parameters, return types
-- [ ] Getting started guide covers install → first memory in 5 steps
-- [ ] Configuration guide covers all options (env vars, direct, config object)
-- [ ] 5+ usage examples covering common patterns
-- [ ] GitHub issue templates for bugs and features
-- [ ] PR template with checklist
-- [ ] CONTRIBUTING.md with dev setup and PR process
-- [ ] SECURITY.md with reporting instructions
-- [ ] CHANGELOG.md follows Keep a Changelog format
-- [ ] CI publishes to PyPI on GitHub Release
-- [ ] TestPyPI verified before first real release
-- [ ] Package installable: `pip install py-cml`
-- [ ] Package importable: `from cml import CognitiveMemoryLayer`
-- [ ] All SDK files live under `packages/py-cml/` in the existing repo
-- [ ] CI workflows scoped to `packages/py-cml/**` path changes
-- [ ] Publish workflow triggers on `py-cml-v*` tag pattern
-- [ ] PyPI trusted publisher configured for the CognitiveMemoryLayer repo
+- [x] README.md on GitHub/PyPI conveys value in < 10 seconds
+- [x] Quickstart works in < 60 seconds (pip install + 5 lines of code)
+- [x] API reference documents all public methods, parameters, return types
+- [x] Getting started guide covers install → first memory in 5 steps
+- [x] Configuration guide covers all options (env vars, direct, config object)
+- [x] 5+ usage examples covering common patterns
+- [x] GitHub issue templates for bugs and features
+- [x] PR template with checklist
+- [x] CONTRIBUTING.md with dev setup and PR process
+- [x] SECURITY.md with reporting instructions
+- [x] CHANGELOG.md follows Keep a Changelog format
+- [x] CI publishes to PyPI on GitHub Release
+- [x] TestPyPI verified before first real release
+- [x] Package installable: `pip install py-cml`
+- [x] Package importable: `from cml import CognitiveMemoryLayer`
+- [x] All SDK files live under `packages/py-cml/` in the existing repo
+- [x] CI workflows scoped to `packages/py-cml/**` path changes
+- [x] Publish workflow triggers on `py-cml-v*` tag pattern
+- [x] PyPI trusted publisher configured for the CognitiveMemoryLayer repo
 
 ---
 

@@ -23,7 +23,7 @@ Use `with CognitiveMemoryLayer(...) as memory:` or call `memory.close()` when do
 ### Methods
 
 - **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id)** → `WriteResponse` — Store new memory.
-- **read(query, \*, max_results=10, context_filter, memory_types, since, until, format)** → `ReadResponse` — Retrieve memories. `format`: "packet", "list", "llm_context".
+- **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format)** → `ReadResponse` — Retrieve memories. `response_format`: "packet", "list", "llm_context".
 - **read_safe(query, \*\*kwargs)** → `ReadResponse` — Like read; returns empty result on connection/timeout.
 - **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange.
 - **update(memory_id, \*, text, confidence, importance, metadata, feedback)** → `UpdateResponse` — Update an existing memory.
@@ -56,7 +56,7 @@ Same API as async client. Use `async with EmbeddedCognitiveMemoryLayer()` or pas
 
 ## Exceptions
 
-All inherit from **CMLError**. **AuthenticationError** (401), **AuthorizationError** (403), **NotFoundError** (404), **ValidationError** (422), **RateLimitError** (429, has retry_after), **ServerError** (5xx), **ConnectionError**, **TimeoutError**. Use str(e) for full message with suggestion.
+All inherit from **CMLError**. **AuthenticationError** (401), **AuthorizationError** (403), **NotFoundError** (404), **ValidationError** (422), **RateLimitError** (429, has retry_after), **ServerError** (5xx), **CMLConnectionError**, **CMLTimeoutError** (also exported as **ConnectionError** and **TimeoutError** for backward compatibility; prefer the CML-prefixed names to avoid shadowing Python builtins). Use str(e) for full message with suggestion.
 
 ## Configuration
 

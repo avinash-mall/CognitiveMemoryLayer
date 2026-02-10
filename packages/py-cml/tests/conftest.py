@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator, Generator
+
 import pytest
 import pytest_asyncio
 
@@ -38,7 +40,7 @@ def mock_config() -> CMLConfig:
 
 
 @pytest.fixture
-def sync_client(test_config: CMLConfig) -> pytest.Generator[CognitiveMemoryLayer, None, None]:
+def sync_client(test_config: CMLConfig) -> Generator[CognitiveMemoryLayer, None, None]:
     """Create a sync client for testing."""
     client = CognitiveMemoryLayer(config=test_config)
     yield client
@@ -48,7 +50,7 @@ def sync_client(test_config: CMLConfig) -> pytest.Generator[CognitiveMemoryLayer
 @pytest_asyncio.fixture
 async def async_client(
     test_config: CMLConfig,
-) -> pytest.AsyncGenerator[AsyncCognitiveMemoryLayer, None]:
+) -> AsyncGenerator[AsyncCognitiveMemoryLayer, None]:
     """Create an async client for testing."""
     client = AsyncCognitiveMemoryLayer(config=test_config)
     yield client

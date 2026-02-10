@@ -1,11 +1,11 @@
 # py-cml
 
-**Python SDK for [CognitiveMemoryLayer](https://github.com/<org>/CognitiveMemoryLayer)** — neuro-inspired memory for AI applications.
+**Python SDK for [CognitiveMemoryLayer](https://github.com/avinash-mall/CognitiveMemoryLayer)** — neuro-inspired memory for AI applications.
 
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
-[![License](https://img.shields.io/github/license/<org>/CognitiveMemoryLayer)](LICENSE)
-[![Tests](https://img.shields.io/github/actions/workflow/status/<org>/CognitiveMemoryLayer/py-cml-test.yml?branch=main)](https://github.com/<org>/CognitiveMemoryLayer/actions)
+[![License](https://img.shields.io/github/license/avinash-mall/CognitiveMemoryLayer)](LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/avinash-mall/CognitiveMemoryLayer/py-cml.yml?branch=main)](https://github.com/avinash-mall/CognitiveMemoryLayer/actions)
 
 Give your AI applications human-like memory — store, retrieve, consolidate, and forget information just like the brain does.
 
@@ -175,30 +175,28 @@ pytest tests/unit/ -v
 With coverage:
 
 ```bash
-pytest tests/unit/ -v --cov=cml --cov-report=term-missing --cov-branch
+pytest tests/unit/ -v --cov=src/cml --cov-report=term-missing --cov-branch
 ```
 
-**Run integration tests** (require a running CML server):
+**Run integration and e2e tests** (require a running CML server):
 
-```bash
-export CML_TEST_URL=http://localhost:8000   # optional, default localhost:8000
-export CML_TEST_API_KEY=your-key            # optional
-pytest tests/integration/ -v -m integration
-```
+1. From the **repository root**, start the API and dependencies:
+   ```bash
+   docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api
+   ```
+2. Ensure the server accepts the test API key. The project **.env.example** uses `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` for local dev; copy to `.env` or set the same in your `.env` so the API and tests use the same key.
+3. From `packages/py-cml` run:
+   ```bash
+   pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"
+   ```
 
-If the server is unreachable, integration tests are skipped.
+If `CML_TEST_API_KEY` is not set, integration and e2e conftests load the repo root `.env` and use `AUTH__API_KEY` (and `AUTH__ADMIN_API_KEY` for admin) so one key works for both server and tests. You can override with `CML_TEST_URL` and `CML_TEST_API_KEY`. If the server is unreachable, tests are skipped.
 
 **Run embedded tests** (require embedded extras and CML engine):
 
 ```bash
 pip install -e ".[dev,embedded]"
 pytest tests/embedded/ -v -m embedded
-```
-
-**Run e2e tests** (multi-turn chat, migration; require live server):
-
-```bash
-pytest tests/e2e/ -v -m e2e
 ```
 
 **Markers:** `integration`, `embedded`, `e2e`, `slow`. Exclude non-unit: `pytest -m "not integration and not embedded and not e2e"`.
@@ -210,7 +208,7 @@ pytest tests/e2e/ -v -m e2e
 - [Configuration](docs/configuration.md)
 - [Examples](docs/examples.md)
 
-See also the [CognitiveMemoryLayer project](https://github.com/<org>/CognitiveMemoryLayer) for server and architecture.
+See also the [CognitiveMemoryLayer project](https://github.com/avinash-mall/CognitiveMemoryLayer) for server and architecture.
 
 ## License
 
