@@ -122,10 +122,54 @@ class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
         if self._db is None:
             await self.initialize()
         assert self._db is not None
-        # Simple insert (no dedup by content_hash for lite; could add later)
-        record_id = uuid4()
         now = datetime.now(UTC)
         ts = record.timestamp or now
+        # Resolve existing record by content_hash to avoid duplicates
+        self._db.row_factory = aiosqlite.Row
+        async with self._db.execute(
+            "SELECT id FROM memories WHERE tenant_id = ? AND content_hash = ? LIMIT 1",
+            (record.tenant_id, content_hash),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is not None:
+            existing_id = UUID(row[0])
+            await self._db.execute(
+                """
+                UPDATE memories SET
+                    type = ?, status = ?, text = ?, key = ?, namespace = ?,
+                    embedding = ?, entities = ?, relations = ?, metadata = ?,
+                    context_tags = ?, confidence = ?, importance = ?,
+                    timestamp = ?, written_at = ?, version = version + 1,
+                    provenance = ?, source_session_id = ?, agent_id = ?
+                WHERE id = ?
+                """,
+                (
+                    record.type.value,
+                    MemoryStatus.ACTIVE.value,
+                    record.text,
+                    record.key,
+                    record.namespace,
+                    json.dumps(record.embedding) if record.embedding else None,
+                    json.dumps([e.model_dump() for e in record.entities]),
+                    json.dumps([r.model_dump() for r in record.relations]),
+                    json.dumps(record.metadata or {}),
+                    json.dumps(record.context_tags or []),
+                    record.confidence,
+                    record.importance,
+                    ts.isoformat(),
+                    now.isoformat(),
+                    record.provenance.model_dump_json(),
+                    record.source_session_id,
+                    record.agent_id,
+                    str(existing_id),
+                ),
+            )
+            await self._db.commit()
+            out = await self.get_by_id(existing_id)
+            if out is None:
+                raise RuntimeError("upsert update failed to return record")
+            return out
+        record_id = uuid4()
         await self._db.execute(
             """
             INSERT INTO memories (

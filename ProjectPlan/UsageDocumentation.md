@@ -861,7 +861,7 @@ X-Tenant-ID: optional-tenant-id
 X-User-ID: optional-user-id override
 ```
 
-**Example (development):** Set `AUTH__API_KEY=your-dev-key` and optionally `AUTH__ADMIN_API_KEY=your-admin-key` in `.env` or the shell before starting the API.
+**Example (development):** The project [.env.example](../.env.example) uses `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` for local development and for py-cml integration/e2e tests. Copy to `.env` or set these in your environment before starting the API. For production, use strong secrets.
 
 ### Permissions
 
@@ -1083,15 +1083,16 @@ cd CognitiveMemoryLayer
 
 #### 2. Create Environment File
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` in the project root and adjust as needed. The example sets `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` so the API and py-cml integration/e2e tests work without extra config. For production, set strong secrets.
 
 ```env
-# Required for OpenAI embeddings
-OPENAI_API_KEY=sk-your-key-here
+# Auth (required for API access; .env.example uses test-key for local/testing)
+AUTH__API_KEY=test-key
+AUTH__ADMIN_API_KEY=test-key
 
-# Or use nested format
-EMBEDDING__API_KEY=sk-your-key-here
-LLM__API_KEY=sk-your-key-here
+# Required for OpenAI embeddings (if using OpenAI)
+OPENAI_API_KEY=sk-your-key-here
+# Or use nested format: EMBEDDING__API_KEY=..., LLM__API_KEY=...
 
 # Optional: Use local embeddings instead
 EMBEDDING__PROVIDER=local
@@ -1179,6 +1180,8 @@ uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 
 ### Running Tests
 
+**Server tests** (from repository root):
+
 ```bash
 # Run all tests with Docker
 docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade head && pytest tests -v --tb=short"
@@ -1191,6 +1194,16 @@ pytest tests/e2e -v
 # Run with coverage
 pytest tests --cov=src --cov-report=html
 ```
+
+**Python SDK (py-cml) tests** (from `packages/py-cml`):
+
+1. **Unit tests** (no server): `pytest tests/unit/ -v`
+2. **Integration and e2e tests** (require running CML API):
+   - From repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`
+   - Ensure `.env` has `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` (see [.env.example](../.env.example)) so the API accepts the key used by tests.
+   - From `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`
+
+If `CML_TEST_API_KEY` is not set, py-cml test conftests load the repo root `.env` and use `AUTH__API_KEY` / `AUTH__ADMIN_API_KEY`. Override with `CML_TEST_URL` and `CML_TEST_API_KEY` if needed.
 
 ### Optional: vLLM for Local LLM
 
@@ -1248,8 +1261,8 @@ All configuration uses nested environment variables with `__` delimiter.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AUTH__API_KEY` | None | API key for read/write access |
-| `AUTH__ADMIN_API_KEY` | None | API key with admin permission |
+| `AUTH__API_KEY` | None | API key for read/write access. Use `test-key` for local dev and py-cml integration/e2e tests (see [.env.example](../.env.example)). |
+| `AUTH__ADMIN_API_KEY` | None | API key with admin permission. Use `test-key` locally to match tests. |
 | `AUTH__DEFAULT_TENANT_ID` | `default` | Default tenant for authenticated requests |
 
 ---

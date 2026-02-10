@@ -96,22 +96,37 @@ class ServerError(CMLError):
     pass
 
 
-class ConnectionError(CMLError):
-    """Raised when unable to connect to the CML server (CML-specific, not builtin)."""
+class CMLConnectionError(CMLError):
+    """Raised when unable to connect to the CML server.
+
+    Note: This is the CML SDK exception, not Python's builtin ConnectionError.
+    Use CMLConnectionError (or the ConnectionError alias) when catching CML errors.
+    """
 
     pass
 
 
-class TimeoutError(CMLError):
-    """Raised when a request times out (CML-specific, not builtin)."""
+class CMLTimeoutError(CMLError):
+    """Raised when a request times out.
+
+    Note: This is the CML SDK exception, not Python's builtin TimeoutError.
+    Use CMLTimeoutError (or the TimeoutError alias) when catching CML errors.
+    """
 
     pass
+
+
+# Backward-compatible aliases (avoid shadowing builtins in new code)
+ConnectionError = CMLConnectionError
+TimeoutError = CMLTimeoutError
 
 
 __all__ = [
     "AuthenticationError",
     "AuthorizationError",
     "CMLError",
+    "CMLConnectionError",
+    "CMLTimeoutError",
     "ConnectionError",
     "NotFoundError",
     "RateLimitError",

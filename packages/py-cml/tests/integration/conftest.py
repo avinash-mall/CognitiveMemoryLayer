@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -11,8 +12,19 @@ import pytest_asyncio
 from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer
 from cml.config import CMLConfig
 
+# Use CML_TEST_API_KEY if set; else try repo .env AUTH__API_KEY so server and tests share one key
 INTEGRATION_URL = os.environ.get("CML_TEST_URL", "http://localhost:8000")
-INTEGRATION_KEY = os.environ.get("CML_TEST_API_KEY", "test-key")
+_key = os.environ.get("CML_TEST_API_KEY")
+if not _key:
+    try:
+        from dotenv import load_dotenv
+        _root = Path(__file__).resolve().parents[4]
+        load_dotenv(_root / ".env")
+        _key = os.environ.get("AUTH__API_KEY", "test-key")
+    except Exception:
+        _key = "test-key"
+INTEGRATION_KEY = _key
+INTEGRATION_ADMIN_KEY = os.environ.get("AUTH__ADMIN_API_KEY") or INTEGRATION_KEY
 INTEGRATION_TENANT = f"test-{os.getpid()}"
 
 
@@ -25,6 +37,7 @@ def integration_config() -> CMLConfig:
         tenant_id=INTEGRATION_TENANT,
         timeout=30.0,
         max_retries=1,
+        admin_api_key=INTEGRATION_ADMIN_KEY,
     )
 
 

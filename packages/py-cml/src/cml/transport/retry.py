@@ -30,6 +30,8 @@ def retry_sync(config: CMLConfig, func: Callable[..., T], *args: Any, **kwargs: 
             return func(*args, **kwargs)
         except RateLimitError as e:
             last_exception = e
+            if attempt >= config.max_retries:
+                raise e
             if e.retry_after is not None:
                 logger.warning("Rate limited, retrying after %.1fs", e.retry_after)
                 time.sleep(e.retry_after)
@@ -71,6 +73,8 @@ async def retry_async(
             return await func(*args, **kwargs)
         except RateLimitError as e:
             last_exception = e
+            if attempt >= config.max_retries:
+                raise e
             if e.retry_after is not None:
                 logger.warning("Rate limited, retrying after %.1fs", e.retry_after)
                 await asyncio.sleep(e.retry_after)
@@ -99,13 +103,18 @@ async def retry_async(
     raise RuntimeError("retry loop exited without attempt or exception")
 
 
+MAX_RETRY_DELAY = 60.0  # Cap backoff to avoid very long sleeps
+
+
 def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
     delay: float = base_delay * (2**attempt) + random.uniform(0, base_delay)
+    delay = min(delay, MAX_RETRY_DELAY)
     time.sleep(delay)
     return delay
 
 
 async def _async_sleep_with_backoff(attempt: int, base_delay: float) -> float:
     delay: float = base_delay * (2**attempt) + random.uniform(0, base_delay)
+    delay = min(delay, MAX_RETRY_DELAY)
     await asyncio.sleep(delay)
     return delay

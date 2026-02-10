@@ -14,7 +14,7 @@ def test_embedded_config_defaults() -> None:
     config = EmbeddedConfig()
     assert config.storage_mode == "lite"
     assert config.tenant_id == "default"
-    assert config.database.postgres_url.startswith("sqlite")
+    assert config.database.database_url.startswith("sqlite")
     assert config.embedding.provider == "local"
     assert config.llm.provider == "openai"
 
