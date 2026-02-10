@@ -1,13 +1,19 @@
 """Build a chatbot with persistent memory using py-cml and OpenAI."""
 
+import os
+
 from openai import OpenAI
 
 from cml import CognitiveMemoryLayer
 
 
 def chat_with_memory():
-    # Initialize clients
-    memory = CognitiveMemoryLayer(api_key="cml-key", base_url="http://localhost:8000")
+    # Use CML_API_KEY and OPENAI_API_KEY env vars in production
+    # Initialize clients (use CML_API_KEY and CML_BASE_URL env vars in production)
+    memory = CognitiveMemoryLayer(
+        api_key=os.environ.get("CML_API_KEY", "cml-key"),
+        base_url=os.environ.get("CML_BASE_URL", "http://localhost:8000"),
+    )
     openai_client = OpenAI()
 
     session_id = "chat-demo-001"

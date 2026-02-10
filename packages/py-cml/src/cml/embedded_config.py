@@ -10,9 +10,10 @@ from pydantic import BaseModel, Field
 class EmbeddedDatabaseConfig(BaseModel):
     """Database configuration for embedded mode."""
 
-    postgres_url: str = Field(
+    database_url: str = Field(
         default="sqlite+aiosqlite:///cml_memory.db",
         description="Database URL. Use sqlite+aiosqlite:// for lite mode.",
+        alias="postgres_url",  # backward compat with old name
     )
     neo4j_url: str | None = Field(default=None, description="Neo4j bolt URL")
     neo4j_user: str = Field(default="neo4j")

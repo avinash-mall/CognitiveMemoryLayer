@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .enums import MemoryType
 
@@ -27,13 +27,17 @@ class WriteRequest(BaseModel):
 class ReadRequest(BaseModel):
     """Read memory request payload."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     query: str
-    max_results: int = Field(default=10, le=50)
+    max_results: int = Field(default=10, ge=1, le=50)
     context_filter: list[str] | None = None
     memory_types: list[MemoryType] | None = None
     since: datetime | None = None
     until: datetime | None = None
-    format: Literal["packet", "list", "llm_context"] = "packet"
+    response_format: Literal["packet", "list", "llm_context"] = Field(
+        default="packet", alias="format"
+    )
 
 
 class TurnRequest(BaseModel):

@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from cml.embedded_config import EmbeddedConfig
+from cml.utils.logging import logger
 from cml.models import (
     ForgetResponse,
     MemoryItem,
@@ -34,8 +35,8 @@ async def _consolidation_loop(orchestrator: Any, tenant_id: str) -> None:
             await orchestrator.consolidation.consolidate(tenant_id=tenant_id, user_id=tenant_id)
         except asyncio.CancelledError:
             raise
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Consolidation failed: %s", e)
 
 
 async def _forgetting_loop(orchestrator: Any, tenant_id: str) -> None:
@@ -48,8 +49,8 @@ async def _forgetting_loop(orchestrator: Any, tenant_id: str) -> None:
             )
         except asyncio.CancelledError:
             raise
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Forgetting loop failed: %s", e)
 
 
 def _check_embedded_deps() -> None:
@@ -98,7 +99,11 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
 
         builder = MemoryPacketBuilder()
         llm_context = builder.to_llm_context(packet, max_tokens=4000)
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "Failed to import MemoryPacketBuilder, using fallback context: %s",
+            e,
+        )
         llm_context = "\n".join(f"- {m.text}" for m in all_items[:20])
     return ReadResponse(
         query=query,
@@ -133,7 +138,7 @@ class EmbeddedCognitiveMemoryLayer:
                 tenant_id=tenant_id,
             )
             if db_path is not None:
-                self._config.database.postgres_url = (
+                self._config.database.database_url = (
                     f"sqlite+aiosqlite:///{db_path}"
                     if not db_path.startswith("sqlite")
                     else db_path
@@ -158,7 +163,7 @@ class EmbeddedCognitiveMemoryLayer:
             )
         from cml.storage.sqlite_store import SQLiteMemoryStore
 
-        db_url = self._config.database.postgres_url
+        db_url = self._config.database.database_url
         if db_url.startswith("sqlite+aiosqlite://"):
             path = db_url.replace("sqlite+aiosqlite:///", "").strip("/") or ":memory:"
         else:

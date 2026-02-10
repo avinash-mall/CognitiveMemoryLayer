@@ -79,14 +79,17 @@ class CMLOpenAIHelper:
         Returns:
             The assistant's reply text.
         """
-        turn_result = self.memory.turn(
-            user_message=user_message,
-            session_id=session_id,
+        # Retrieve context only (no store) to avoid duplicating the user message
+        read_result = self.memory.read(
+            query=user_message,
+            max_results=10,
+            response_format="llm_context",
         )
+        memory_context = read_result.llm_context or read_result.context or ""
         messages: list[dict[str, str]] = [
             {
                 "role": "system",
-                "content": f"{system_prompt}\n\n## Relevant Memories\n{turn_result.memory_context}",
+                "content": f"{system_prompt}\n\n## Relevant Memories\n{memory_context}",
             }
         ]
         if extra_messages:
@@ -99,6 +102,7 @@ class CMLOpenAIHelper:
         )
         assistant_message = response.choices[0].message.content or ""
 
+        # Store the full exchange once
         self.memory.turn(
             user_message=user_message,
             assistant_response=assistant_message,
