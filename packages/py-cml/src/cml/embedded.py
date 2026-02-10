@@ -177,6 +177,7 @@ class EmbeddedCognitiveMemoryLayer:
         # When running in repo, use project LLM settings from env so tests use local Ollama etc.
         try:
             from src.core.config import get_settings  # type: ignore[import-not-found]
+
             s = get_settings()
             if s.llm.base_url:
                 self._config.llm.base_url = s.llm.base_url

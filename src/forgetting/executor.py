@@ -86,7 +86,10 @@ class ForgettingExecutor:
         record = await self.store.get_by_id(op.memory_id)
         if not record:
             return False
-        merged_meta = {**(record.metadata or {}), "last_decay": datetime.now(timezone.utc).isoformat()}
+        merged_meta = {
+            **(record.metadata or {}),
+            "last_decay": datetime.now(timezone.utc).isoformat(),
+        }
         patch = {"confidence": op.new_confidence, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch, increment_version=False)
         return result is not None
@@ -96,7 +99,10 @@ class ForgettingExecutor:
         record = await self.store.get_by_id(op.memory_id)
         if not record:
             return False
-        merged_meta = {**(record.metadata or {}), "silenced_at": datetime.now(timezone.utc).isoformat()}
+        merged_meta = {
+            **(record.metadata or {}),
+            "silenced_at": datetime.now(timezone.utc).isoformat(),
+        }
         patch = {"status": MemoryStatus.SILENT.value, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch)
         return result is not None

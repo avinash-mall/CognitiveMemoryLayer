@@ -27,6 +27,7 @@ class TestNaiveUtc:
 
     def test_aware_non_utc_converted_to_naive_utc(self):
         from datetime import timedelta
+
         # UTC+2
         tz = timezone(timedelta(hours=2))
         dt = datetime(2025, 2, 10, 14, 0, 0, tzinfo=tz)  # 14:00 UTC+2 = 12:00 UTC

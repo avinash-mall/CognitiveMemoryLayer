@@ -18,6 +18,7 @@ _key = os.environ.get("CML_TEST_API_KEY")
 if not _key:
     try:
         from dotenv import load_dotenv
+
         _root = Path(__file__).resolve().parents[4]
         load_dotenv(_root / ".env")
         _key = os.environ.get("AUTH__API_KEY", "test-key")

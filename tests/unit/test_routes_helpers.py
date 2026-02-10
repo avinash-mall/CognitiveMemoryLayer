@@ -70,6 +70,7 @@ class TestSafe500Detail:
     def test_returns_internal_server_error_when_not_debug(self, monkeypatch):
         monkeypatch.setenv("DEBUG", "false")
         from src.core.config import get_settings
+
         get_settings.cache_clear()
         try:
             detail = _safe_500_detail(ValueError("secret info"))
@@ -80,6 +81,7 @@ class TestSafe500Detail:
     def test_returns_exception_message_when_debug(self, monkeypatch):
         monkeypatch.setenv("DEBUG", "true")
         from src.core.config import get_settings
+
         get_settings.cache_clear()
         try:
             detail = _safe_500_detail(ValueError("secret info"))

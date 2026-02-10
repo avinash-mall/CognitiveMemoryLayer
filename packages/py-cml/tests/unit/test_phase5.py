@@ -302,11 +302,7 @@ def test_iter_memories_raises_when_multiple_memory_types() -> None:
     config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
     client = CognitiveMemoryLayer(config=config)
     with pytest.raises(ValueError, match="at most one memory type"):
-        list(
-            client.iter_memories(
-                memory_types=[MemoryType.PREFERENCE, MemoryType.SEMANTIC_FACT]
-            )
-        )
+        list(client.iter_memories(memory_types=[MemoryType.PREFERENCE, MemoryType.SEMANTIC_FACT]))
 
 
 def test_session_scope_turn_injects_session_id() -> None:
