@@ -1,4 +1,4 @@
-"""Exception hierarchy for py-cml."""
+"""Exception hierarchy for cognitive-memory-layer."""
 
 from __future__ import annotations
 

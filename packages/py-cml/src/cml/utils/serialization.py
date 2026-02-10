@@ -1,4 +1,4 @@
-"""Serialization utilities for py-cml."""
+"""Serialization utilities for cognitive-memory-layer."""
 
 from __future__ import annotations
 

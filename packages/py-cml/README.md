@@ -1,24 +1,23 @@
-# py-cml
+# cognitive-memory-layer
 
+<<<<<<< HEAD
 **Python SDK for [CognitiveMemoryLayer](https://github.com/avinash-mall/CognitiveMemoryLayer)** — neuro-inspired memory for AI applications.
 
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License](https://img.shields.io/github/license/avinash-mall/CognitiveMemoryLayer)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/avinash-mall/CognitiveMemoryLayer/py-cml.yml?branch=main)](https://github.com/avinash-mall/CognitiveMemoryLayer/actions)
+=======
+**Python SDK for the Cognitive Memory Layer** — neuro-inspired memory for AI applications. Give your apps human-like memory: store, retrieve, consolidate, and forget information just like the brain does.
 
-Give your AI applications human-like memory — store, retrieve, consolidate, and forget information just like the brain does.
+[![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
+[![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+>>>>>>> 42897739dbe59559f3754da63c76f08f1e7a6549
 
-## Features
+**Source code:** [GitHub — CognitiveMemoryLayer](https://github.com/avinash-mall/CognitiveMemoryLayer) (repository and full documentation)
 
-- **Client mode** — connect to a running CML server over HTTP (all routes under `/api/v1`)
-- **Sync and async** — `CognitiveMemoryLayer` and `AsyncCognitiveMemoryLayer` with context manager support
-- **Configuration** — API key, base URL, tenant ID via constructor, environment variables (`CML_*`), or `.env` (Pydantic-validated)
-- **Health check** — `health()` returns server status; retry with exponential backoff on 5xx, 429, and connection errors
-- **Typed** — full type hints, Pydantic request/response models, and `py.typed` marker
-- **Memory operations** — write, read, update, forget, turn, stats (Phase 3)
-- **Embedded mode** — run the full CML engine in-process with `EmbeddedCognitiveMemoryLayer` (Phase 4, optional)
-- **Advanced features** (Phase 5) — admin (consolidate, run_forgetting), batch write/read, tenant management, event log, component health, namespace isolation (`with_namespace`), memory iteration (`iter_memories`), OpenAI helper (`CMLOpenAIHelper`)
+---
 
 ## Installation
 
@@ -26,23 +25,22 @@ Give your AI applications human-like memory — store, retrieve, consolidate, an
 pip install cognitive-memory-layer
 ```
 
-With optional embedded mode (run CML in-process without a server):
+Optional **embedded mode** (run the CML engine in-process, no server):
 
 ```bash
 pip install cognitive-memory-layer[embedded]
 ```
 
-## Quickstart
+---
+
+## Quick start
+
+**Sync client** (connect to a CML server):
 
 ```python
 from cml import CognitiveMemoryLayer
 
-# Context manager ensures the HTTP client is closed
 with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as memory:
-    health = memory.health()
-    print(health.status)  # e.g. "healthy"
-
-    # Memory operations
     memory.write("User prefers vegetarian food.")
     result = memory.read("What does the user eat?")
     print(result.context)  # Formatted for LLM injection
@@ -50,25 +48,19 @@ with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as
     print(turn.memory_context)
 ```
 
-Async client:
+**Async client:**
 
 ```python
 from cml import AsyncCognitiveMemoryLayer
 
 async def main():
     async with AsyncCognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as memory:
-        health = await memory.health()
-        print(health.status)
         await memory.write("User prefers dark mode.")
         result = await memory.read("user preferences")
         print(result.context)
-
-# asyncio.run(main())
 ```
 
-## Embedded mode
-
-Run the CML engine in-process (no server, no HTTP). Install with `pip install cognitive-memory-layer[embedded]` and, from the monorepo root, install the engine first: `pip install -e .` then `pip install -e packages/py-cml[embedded]`.
+**Embedded mode** (no server; SQLite + local embeddings):
 
 ```python
 from cml import EmbeddedCognitiveMemoryLayer
@@ -78,17 +70,25 @@ async def main():
         await memory.write("User prefers vegetarian food.")
         result = await memory.read("dietary preferences")
         print(result.context)
-
-# asyncio.run(main())
+# Persistent storage: EmbeddedCognitiveMemoryLayer(db_path="./my_memories.db")
 ```
 
-**Lite mode** (default) uses SQLite (in-memory or file) and local sentence-transformers embeddings — no API keys or external services. For persistent storage, pass `db_path="./my_memories.db"`.
+---
 
-**Export/import:** Use `cml.embedded_utils.export_memories_async()` and `import_memories_async()` to migrate data from embedded to a CML server (or vice versa).
+## Features
+
+- **Client mode** — HTTP client for a running CML server (sync and async, context managers)
+- **Embedded mode** — run the full CML engine in-process (optional extra: `cognitive-memory-layer[embedded]`)
+- **Configuration** — API key, base URL, tenant via constructor, env vars (`CML_*`), or `.env`
+- **Memory API** — write, read, turn, update, forget, stats; sessions; `get_context(query)` for LLM injection
+- **Typed** — Pydantic models, type hints, `py.typed` marker
+- **Advanced** — batch write/read, tenant management, namespace isolation, OpenAI helper, admin operations (consolidate, forgetting)
+
+---
 
 ## Configuration
 
-**Option 1: Direct parameters**
+**Environment variables:** `CML_API_KEY`, `CML_BASE_URL` (default `http://localhost:8000`), `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, etc. Or pass directly:
 
 ```python
 memory = CognitiveMemoryLayer(
@@ -98,16 +98,17 @@ memory = CognitiveMemoryLayer(
 )
 ```
 
-**Option 2: Environment variables or `.env`**
+**Config object:** `from cml.config import CMLConfig` for validated, reusable config.
 
-Unset fields are loaded from the environment (or a `.env` file). Supported variables: `CML_API_KEY`, `CML_BASE_URL`, `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_RETRY_DELAY`, `CML_ADMIN_API_KEY`, `CML_VERIFY_SSL`.
+---
 
-**Option 3: Config object**
+## Documentation and links
 
-```python
-from cml import CognitiveMemoryLayer
-from cml.config import CMLConfig
+- **GitHub repository:** [CognitiveMemoryLayer](https://github.com/avinash-mall/CognitiveMemoryLayer) — source code, issue tracker, and full docs
+- **Package docs (on GitHub):** [Getting started](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/getting-started.md), [API reference](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/api-reference.md), [Configuration](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/configuration.md), [Examples](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/docs/examples.md)
+- **Changelog:** [CHANGELOG.md](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md) on GitHub
 
+<<<<<<< HEAD
 config = CMLConfig(
     api_key="sk-...",
     base_url="http://localhost:8000",
@@ -209,7 +210,10 @@ pytest tests/embedded/ -v -m embedded
 - [Examples](docs/examples.md)
 
 See also the [CognitiveMemoryLayer project](https://github.com/avinash-mall/CognitiveMemoryLayer) for server and architecture.
+=======
+---
+>>>>>>> 42897739dbe59559f3754da63c76f08f1e7a6549
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+GPL-3.0-or-later. See [LICENSE](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/LICENSE) in the repository.

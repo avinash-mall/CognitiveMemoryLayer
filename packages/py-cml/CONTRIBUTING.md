@@ -1,6 +1,6 @@
-# Contributing to py-cml
+# Contributing to cognitive-memory-layer
 
-Thanks for your interest in the CognitiveMemoryLayer Python SDK. This guide covers development setup and workflow for the `packages/py-cml` package.
+Thanks for your interest in the CognitiveMemoryLayer Python SDK. This guide covers development setup and workflow for the `packages/py-cml` package (published on PyPI as **cognitive-memory-layer**).
 
 ## Development setup
 
@@ -89,7 +89,7 @@ Hooks run ruff (check + format), mypy, and generic checks (trailing whitespace, 
 1. Create a branch from `main`, make changes in `packages/py-cml/`.
 2. Add or update tests; ensure `pytest tests/unit/`, `mypy src/cml/`, and `ruff check src/ tests/` pass.
 3. Update docstrings, README, or CHANGELOG as applicable (see PR template checklist).
-4. Open a PR. CI runs py-cml tests and lint when paths under `packages/py-cml/**` or the workflow file change.
+4. Open a PR. CI runs cognitive-memory-layer tests and lint when paths under `packages/py-cml/**` or the workflow file change.
 5. Get review approval and merge.
 
 ## Commit message conventions
@@ -107,7 +107,7 @@ Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The wo
 ### Prerequisites (one-time)
 
 - **PyPI:** Add a [trusted publisher](https://docs.pypi.org/trusted-publishers/) (or pending publisher) for the project `cognitive-memory-layer`:
-  - **Repository:** `owner/CognitiveMemoryLayer`
+  - **Repository:** `avinash-mall/CognitiveMemoryLayer`
   - **Workflow name:** `py-cml.yml`
   - **Environment name:** `pypi`
 - **GitHub:** Create an environment named **`pypi`** under **Settings → Environments** (no secrets required for trusted publishing).
