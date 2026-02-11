@@ -184,7 +184,7 @@ class AsyncCognitiveMemoryLayer:
             memory_types=memory_types,
             since=since,
             until=until,
-            response_format=response_format,
+            format=response_format,  # alias for response_format in ReadRequest
         ).model_dump(exclude_none=True, by_alias=True, mode="json")
         data = await self._transport.request("POST", "/memory/read", json=body)
         return ReadResponse(**data)
