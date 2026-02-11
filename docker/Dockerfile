@@ -34,7 +34,6 @@ COPY --from=dependencies /usr/local/bin /usr/local/bin
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-COPY config ./config
 COPY tests ./tests
 COPY scripts ./scripts
 COPY alembic.ini ./
