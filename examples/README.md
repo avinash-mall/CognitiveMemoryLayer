@@ -1,327 +1,133 @@
 # Cognitive Memory Layer - Examples
 
-This folder contains working code examples demonstrating how to use the Cognitive Memory Layer with LLMs and as a standalone service.
+Working examples for the Cognitive Memory Layer with LLMs and as a standalone service. All examples use the **py-cml** package (`cognitive-memory-layer`).
 
 ## Prerequisites
 
-Before running any examples:
-
-1. **Start the API Server**:
+1. **Start the API server** (for non-embedded examples):
    ```bash
-   # From the project root
    docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
    docker compose -f docker/docker-compose.yml up api
    ```
 
-2. **Install Python dependencies**:
+2. **Install dependencies**:
    ```bash
-   pip install httpx openai anthropic langchain langchain-openai
+   pip install -r examples/requirements.txt
+   # Or from monorepo: pip install -e packages/py-cml
    ```
 
-3. **Set the memory API key** (required for all examples that call the API):
+3. **Environment variables** (in `.env` or shell):
    ```bash
-   export AUTH__API_KEY=your-secret-key
-   ```
-   The API has no default keys; you must set `AUTH__API_KEY` (and optionally `AUTH__ADMIN_API_KEY` for admin endpoints).
-
-4. **Set LLM API keys** (for LLM-based examples only):
-   ```bash
-   export OPENAI_API_KEY=sk-...
-   export ANTHROPIC_API_KEY=sk-ant-...
+   AUTH__API_KEY=your-secret-key     # Required for API examples
+   CML_BASE_URL=http://localhost:8000  # Or MEMORY_API_URL
+   # For LLM examples:
+   OPENAI_API_KEY=sk-...
+   OPENAI_MODEL=gpt-4o
+   ANTHROPIC_API_KEY=sk-ant-...
    ```
 
 ## Examples Overview
 
-### 1. Memory Client (`memory_client.py`)
+| File | Description |
+|------|-------------|
+| `quickstart.py` | Minimal intro: write, read, get_context, stats (30 seconds) |
+| `basic_usage.py` | Full CRUD: write, read, update, forget, stats |
+| `chat_with_memory.py` | Simple chatbot using py-cml `turn()` + OpenAI |
+| `chatbot_with_memory.py` | Full-featured chatbot with !remember, !forget, !stats, auto-extraction |
+| `openai_tool_calling.py` | OpenAI function calling: memory_write, memory_read, memory_update, memory_forget |
+| `anthropic_tool_calling.py` | Anthropic Claude tool use with memory tools |
+| `langchain_integration.py` | LangChain `BaseMemory` backed by py-cml |
+| `async_example.py` | Async usage: concurrent writes, batch_read, pipeline |
+| `embedded_mode.py` | Serverless: py-cml embedded with SQLite (no API) |
+| `agent_integration.py` | Agent pattern: observe, plan, reflect using memory |
+| `standalone_demo.py` | **No py-cml**: raw httpx example with all API features (write, read, update, forget, stats, process_turn, create_session) |
+| `ollama_chat_test.py` | Non-interactive E2E test with local Ollama models |
+| `ollama_chatbot_app.py` | Streamlit app with Ollama + memory |
 
-A reusable Python client for the Cognitive Memory Layer API. Used by other examples.
-
-```python
-from memory_client import CognitiveMemoryClient
-
-client = CognitiveMemoryClient(api_key="your-api-key")  # or os.environ.get("AUTH__API_KEY")
-
-# Store a memory (holistic: tenant from auth; optional session_id, context_tags)
-client.write(
-    "User prefers vegetarian food",
-    session_id="session-123",
-    context_tags=["preference"],
-    memory_type="preference"
-)
-
-# Retrieve memories
-result = client.read("dietary preferences", format="llm_context")
-print(result.llm_context)
-
-# Seamless turn: auto-retrieve + auto-store (for chat)
-turn = client.process_turn("What do I like to eat?", session_id="session-123")
-print(turn.memory_context)  # Inject into LLM prompt
-```
-
-### 2. Basic Usage (`basic_usage.py`)
-
-Simple example showing core operations without LLM dependencies:
-- Writing different memory types
-- Reading and querying memories
-- Updating memories with feedback
-- Forgetting memories
-- Getting statistics
+### Quick Start
 
 ```bash
-python examples/basic_usage.py
+python examples/quickstart.py
 ```
 
-### 3. Standalone Demo (`standalone_demo.py`)
-
-Interactive demo that doesn't require any LLM API keys. Great for:
-- Understanding the API
-- Testing the memory system
-- Development and debugging
+### Simple Chat (py-cml + OpenAI)
 
 ```bash
-python examples/standalone_demo.py
+python examples/chat_with_memory.py
 ```
 
-### 4. OpenAI Tool Calling (`openai_tool_calling.py`)
-
-Integration with OpenAI's function calling (tool use) feature. The LLM autonomously decides when to:
-- Store new information
-- Retrieve relevant context
-- Update memories
-- Forget information
-
-```bash
-python examples/openai_tool_calling.py
-```
-
-**Interactive chat example:**
-```
-You: My name is Alice and I work as a data scientist.
-  [Tool: memory_write] {"content": "User's name is Alice...", "memory_type": "semantic_fact"}
-Assistant: Nice to meet you, Alice! Data science is a fascinating field...
-
-You: What do you know about me?
-  [Tool: memory_read] {"query": "user information"}
-Assistant: Based on what you've told me, your name is Alice and you work as a data scientist...
-```
-
-### 5. Anthropic Claude Tool Use (`anthropic_tool_calling.py`)
-
-Same concept as OpenAI but using Anthropic Claude's tool use feature.
-
-```bash
-python examples/anthropic_tool_calling.py
-```
-
-### 6. Complete Chatbot (`chatbot_with_memory.py`)
-
-A full-featured chatbot demonstrating:
-- Automatic context injection before responses
-- Intelligent extraction of memorable information
-- Memory management commands (!remember, !forget, !stats)
-- Works with any LLM
+### Full Chatbot (commands: !remember, !forget, !stats)
 
 ```bash
 python examples/chatbot_with_memory.py
 ```
 
-**Commands:**
-- `!remember <info>` - Explicitly store information
-- `!forget <query>` - Forget matching memories
-- `!stats` - Show memory statistics
-- `!search <query>` - Search memories
-- `!clear` - Clear session history
-- `!help` - Show help
+### Async Usage
 
-### 7. LangChain Integration (`langchain_integration.py`)
+```bash
+python examples/async_example.py
+```
 
-Custom LangChain memory class that uses the Cognitive Memory Layer:
+### Embedded Mode (no server)
+
+```bash
+pip install cognitive-memory-layer[embedded]
+python examples/embedded_mode.py
+```
+
+### Standalone API Demo (no LLM)
+
+```bash
+python examples/standalone_demo.py
+```
+
+## API Quick Reference (py-cml)
+
+The API is **holistic**: tenant from API key, no explicit scopes. Use `session_id`, `agent_id`, `namespace` for origin tracking.
 
 ```python
-from langchain_openai import ChatOpenAI
-from langchain.chains import ConversationChain
-from langchain_integration import CognitiveMemory
+from cml import CognitiveMemoryLayer
 
-memory = CognitiveMemory(scope="session", scope_id="session-123")
-llm = ChatOpenAI()
-chain = ConversationChain(llm=llm, memory=memory)
+memory = CognitiveMemoryLayer(
+    api_key=os.environ.get("AUTH__API_KEY"),
+    base_url="http://localhost:8000",
+)
 
-response = chain.predict(input="My favorite color is blue")
+# Write
+memory.write("User prefers vegetarian food", session_id="sess-1", memory_type="preference")
+
+# Read
+result = memory.read("dietary preferences", response_format="llm_context")
+print(result.context)
+
+# Seamless turn (auto-retrieve + auto-store)
+turn = memory.turn(user_message="What do I like?", session_id="sess-1")
+print(turn.memory_context)  # Inject into LLM prompt
+
+# Update, forget, stats
+memory.update(memory_id=uuid, feedback="correct")
+memory.forget(query="old address", action="archive")
+stats = memory.stats()
 ```
-
-```bash
-python examples/langchain_integration.py
-```
-
-### 8. Async Usage (`async_usage.py`)
-
-Asynchronous patterns for high-performance applications:
-- Concurrent reads and writes
-- Batch processing
-- Pipeline patterns
-- Timeout handling
-
-```bash
-python examples/async_usage.py
-```
-
-## Memory Scopes
-
-The API uses a scope-based system for organizing memories:
-
-| Scope | Use Case | Example |
-|-------|----------|---------|
-| `session` | Single conversation session | `session-abc123` |
-| `agent` | Agent-specific context | `code-reviewer-agent` |
-| `namespace` | Project or team level | `project-acme` |
-| `global` | Shared across all contexts | `global-knowledge` |
-| `user` | User-specific memories | `user-12345` |
 
 ## Memory Types
 
-When storing memories, use the appropriate type:
-
-| Type | Use Case | Example |
-|------|----------|---------|
-| `semantic_fact` | Permanent facts | "User's name is Alice" |
-| `preference` | User preferences | "User prefers dark mode" |
-| `constraint` | Must-follow rules | "User is allergic to peanuts" |
-| `episodic_event` | Specific events | "User mentioned trip to Paris on Jan 15" |
-| `hypothesis` | Uncertain info | "User might be interested in cooking" |
-| `task_state` | Current task progress | "Step 3 of 5 complete" |
-| `procedure` | How to do things | "To export data: click File > Export" |
-
-## API Quick Reference
-
-### Write Memory
-```python
-client.write(
-    scope="session",
-    scope_id="session-123",
-    content="User prefers morning meetings",
-    memory_type="preference",  # optional
-    metadata={"source": "calendar"}  # optional
-)
-```
-
-### Read Memory
-```python
-result = client.read(
-    scope="session",
-    scope_id="session-123",
-    query="meeting preferences",
-    max_results=10,
-    format="llm_context"  # or "packet"
-)
-print(result.llm_context)  # Ready for LLM system prompt
-```
-
-### Update Memory
-```python
-client.update(
-    scope="session",
-    scope_id="session-123",
-    memory_id="uuid-here",
-    feedback="correct"  # or "incorrect", "outdated"
-)
-```
-
-### Forget Memory
-```python
-client.forget(
-    scope="session",
-    scope_id="session-123",
-    query="old address",
-    action="delete"  # or "archive"
-)
-```
-
-### Get Stats
-```python
-stats = client.stats("session", "session-123")
-print(f"Total: {stats.total_memories}")
-```
-
-## Tool Definitions for LLMs
-
-Copy these tool definitions for your LLM integration:
-
-### OpenAI Format
-```json
-{
-  "type": "function",
-  "function": {
-    "name": "memory_write",
-    "description": "Store information in long-term memory",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "content": {"type": "string"},
-        "memory_type": {"type": "string", "enum": ["semantic_fact", "preference", "constraint"]}
-      },
-      "required": ["content"]
-    }
-  }
-}
-```
-
-### Anthropic Format
-```json
-{
-  "name": "memory_write",
-  "description": "Store information in long-term memory",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "content": {"type": "string"},
-      "memory_type": {"type": "string", "enum": ["semantic_fact", "preference", "constraint"]}
-    },
-    "required": ["content"]
-  }
-}
-```
-
-## Best Practices
-
-1. **Read before responding**: Always retrieve relevant memories before generating responses about the user.
-
-2. **Use appropriate memory types**: Constraints are never auto-forgotten, hypotheses need confirmation.
-
-3. **Respect constraints**: Always check for and respect constraint memories (allergies, restrictions).
-
-4. **Confirm uncertain info**: Mark inferences as hypotheses and confirm with the user.
-
-5. **Use LLM context format**: Request `format="llm_context"` to get pre-formatted markdown ready for system prompts.
-
-6. **Handle errors gracefully**: Memory operations may fail; always have fallback behavior.
+| Type | Use Case |
+|------|----------|
+| `semantic_fact` | Permanent facts |
+| `preference` | User preferences |
+| `constraint` | Must-follow rules (allergies, restrictions) |
+| `episodic_event` | Specific events |
+| `hypothesis` | Uncertain info (needs confirmation) |
 
 ## Troubleshooting
 
-### "Could not connect to API"
-```bash
-# Check if API is running
-curl http://localhost:8000/api/v1/health
-
-# Start the API
-docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-docker compose -f docker/docker-compose.yml up api
-```
-
-### "API key required"
-Set `AUTH__API_KEY` in your environment (or `.env`) and pass it as the `X-API-Key` header. There are no default keys; you must configure at least one key.
-
-### "No memories found"
-- Check the scope and scope_id are correct
-- Verify memories were stored successfully
-- Try a broader query
-
-### Memory not being stored
-- Check the write gate threshold (default 0.3)
-- Very short or trivial content may be filtered
-- Use explicit memory_type to ensure storage
+- **Could not connect**: Start API with `docker compose -f docker/docker-compose.yml up api`
+- **API key required**: Set `AUTH__API_KEY` (or `CML_API_KEY`) in `.env`
+- **No memories found**: Try a broader query; verify writes succeeded
 
 ## Further Reading
 
-- [Usage Documentation](../ProjectPlan/UsageDocumentation.md) - Complete API reference
-- [README](../README.md) - Architecture and research foundations
-- [API Docs](http://localhost:8000/docs) - Interactive OpenAPI documentation (when server is running)
+- [Usage Documentation](../ProjectPlan/UsageDocumentation.md)
+- [py-cml README](../packages/py-cml/README.md)
+- [API Docs](http://localhost:8000/docs) (when server is running)

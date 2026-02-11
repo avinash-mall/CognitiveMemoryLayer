@@ -70,7 +70,7 @@ Map Locomo fields to CML's API using the **actual** Locomo schema.
 | `text` (and optional `blip_caption`) | `content` | e.g. `speaker + ': ' + text` or include `blip_caption` in content/metadata. |
 | Images | `metadata["images"]` or `metadata["blip_caption"]` | CML is text-first; store URLs/captions in metadata. |
 
-**Important**: CML's `WriteMemoryRequest` and `/memory/turn` do **not** currently accept an explicit event timestamp; records get "now". For temporal fidelity, the plan includes an action item to add an optional `timestamp` and thread it through to record creation.
+**Important**: CML's `WriteMemoryRequest` and `/memory/turn` now accept an optional `timestamp` field for explicit event timestamps. When provided, the timestamp is threaded through the entire write pipeline to record creation. When omitted, records automatically get the current time ("now").
 
 ### 3.3. Integration Script: `scripts/eval_locomo.py`
 
@@ -85,10 +85,15 @@ Iterate over `conversation` by session key order (`session_1`, `session_2`, …)
 Example (using write for explicit metadata; base URL may include API prefix e.g. `/api/v1`):
 
 ```python
+from datetime import datetime
+
 session_nums = sorted([int(k.split("_")[-1]) for k in sample["conversation"] if k.startswith("session_") and not k.endswith("_date_time")])
 for k in session_nums:
     session_id = f"session_{k}"
-    date_time = sample["conversation"].get(f"session_{k}_date_time", "")
+    date_time_str = sample["conversation"].get(f"session_{k}_date_time", "")
+    # Parse the session datetime for temporal fidelity
+    session_timestamp = datetime.fromisoformat(date_time_str) if date_time_str else None
+    
     for dialog in sample["conversation"].get(f"session_{k}", []):
         content = dialog["speaker"] + ": " + dialog["text"]
         if dialog.get("blip_caption"):
@@ -98,8 +103,9 @@ for k in session_nums:
             json={
                 "content": content,
                 "session_id": session_id,
+                "timestamp": session_timestamp.isoformat() if session_timestamp else None,
                 "metadata": {
-                    "locomo_session_date_time": date_time,
+                    "locomo_session_date_time": date_time_str,
                     "speaker": dialog["speaker"],
                     "dia_id": dialog["dia_id"],
                 },
@@ -109,7 +115,7 @@ for k in session_nums:
         )
 ```
 
-**Critical**: Today CML does not accept a per-turn event timestamp. When optional `timestamp` is added to the API, the script should pass the session's `session_K_date_time` (or a derived datetime) so stored memories have the correct event time.
+**Critical**: CML now accepts an optional `timestamp` field in both `/memory/write` and `/memory/turn` endpoints. The script should pass the session's `session_K_date_time` (or a derived datetime) so stored memories have the correct event time. If omitted, the timestamp defaults to the current time.
 
 #### Phase B: Question Answering (QA)
 For each item in `qa`:
@@ -154,12 +160,12 @@ Running this benchmark will assess:
 Locomo's **category 2** (temporal) and **category 1** (multi-hop) are the most relevant for long-term and cross-session behavior.
 
 ## 5. Action Items
-1.  **[API]**: Add optional `timestamp` to `WriteMemoryRequest` (and, if used for eval, to `ProcessTurnRequest` or equivalent) and thread it through the orchestrator and into chunk/record creation (e.g. `src/api/schemas.py`, `src/memory/orchestrator.py`, short-term/working chunk creation or hippocampal store) so that Locomo's session dates can be stored as event time. **Mandatory** for historical benchmarks.
+1.  **[API] ✅ COMPLETED**: Optional `timestamp` field has been added to `WriteMemoryRequest` and `ProcessTurnRequest` and threaded through the entire pipeline (API → Orchestrator → Short-term → Working → Chunker → Hippocampal → Storage). The py-cml client also supports the `timestamp` parameter in sync, async, and embedded modes. When omitted, timestamps default to "now" (backward compatible).
 2.  **[Script]**: Implement `scripts/eval_locomo.py` (ingestion → QA → output in Locomo-compatible format; then run or call Locomo's evaluation and stats).
 3.  **[Dataset]**: Use `data/locomo10.json` from the cloned Locomo repo (no separate download).
 4.  **[Run]**: Execute ingestion (per sample), then QA, then score; optionally start with a subset (e.g. one sample) for cost and speed.
 
 ## 6. Risks & Mitigations
-- **Time injection**: CML currently uses "now" for new memories; add and use optional `timestamp` for benchmark fidelity.
+- **Time injection**: ✅ RESOLVED - CML now accepts optional `timestamp` field; use it to inject Locomo session dates for benchmark fidelity.
 - **Cost**: Embedding thousands of turns and running GPT for evaluation can be expensive; start with one or two samples.
 - **Compatibility**: Script output (per-QA keys, prediction key name) must match what `eval_question_answering` and `analyze_aggr_acc` expect; document the exact key names (e.g. `gpt-3.5-turbo_cml_top_10_prediction`) so the stats scripts work.

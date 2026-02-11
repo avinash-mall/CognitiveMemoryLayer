@@ -1,98 +1,47 @@
-"""
-Ollama Chat Test - Cognitive Memory Layer
+"""Ollama + Cognitive Memory Layer - non-interactive end-to-end test.
 
-Automated end-to-end test that exercises the full memory pipeline using
-local Ollama models. LLM and embedding models are read from the repo root
-.env (LLM__MODEL, EMBEDDING__MODEL). If not set, defaults to llama3.2:1b
-for the LLM.
-
-The script is NON-INTERACTIVE: it runs a scripted conversation, prints
-every tool call and response, and verifies that memories were stored and
-retrieved correctly.
-
-Prerequisites:
-    1. Ollama running locally; ensure the model in LLM__MODEL (or default) is pulled
-    2. Infrastructure services:
-       docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-    3. API server running:
-       uvicorn src.api.app:app --host 0.0.0.0 --port 8000
-    4. .env configured for Ollama (see .env.example)
-
-Usage:
-    cd examples
-    python ollama_chat_test.py
+Set OLLAMA_BASE_URL (or OPENAI_BASE_URL), LLM__MODEL, CML_BASE_URL, AUTH__API_KEY in .env.
+Run: python examples/ollama_chat_test.py
 """
 
 import json
 import os
 import sys
 import time
+from pathlib import Path
 
-# Ensure UTF-8 output on Windows terminals that default to cp1252.
 if sys.stdout.encoding != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if sys.stderr.encoding != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# Allow running from the examples/ directory
 sys.path.insert(0, os.path.dirname(__file__))
-
-# Load repo root .env so LLM__MODEL and other vars are respected (not just shell env)
 try:
-    from pathlib import Path
     from dotenv import load_dotenv
-    _repo_root = Path(__file__).resolve().parent.parent
-    load_dotenv(_repo_root / ".env")
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
 
 from openai import OpenAI
-from memory_client import CognitiveMemoryClient
+from cml import CognitiveMemoryLayer
 
 
-# ---------------------------------------------------------------------------
-# Configuration - from .env only (no hardcoded defaults)
-# ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
 OLLAMA_MODEL = (os.environ.get("LLM__MODEL") or "").strip()
-MEMORY_API_URL = (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
-MEMORY_API_KEY = (os.environ.get("AUTH__API_KEY") or "").strip()
+MEMORY_BASE = (os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "").strip()
+MEMORY_KEY = os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY") or ""
 
-
-# ---------------------------------------------------------------------------
-# Memory tool definitions (OpenAI function-calling format)
-# ---------------------------------------------------------------------------
 MEMORY_TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "memory_write",
-            "description": (
-                "Store important information in long-term memory. "
-                "Use when the user shares personal information, preferences, "
-                "or significant facts."
-            ),
+            "description": "Store important information in long-term memory.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "The information to store. Be specific and factual.",
-                    },
-                    "memory_type": {
-                        "type": "string",
-                        "enum": [
-                            "semantic_fact",
-                            "preference",
-                            "constraint",
-                            "episodic_event",
-                        ],
-                        "description": (
-                            "Type of memory. 'semantic_fact' for facts, "
-                            "'preference' for preferences, "
-                            "'constraint' for rules/restrictions."
-                        ),
-                    },
+                    "content": {"type": "string"},
+                    "memory_type": {"type": "string", "enum": ["semantic_fact", "preference", "constraint", "episodic_event"]},
                 },
                 "required": ["content"],
             },
@@ -102,266 +51,156 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_read",
-            "description": (
-                "Retrieve relevant memories. Call before answering questions "
-                "about the user's preferences, history, or personal information."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Natural language query describing what information you need.",
-                    },
-                },
-                "required": ["query"],
-            },
+            "description": "Retrieve relevant memories.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
         },
     },
 ]
 
 
-# ---------------------------------------------------------------------------
-# Assistant class (adapted from openai_tool_calling.py for Ollama)
-# ---------------------------------------------------------------------------
 class OllamaMemoryAssistant:
-    """Chat assistant backed by local Ollama with persistent memory."""
-
     def __init__(self):
-        self.openai = OpenAI(
-            base_url=OLLAMA_BASE_URL,
-            api_key="ollama",
-            timeout=300.0,  # local models can be slow on first load
-        )
-        self.memory = CognitiveMemoryClient(
-            base_url=MEMORY_API_URL,
-            api_key=MEMORY_API_KEY,
+        self.openai = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama", timeout=300.0)
+        self.memory = CognitiveMemoryLayer(
+            api_key=MEMORY_KEY,
+            base_url=MEMORY_BASE,
             timeout=120.0,
         )
         self.messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are a helpful assistant with long-term memory.\n\n"
-                    "Guidelines:\n"
-                    "1. Use memory_write when the user shares important information "
-                    "(name, preferences, facts about themselves, constraints).\n"
-                    "2. Use memory_read BEFORE answering questions about the user.\n"
-                    "3. Be natural and conversational.\n"
-                    "4. For constraints (allergies, restrictions), ALWAYS remember them."
-                ),
+                "content": "You are a helpful assistant with long-term memory. Use memory_write and memory_read as needed.",
             }
         ]
 
-    # -- tool execution -----------------------------------------------------
-    def _execute_tool(self, name: str, arguments: dict) -> str:
+    def _execute_tool(self, name: str, args: dict) -> str:
         try:
             if name == "memory_write":
-                result = self.memory.write(
-                    arguments["content"],
+                r = self.memory.write(
+                    args["content"],
                     session_id="ollama-test",
                     context_tags=["conversation"],
-                    memory_type=arguments.get("memory_type"),
+                    memory_type=args.get("memory_type"),
                 )
-                return json.dumps({"success": result.success, "message": result.message})
-
-            elif name == "memory_read":
-                result = self.memory.read(
-                    arguments["query"],
-                    format="llm_context",
-                )
-                return result.llm_context or "No relevant memories found."
-
-            return json.dumps({"error": f"Unknown tool: {name}"})
+                return json.dumps({"success": r.success, "message": r.message})
+            if name == "memory_read":
+                r = self.memory.read(args["query"], response_format="llm_context")
+                return r.context or "No relevant memories found."
+            return json.dumps({"error": f"Unknown: {name}"})
         except Exception as e:
             return json.dumps({"error": str(e)})
 
-    # -- chat turn ----------------------------------------------------------
     def chat(self, user_message: str) -> str:
         self.messages.append({"role": "user", "content": user_message})
-
-        max_rounds = 6  # safety limit on tool-call loops
-        for _ in range(max_rounds):
-            response = self.openai.chat.completions.create(
+        for _ in range(6):
+            resp = self.openai.chat.completions.create(
                 model=OLLAMA_MODEL,
                 messages=self.messages,
                 tools=MEMORY_TOOLS,
                 tool_choice="auto",
             )
-            msg = response.choices[0].message
-
+            msg = resp.choices[0].message
             if msg.tool_calls:
-                # Record assistant message with tool calls
-                self.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": msg.content,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in msg.tool_calls
-                        ],
-                    }
-                )
+                self.messages.append({
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in msg.tool_calls
+                    ],
+                })
                 for tc in msg.tool_calls:
                     args = json.loads(tc.function.arguments)
                     print(f"    [tool] {tc.function.name}({args})")
                     result = self._execute_tool(tc.function.name, args)
                     print(f"    [result] {result[:200]}")
-                    self.messages.append(
-                        {"role": "tool", "tool_call_id": tc.id, "content": result}
-                    )
+                    self.messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
             else:
-                # Final text reply
                 self.messages.append({"role": "assistant", "content": msg.content})
                 return msg.content
-
-        return "(max tool-call rounds reached)"
+        return "(max tool rounds)"
 
     def close(self):
         self.memory.close()
 
 
-# ---------------------------------------------------------------------------
-# Test runner
-# ---------------------------------------------------------------------------
-def separator(title: str):
-    print(f"\n{'='*60}")
-    print(f"  {title}")
-    print(f"{'='*60}\n")
-
-
 def run_test():
-    separator("Ollama + Cognitive Memory Layer - End-to-End Test")
-
-    if not OLLAMA_BASE_URL or not OLLAMA_MODEL or not MEMORY_API_URL:
-        print("Set OLLAMA_BASE_URL (or OPENAI_BASE_URL), LLM__MODEL, and MEMORY_API_URL (or CML_BASE_URL) in .env")
+    print("\n" + "=" * 60)
+    print("  Ollama + Cognitive Memory Layer - E2E Test")
+    print("=" * 60 + "\n")
+    if not OLLAMA_BASE_URL or not OLLAMA_MODEL or not MEMORY_BASE:
+        print("Set OLLAMA_BASE_URL, LLM__MODEL, CML_BASE_URL in .env")
         return
+    timeout = float(os.environ.get("MEMORY_API_TIMEOUT", "120"))
 
-    # Longer timeout for local models (first call loads the model into RAM).
-    api_timeout = float(os.environ.get("MEMORY_API_TIMEOUT", "120"))
-
-    # ---- 1. Health check --------------------------------------------------
-    print("[1/5] Checking API health...")
-    client = CognitiveMemoryClient(
-        base_url=MEMORY_API_URL, api_key=MEMORY_API_KEY, timeout=api_timeout,
-    )
+    # 1. Health
+    print("[1/5] API health...")
+    mem = CognitiveMemoryLayer(api_key=MEMORY_KEY, base_url=MEMORY_BASE, timeout=timeout)
     try:
-        health = client.health()
-        print(f"  API status: {health['status']}")
+        h = mem.health()
+        print(f"  API: {h.status}")
     except Exception as e:
         print(f"  FAILED: {e}")
-        print("  Make sure the API server is running:")
-        print("    uvicorn src.api.app:app --host 0.0.0.0 --port 8000")
         return
     finally:
-        client.close()
+        mem.close()
 
-    # ---- 2. Test direct memory write + read (no LLM) ---------------------
-    separator("Direct Memory API Test (no LLM)")
-    client = CognitiveMemoryClient(
-        base_url=MEMORY_API_URL, api_key=MEMORY_API_KEY, timeout=api_timeout,
-    )
+    # 2. Direct write/read
+    print("\n[2/5] Direct write + read...")
+    mem = CognitiveMemoryLayer(api_key=MEMORY_KEY, base_url=MEMORY_BASE, timeout=timeout)
     try:
-        print("[2/5] Writing a test memory...")
-        wr = client.write(
+        mem.write(
             "Test user enjoys mountain biking on weekends",
             session_id="ollama-test",
             context_tags=["test"],
             memory_type="preference",
         )
-        print(f"  Write: success={wr.success}  id={wr.memory_id}")
-
-        print("  Reading back...")
-        rd = client.read("weekend hobbies", format="llm_context")
-        print(f"  Read: {rd.total_count} memories found")
-        if rd.llm_context:
-            for line in rd.llm_context.strip().splitlines()[:5]:
-                print(f"    {line}")
+        r = mem.read("weekend hobbies", response_format="llm_context")
+        print(f"  Read: {r.total_count} memories")
     except Exception as e:
         print(f"  FAILED: {e}")
-        import traceback; traceback.print_exc()
         return
     finally:
-        client.close()
+        mem.close()
 
-    # ---- 3. Chat conversation with tool calling --------------------------
-    separator("Chat Conversation with Tool Calling")
-    print(f"  Model:  {OLLAMA_MODEL}")
-    print(f"  Ollama: {OLLAMA_BASE_URL}\n")
-
+    # 3. Chat
+    print("\n[3/5] Chat with tool calling...")
     assistant = OllamaMemoryAssistant()
-
-    conversation = [
+    conv = [
         "Hi! My name is Alex and I'm a software engineer at a startup.",
         "I prefer Python for backend work, and I'm allergic to shellfish.",
         "What do you know about me?",
-        "What dietary restrictions should you remember for me?",
+        "What dietary restrictions should you remember?",
     ]
-
     try:
-        for i, user_msg in enumerate(conversation, 1):
-            print(f"[3/5] Turn {i}/{len(conversation)}")
-            print(f"  User: {user_msg}")
+        for i, user_msg in enumerate(conv, 1):
+            print(f"  Turn {i}: User: {user_msg}")
             t0 = time.time()
             reply = assistant.chat(user_msg)
-            elapsed = time.time() - t0
-            print(f"  Assistant ({elapsed:.1f}s): {reply}\n")
-    except Exception as e:
-        print(f"  CHAT FAILED: {e}")
-        import traceback; traceback.print_exc()
+            print(f"  Assistant ({time.time() - t0:.1f}s): {reply}\n")
     finally:
         assistant.close()
 
-    # ---- 4. Verify memories persisted ------------------------------------
-    separator("Verify Persisted Memories")
-    client = CognitiveMemoryClient(
-        base_url=MEMORY_API_URL, api_key=MEMORY_API_KEY, timeout=api_timeout,
-    )
+    # 4. Verify
+    print("[4/5] Verify persisted memories...")
+    mem = CognitiveMemoryLayer(api_key=MEMORY_KEY, base_url=MEMORY_BASE, timeout=timeout)
     try:
-        print("[4/5] Querying stored memories about 'Alex'...")
-        rd = client.read("Alex software engineer", format="llm_context")
-        print(f"  Found {rd.total_count} memories")
-        if rd.llm_context:
-            for line in rd.llm_context.strip().splitlines()[:8]:
-                print(f"    {line}")
-
-        print("\n  Querying for dietary restrictions...")
-        rd2 = client.read("allergies dietary restrictions", format="llm_context")
-        print(f"  Found {rd2.total_count} memories")
-        if rd2.llm_context:
-            for line in rd2.llm_context.strip().splitlines()[:5]:
-                print(f"    {line}")
-    except Exception as e:
-        print(f"  VERIFY FAILED: {e}")
-        import traceback; traceback.print_exc()
+        r = mem.read("Alex software engineer", response_format="llm_context")
+        print(f"  Alex: {r.total_count} memories")
+        r2 = mem.read("allergies dietary", response_format="llm_context")
+        print(f"  Dietary: {r2.total_count} memories")
     finally:
-        client.close()
+        mem.close()
 
-    # ---- 5. Stats --------------------------------------------------------
-    separator("Memory Stats")
-    client = CognitiveMemoryClient(
-        base_url=MEMORY_API_URL, api_key=MEMORY_API_KEY, timeout=api_timeout,
-    )
+    # 5. Stats
+    print("\n[5/5] Stats...")
+    mem = CognitiveMemoryLayer(api_key=MEMORY_KEY, base_url=MEMORY_BASE, timeout=timeout)
     try:
-        print("[5/5] Fetching memory statistics...")
-        stats = client.stats()
-        print(f"  Total memories:  {stats.total_memories}")
-        print(f"  Active memories: {stats.active_memories}")
-        print(f"  By type:         {stats.by_type}")
-        print(f"  Avg confidence:  {stats.avg_confidence:.2f}")
-    except Exception as e:
-        print(f"  STATS FAILED: {e}")
+        s = mem.stats()
+        print(f"  Total: {s.total_memories}, Active: {s.active_memories}")
     finally:
-        client.close()
-
-    separator("TEST COMPLETE")
+        mem.close()
+    print("\n" + "=" * 60 + "\n")
 
 
 if __name__ == "__main__":
