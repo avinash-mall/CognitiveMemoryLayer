@@ -56,7 +56,7 @@ async def _forgetting_loop(orchestrator: Any, tenant_id: str) -> None:
 def _check_embedded_deps() -> None:
     """Raise if embedded dependencies are not available."""
     try:
-        import aiosqlite  # type: ignore[import-not-found]  # noqa: F401
+        import aiosqlite  # noqa: F401
     except ImportError as e:
         raise ImportError(
             "Embedded mode requires aiosqlite. Install with: pip install cognitive-memory-layer[embedded]"

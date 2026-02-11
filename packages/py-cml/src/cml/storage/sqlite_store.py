@@ -29,7 +29,7 @@ except ImportError as e:
         "From the repo root: pip install -e . then pip install -e packages/py-cml[embedded]."
     ) from e
 
-import aiosqlite  # type: ignore
+import aiosqlite
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
