@@ -53,8 +53,7 @@ class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
     async def initialize(self) -> None:
         """Create tables and indexes."""
         self._db = await aiosqlite.connect(self.db_path)
-        await self._db.execute(
-            """
+        await self._db.execute("""
             CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY,
                 tenant_id TEXT NOT NULL,
@@ -85,8 +84,7 @@ class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
                 last_accessed_at TEXT,
                 labile INTEGER DEFAULT 0
             )
-            """
-        )
+            """)
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_tenant ON memories(tenant_id)"
         )
