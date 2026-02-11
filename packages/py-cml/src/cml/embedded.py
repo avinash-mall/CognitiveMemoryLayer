@@ -56,13 +56,13 @@ async def _forgetting_loop(orchestrator: Any, tenant_id: str) -> None:
 def _check_embedded_deps() -> None:
     """Raise if embedded dependencies are not available."""
     try:
-        import aiosqlite  # type: ignore[import-not-found]  # noqa: F401
+        import aiosqlite  # noqa: F401
     except ImportError as e:
         raise ImportError(
             "Embedded mode requires aiosqlite. Install with: pip install cognitive-memory-layer[embedded]"
         ) from e
     try:
-        from src.memory.orchestrator import (  # type: ignore[import-not-found]
+        from src.memory.orchestrator import (  # type: ignore[import-untyped]
             MemoryOrchestrator,  # noqa: F401
         )
     except ImportError as e:
@@ -93,7 +93,7 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     episodes = [_retrieved_to_memory_item(m) for m in packet.recent_episodes]
     all_items = facts + preferences + episodes
     try:
-        from src.retrieval.packet_builder import (  # type: ignore[import-not-found]
+        from src.retrieval.packet_builder import (  # type: ignore[import-untyped]
             MemoryPacketBuilder,
         )
 
@@ -171,18 +171,18 @@ class EmbeddedCognitiveMemoryLayer:
         self._sqlite_store = SQLiteMemoryStore(db_path=path)
         await self._sqlite_store.initialize()
 
-        from src.utils.embeddings import LocalEmbeddings  # type: ignore[import-not-found]
-        from src.utils.llm import OpenAICompatibleClient  # type: ignore[import-not-found]
+        from src.utils.embeddings import LocalEmbeddings  # type: ignore[import-untyped]
+        from src.utils.llm import OpenAICompatibleClient  # type: ignore[import-untyped]
 
         # When running in repo, use project LLM settings from env so tests use local Ollama etc.
         try:
-            from src.core.config import get_settings  # type: ignore[import-not-found]
+            from src.core.config import get_settings  # type: ignore[import-untyped]
 
             s = get_settings()
             if s.llm.base_url:
                 self._config.llm.base_url = s.llm.base_url
                 self._config.llm.model = s.llm.model
-                self._config.llm.provider = s.llm.provider  # type: ignore[assignment]
+                self._config.llm.provider = s.llm.provider
         except Exception:
             pass
 
@@ -306,7 +306,7 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
-        from src.memory.seamless_provider import (  # type: ignore[import-not-found]
+        from src.memory.seamless_provider import (  # type: ignore[import-untyped]
             SeamlessMemoryProvider,
         )
 
