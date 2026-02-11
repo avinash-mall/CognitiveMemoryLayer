@@ -10,26 +10,26 @@ from typing import Any
 from uuid import UUID, uuid4
 
 try:
-    from src.core.enums import (  # type: ignore[import-untyped]
+    from src.core.enums import (  # type: ignore
         MemorySource,
         MemoryStatus,
         MemoryType,
     )
-    from src.core.schemas import (  # type: ignore[import-untyped]
+    from src.core.schemas import (  # type: ignore
         EntityMention,
         MemoryRecord,
         MemoryRecordCreate,
         Provenance,
         Relation,
     )
-    from src.storage.base import MemoryStoreBase  # type: ignore[import-untyped]
+    from src.storage.base import MemoryStoreBase  # type: ignore
 except ImportError as e:
     raise ImportError(
         "Embedded lite mode requires the CML engine. "
         "From the repo root: pip install -e . then pip install -e packages/py-cml[embedded]."
     ) from e
 
-import aiosqlite
+import aiosqlite  # type: ignore
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
