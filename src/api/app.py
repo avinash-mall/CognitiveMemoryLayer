@@ -60,7 +60,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.add_middleware(RateLimitMiddleware)
+    rpm = getattr(settings.auth, "rate_limit_requests_per_minute", 60)
+    if rpm > 0:
+        app.add_middleware(RateLimitMiddleware, requests_per_minute=rpm)
     app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(router, prefix="/api/v1")

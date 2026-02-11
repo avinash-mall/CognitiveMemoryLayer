@@ -4,7 +4,6 @@ from pathlib import Path
 # Reflects actual project layout. Run from repo root to create missing dirs/files (touch).
 STRUCTURE = {
     ".github": {"workflows": ["ci.yml"]},
-    "config": ["logging.yaml", "settings.yaml"],
     "docker": ["Dockerfile", "docker-compose.yml"],
     "examples": [
         "__init__.py",
