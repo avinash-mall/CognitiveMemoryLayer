@@ -80,3 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SECURITY.md:** Supported versions, report via GitHub Security Advisories
 - **CONTRIBUTING:** Releasing py-cml section (version bump, tag py-cml-v*, PyPI publish); fork/venv in dev setup; PR checklist alignment
 - Publish workflow (py-cml-publish.yml on py-cml-v* tag) already in place; no code changes
+
+## [1.0.8] - 2025-02-11
+
+### Changed
+
+- Version bump for PyPI release.
