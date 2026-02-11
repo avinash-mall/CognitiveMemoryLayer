@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Temporal fidelity**
+  - Optional `timestamp` field in `WriteMemoryRequest` and `ProcessTurnRequest` allows specifying event time for memories
+  - Enables historical replay for benchmarks (e.g., Locomo evaluation with session dates)
+  - Defaults to current time if not provided (backward compatible)
+  - Threads through: API → Orchestrator → Short-term → Working → Chunker → Hippocampal → Storage
+
 - **Documentation**
   - `CONTRIBUTING.md` — Guidelines for contributors and development setup.
   - `SECURITY.md` — Security policy and vulnerability reporting.

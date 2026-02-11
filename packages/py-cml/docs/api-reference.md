@@ -22,10 +22,10 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 ### Methods
 
-- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id)** → `WriteResponse` — Store new memory.
+- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp)** → `WriteResponse` — Store new memory. Optional `timestamp` (datetime) for event time; defaults to now.
 - **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format)** → `ReadResponse` — Retrieve memories. `response_format`: "packet", "list", "llm_context".
 - **read_safe(query, \*\*kwargs)** → `ReadResponse` — Like read; returns empty result on connection/timeout.
-- **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange.
+- **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now.
 - **update(memory_id, \*, text, confidence, importance, metadata, feedback)** → `UpdateResponse` — Update an existing memory.
 - **forget(\*, memory_ids, query, before, action="delete")** → `ForgetResponse` — Forget memories. At least one of memory_ids, query, before required.
 - **stats()** → `StatsResponse` — Memory statistics.
@@ -34,10 +34,37 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
 - **get_session_context(session_id)** → `SessionContextResponse`
 - **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True.
-- **remember(content, \*\*kwargs)** — Alias for write.
+- **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` parameter.
 - **search(query, \*\*kwargs)** — Alias for read.
 
 Admin/batch: consolidate, run_forgetting, batch_write, batch_read, list_tenants, get_events, component_health, with_namespace(namespace), iter_memories(...).
+
+### Temporal Fidelity
+
+The optional `timestamp` parameter in `write()`, `turn()`, and `remember()` enables **temporal fidelity** for historical data replay:
+
+```python
+from datetime import datetime, timezone
+
+# Store a memory with a specific event timestamp
+historical_time = datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+memory.write(
+    "User mentioned preferring dark mode",
+    timestamp=historical_time
+)
+
+# Process a turn with a specific timestamp (e.g., for benchmark evaluation)
+memory.turn(
+    user_message="Hello",
+    assistant_response="Hi there!",
+    timestamp=historical_time
+)
+```
+
+When `timestamp` is not provided, it defaults to the current time. This feature is particularly useful for:
+- Benchmark evaluations (e.g., Locomo) that replay historical conversations
+- Importing historical data with correct event times
+- Testing temporal reasoning capabilities
 
 ## AsyncCognitiveMemoryLayer
 

@@ -22,6 +22,7 @@ class WriteRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     turn_id: str | None = None
     agent_id: str | None = None
+    timestamp: datetime | None = None
 
 
 class ReadRequest(BaseModel):
@@ -47,6 +48,7 @@ class TurnRequest(BaseModel):
     assistant_response: str | None = None
     session_id: str | None = None
     max_context_tokens: int = 1500
+    timestamp: datetime | None = None
 
 
 class UpdateRequest(BaseModel):

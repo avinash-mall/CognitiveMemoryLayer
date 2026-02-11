@@ -51,6 +51,7 @@ class HippocampalStore:
         agent_id: Optional[str] = None,
         existing_memories: Optional[List[Dict[str, Any]]] = None,
         namespace: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> Optional[MemoryRecord]:
         gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_memories)
         if gate_result.decision == WriteDecision.SKIP:
@@ -98,7 +99,7 @@ class HippocampalStore:
                 "source_turn_id": chunk.source_turn_id,
                 "source_role": chunk.source_role,
             },
-            timestamp=chunk.timestamp,
+            timestamp=timestamp or chunk.timestamp,
             confidence=chunk.confidence,
             importance=gate_result.importance,
             provenance=Provenance(
@@ -118,6 +119,7 @@ class HippocampalStore:
         source_session_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         namespace: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> List[MemoryRecord]:
         existing = await self.store.scan(
             tenant_id,
@@ -136,6 +138,7 @@ class HippocampalStore:
                 agent_id=agent_id,
                 existing_memories=existing_dicts,
                 namespace=namespace,
+                timestamp=timestamp,
             )
             if record:
                 results.append(record)

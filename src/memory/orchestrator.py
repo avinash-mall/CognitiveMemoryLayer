@@ -198,6 +198,7 @@ class MemoryOrchestrator:
         turn_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         namespace: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """Write new information to memory. Holistic: tenant-only."""
         stm_result = await self.short_term.ingest_turn(
@@ -206,6 +207,7 @@ class MemoryOrchestrator:
             text=content,
             turn_id=turn_id,
             role="user",
+            timestamp=timestamp,
         )
 
         chunks_for_encoding = stm_result.get("chunks_for_encoding", [])
@@ -224,6 +226,7 @@ class MemoryOrchestrator:
             source_session_id=session_id,
             agent_id=agent_id,
             namespace=namespace,
+            timestamp=timestamp,
         )
 
         return {

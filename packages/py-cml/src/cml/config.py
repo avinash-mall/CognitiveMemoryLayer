@@ -59,8 +59,8 @@ class CMLConfig(BaseModel):
         if not isinstance(values, dict):
             return values
         env_map = {
-            "api_key": "CML_API_KEY",
-            "base_url": "CML_BASE_URL",
+            "api_key": ("CML_API_KEY", "AUTH__API_KEY"),  # AUTH__API_KEY for monorepo consistency
+            "base_url": ("CML_BASE_URL", "MEMORY_API_URL"),
             "tenant_id": "CML_TENANT_ID",
             "timeout": "CML_TIMEOUT",
             "max_retries": "CML_MAX_RETRIES",
@@ -69,13 +69,18 @@ class CMLConfig(BaseModel):
             "admin_api_key": "CML_ADMIN_API_KEY",
             "verify_ssl": "CML_VERIFY_SSL",
         }
-        for field, env_var in env_map.items():
+        for field, env_spec in env_map.items():
+            env_vars = (env_spec,) if isinstance(env_spec, str) else env_spec
             if (
                 field not in values
                 or values[field] is None
                 or (field == "base_url" and values.get(field) == "")
             ):
-                env_val = os.environ.get(env_var)
+                env_val = None
+                for ev in env_vars:
+                    env_val = os.environ.get(ev)
+                    if env_val is not None:
+                        break
                 if env_val is not None and (field != "base_url" or env_val.strip()):
                     if field == "verify_ssl":
                         values[field] = env_val.strip().lower() in ("1", "true", "yes")

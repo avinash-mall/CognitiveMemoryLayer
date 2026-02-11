@@ -1,25 +1,14 @@
-"""
-Complete Chatbot with Memory - Cognitive Memory Layer
+"""Full-featured chatbot with persistent memory.
 
-A full-featured chatbot that demonstrates all memory capabilities.
-Set in .env: OPENAI_API_KEY, OPENAI_MODEL or LLM__MODEL, MEMORY_API_URL or CML_BASE_URL, AUTH__API_KEY.
-
-Prerequisites:
-    1. Start the API server:
-       docker compose -f docker/docker-compose.yml up api
-    
-    2. Install dependencies:
-       pip install openai httpx python-dotenv
-    
-    3. Configure .env (see .env.example)
+Uses py-cml. Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 """
 
+import json
 import os
-import re
-from pathlib import Path
-from typing import Optional, List, Tuple
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -28,322 +17,191 @@ except ImportError:
     pass
 
 from openai import OpenAI
-from memory_client import CognitiveMemoryClient
+from cml import CognitiveMemoryLayer
 
 
 @dataclass
 class ConversationTurn:
-    """A single turn in the conversation."""
-    role: str  # "user" or "assistant"
+    role: str
     content: str
     timestamp: datetime
 
 
 class MemoryPoweredChatbot:
-    """
-    A chatbot that intelligently uses memory to provide personalized responses.
-    
-    Features:
-    - Automatic memory retrieval before each response
-    - Intelligent extraction of memorable information
-    - Support for memory commands (!remember, !forget, !stats)
-    - Configurable memory injection strategies
-    """
-    
+    """Chatbot with memory retrieval, auto-extraction, and commands (!remember, !forget, etc.)."""
+
     def __init__(
         self,
         session_id: str,
         llm_api_key: Optional[str] = None,
-        memory_api_url: Optional[str] = None,
+        memory_base_url: Optional[str] = None,
         memory_api_key: Optional[str] = None,
         llm_model: Optional[str] = None,
         auto_remember: bool = True,
         memory_context_tokens: int = 1500,
     ):
-        """
-        Initialize the chatbot.
-
-        Args:
-            session_id: Unique identifier for the session (used for origin tracking)
-            llm_api_key: OpenAI API key (or set OPENAI_API_KEY env var)
-            memory_api_url: URL of the Cognitive Memory Layer API (or MEMORY_API_URL / CML_BASE_URL from env)
-            memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
-            llm_model: LLM model (or OPENAI_MODEL / LLM__MODEL from env)
-            auto_remember: Automatically extract and store memorable info
-            memory_context_tokens: Max tokens for memory context
-        """
         self.session_id = session_id
-        self.llm_model = (llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+        self.llm_model = (
+            llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
+        ).strip()
         self.auto_remember = auto_remember
         self.memory_context_tokens = memory_context_tokens
-        _base = (memory_api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
-
-        # Initialize clients
+        base_url = (
+            memory_base_url
+            or os.environ.get("CML_BASE_URL")
+            or os.environ.get("MEMORY_API_URL")
+            or "http://localhost:8000"
+        ).strip()
         self.llm = OpenAI(api_key=llm_api_key or os.getenv("OPENAI_API_KEY"))
-        self.memory = CognitiveMemoryClient(
-            base_url=_base or None,
-            api_key=memory_api_key or os.environ.get("AUTH__API_KEY", ""),
+        self.memory = CognitiveMemoryLayer(
+            api_key=memory_api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+            base_url=base_url,
         )
-        
-        # Conversation history (current session only)
         self.history: List[ConversationTurn] = []
-        
-        # Base system prompt
-        self.base_system_prompt = """You are a helpful, friendly assistant with access to memories about the user.
+        self.base_system_prompt = """You are a helpful assistant with persistent memory.
 
-Use the provided memory context to personalize your responses. If you know something about the user, use it naturally in conversation without explicitly mentioning that you "remember" it unless relevant.
+Use the provided memory context to personalize responses. Be conversational."""
 
-Be conversational and helpful. If you don't know something about the user, it's okay to ask."""
-    
     def _handle_command(self, message: str) -> Optional[str]:
-        """
-        Handle special memory commands.
-        
-        Commands:
-            !remember <info> - Explicitly store information
-            !forget <query> - Forget matching memories
-            !stats - Show memory statistics
-            !search <query> - Search memories
-            !clear - Clear session history
-        """
-        message = message.strip()
-        
-        if message.startswith("!remember "):
-            info = message[10:].strip()
+        msg = message.strip()
+        if msg.startswith("!remember "):
+            info = msg[10:].strip()
             if info:
-                result = self.memory.write(
+                r = self.memory.write(
                     info,
                     session_id=self.session_id,
                     context_tags=["conversation"],
                     memory_type="semantic_fact",
                 )
-                return f"✓ Stored: {info}" if result.success else f"✗ Failed: {result.message}"
-            return "Usage: !remember <information to store>"
-        
-        elif message.startswith("!forget "):
-            query = message[8:].strip()
-            if query:
-                result = self.memory.forget(query=query, action="delete")
-                count = result.get("affected_count", 0)
-                return f"✓ Forgot {count} memories matching '{query}'"
+                return f"✓ Stored: {info}" if r.success else f"✗ Failed"
+            return "Usage: !remember <info>"
+        elif msg.startswith("!forget "):
+            q = msg[8:].strip()
+            if q:
+                r = self.memory.forget(query=q, action="delete")
+                return f"✓ Forgot {r.affected_count} memories"
             return "Usage: !forget <query>"
-        
-        elif message == "!stats":
-            stats = self.memory.stats()
-            return f"""📊 Memory Statistics:
-- Total memories: {stats.total_memories}
-- Active memories: {stats.active_memories}
-- Average confidence: {stats.avg_confidence:.0%}
-- By type: {stats.by_type}"""
-        
-        elif message.startswith("!search "):
-            query = message[8:].strip()
-            if query:
-                result = self.memory.read(query=query, max_results=5)
-                if result.memories:
-                    lines = [f"🔍 Found {result.total_count} memories:"]
-                    for mem in result.memories[:5]:
-                        lines.append(f"  [{mem.type}] {mem.text[:80]}...")
+        elif msg == "!stats":
+            s = self.memory.stats()
+            return f"Total: {s.total_memories}, Active: {s.active_memories}, By type: {s.by_type}"
+        elif msg.startswith("!search "):
+            q = msg[8:].strip()
+            if q:
+                r = self.memory.read(q, max_results=5)
+                if r.memories:
+                    lines = [f"Found {r.total_count}:"]
+                    for m in r.memories[:5]:
+                        lines.append(f"  [{m.type}] {m.text[:80]}...")
                     return "\n".join(lines)
-                return "No memories found matching that query."
+                return "No memories found."
             return "Usage: !search <query>"
-        
-        elif message == "!clear":
+        elif msg == "!clear":
             self.history.clear()
-            return "✓ Session history cleared (long-term memory preserved)"
-        
-        elif message == "!help":
-            return """📚 Memory Commands:
-- !remember <info> - Store information explicitly
-- !forget <query> - Forget matching memories  
-- !stats - Show memory statistics
-- !search <query> - Search your memories
-- !clear - Clear session history
-- !help - Show this help"""
-        
+            return "✓ Session history cleared"
+        elif msg == "!help":
+            return "!remember <info> | !forget <query> | !stats | !search <query> | !clear | !help"
         return None
-    
+
     def _get_memory_context(self, message: str) -> str:
-        """Retrieve relevant memory context (seamless: use process_turn for auto-context)."""
         try:
-            turn = self.memory.process_turn(
+            turn = self.memory.turn(
                 user_message=message,
                 session_id=self.session_id,
                 max_context_tokens=self.memory_context_tokens,
             )
             return turn.memory_context or ""
-        except Exception as e:
+        except Exception:
             try:
-                result = self.memory.read(
-                    message, max_results=10, format="llm_context"
-                )
-                return result.llm_context or ""
-            except Exception as e2:
-                print(f"Warning: Could not retrieve memories: {e2}")
+                r = self.memory.read(message, max_results=10, response_format="llm_context")
+                return r.context or ""
+            except Exception:
                 return ""
-    
-    def _extract_memorable_info(self, message: str, response: str) -> List[Tuple[str, str]]:
-        """
-        Use LLM to extract memorable information from the conversation.
-        
-        Returns list of (content, memory_type) tuples.
-        """
-        extraction_prompt = f"""Analyze this conversation turn and extract any important information worth remembering about the user.
 
-User message: {message}
-Assistant response: {response}
+    def _extract_memorable_info(self, user_msg: str, assistant_msg: str) -> List[Tuple[str, str]]:
+        prompt = f"""Extract important information worth remembering from this turn.
 
-Extract information that would be useful to remember for future conversations, such as:
-- Personal facts (name, occupation, location)
-- Preferences (likes, dislikes, favorites)
-- Constraints (allergies, restrictions, requirements)
-- Goals or plans
+User: {user_msg}
+Assistant: {assistant_msg}
 
-Respond in JSON format with an array of objects:
-[{{"content": "extracted fact", "type": "semantic_fact|preference|constraint|hypothesis"}}]
-
-If nothing worth remembering, respond with: []
-
-Only extract clear, factual information. Don't make assumptions."""
-
+Respond with JSON array: [{{"content": "...", "type": "semantic_fact|preference|constraint|hypothesis"}}]
+If nothing worth remembering: []"""
         try:
-            response = self.llm.chat.completions.create(
+            resp = self.llm.chat.completions.create(
                 model=self.llm_model,
-                messages=[{"role": "user", "content": extraction_prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                max_tokens=500
+                max_tokens=500,
             )
-            
-            import json
-            data = json.loads(response.choices[0].message.content)
-            
-            # Handle both array and object with array
+            data = json.loads(resp.choices[0].message.content)
             if isinstance(data, list):
-                return [(item["content"], item["type"]) for item in data]
-            elif isinstance(data, dict) and "items" in data:
-                return [(item["content"], item["type"]) for item in data["items"]]
-            elif isinstance(data, dict) and len(data) == 0:
-                return []
-            
-        except Exception as e:
-            print(f"Warning: Could not extract memories: {e}")
-        
+                return [(i["content"], i.get("type", "semantic_fact")) for i in data]
+            if isinstance(data, dict) and "items" in data:
+                return [(i["content"], i.get("type", "semantic_fact")) for i in data["items"]]
+        except Exception:
+            pass
         return []
-    
+
     def chat(self, message: str) -> str:
-        """
-        Process a user message and return a response.
-        
-        Args:
-            message: The user's message
-            
-        Returns:
-            The assistant's response
-        """
-        # Check for commands
-        command_result = self._handle_command(message)
-        if command_result is not None:
-            return command_result
-        
-        # Get relevant memory context
-        memory_context = self._get_memory_context(message)
-        
-        # Build system prompt with memory
-        system_prompt = self.base_system_prompt
-        if memory_context:
-            system_prompt += f"\n\n--- MEMORY CONTEXT ---\n{memory_context}"
-        
-        # Build messages for LLM
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        # Add recent conversation history (last 10 turns)
-        for turn in self.history[-10:]:
-            messages.append({"role": turn.role, "content": turn.content})
-        
-        # Add current message
+        cmd = self._handle_command(message)
+        if cmd is not None:
+            return cmd
+        ctx = self._get_memory_context(message)
+        system = self.base_system_prompt
+        if ctx:
+            system += f"\n\n--- MEMORY ---\n{ctx}"
+        messages = [{"role": "system", "content": system}]
+        for t in self.history[-10:]:
+            messages.append({"role": t.role, "content": t.content})
         messages.append({"role": "user", "content": message})
-        
-        # Get response from LLM
-        response = self.llm.chat.completions.create(
-            model=self.llm_model,
-            messages=messages,
-            max_tokens=1000
+        resp = self.llm.chat.completions.create(
+            model=self.llm_model, messages=messages, max_tokens=1000
         )
-        
-        assistant_response = response.choices[0].message.content
-        
-        # Store conversation in history
+        out = resp.choices[0].message.content
         self.history.append(ConversationTurn("user", message, datetime.now()))
-        self.history.append(ConversationTurn("assistant", assistant_response, datetime.now()))
-        
-        # Auto-extract and store memorable information
+        self.history.append(ConversationTurn("assistant", out, datetime.now()))
         if self.auto_remember:
-            memories_to_store = self._extract_memorable_info(message, assistant_response)
-            for content, memory_type in memories_to_store:
+            for content, mtype in self._extract_memorable_info(message, out):
                 try:
                     self.memory.write(
                         content,
                         session_id=self.session_id,
                         context_tags=["conversation"],
-                        memory_type=memory_type,
+                        memory_type=mtype,
                     )
-                    print(f"  [Auto-stored: {memory_type}] {content[:50]}...")
-                except Exception as e:
-                    print(f"  Warning: Could not store memory: {e}")
-        
-        return assistant_response
-    
+                    print(f"  [Stored: {mtype}] {content[:50]}...")
+                except Exception:
+                    pass
+        return out
+
     def close(self):
-        """Clean up resources."""
         self.memory.close()
 
 
 def main():
-    """Run the chatbot in interactive mode."""
-    
     print("=" * 60)
-    print("Memory-Powered Chatbot")
+    print("Memory-Powered Chatbot (py-cml)")
     print("=" * 60)
-    print("""
-This chatbot automatically:
-- Retrieves relevant memories before each response
-- Extracts and stores important information from conversations
-- Supports memory commands (type !help for list)
-
-Type 'quit' to exit.
-""")
-    
+    print("Commands: !remember, !forget, !stats, !search, !clear, !help. Type 'quit' to exit.\n")
     if not os.getenv("OPENAI_API_KEY"):
         print("Set OPENAI_API_KEY in .env")
         return
     if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL")):
         print("Set OPENAI_MODEL or LLM__MODEL in .env")
         return
-    if not (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL")):
-        print("Set MEMORY_API_URL or CML_BASE_URL in .env")
-        return
-
-    chatbot = MemoryPoweredChatbot(session_id="chatbot-demo-session", auto_remember=True)
-    
+    chatbot = MemoryPoweredChatbot(session_id="chatbot-demo", auto_remember=True)
     try:
-        print("Bot: Hello! I'm your personal assistant. I remember things about you across our conversations. How can I help you today?")
-        print("     (Type !help for memory commands)\n")
-        
+        print("Bot: Hello! I remember things across conversations. How can I help?\n")
         while True:
             user_input = input("You: ").strip()
-            
-            if user_input.lower() in ["quit", "exit", "bye"]:
-                print("\nBot: Goodbye! I'll remember our conversation.")
+            if user_input.lower() in ("quit", "exit", "bye"):
+                print("\nBot: Goodbye!")
                 break
-            
             if not user_input:
                 continue
-            
             response = chatbot.chat(user_input)
             print(f"\nBot: {response}\n")
-            
     except KeyboardInterrupt:
-        print("\n\nGoodbye!")
+        print("\nGoodbye!")
     finally:
         chatbot.close()
 

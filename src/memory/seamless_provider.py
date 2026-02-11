@@ -4,6 +4,7 @@ Makes memory recall unconscious, like human association.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional
 
 from ..core.schemas import MemoryPacket, RetrievedMemory
@@ -49,6 +50,7 @@ class SeamlessMemoryProvider:
         assistant_response: Optional[str] = None,
         session_id: Optional[str] = None,
         turn_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> SeamlessTurnResult:
         """
         Process a conversation turn:
@@ -71,6 +73,7 @@ class SeamlessMemoryProvider:
                 content=user_message,
                 session_id=session_id,
                 context_tags=["conversation", "user_input"],
+                timestamp=timestamp,
             )
             stored_count += write_result.get("chunks_created", 0) or (
                 1 if write_result.get("memory_id") else 0
@@ -85,6 +88,7 @@ class SeamlessMemoryProvider:
                 session_id=session_id,
                 turn_id=turn_id,
                 retrieved_memories=[m.record for m in injected_memories],
+                timestamp=timestamp,
             )
             stored_count += resp_result.get("chunks_created", 0) or (
                 1 if resp_result.get("memory_id") else 0
@@ -162,6 +166,7 @@ class SeamlessMemoryProvider:
         session_id: Optional[str],
         turn_id: Optional[str],
         retrieved_memories: list,
+        timestamp: Optional[datetime] = None,
     ) -> dict:
         """Store assistant response and run reconsolidation."""
 
@@ -171,6 +176,7 @@ class SeamlessMemoryProvider:
             content=assistant_response,
             session_id=session_id,
             context_tags=["conversation", "assistant_response"],
+            timestamp=timestamp,
         )
 
         scope_id = session_id or tenant_id

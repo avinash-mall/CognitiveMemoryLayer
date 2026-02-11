@@ -5,7 +5,7 @@ def test_import_cml() -> None:
     """Importing cml should succeed."""
     import cml
 
-    assert cml.__version__ == "0.1.0"
+    assert cml.__version__ == "1.0.8"
 
 
 def test_import_public_api() -> None:
@@ -18,7 +18,7 @@ def test_import_public_api() -> None:
         __version__,
     )
 
-    assert __version__ == "0.1.0"
+    assert __version__ == "1.0.8"
     assert CognitiveMemoryLayer is not None
     assert AsyncCognitiveMemoryLayer is not None
     assert CMLConfig is not None

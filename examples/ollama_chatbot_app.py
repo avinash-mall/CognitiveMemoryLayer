@@ -1,66 +1,42 @@
-"""
-Streamlit chatbot with Cognitive Memory Layer – context from memory only.
+"""Streamlit chatbot with Cognitive Memory Layer - context from memory only.
 
-The assistant does NOT receive conversation history. Each turn uses only:
-  - System prompt
-  - Current user message
-  - Tool calls (memory_read / memory_write) and their results within that turn
-
-Memory reads and writes are shown in the "Memory activity" section so you can
-see what was stored and recalled.
-
-Prerequisites:
-  - Ollama running; set LLM__MODEL in repo root .env (default llama3.2:1b).
-  - Memory API running, .env configured.
-  - Run: streamlit run examples/ollama_chatbot_app.py
+Set OLLAMA_BASE_URL, LLM__MODEL, CML_BASE_URL, AUTH__API_KEY in .env.
+Run: streamlit run examples/ollama_chatbot_app.py
 """
 
 import json
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
-
-# Load repo root .env so LLM__MODEL and other vars are respected (not just shell env)
 try:
-    from pathlib import Path
     from dotenv import load_dotenv
-    _repo_root = Path(__file__).resolve().parent.parent
-    load_dotenv(_repo_root / ".env")
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
 
 import streamlit as st
 from openai import OpenAI
-from memory_client import CognitiveMemoryClient
+from cml import CognitiveMemoryLayer
 
 
-# ---------------------------------------------------------------------------
-# Config (from .env only; no hardcoded defaults)
-# ---------------------------------------------------------------------------
-OLLAMA_BASE_URL = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+OLLAMA_BASE = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
 OLLAMA_MODEL = (os.environ.get("LLM__MODEL") or "").strip()
-MEMORY_API_URL = (os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
-MEMORY_API_KEY = (os.environ.get("AUTH__API_KEY") or "").strip()
+MEMORY_BASE = (os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "").strip()
+MEMORY_KEY = os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY") or ""
 
 MEMORY_TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "memory_write",
-            "description": (
-                "Store important information in long-term memory. "
-                "Use when the user shares personal information, preferences, or significant facts."
-            ),
+            "description": "Store important information in long-term memory.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "content": {"type": "string", "description": "The information to store. Be specific and factual."},
-                    "memory_type": {
-                        "type": "string",
-                        "enum": ["semantic_fact", "preference", "constraint", "episodic_event"],
-                        "description": "Type: semantic_fact, preference, constraint, episodic_event.",
-                    },
+                    "content": {"type": "string"},
+                    "memory_type": {"type": "string", "enum": ["semantic_fact", "preference", "constraint", "episodic_event"]},
                 },
                 "required": ["content"],
             },
@@ -70,205 +46,135 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_read",
-            "description": (
-                "Retrieve relevant memories. Call before answering questions "
-                "about the user's preferences, history, or personal information."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Natural language query for what you need."},
-                },
-                "required": ["query"],
-            },
+            "description": "Retrieve relevant memories.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
         },
     },
 ]
 
 SYSTEM_PROMPT = """You are a helpful assistant with long-term memory.
-
-You do NOT see past conversation turns. You only see this message and the current user message.
-Use memory_read to recall what you know about the user before answering questions about them.
-Use memory_write when the user shares important information (name, preferences, facts, constraints).
-Be natural and concise. For constraints (e.g. allergies), always remember them."""
+You do NOT see past turns. Use memory_read to recall what you know.
+Use memory_write when the user shares important information. Be concise."""
 
 
 def get_session_id():
     return st.session_state.get("session_id", "streamlit-session")
 
 
-def get_memory_client():
-    if "memory_client" not in st.session_state:
-        st.session_state.memory_client = CognitiveMemoryClient(
-            base_url=MEMORY_API_URL,
-            api_key=MEMORY_API_KEY,
+def get_memory():
+    if "memory" not in st.session_state:
+        st.session_state.memory = CognitiveMemoryLayer(
+            api_key=MEMORY_KEY,
+            base_url=MEMORY_BASE,
             timeout=120.0,
         )
-    return st.session_state.memory_client
+    return st.session_state.memory
 
 
-def get_openai_client():
-    if "openai_client" not in st.session_state:
-        st.session_state.openai_client = OpenAI(
-            base_url=OLLAMA_BASE_URL,
-            api_key="ollama",
-            timeout=300.0,
-        )
-    return st.session_state.openai_client
+def get_openai():
+    if "openai" not in st.session_state:
+        st.session_state.openai = OpenAI(base_url=OLLAMA_BASE, api_key="ollama", timeout=300.0)
+    return st.session_state.openai
 
 
-def memory_activity_append(kind: str, detail: dict):
+def append_activity(kind: str, detail: dict):
     if "memory_activity" not in st.session_state:
         st.session_state.memory_activity = []
     st.session_state.memory_activity.append({"kind": kind, "detail": detail})
 
 
-def execute_tool(name: str, arguments: dict, memory_client: CognitiveMemoryClient) -> str:
-    session_id = get_session_id()
+def execute_tool(name: str, args: dict, memory: CognitiveMemoryLayer) -> str:
+    sid = get_session_id()
     if name == "memory_write":
-        result = memory_client.write(
-            arguments["content"],
-            session_id=session_id,
+        r = memory.write(
+            args["content"],
+            session_id=sid,
             context_tags=["conversation"],
-            memory_type=arguments.get("memory_type"),
+            memory_type=args.get("memory_type"),
         )
-        memory_activity_append("write", {
-            "content": arguments["content"],
-            "memory_type": arguments.get("memory_type"),
-            "success": result.success,
-            "message": result.message,
-        })
-        return json.dumps({"success": result.success, "message": result.message})
-
+        append_activity("write", {"content": args["content"], "success": r.success})
+        return json.dumps({"success": r.success, "message": r.message})
     if name == "memory_read":
-        result = memory_client.read(arguments["query"], format="llm_context")
-        text = result.llm_context or "No relevant memories found."
-        memory_activity_append("read", {
-            "query": arguments["query"],
-            "total_count": result.total_count,
-            "snippet": (text[:500] + "…") if len(text) > 500 else text,
-        })
+        r = memory.read(args["query"], response_format="llm_context")
+        text = r.context or "No relevant memories found."
+        append_activity("read", {"query": args["query"], "total_count": r.total_count, "snippet": text[:500]})
         return text
-
-    return json.dumps({"error": f"Unknown tool: {name}"})
+    return json.dumps({"error": f"Unknown: {name}"})
 
 
 def chat_turn(user_message: str) -> str:
-    """One turn: no conversation history. Only system + user message + tool calls until final reply."""
-    memory_client = get_memory_client()
-    openai_client = get_openai_client()
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
-    ]
-
-    max_rounds = 8
-    for _ in range(max_rounds):
-        response = openai_client.chat.completions.create(
+    memory = get_memory()
+    openai_client = get_openai()
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_message}]
+    for _ in range(8):
+        resp = openai_client.chat.completions.create(
             model=OLLAMA_MODEL,
             messages=messages,
             tools=MEMORY_TOOLS,
             tool_choice="auto",
         )
-        msg = response.choices[0].message
-
+        msg = resp.choices[0].message
         if msg.tool_calls:
             messages.append({
                 "role": "assistant",
                 "content": msg.content or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in msg.tool_calls
-                ],
+                "tool_calls": [{"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}} for tc in msg.tool_calls],
             })
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
-                result = execute_tool(tc.function.name, args, memory_client)
+                result = execute_tool(tc.function.name, args, memory)
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
         else:
             return (msg.content or "").strip()
-
-    return "(Max tool rounds reached.)"
+    return "(Max tool rounds)"
 
 
 def main():
     st.set_page_config(page_title="Memory Chat", page_icon="🧠", layout="wide")
-
-    if not OLLAMA_BASE_URL or not OLLAMA_MODEL or not MEMORY_API_URL:
-        st.error("Set OLLAMA_BASE_URL (or OPENAI_BASE_URL), LLM__MODEL, and MEMORY_API_URL (or CML_BASE_URL) in .env")
+    if not OLLAMA_BASE or not OLLAMA_MODEL or not MEMORY_BASE:
+        st.error("Set OLLAMA_BASE_URL, LLM__MODEL, CML_BASE_URL in .env")
         return
-
     st.title("🧠 Memory-powered chatbot")
-    st.caption("Context comes from memory only — no conversation history is sent to the model.")
-
+    st.caption("Context from memory only — no conversation history sent.")
     if "chat_display" not in st.session_state:
         st.session_state.chat_display = []
     if "memory_activity" not in st.session_state:
         st.session_state.memory_activity = []
-
     with st.sidebar:
-        st.subheader("Session")
-        session_id = st.text_input("Session ID", value=get_session_id(), key="session_id_input")
+        session_id = st.text_input("Session ID", value=get_session_id(), key="sid")
         st.session_state["session_id"] = session_id
-
         try:
-            mem = get_memory_client()
-            health = mem.health()
-            st.success(f"Memory API: {health.get('status', 'ok')}")
+            mem = get_memory()
+            h = mem.health()
+            st.success(f"Memory API: {h.status}")
         except Exception as e:
-            st.error(f"Memory API: {str(e)[:80]}")
-
-        st.subheader("Memory stats")
+            st.error(str(e)[:80])
         try:
-            stats = get_memory_client().stats()
-            st.metric("Total memories", stats.total_memories)
-            st.metric("Active", stats.active_memories)
+            s = get_memory().stats()
+            st.metric("Total memories", s.total_memories)
+            st.metric("Active", s.active_memories)
         except Exception:
             st.write("—")
-
-        if st.button("Clear memory activity log"):
+        if st.button("Clear activity log"):
             st.session_state.memory_activity = []
             st.rerun()
-
-    col_chat, col_memory = st.columns([2, 1])
-
+    col_chat, col_mem = st.columns([2, 1])
     with col_chat:
-        for entry in st.session_state.chat_display:
-            role = entry["role"]
-            content = entry["content"]
-            if role == "user":
-                with st.chat_message("user"):
-                    st.markdown(content)
-            else:
-                with st.chat_message("assistant"):
-                    st.markdown(content)
-
-    with col_memory:
+        for e in st.session_state.chat_display:
+            with st.chat_message(e["role"]):
+                st.markdown(e["content"])
+    with col_mem:
         st.subheader("Memory activity")
         if not st.session_state.memory_activity:
-            st.info("Memory reads and writes will appear here.")
+            st.info("Reads and writes will appear here.")
         else:
-            for i, act in enumerate(reversed(st.session_state.memory_activity[-50:]), 1):
-                kind = act["kind"]
+            for act in reversed(st.session_state.memory_activity[-50:]):
                 d = act["detail"]
-                if kind == "write":
-                    with st.expander(f"📥 Write: {d.get('content', '')[:40]}…" if len(d.get("content", "")) > 40 else f"📥 Write: {d.get('content', '')}"):
-                        st.write("**Content:**", d.get("content", ""))
-                        st.write("**Type:**", d.get("memory_type", "—"))
-                        st.write("**Result:**", d.get("message", "—"))
+                if act["kind"] == "write":
+                    st.expander(f"📥 Write: {d.get('content', '')[:40]}…").write(d)
                 else:
-                    with st.expander(f"📤 Read: “{d.get('query', '')[:35]}…”"):
-                        st.write("**Query:**", d.get("query", ""))
-                        st.write("**Memories found:**", d.get("total_count", 0))
-                        st.write("**Snippet:**")
-                        st.text(d.get("snippet", "—"))
-
-    if prompt := st.chat_input("Message (context from memory only)..."):
+                    st.expander(f"📤 Read: {d.get('query', '')[:35]}…").write(d)
+    if prompt := st.chat_input("Message..."):
         st.session_state.chat_display.append({"role": "user", "content": prompt})
         with st.chat_message("assistant"):
             with st.spinner("Thinking…"):

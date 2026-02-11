@@ -1,15 +1,24 @@
-"""py-cml Quickstart — store and retrieve memories in 30 seconds."""
+"""py-cml Quickstart — store and retrieve memories in 30 seconds.
+
+Set AUTH__API_KEY (or CML_API_KEY) and CML_BASE_URL (or MEMORY_API_URL) in .env.
+"""
 
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 from cml import CognitiveMemoryLayer
 
 
 def main():
-    # Prefer CML_API_KEY env var; set it or pass api_key= explicitly
     memory = CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY", "your-api-key"),
-        base_url=os.environ.get("CML_BASE_URL", "http://localhost:8000"),
+        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        base_url=os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000",
     )
     memory.write("User prefers vegetarian food and lives in Paris.")
     memory.write("User works at a tech startup as a backend engineer.")

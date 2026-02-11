@@ -1,6 +1,7 @@
 """Short-term memory facade: sensory buffer + working memory."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .sensory.buffer import SensoryBufferConfig
@@ -52,6 +53,7 @@ class ShortTermMemory:
         text: str,
         turn_id: Optional[str] = None,
         role: str = "user",
+        timestamp: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Ingest a new conversation turn.
@@ -62,7 +64,9 @@ class ShortTermMemory:
         3. Return chunks ready for potential encoding
         """
         tokens_added = await self.sensory.ingest(tenant_id, scope_id, text, turn_id, role)
-        new_chunks = await self.working.process_input(tenant_id, scope_id, text, turn_id, role)
+        new_chunks = await self.working.process_input(
+            tenant_id, scope_id, text, turn_id, role, timestamp=timestamp
+        )
         chunks_for_encoding = [
             c for c in new_chunks if c.salience >= self.config.min_salience_for_encoding
         ]

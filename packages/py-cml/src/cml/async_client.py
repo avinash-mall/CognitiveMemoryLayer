@@ -121,6 +121,7 @@ class AsyncCognitiveMemoryLayer:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         """Store a memory.
 
@@ -133,6 +134,7 @@ class AsyncCognitiveMemoryLayer:
             metadata: Optional key-value metadata.
             turn_id: Optional turn identifier.
             agent_id: Optional agent identifier.
+            timestamp: Optional event timestamp (defaults to now).
 
         Returns:
             WriteResponse with success, memory_id, chunks_created.
@@ -147,6 +149,7 @@ class AsyncCognitiveMemoryLayer:
             metadata=metadata or {},
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/write", json=body)
         return WriteResponse(**data)
@@ -236,6 +239,7 @@ class AsyncCognitiveMemoryLayer:
         assistant_response: str | None = None,
         session_id: str | None = None,
         max_context_tokens: int = 1500,
+        timestamp: datetime | None = None,
     ) -> TurnResponse:
         """Process a conversational turn (retrieve + store in one call).
 
@@ -244,6 +248,7 @@ class AsyncCognitiveMemoryLayer:
             assistant_response: Optional assistant reply to store.
             session_id: Optional session id.
             max_context_tokens: Max tokens for retrieved context.
+            timestamp: Optional event timestamp (defaults to now).
 
         Returns:
             TurnResponse with memory_context, counts, reconsolidation flag.
@@ -254,6 +259,7 @@ class AsyncCognitiveMemoryLayer:
             assistant_response=assistant_response,
             session_id=session_id,
             max_context_tokens=max_context_tokens,
+            timestamp=timestamp,
         ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/turn", json=body)
         return TurnResponse(**data)
@@ -721,6 +727,7 @@ class AsyncSessionScope:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return await self._parent.write(
             content,
@@ -731,6 +738,7 @@ class AsyncSessionScope:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
     async def read(
@@ -760,12 +768,14 @@ class AsyncSessionScope:
         *,
         assistant_response: str | None = None,
         max_context_tokens: int = 1500,
+        timestamp: datetime | None = None,
     ) -> TurnResponse:
         return await self._parent.turn(
             user_message,
             assistant_response=assistant_response,
             session_id=self.session_id,
             max_context_tokens=max_context_tokens,
+            timestamp=timestamp,
         )
 
     async def remember(
@@ -778,6 +788,7 @@ class AsyncSessionScope:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return await self.write(
             content,
@@ -787,6 +798,7 @@ class AsyncSessionScope:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
 
@@ -808,6 +820,7 @@ class AsyncNamespacedClient:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return await self._parent.write(
             content,
@@ -818,6 +831,7 @@ class AsyncNamespacedClient:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
     async def read(

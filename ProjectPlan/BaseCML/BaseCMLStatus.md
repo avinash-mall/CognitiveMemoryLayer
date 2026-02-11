@@ -102,6 +102,19 @@ A production-ready, neuro-inspired memory system for LLMs that replicates human 
 | 9 | REST API & Integration | Week 9-10 | Full API, auth, multi-tenancy |
 | 10 | Testing & Deployment | Week 10-12 | Tests, Docker, monitoring |
 
+## Recent Enhancements
+
+### Temporal Fidelity (Completed)
+
+- ✅ Added optional `timestamp` field to `WriteMemoryRequest` and `ProcessTurnRequest`
+- ✅ Threaded through entire write pipeline: API → Orchestrator → Short-term → Working → Chunker → Hippocampal → Storage
+- ✅ Python client (py-cml) updated with `timestamp` parameter in sync, async, and embedded modes
+- ✅ Backward compatible: defaults to "now" when not provided
+- ✅ Enables Locomo evaluation and other benchmarks with historical session dates
+- ✅ Documentation updated: CHANGELOG, UsageDocumentation, API reference
+
+This enhancement addresses the requirement from [LocomoEval/EvaluationPlan.md](../LocomoEval/EvaluationPlan.md) to support explicit event timestamps for temporal fidelity in benchmark evaluations.
+
 ## Key Design Principles
 
 1. **Append-Only Event Log**: All changes logged immutably for audit and replay

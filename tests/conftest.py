@@ -88,13 +88,15 @@ def mock_llm():
 @pytest.fixture
 def mock_embeddings():
     """Mock embedding client for tests."""
+    # Use 384 dimensions to match the test database schema
+    # (default config is 1536, but test DB may be created with 384)
     client = MagicMock()
-    client.dimensions = 1536
+    client.dimensions = 384
     client.embed = AsyncMock(
         return_value=MagicMock(
-            embedding=[0.1] * 1536,
+            embedding=[0.1] * 384,
             model="test-model",
-            dimensions=1536,
+            dimensions=384,
             tokens_used=10,
         )
     )

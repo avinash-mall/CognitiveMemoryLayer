@@ -108,6 +108,7 @@ class CognitiveMemoryLayer:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         """Store a memory.
 
@@ -120,6 +121,7 @@ class CognitiveMemoryLayer:
             metadata: Optional key-value metadata.
             turn_id: Optional turn identifier.
             agent_id: Optional agent identifier.
+            timestamp: Optional event timestamp (defaults to now).
 
         Returns:
             WriteResponse with success, memory_id, chunks_created.
@@ -133,6 +135,7 @@ class CognitiveMemoryLayer:
             metadata=metadata or {},
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         ).model_dump(exclude_none=True, mode="json")
         data = self._transport.request("POST", "/memory/write", json=body)
         return WriteResponse(**data)
@@ -224,6 +227,7 @@ class CognitiveMemoryLayer:
         assistant_response: str | None = None,
         session_id: str | None = None,
         max_context_tokens: int = 1500,
+        timestamp: datetime | None = None,
     ) -> TurnResponse:
         """Process a conversational turn (retrieve + store in one call).
 
@@ -232,6 +236,7 @@ class CognitiveMemoryLayer:
             assistant_response: Optional assistant reply to store.
             session_id: Optional session id.
             max_context_tokens: Max tokens for retrieved context.
+            timestamp: Optional event timestamp (defaults to now).
 
         Returns:
             TurnResponse with memory_context, counts, reconsolidation flag.
@@ -241,6 +246,7 @@ class CognitiveMemoryLayer:
             assistant_response=assistant_response,
             session_id=session_id,
             max_context_tokens=max_context_tokens,
+            timestamp=timestamp,
         ).model_dump(exclude_none=True, mode="json")
         data = self._transport.request("POST", "/memory/turn", json=body)
         return TurnResponse(**data)
@@ -779,6 +785,7 @@ class SessionScope:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return self._parent.write(
             content,
@@ -789,6 +796,7 @@ class SessionScope:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
     def read(
@@ -818,12 +826,14 @@ class SessionScope:
         *,
         assistant_response: str | None = None,
         max_context_tokens: int = 1500,
+        timestamp: datetime | None = None,
     ) -> TurnResponse:
         return self._parent.turn(
             user_message,
             assistant_response=assistant_response,
             session_id=self.session_id,
             max_context_tokens=max_context_tokens,
+            timestamp=timestamp,
         )
 
     def remember(
@@ -836,6 +846,7 @@ class SessionScope:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return self.write(
             content,
@@ -845,6 +856,7 @@ class SessionScope:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
 
@@ -866,6 +878,7 @@ class NamespacedClient:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return self._parent.write(
             content,
@@ -876,6 +889,7 @@ class NamespacedClient:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
     def read(

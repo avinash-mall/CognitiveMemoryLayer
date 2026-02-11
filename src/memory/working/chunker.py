@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from .models import ChunkType, SemanticChunk
@@ -88,6 +89,7 @@ class SemanticChunker:
         context_chunks: Optional[List[SemanticChunk]] = None,
         turn_id: Optional[str] = None,
         role: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> List[SemanticChunk]:
         """
         Break text into semantic chunks.
@@ -97,6 +99,7 @@ class SemanticChunker:
             context_chunks: Recent chunks for context
             turn_id: Source turn identifier
             role: "user" or "assistant"
+            timestamp: Optional event timestamp (defaults to now)
 
         Returns:
             List of semantic chunks
@@ -114,6 +117,8 @@ class SemanticChunker:
             text=text,
             context=context_str or "None",
         )
+
+        chunk_timestamp = timestamp or datetime.now(timezone.utc)
 
         try:
             response = await self.llm.complete(
@@ -147,6 +152,7 @@ class SemanticChunker:
                         key_phrases=cd.get("key_phrases", []),
                         salience=salience,
                         confidence=float(cd.get("confidence", 0.8)),
+                        timestamp=chunk_timestamp,
                     )
                 )
             return chunks
@@ -162,6 +168,7 @@ class SemanticChunker:
                     source_role=role,
                     salience=min(1.0, salience),
                     confidence=0.5,
+                    timestamp=chunk_timestamp,
                 )
             ]
 
@@ -204,11 +211,14 @@ class RuleBasedChunker:
         text: str,
         turn_id: Optional[str] = None,
         role: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> List[SemanticChunk]:
         """Rule-based chunking by sentences and markers."""
         # Keep trailing punctuation so we can detect questions
         sentences = re.findall(r"[^.!?]*[.!?]?", text)
         sentences = [s.strip() for s in sentences if s.strip()]
+
+        chunk_timestamp = timestamp or datetime.now(timezone.utc)
 
         chunks = []
         for i, sentence in enumerate(sentences):
@@ -241,6 +251,7 @@ class RuleBasedChunker:
                     source_role=role,
                     salience=salience,
                     confidence=0.6,
+                    timestamp=chunk_timestamp,
                 )
             )
         return chunks
