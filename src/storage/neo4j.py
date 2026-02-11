@@ -396,7 +396,7 @@ class Neo4jGraphStore(GraphStoreBase):
         rel_pattern = "[r]" if not predicate else f"[r:{_sanitize_rel_type(predicate)}]"
         query = f"""
         MATCH (s:Entity)-{rel_pattern}->(o:Entity)
-        WHERE {' AND '.join(conditions)}
+        WHERE {" AND ".join(conditions)}
         RETURN s.entity AS subject,
                type(r) AS predicate,
                o.entity AS object,

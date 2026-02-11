@@ -1,19 +1,6 @@
-"""
-LangChain Integration - Cognitive Memory Layer
+"""LangChain integration with Cognitive Memory Layer.
 
-This example demonstrates how to integrate the Cognitive Memory Layer
-with LangChain as a custom memory class.
-
-Set in .env: OPENAI_API_KEY, OPENAI_MODEL or LLM__MODEL, MEMORY_API_URL or CML_BASE_URL, AUTH__API_KEY.
-
-Prerequisites:
-    1. Start the API server:
-       docker compose -f docker/docker-compose.yml up api
-    
-    2. Install dependencies:
-       pip install langchain>=0.3.0,<0.4.0 langchain-core langchain-openai httpx python-dotenv
-    
-    3. Configure .env (see .env.example)
+Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 """
 
 import os
@@ -21,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Path fixup so 'from memory_client import ...' works regardless of CWD
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
@@ -37,44 +23,23 @@ from langchain.chains import ConversationChain
 from langchain_core.prompts import PromptTemplate
 from pydantic import ConfigDict, Field
 
-from memory_client import CognitiveMemoryClient
+from cml import CognitiveMemoryLayer
 
 
 class CognitiveMemory(BaseMemory):
-    """
-    LangChain-compatible memory class that uses the Cognitive Memory Layer.
-
-    Extends ``BaseMemory`` (not the deprecated ``BaseChatMemory``) and uses
-    Pydantic v2 ``model_config`` instead of the v1 ``Config`` inner class.
-
-    Usage:
-        from langchain_openai import ChatOpenAI
-        from langchain.chains import ConversationChain
-
-        memory = CognitiveMemory(session_id="session-123")
-        llm = ChatOpenAI()
-        chain = ConversationChain(llm=llm, memory=memory)
-
-        response = chain.predict(input="My name is Alice")
-    """
+    """LangChain memory backed by Cognitive Memory Layer (py-cml)."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     session_id: str = "default"
-    memory_client: Optional[CognitiveMemoryClient] = None
-    api_url: str = ""  # Set MEMORY_API_URL or CML_BASE_URL in .env
-    api_key: str = ""  # Set AUTH__API_KEY in env or pass when constructing
-
-    # Control what gets stored
+    memory_client: Optional[CognitiveMemoryLayer] = None
+    api_url: str = ""
+    api_key: str = ""
     auto_store: bool = True
     store_human: bool = True
     store_ai: bool = False
-
-    # Memory retrieval settings
     max_retrieval_results: int = 5
     retrieval_format: str = "llm_context"
-
-    # LangChain memory keys
     memory_key: str = "history"
     input_key: str = "input"
     output_key: str = "response"
@@ -83,112 +48,70 @@ class CognitiveMemory(BaseMemory):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         if self.memory_client is None:
-            key = self.api_key or os.environ.get("AUTH__API_KEY", "")
-            url = (self.api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
-            self.memory_client = CognitiveMemoryClient(
-                base_url=url or None,
-                api_key=key,
-            )
-
-    # --- BaseMemory interface ---
+            base_url = (
+                self.api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000"
+            ).strip()
+            key = self.api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
+            self.memory_client = CognitiveMemoryLayer(api_key=key, base_url=base_url)
 
     @property
     def memory_variables(self) -> List[str]:
-        """Return the memory variables this class provides."""
         return [self.memory_key]
 
     def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Load relevant memories based on the current input.
-
-        This is called by LangChain before each LLM invocation.
-        """
         query = inputs.get(self.input_key, "")
         if not query:
             return {self.memory_key: "" if not self.return_messages else []}
         try:
-            result = self.memory_client.read(
-                query=query,
-                max_results=self.max_retrieval_results,
-                format=self.retrieval_format,
+            r = self.memory_client.read(
+                query, max_results=self.max_retrieval_results, response_format=self.retrieval_format
             )
+            ctx = r.context or r.llm_context or ""
             if self.return_messages:
-                messages: List[BaseMessage] = []
-                if result.llm_context:
-                    messages.append(
-                        AIMessage(content=f"[Memory Context]\n{result.llm_context}")
-                    )
-                return {self.memory_key: messages}
-            return {self.memory_key: result.llm_context or ""}
+                return {self.memory_key: [AIMessage(content=f"[Memory]\n{ctx}")] if ctx else []}
+            return {self.memory_key: ctx}
         except Exception as e:
             print(f"Warning: Could not load memories: {e}")
             return {self.memory_key: "" if not self.return_messages else []}
 
     def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
-        """
-        Save the conversation context to memory.
-
-        This is called by LangChain after each LLM invocation.
-        """
         if not self.auto_store:
             return
         try:
             if self.store_human:
-                human_input = inputs.get(self.input_key, "")
-                if human_input:
+                human = inputs.get(self.input_key, "")
+                if human:
                     self.memory_client.write(
-                        f"User said: {human_input}",
+                        f"User said: {human}",
                         session_id=self.session_id,
                         context_tags=["conversation"],
                         memory_type="episodic_event",
                     )
             if self.store_ai:
-                ai_output = outputs.get(self.output_key, "")
-                if ai_output:
+                ai = outputs.get(self.output_key, "")
+                if ai:
                     self.memory_client.write(
-                        f"Assistant responded about: {ai_output[:200]}",
+                        f"Assistant: {ai[:200]}",
                         session_id=self.session_id,
                         context_tags=["conversation"],
                         memory_type="episodic_event",
                     )
         except Exception as e:
-            print(f"Warning: Could not save to memory: {e}")
+            print(f"Warning: Could not save: {e}")
 
     def clear(self) -> None:
-        """Clear all memories for this scope."""
         try:
             self.memory_client.forget(query="*", action="delete")
-        except Exception as e:
-            print(f"Warning: Could not clear memory: {e}")
-
-    # --- Optional helper ---
-
-    def add_message(self, message: BaseMessage) -> None:
-        """Add a message directly to memory."""
-        content = message.content
-        if isinstance(message, HumanMessage):
-            content = f"User said: {content}"
-        elif isinstance(message, AIMessage):
-            content = f"Assistant said: {content}"
-        try:
-            self.memory_client.write(
-                content,
-                session_id=self.session_id,
-                context_tags=["conversation"],
-                memory_type="episodic_event",
-            )
-        except Exception as e:
-            print(f"Warning: Could not add message to memory: {e}")
+        except Exception:
+            pass
 
 
-# Custom prompt that includes memory context
-COGNITIVE_MEMORY_PROMPT = PromptTemplate(
+PROMPT = PromptTemplate(
     input_variables=["history", "input"],
-    template="""You are a helpful assistant with access to long-term memory about the user.
+    template="""You are a helpful assistant with long-term memory.
 
 {history}
 
-Current conversation:
 Human: {input}
 Assistant:""",
 )
@@ -200,104 +123,47 @@ def create_memory_chain(
     memory_api_url: Optional[str] = None,
     memory_api_key: Optional[str] = None,
 ) -> ConversationChain:
-    """
-    Create a LangChain conversation chain with cognitive memory.
-
-    Args:
-        session_id: Session identifier for origin tracking
-        llm_model: OpenAI model (default: OPENAI_MODEL or LLM__MODEL from env)
-        memory_api_url: Cognitive Memory Layer API URL (default: MEMORY_API_URL or CML_BASE_URL from env)
-        memory_api_key: API key for memory service (default: AUTH__API_KEY from env)
-
-    Returns:
-        A ConversationChain with persistent memory
-    """
-    key = memory_api_key or os.environ.get("AUTH__API_KEY", "")
-    url = (memory_api_url or os.environ.get("MEMORY_API_URL") or os.environ.get("CML_BASE_URL") or "").strip()
+    base_url = (memory_api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "").strip() or "http://localhost:8000"
+    key = memory_api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
     model = (llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
     if not model:
-        raise ValueError("Set OPENAI_MODEL or LLM__MODEL in .env")
+        raise ValueError("Set OPENAI_MODEL or LLM__MODEL")
     memory = CognitiveMemory(
         session_id=session_id,
-        api_url=url,
+        api_url=base_url,
         api_key=key,
         auto_store=True,
         store_human=True,
         store_ai=False,
     )
-
     llm = ChatOpenAI(model=model, temperature=0.7)
-
-    chain = ConversationChain(
-        llm=llm,
-        memory=memory,
-        prompt=COGNITIVE_MEMORY_PROMPT,
-        verbose=False,
-    )
-
-    return chain
+    return ConversationChain(llm=llm, memory=memory, prompt=PROMPT, verbose=False)
 
 
-def main() -> None:
-    """Demo the LangChain integration."""
-
+def main():
     print("=" * 60)
-    print("LangChain Integration with Cognitive Memory Layer")
+    print("LangChain + Cognitive Memory Layer")
     print("=" * 60)
-
     if not os.getenv("OPENAI_API_KEY"):
-        print("\nSet OPENAI_API_KEY in .env")
+        print("Set OPENAI_API_KEY in .env")
         return
     if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL")):
-        print("\nSet OPENAI_MODEL or LLM__MODEL in .env")
+        print("Set OPENAI_MODEL or LLM__MODEL in .env")
         return
-
-    print("\nCreating conversation chain with persistent memory...")
-    chain = create_memory_chain(session_id="langchain-demo-session")
-
-    print(
-        "\nType 'quit' to exit.\n"
-        "\nBot: Hello! I'm a LangChain-powered assistant with long-term memory. "
-        "Tell me about yourself!\n"
-    )
-
+    chain = create_memory_chain(session_id="langchain-demo")
+    print("\nType 'quit' to exit.\n")
     try:
         while True:
             user_input = input("You: ").strip()
-            if user_input.lower() in ["quit", "exit", "bye"]:
-                print("\nBot: Goodbye! I'll remember our conversation.")
+            if user_input.lower() in ("quit", "exit", "bye"):
+                print("\nBot: Goodbye!")
                 break
             if not user_input:
                 continue
-            response = chain.predict(input=user_input)
-            print(f"\nBot: {response}\n")
+            print(f"\nBot: {chain.predict(input=user_input)}\n")
     except KeyboardInterrupt:
-        print("\n\nGoodbye!")
-
-
-# Example of using the memory class directly
-def example_direct_usage() -> None:
-    """Show direct usage of CognitiveMemory class."""
-
-    print("\n--- Direct Usage Example ---\n")
-
-    memory = CognitiveMemory(session_id="direct-usage-demo-session", auto_store=True)
-
-    # Simulate storing conversation
-    memory.save_context(
-        inputs={"input": "My favorite color is blue and I love hiking."},
-        outputs={"response": "That's great! Blue is a calming color."},
-    )
-
-    # Retrieve relevant memories
-    memories = memory.load_memory_variables({"input": "What are my hobbies?"})
-    print(f"Retrieved memories:\n{memories['history']}")
-
-    # Clean up
-    memory.memory_client.close()
+        print("\nGoodbye!")
 
 
 if __name__ == "__main__":
     main()
-    # Uncomment to run direct usage example:
-    # example_direct_usage()

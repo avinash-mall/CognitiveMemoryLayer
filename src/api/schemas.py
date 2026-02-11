@@ -20,6 +20,7 @@ class WriteMemoryRequest(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     turn_id: Optional[str] = None
     agent_id: Optional[str] = None
+    timestamp: Optional[datetime] = None  # Optional event timestamp (defaults to now)
 
 
 class CreateSessionRequest(BaseModel):
@@ -101,6 +102,7 @@ class ProcessTurnRequest(BaseModel):
     assistant_response: Optional[str] = None
     session_id: Optional[str] = None
     max_context_tokens: int = 1500
+    timestamp: Optional[datetime] = None  # Optional event timestamp for the turn (defaults to now)
 
 
 class ProcessTurnResponse(BaseModel):

@@ -1,6 +1,7 @@
 """Working memory manager: per-scope state and chunk processing."""
 
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Dict, List, Optional, Union
 
 import asyncio
 
@@ -30,7 +31,7 @@ class WorkingMemoryManager:
         self.max_chunks = max_chunks_per_user
 
         if llm_client and not use_fast_chunker:
-            self.chunker = SemanticChunker(llm_client)
+            self.chunker: Union[SemanticChunker, RuleBasedChunker] = SemanticChunker(llm_client)
             self._use_llm = True
         else:
             self.chunker = RuleBasedChunker()
@@ -58,6 +59,7 @@ class WorkingMemoryManager:
         text: str,
         turn_id: Optional[str] = None,
         role: str = "user",
+        timestamp: Optional[datetime] = None,
     ) -> List[SemanticChunk]:
         """
         Process new input into working memory.
@@ -74,9 +76,10 @@ class WorkingMemoryManager:
                 context_chunks=context,
                 turn_id=turn_id,
                 role=role,
+                timestamp=timestamp,
             )
         else:
-            new_chunks = self.chunker.chunk(text, turn_id=turn_id, role=role)
+            new_chunks = self.chunker.chunk(text, turn_id=turn_id, role=role, timestamp=timestamp)
 
         for chunk in new_chunks:
             state.add_chunk(chunk)

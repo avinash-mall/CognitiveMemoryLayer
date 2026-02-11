@@ -10,19 +10,19 @@ from typing import Any
 from uuid import UUID, uuid4
 
 try:
-    from src.core.enums import (  # type: ignore
+    from src.core.enums import (
         MemorySource,
         MemoryStatus,
         MemoryType,
     )
-    from src.core.schemas import (  # type: ignore
+    from src.core.schemas import (
         EntityMention,
         MemoryRecord,
         MemoryRecordCreate,
         Provenance,
         Relation,
     )
-    from src.storage.base import MemoryStoreBase  # type: ignore
+    from src.storage.base import MemoryStoreBase
 except ImportError as e:
     raise ImportError(
         "Embedded lite mode requires the CML engine. "

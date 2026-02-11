@@ -62,7 +62,7 @@ def _check_embedded_deps() -> None:
             "Embedded mode requires aiosqlite. Install with: pip install cognitive-memory-layer[embedded]"
         ) from e
     try:
-        from src.memory.orchestrator import (  # type: ignore
+        from src.memory.orchestrator import (
             MemoryOrchestrator,  # noqa: F401
         )
     except ImportError as e:
@@ -93,7 +93,7 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     episodes = [_retrieved_to_memory_item(m) for m in packet.recent_episodes]
     all_items = facts + preferences + episodes
     try:
-        from src.retrieval.packet_builder import (  # type: ignore
+        from src.retrieval.packet_builder import (
             MemoryPacketBuilder,
         )
 
@@ -171,12 +171,12 @@ class EmbeddedCognitiveMemoryLayer:
         self._sqlite_store = SQLiteMemoryStore(db_path=path)
         await self._sqlite_store.initialize()
 
-        from src.utils.embeddings import LocalEmbeddings  # type: ignore
-        from src.utils.llm import OpenAICompatibleClient  # type: ignore
+        from src.utils.embeddings import LocalEmbeddings
+        from src.utils.llm import OpenAICompatibleClient
 
         # When running in repo, use project LLM settings from env so tests use local Ollama etc.
         try:
-            from src.core.config import get_settings  # type: ignore
+            from src.core.config import get_settings
 
             s = get_settings()
             if s.llm.base_url:
@@ -251,6 +251,7 @@ class EmbeddedCognitiveMemoryLayer:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         """Store a memory."""
         self._ensure_initialized()
@@ -264,6 +265,7 @@ class EmbeddedCognitiveMemoryLayer:
             turn_id=turn_id,
             agent_id=agent_id,
             namespace=namespace,
+            timestamp=timestamp,
         )
         mid = result.get("memory_id")
         return WriteResponse(
@@ -303,10 +305,11 @@ class EmbeddedCognitiveMemoryLayer:
         assistant_response: str | None = None,
         session_id: str | None = None,
         max_context_tokens: int = 1500,
+        timestamp: datetime | None = None,
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
-        from src.memory.seamless_provider import (  # type: ignore
+        from src.memory.seamless_provider import (
             SeamlessMemoryProvider,
         )
 
@@ -319,6 +322,7 @@ class EmbeddedCognitiveMemoryLayer:
             user_message=user_message,
             assistant_response=assistant_response,
             session_id=session_id,
+            timestamp=timestamp,
         )
         return TurnResponse(
             memory_context=result.memory_context,

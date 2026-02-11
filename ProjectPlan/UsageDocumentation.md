@@ -130,7 +130,7 @@ You can do the same flow from Python using the **cognitive-memory-layer** SDK; s
 The **cognitive-memory-layer** package is the official Python SDK for the Cognitive Memory Layer. It provides a pip-installable client for both **client mode** (connecting to a running CML server) and **embedded mode** (running the memory engine in-process with no server).
 
 - **Package:** `cognitive-memory-layer` on PyPI; import as `cml`
-- **Docs and examples:** `packages/py-cml/` in this repo ([README](../packages/py-cml/README.md), [docs](../packages/py-cml/docs/), [examples](../packages/py-cml/examples/))
+- **Docs and examples:** `packages/py-cml/` in this repo ([README](../packages/py-cml/README.md), [docs](../packages/py-cml/docs/)); examples in [examples/](../examples/)
 - **Full project plan:** [CreatePackage/CreatePackageStatus.md](CreatePackage/CreatePackageStatus.md)
 
 ### Installation
@@ -192,7 +192,7 @@ async def main():
 # asyncio.run(main())
 ```
 
-Requires `pip install cognitive-memory-layer[embedded]`. See [packages/py-cml/README.md](../packages/py-cml/README.md) and [examples/embedded_mode.py](../packages/py-cml/examples/embedded_mode.py).
+Requires `pip install cognitive-memory-layer[embedded]`. See [packages/py-cml/README.md](../packages/py-cml/README.md) and [examples/embedded_mode.py](../examples/embedded_mode.py).
 
 ### Configuration
 
@@ -223,9 +223,9 @@ memory = CognitiveMemoryLayer(
 
 | Method | Description |
 |--------|-------------|
-| `write(content, **kwargs)` | Store new memory |
+| `write(content, timestamp=None, **kwargs)` | Store new memory; optional `timestamp` for event time |
 | `read(query, **kwargs)` | Retrieve memories; use `format="llm_context"` for prompt-ready string |
-| `turn(user_message, **kwargs)` | Seamless turn: retrieve context and optionally store exchange |
+| `turn(user_message, timestamp=None, **kwargs)` | Seamless turn: retrieve context and optionally store exchange; optional `timestamp` for event time |
 | `update(memory_id, **kwargs)` | Update existing memory or send feedback (`correct` / `incorrect` / `outdated`) |
 | `forget(**kwargs)` | Forget by `memory_ids`, `query`, or `before` |
 | `stats()` | Memory statistics |
@@ -236,17 +236,19 @@ memory = CognitiveMemoryLayer(
 
 Aliases: `remember()` = `write()`, `search()` = `read()`. For full signatures and async/embedded usage, see [packages/py-cml/docs/api-reference.md](../packages/py-cml/docs/api-reference.md).
 
-### Examples (packages/py-cml/examples/)
+**Temporal fidelity:** The optional `timestamp` parameter enables historical replay for benchmarks (e.g., Locomo evaluation). Pass a `datetime` object to specify when the event occurred; defaults to "now" if not provided.
+
+### Examples (examples/)
 
 | File | Description |
 |------|-------------|
-| [quickstart.py](../packages/py-cml/examples/quickstart.py) | Sync client: write, read, get_context, stats |
-| [chat_with_memory.py](../packages/py-cml/examples/chat_with_memory.py) | Chatbot with OpenAI + cognitive-memory-layer: turn, inject memory_context into prompt |
-| [async_example.py](../packages/py-cml/examples/async_example.py) | Async client, concurrent writes, batch_read |
-| [embedded_mode.py](../packages/py-cml/examples/embedded_mode.py) | Embedded mode: zero-config and persistent db_path |
-| [agent_integration.py](../packages/py-cml/examples/agent_integration.py) | Minimal agent: observe, plan, reflect using memory |
+| [quickstart.py](../examples/quickstart.py) | Sync client: write, read, get_context, stats |
+| [chat_with_memory.py](../examples/chat_with_memory.py) | Chatbot with OpenAI + cognitive-memory-layer: turn, inject memory_context into prompt |
+| [async_example.py](../examples/async_example.py) | Async client, concurrent writes, batch_read |
+| [embedded_mode.py](../examples/embedded_mode.py) | Embedded mode: zero-config and persistent db_path |
+| [agent_integration.py](../examples/agent_integration.py) | Minimal agent: observe, plan, reflect using memory |
 
-Run from repo root: `python packages/py-cml/examples/quickstart.py` (set `CML_API_KEY`, `CML_BASE_URL` for client examples).
+Run from repo root: `python examples/quickstart.py` (set `CML_API_KEY`, `CML_BASE_URL` for client examples).
 
 ### Advanced features (cognitive-memory-layer)
 
@@ -501,7 +503,8 @@ Store new information in memory.
   "memory_type": "episodic_event|semantic_fact|preference|task_state|procedure|constraint|hypothesis (optional)",
   "metadata": { "key": "value" },
   "turn_id": "string (optional)",
-  "agent_id": "string (optional)"
+  "agent_id": "string (optional)",
+  "timestamp": "ISO 8601 datetime (optional - event time, defaults to now)"
 }
 ```
 
@@ -532,7 +535,8 @@ Process a conversation turn: auto-retrieve relevant context and optionally auto-
   "user_message": "string (required)",
   "assistant_response": "string (optional)",
   "session_id": "string (optional)",
-  "max_context_tokens": 1500
+  "max_context_tokens": 1500,
+  "timestamp": "ISO 8601 datetime (optional - event time, defaults to now)"
 }
 ```
 
