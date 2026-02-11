@@ -31,6 +31,9 @@ env/
 .env.local
 *.pem
 
+# Local config (project uses .env + src/core/config.py)
+config/
+
 # IDE
 .idea/
 .vscode/
@@ -46,6 +49,12 @@ htmlcov/
 
 # mypy
 .mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# Evaluation (external Locomo benchmark; clone from snap-research/locomo if needed)
+evaluation/locomo/
 
 # OS
 .DS_Store

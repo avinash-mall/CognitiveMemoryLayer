@@ -129,7 +129,7 @@ You can do the same flow from Python using the **cognitive-memory-layer** SDK; s
 
 The **cognitive-memory-layer** package is the official Python SDK for the Cognitive Memory Layer. It provides a pip-installable client for both **client mode** (connecting to a running CML server) and **embedded mode** (running the memory engine in-process with no server).
 
-- **Package:** `cognitive-memory-layer` on PyPI; import as `cml`
+- **Package:** `cognitive-memory-layer` on PyPI; use `from cml import CognitiveMemoryLayer` (or `AsyncCognitiveMemoryLayer`, `EmbeddedCognitiveMemoryLayer`)
 - **Docs and examples:** `packages/py-cml/` in this repo ([README](../packages/py-cml/README.md), [docs](../packages/py-cml/docs/)); examples in [examples/](../examples/)
 - **Full project plan:** [CreatePackage/CreatePackageStatus.md](CreatePackage/CreatePackageStatus.md)
 
@@ -192,7 +192,7 @@ async def main():
 # asyncio.run(main())
 ```
 
-Requires `pip install cognitive-memory-layer[embedded]`. See [packages/py-cml/README.md](../packages/py-cml/README.md) and [examples/embedded_mode.py](../examples/embedded_mode.py).
+Requires `pip install cognitive-memory-layer[embedded]`. For full embedded engine (consolidation, forgetting, etc.) from this repo: `pip install -e .` then `pip install -e packages/py-cml[embedded]`. See [packages/py-cml/README.md](../packages/py-cml/README.md) and [examples/embedded_mode.py](../examples/embedded_mode.py).
 
 ### Configuration
 
@@ -224,7 +224,7 @@ memory = CognitiveMemoryLayer(
 | Method | Description |
 |--------|-------------|
 | `write(content, timestamp=None, **kwargs)` | Store new memory; optional `timestamp` for event time |
-| `read(query, **kwargs)` | Retrieve memories; use `format="llm_context"` for prompt-ready string |
+| `read(query, **kwargs)` | Retrieve memories; use `response_format="llm_context"` (SDK) for prompt-ready string (REST uses `format`) |
 | `turn(user_message, timestamp=None, **kwargs)` | Seamless turn: retrieve context and optionally store exchange; optional `timestamp` for event time |
 | `update(memory_id, **kwargs)` | Update existing memory or send feedback (`correct` / `incorrect` / `outdated`) |
 | `forget(**kwargs)` | Forget by `memory_ids`, `query`, or `before` |
@@ -242,13 +242,21 @@ Aliases: `remember()` = `write()`, `search()` = `read()`. For full signatures an
 
 | File | Description |
 |------|-------------|
-| [quickstart.py](../examples/quickstart.py) | Sync client: write, read, get_context, stats |
-| [chat_with_memory.py](../examples/chat_with_memory.py) | Chatbot with OpenAI + cognitive-memory-layer: turn, inject memory_context into prompt |
-| [async_example.py](../examples/async_example.py) | Async client, concurrent writes, batch_read |
+| [quickstart.py](../examples/quickstart.py) | Minimal intro: write, read, get_context, stats |
+| [basic_usage.py](../examples/basic_usage.py) | Full CRUD: write, read, update, forget, stats |
+| [chat_with_memory.py](../examples/chat_with_memory.py) | Simple chatbot using py-cml `turn()` + OpenAI |
+| [chatbot_with_memory.py](../examples/chatbot_with_memory.py) | Full-featured chatbot with !remember, !forget, !stats, auto-extraction |
+| [openai_tool_calling.py](../examples/openai_tool_calling.py) | OpenAI function calling: memory_write, memory_read, memory_update, memory_forget |
+| [anthropic_tool_calling.py](../examples/anthropic_tool_calling.py) | Anthropic Claude tool use with memory tools |
+| [langchain_integration.py](../examples/langchain_integration.py) | LangChain `BaseMemory` backed by py-cml |
+| [async_example.py](../examples/async_example.py) | Async client: concurrent writes, batch_read |
 | [embedded_mode.py](../examples/embedded_mode.py) | Embedded mode: zero-config and persistent db_path |
-| [agent_integration.py](../examples/agent_integration.py) | Minimal agent: observe, plan, reflect using memory |
+| [agent_integration.py](../examples/agent_integration.py) | Agent pattern: observe, plan, reflect using memory |
+| [standalone_demo.py](../examples/standalone_demo.py) | Raw httpx example (no py-cml): write, read, update, forget, stats, process_turn, create_session |
+| [ollama_chat_test.py](../examples/ollama_chat_test.py) | Non-interactive E2E test with local Ollama |
+| [ollama_chatbot_app.py](../examples/ollama_chatbot_app.py) | Streamlit app with Ollama + memory |
 
-Run from repo root: `python examples/quickstart.py` (set `CML_API_KEY`, `CML_BASE_URL` for client examples).
+Run from repo root: `python examples/quickstart.py` (set `CML_API_KEY` and `CML_BASE_URL`, or copy `.env.example` to `.env` for client examples).
 
 ### Advanced features (cognitive-memory-layer)
 
@@ -490,9 +498,7 @@ Store new information in memory.
 **Request Headers:**
 - `X-API-Key: <api_key>` (required)
 - `Content-Type: application/json`
-
-**Request Headers:**
-- `X-Tenant-ID: <tenant_id>` (optional; default from API key)
+- `X-Tenant-ID: <tenant_id>` (optional; **admin key only** — standard keys use the tenant from config)
 
 **Request Body:**
 ```json
@@ -706,21 +712,23 @@ Get memory statistics for the authenticated tenant.
 
 ---
 
-#### Session Convenience Endpoints
+#### Session Endpoints
 
-For session-scoped operations, convenience endpoints are available:
+**POST /session/create**
 
-**GET /session/{session_id}/context**
-
-Get full session context for LLM injection.
+Create a new memory session. Body: `{ "name": "optional", "ttl_hours": 24, "metadata": {} }`. Returns `session_id`, `created_at`, `expires_at`. Session is stored in Redis with TTL.
 
 **POST /session/{session_id}/write**
 
-Write to memory with session_id for origin tracking.
+Write to memory with `session_id` for origin tracking (body same as POST /memory/write).
 
 **POST /session/{session_id}/read**
 
-Read from memory (session_id for API compatibility).
+Read from memory (body same as POST /memory/read; session_id kept for API compatibility).
+
+**GET /session/{session_id}/context**
+
+Get full session context for LLM injection (messages, tool_results, scratch_pad, context_string).
 
 ---
 
@@ -777,14 +785,15 @@ All dashboard endpoints live under `/api/v1/dashboard` and require **admin** per
 | GET | `/api/v1/dashboard/timeline` | Memory counts per day for charts. Query params: `days`, `tenant_id`. |
 | GET | `/api/v1/dashboard/components` | Health check for PostgreSQL, Neo4j, Redis (latency, counts). |
 | GET | `/api/v1/dashboard/tenants` | List all tenants with memory/fact/event counts. |
-| POST | `/api/v1/dashboard/consolidate` | Trigger consolidation. Body: `{ "tenant_id": "...", "user_id": "..." }`. |
+| POST | `/api/v1/dashboard/consolidate` | Trigger consolidation. Body: `{ "tenant_id": "...", "user_id": "..." }` (user_id optional, falls back to tenant_id). |
 | POST | `/api/v1/dashboard/forget` | Trigger forgetting. Body: `{ "tenant_id": "...", "user_id": "...", "dry_run": true, "max_memories": 5000 }`. |
+| POST | `/api/v1/dashboard/database/reset` | Drop all tables and re-run migrations (use with caution). |
 
 ### Implementation Notes
 
 - **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/` (no build step). Chart.js is loaded via CDN for overview charts.
 - **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`).
-- **Static files**: Served at `/dashboard/static`; SPA fallback at `/dashboard` and `/dashboard/*` serves `index.html`.
+- **Static files**: Served at `/dashboard/static/*`; `/dashboard` and `/dashboard/*` (except `/dashboard/static/*`) serve `index.html` for client-side routing.
 
 ---
 
@@ -861,7 +870,7 @@ The system uses API key authentication via the `X-API-Key` header. Keys are load
 **Headers:**
 ```
 X-API-Key: <your-api-key>
-X-Tenant-ID: optional-tenant-id
+X-Tenant-ID: optional-tenant-id (admin key only; standard keys use tenant from API key config)
 X-User-ID: optional-user-id override
 ```
 
@@ -878,8 +887,9 @@ X-User-ID: optional-user-id override
 ### Multi-Tenancy
 
 The system supports multi-tenant isolation:
-- Each API key is associated with a default `tenant_id` (from config)
+- Each API key is associated with a default `tenant_id` (from `AUTH__DEFAULT_TENANT_ID` or config)
 - All operations are scoped to the tenant
+- **Tenant override**: The `X-Tenant-ID` header is honored only when using the **admin** API key; standard keys always use the tenant associated with that key
 - Tenants cannot access other tenants' data
 
 ---
@@ -1141,21 +1151,23 @@ curl -X POST http://localhost:8000/api/v1/memory/write \
 #### 1. Install Dependencies
 
 ```bash
-# Using Poetry
+# Using Poetry (recommended; see pyproject.toml)
 poetry install
 
-# Or using pip
+# Or using pip (e.g. from requirements-docker.txt used in CI)
 pip install -r requirements-docker.txt
 ```
 
 #### 2. Start Infrastructure
 
 ```bash
-# Start only database services
+# Start only database services (match URLs in .env or below)
 docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
 ```
 
 #### 3. Set Environment Variables
+
+Copy `.env.example` to `.env` and edit, or set:
 
 ```bash
 export DATABASE__POSTGRES_URL="postgresql+asyncpg://memory:memory@localhost:5432/memory"
@@ -1163,6 +1175,8 @@ export DATABASE__NEO4J_URL="bolt://localhost:7687"
 export DATABASE__NEO4J_USER="neo4j"
 export DATABASE__NEO4J_PASSWORD="password"
 export DATABASE__REDIS_URL="redis://localhost:6379"
+export AUTH__API_KEY="test-key"
+export AUTH__ADMIN_API_KEY="test-key"
 export OPENAI_API_KEY="sk-your-key-here"
 ```
 
@@ -1170,16 +1184,14 @@ export OPENAI_API_KEY="sk-your-key-here"
 
 ```bash
 poetry run alembic upgrade head
-# or
-alembic upgrade head
+# or (with pip): alembic upgrade head
 ```
 
 #### 5. Start the API
 
 ```bash
 poetry run uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
-# or
-uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+# or: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### Running Tests
@@ -1236,38 +1248,40 @@ All configuration uses nested environment variables with `__` delimiter.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE__POSTGRES_URL` | `postgresql+asyncpg://localhost/memory` | PostgreSQL connection URL |
+| `DATABASE__POSTGRES_URL` | `postgresql+asyncpg://memory:memory@localhost/memory` | PostgreSQL connection URL (must use asyncpg driver) |
 | `DATABASE__NEO4J_URL` | `bolt://localhost:7687` | Neo4j connection URL |
 | `DATABASE__NEO4J_USER` | `neo4j` | Neo4j username |
-| `DATABASE__NEO4J_PASSWORD` | `password` | Neo4j password |
+| `DATABASE__NEO4J_PASSWORD` | *(empty)* | Neo4j password (set for remote/secured instances) |
 | `DATABASE__REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
 
 #### Embedding Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMBEDDING__PROVIDER` | `openai` | Provider: `openai` or `local` |
+| `EMBEDDING__PROVIDER` | `openai` | Provider: `openai`, `local`, `openai_compatible`, `ollama` |
 | `EMBEDDING__MODEL` | `text-embedding-3-small` | OpenAI embedding model |
-| `EMBEDDING__DIMENSIONS` | `1536` | Embedding dimensions |
-| `EMBEDDING__LOCAL_MODEL` | `all-MiniLM-L6-v2` | Local model (sentence-transformers) |
-| `EMBEDDING__API_KEY` | None | OpenAI API key (or use `OPENAI_API_KEY`) |
+| `EMBEDDING__DIMENSIONS` | `1536` | Embedding dimensions (must match DB after migrations) |
+| `EMBEDDING__LOCAL_MODEL` | `all-MiniLM-L6-v2` | Local model when provider=local (sentence-transformers) |
+| `EMBEDDING__API_KEY` | None | API key (or use `OPENAI_API_KEY`) |
+| `EMBEDDING__BASE_URL` | None | Base URL for openai_compatible/ollama embedding endpoint |
 
 #### LLM Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM__PROVIDER` | `openai` | Provider: `openai`, `vllm`, `ollama`, `gemini`, `claude` |
+| `LLM__PROVIDER` | `openai` | Provider: `openai`, `openai_compatible`, `ollama`, `gemini`, `claude` |
 | `LLM__MODEL` | `gpt-4o-mini` | Model name |
-| `LLM__API_KEY` | None | API key |
-| `LLM__BASE_URL` | None | OpenAI-compatible endpoint (for vLLM, Ollama, or proxy) |
+| `LLM__API_KEY` | None | API key (or use `OPENAI_API_KEY`) |
+| `LLM__BASE_URL` | None | OpenAI-compatible endpoint (for Ollama, vLLM, or proxy) |
 
 #### Auth Settings
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AUTH__API_KEY` | None | API key for read/write access. Use `test-key` for local dev and py-cml integration/e2e tests (see [.env.example](../.env.example)). |
-| `AUTH__ADMIN_API_KEY` | None | API key with admin permission. Use `test-key` locally to match tests. |
-| `AUTH__DEFAULT_TENANT_ID` | `default` | Default tenant for authenticated requests |
+| `AUTH__ADMIN_API_KEY` | None | API key with admin permission (dashboard, consolidate, forget, list_tenants). Use `test-key` locally to match tests. |
+| `AUTH__DEFAULT_TENANT_ID` | `default` | Default tenant for authenticated requests (overridable via `X-Tenant-ID` only when using admin key). |
+| `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` | `60` | Rate limit per tenant; `0` = disable. Use higher value for bulk eval (e.g. `600`). |
 
 ---
 
@@ -1282,11 +1296,14 @@ The consolidation engine runs periodically to:
 4. Migrate to neocortical store
 
 **Trigger manually (admin):**
+
+- **REST (path param):** `POST /api/v1/admin/consolidate/{user_id}` with admin `X-API-Key`.
+- **Dashboard API:** `POST /api/v1/dashboard/consolidate` with body `{ "tenant_id": "...", "user_id": "..." }` (admin key required).
+
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admin/consolidate/USER_ID" \
+curl -X POST "http://localhost:8000/api/v1/admin/consolidate/my-user-id" \
   -H "X-API-Key: YOUR_ADMIN_API_KEY"
 ```
-(Use the user_id to identify the user whose memories should be consolidated.)
 
 ### Active Forgetting
 
@@ -1297,8 +1314,12 @@ The forgetting system:
 4. Optionally uses LLM for compression
 
 **Trigger manually (admin):**
+
+- **REST (path param):** `POST /api/v1/admin/forget/{user_id}?dry_run=true` with admin `X-API-Key`.
+- **Dashboard API:** `POST /api/v1/dashboard/forget` with body `{ "tenant_id", "user_id", "dry_run", "max_memories" }` (admin key required).
+
 ```bash
-curl -X POST "http://localhost:8000/api/v1/admin/forget/USER_ID?dry_run=true" \
+curl -X POST "http://localhost:8000/api/v1/admin/forget/my-user-id?dry_run=true" \
   -H "X-API-Key: YOUR_ADMIN_API_KEY"
 ```
 
