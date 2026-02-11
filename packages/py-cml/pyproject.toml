@@ -86,6 +86,7 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_ignores = true
 strict = true
+ignore_missing_imports = true  # Ignore missing stubs (e.g., aiosqlite)
 
 
 [tool.pytest.ini_options]
