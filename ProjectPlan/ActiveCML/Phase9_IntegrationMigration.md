@@ -16,7 +16,7 @@ Phase 9 brings all the intrinsic memory interfaces together into a cohesive syst
 - `src/api/routes.py` — New intrinsic memory API endpoints
 - `src/memory/seamless_provider.py` — Transparent integration point
 - `src/memory/orchestrator.py` — Wire Controller alongside existing orchestration
-- `config/settings.yaml` — Extended configuration
+- `.env` / `src/core/config.py` — Extended configuration
 
 ### Dependencies
 - All prior phases (1-8)

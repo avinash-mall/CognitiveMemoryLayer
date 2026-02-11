@@ -55,12 +55,16 @@ class LLMSettings(PydanticBaseModel):
 class AuthSettings(PydanticBaseModel):
     """
     API authentication (keys from environment).
-    Env vars (with env_nested_delimiter='__'): AUTH__API_KEY, AUTH__ADMIN_API_KEY, AUTH__DEFAULT_TENANT_ID.
+    Env vars (with env_nested_delimiter='__'): AUTH__API_KEY, AUTH__ADMIN_API_KEY, AUTH__DEFAULT_TENANT_ID, AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE.
     """
 
     api_key: str | None = Field(default=None)
     admin_api_key: str | None = Field(default=None)
     default_tenant_id: str = Field(default="default")
+    rate_limit_requests_per_minute: int = Field(
+        default=60,
+        description="Rate limit per tenant (0 = disable). Use higher value for bulk eval (e.g. 600).",
+    )
 
 
 class Settings(BaseSettings):

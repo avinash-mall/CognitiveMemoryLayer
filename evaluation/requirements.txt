@@ -1,0 +1,5 @@
+# Minimal deps for evaluation/scripts/eval_locomo.py.
+# LoCoMo task_eval scoring also needs: bert-score, nltk, regex, numpy
+# Install from locomo if needed: pip install -r locomo/requirements.txt (or just the scoring deps)
+requests>=2.28.0
+tqdm>=4.64.0
