@@ -81,6 +81,7 @@ async def write_memory(
             turn_id=body.turn_id,
             agent_id=body.agent_id,
             namespace=body.namespace,
+            timestamp=body.timestamp,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
         return WriteMemoryResponse(
@@ -123,6 +124,7 @@ async def process_turn(
             user_message=body.user_message,
             assistant_response=body.assistant_response,
             session_id=body.session_id,
+            timestamp=body.timestamp,
         )
         return ProcessTurnResponse(
             memory_context=result.memory_context,

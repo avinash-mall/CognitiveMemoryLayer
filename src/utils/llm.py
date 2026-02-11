@@ -227,7 +227,7 @@ def _claude_client(api_key: str, model: str) -> LLMClient:
         from anthropic import AsyncAnthropic
     except ImportError as e:
         raise ImportError(
-            "claude provider requires the anthropic package. " "Install with: pip install anthropic"
+            "claude provider requires the anthropic package. Install with: pip install anthropic"
         ) from e
 
     class _ClaudeClient(LLMClient):

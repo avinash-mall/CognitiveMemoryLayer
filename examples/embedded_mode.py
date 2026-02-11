@@ -1,4 +1,7 @@
-"""Use py-cml without a server — embedded mode with SQLite."""
+"""Use py-cml without a server — embedded mode with serverless SQLite.
+
+Uses aiosqlite (in-memory or file-based). No HTTP or CML API required.
+"""
 
 import asyncio
 from cml import EmbeddedCognitiveMemoryLayer

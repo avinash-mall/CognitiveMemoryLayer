@@ -1,21 +1,18 @@
 """
-Standalone Demo - Cognitive Memory Layer
+Standalone Demo - Cognitive Memory Layer (no py-cml)
 
-This example demonstrates the memory system WITHOUT requiring
-an external LLM API key. It shows direct API usage with curl-like
-requests and manual memory operations.
+Full API example using only httpx. Demonstrates all memory features:
+- Health, write, read (packet + llm_context), update, forget, stats
+- process_turn (seamless retrieve + store)
+- create_session
 
-Useful for:
-- Testing the memory system in isolation
-- Understanding the API before integrating with LLMs
-- Development and debugging
+No cognitive-memory-layer package required. Only httpx.
 
 Prerequisites:
     1. Start the API server:
        docker compose -f docker/docker-compose.yml up api
-    
-    2. Install httpx:
-       pip install httpx
+    2. pip install httpx
+    3. Set AUTH__API_KEY in environment
 """
 
 import os
@@ -157,7 +154,6 @@ def demo_read_memories(session_id: str):
             headers=HEADERS,
             json={
                 "query": q["query"],
-                "session_id": session_id,
                 "max_results": 5,
                 "format": "packet"
             }
@@ -187,7 +183,6 @@ def demo_llm_context_format(session_id: str):
         headers=HEADERS,
         json={
             "query": "Tell me everything about the user",
-            "session_id": session_id,
             "max_results": 10,
             "format": "llm_context"
         }
@@ -211,7 +206,6 @@ def demo_update_memory(session_id: str):
         headers=HEADERS,
         json={
             "query": "machine learning interest",
-            "session_id": session_id,
             "max_results": 1
         }
     )
@@ -265,6 +259,64 @@ def demo_memory_stats():
         print(f"Error: {response.text}")
 
 
+def demo_process_turn():
+    """Demonstrate process_turn (seamless: auto-retrieve + auto-store)."""
+    print_section("Process Turn (Seamless Memory)")
+    session_id = "standalone-demo-session"
+    print("process_turn retrieves relevant context for a user message and can auto-store the exchange.\n")
+    # Retrieve only (no assistant response)
+    response = httpx.post(
+        f"{BASE_URL}/memory/turn",
+        headers=HEADERS,
+        json={
+            "user_message": "What do you know about my preferences and medical constraints?",
+            "session_id": session_id,
+            "max_context_tokens": 500,
+        },
+    )
+    if response.status_code == 200:
+        data = response.json()
+        print("Retrieve-only turn:")
+        print(f"  Memories retrieved: {data.get('memories_retrieved', 0)}")
+        print(f"  Memory context (snippet): {(data.get('memory_context', '') or '')[:300]}...")
+    else:
+        print(f"Error: {response.text}")
+    # Retrieve + store (with assistant response)
+    response2 = httpx.post(
+        f"{BASE_URL}/memory/turn",
+        headers=HEADERS,
+        json={
+            "user_message": "I also enjoy hiking on weekends.",
+            "assistant_response": "Great, I'll remember that you enjoy hiking!",
+            "session_id": session_id,
+            "max_context_tokens": 500,
+        },
+    )
+    if response2.status_code == 200:
+        data = response2.json()
+        print("\nStore turn (user + assistant):")
+        print(f"  Memories retrieved: {data.get('memories_retrieved', 0)}")
+        print(f"  Memories stored: {data.get('memories_stored', 0)}")
+
+
+def demo_create_session():
+    """Demonstrate session creation."""
+    print_section("Create Session")
+    response = httpx.post(
+        f"{BASE_URL}/session/create",
+        headers=HEADERS,
+        json={"ttl_hours": 24},
+    )
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Session created: {data.get('session_id')}")
+        print(f"Expires at: {data.get('expires_at')}")
+        return data.get("session_id")
+    else:
+        print(f"Error: {response.text}")
+        return None
+
+
 def demo_forget_memory():
     """Demonstrate forgetting memories."""
     print_section("Forgetting Memories")
@@ -294,17 +346,17 @@ def demo_curl_examples():
     print("You can also use these curl commands directly:\n")
     
     commands = [
-        ("Health Check", "curl http://localhost:8000/api/v1/health"),
+        ("Health Check", "curl http://localhost:8000/api/v1/health -H 'X-API-Key: $AUTH__API_KEY'"),
         ("Write Memory", '''curl -X POST http://localhost:8000/api/v1/memory/write \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-Key: $AUTH__API_KEY" \\
+  -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
   -d '{"content": "User likes pizza", "session_id": "test-session", "context_tags": ["preferences"]}\''''),
         ("Read Memory", '''curl -X POST http://localhost:8000/api/v1/memory/read \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-Key: $AUTH__API_KEY" \\
+  -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
   -d '{"query": "food preferences", "format": "llm_context"}\''''),
-        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats \\
-  -H "X-API-Key: $AUTH__API_KEY"'''),
+        ("Process Turn", '''curl -X POST http://localhost:8000/api/v1/memory/turn \\
+  -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
+  -d '{"user_message": "What do I like?", "session_id": "sess-1"}\''''),
+        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats -H "X-API-Key: $AUTH__API_KEY"'''),
     ]
     
     for name, cmd in commands:
@@ -342,6 +394,12 @@ def main():
         
         input("Press Enter to continue with stats demo...")
         demo_memory_stats()
+        
+        input("Press Enter to continue with process_turn demo...")
+        demo_process_turn()
+        
+        input("Press Enter to continue with create_session demo...")
+        demo_create_session()
         
         input("Press Enter to continue with forget demo...")
         demo_forget_memory()

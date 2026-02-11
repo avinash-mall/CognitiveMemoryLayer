@@ -1,10 +1,13 @@
 # Requirements for Cognitive Memory Layer Examples
 # Install with: pip install -r examples/requirements.txt
 
-# Load repo root .env so LLM__MODEL etc. are respected (ollama_chat_test, ollama_chatbot_app)
+# py-cml: cognitive-memory-layer (install from packages/py-cml in monorepo)
+cognitive-memory-layer>=0.1.0
+
+# Load repo root .env
 python-dotenv>=1.0
 
-# HTTP client (required for all examples)
+# HTTP client (standalone_demo uses raw httpx)
 httpx>=0.28.0
 
 # OpenAI integration
@@ -13,13 +16,10 @@ openai>=1.0
 # Anthropic Claude integration
 anthropic>=0.18.0
 
-# LangChain integration (pinned to 0.3.x for compatibility)
+# LangChain integration
 langchain>=0.3.0,<0.4.0
 langchain-core>=0.3.0,<0.4.0
 langchain-openai>=0.3.0,<0.4.0
 
-# Optional: for better async support
-anyio>=4.0.0
-
-# Streamlit chatbot (examples/ollama_chatbot_app.py)
+# Streamlit chatbot (ollama_chatbot_app.py)
 streamlit>=1.28.0

@@ -1,7 +1,17 @@
-"""Integrate py-cml with an AI agent framework."""
+"""Integrate py-cml with an AI agent framework.
+
+Set AUTH__API_KEY (or CML_API_KEY) and CML_BASE_URL in .env.
+"""
 
 import asyncio
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 from cml import AsyncCognitiveMemoryLayer
 
@@ -41,8 +51,8 @@ class MemoryAgent:
 
 async def main():
     async with AsyncCognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY", "..."),
-        base_url=os.environ.get("CML_BASE_URL", "http://localhost:8000"),
+        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        base_url=os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000",
     ) as memory:
         agent = MemoryAgent(memory, agent_id="agent-001")
 

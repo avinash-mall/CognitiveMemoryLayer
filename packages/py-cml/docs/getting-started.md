@@ -68,11 +68,29 @@ From the repo root, with a virtual environment:
    - Start the CML API (e.g. Docker: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis && docker compose -f docker/docker-compose.yml up -d api`).
    - In the repo `.env` set `AUTH__API_KEY=your-api-key` and `OPENAI_API_KEY=sk-your-key` (server uses OpenAI for embeddings by default).
    - From repo root:  
-     `python packages/py-cml/examples/quickstart.py`  
+     `python examples/quickstart.py`  
    Set `CML_API_KEY`, `CML_BASE_URL`, and (for chat examples) `OPENAI_MODEL` or `LLM__MODEL` in `.env`; examples read these and do not use hardcoded URLs or models.
+
+## Advanced Features
+
+### Temporal Fidelity
+
+Store memories with specific event timestamps for historical data replay:
+
+```python
+from datetime import datetime, timezone
+
+historical_time = datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+memory.write(
+    "User mentioned preferring dark mode",
+    timestamp=historical_time
+)
+```
+
+When `timestamp` is omitted, memories automatically use the current time. This feature is useful for benchmark evaluations, data migration, and testing temporal reasoning. See [Examples](examples.md) for more details.
 
 ## Next Steps
 
 - [API Reference](api-reference.md) — All operations and types
-- [Examples](examples.md) — Quickstart, chat, async, embedded, agent
+- [Examples](examples.md) — Quickstart, chat, async, embedded, agent, temporal fidelity
 - Embedded mode — See README and examples/embedded_mode.py

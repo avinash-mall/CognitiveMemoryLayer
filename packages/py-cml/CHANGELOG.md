@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Optional timestamp parameter**
+  - `write(timestamp=...)` and `turn(timestamp=...)` methods now accept optional `datetime` for event time
+  - Enables temporal fidelity for historical data replay (e.g., benchmark evaluation)
+  - Available in sync, async, and embedded clients
+  - Defaults to server-side "now" if not provided
+
 ### Changed
 
 - **Configuration and examples:** No hardcoded API URLs or model names. Set `CML_BASE_URL`, `CML_API_KEY`, and (for OpenAI helper and chat examples) `OPENAI_MODEL` or `LLM__MODEL` in `.env`. Embedded config reads `LLM__MODEL`, `EMBEDDING__MODEL`, `LLM__BASE_URL`, `EMBEDDING__BASE_URL` from env. See [Configuration](docs/configuration.md) and [.env.example](../../.env.example).
 
-### Added
+### Added (Previous Phases)
 
 #### Phase 1: Project setup
 - Initial project structure and build configuration (Hatchling, src layout)
@@ -75,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Phase 8: Documentation and publishing
 - **README:** PyPI and Python version badges, one-line tagline, Documentation links to getting-started, api-reference, configuration, examples
 - **Docs:** getting-started.md, api-reference.md, configuration.md, examples.md in packages/py-cml/docs/
-- **Examples:** quickstart.py, chat_with_memory.py, async_example.py, embedded_mode.py, agent_integration.py in packages/py-cml/examples/
+- **Examples:** quickstart.py, chat_with_memory.py, async_example.py, embedded_mode.py, agent_integration.py in examples/
 - **GitHub:** Issue templates (bug_report, feature_request), pull_request_template with Summary, Changes, Testing, Documentation checklists
 - **SECURITY.md:** Supported versions, report via GitHub Security Advisories
 - **CONTRIBUTING:** Releasing py-cml section (version bump, tag py-cml-v*, PyPI publish); fork/venv in dev setup; PR checklist alignment
