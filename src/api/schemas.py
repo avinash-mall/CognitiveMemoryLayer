@@ -326,8 +326,11 @@ class TenantInfo(BaseModel):
 
     tenant_id: str
     memory_count: int = 0
+    active_memory_count: int = 0
     fact_count: int = 0
     event_count: int = 0
+    last_memory_at: Optional[datetime] = None
+    last_event_at: Optional[datetime] = None
 
 
 class DashboardTenantsResponse(BaseModel):
@@ -350,3 +353,245 @@ class DashboardForgetRequest(BaseModel):
     user_id: Optional[str] = None
     dry_run: bool = True
     max_memories: int = 5000
+
+
+# ---- Sessions Schemas ----
+
+
+class SessionInfo(BaseModel):
+    """Session info from Redis + DB."""
+
+    session_id: str
+    tenant_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    ttl_seconds: int = -1
+    memory_count: int = 0
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardSessionsResponse(BaseModel):
+    """Sessions list."""
+
+    sessions: List[SessionInfo]
+    total_active: int = 0
+    total_memories_with_session: int = 0
+
+
+# ---- Rate Limits Schemas ----
+
+
+class RateLimitEntry(BaseModel):
+    """A single rate limit bucket."""
+
+    key_type: str  # "apikey" or "ip"
+    identifier: str  # masked
+    current_count: int = 0
+    limit: int = 60
+    ttl_seconds: int = -1
+    utilization_pct: float = 0.0
+
+
+class DashboardRateLimitsResponse(BaseModel):
+    """Rate limit entries."""
+
+    entries: List[RateLimitEntry]
+    configured_rpm: int = 60
+
+
+class HourlyRequestCount(BaseModel):
+    """Hourly request count."""
+
+    hour: str  # ISO format
+    count: int
+
+
+class RequestStatsResponse(BaseModel):
+    """Request stats over time."""
+
+    points: List[HourlyRequestCount]
+    total_last_24h: int = 0
+
+
+# ---- Graph Schemas ----
+
+
+class GraphNodeInfo(BaseModel):
+    """Graph node for rendering."""
+
+    id: str
+    entity: str
+    entity_type: str
+    properties: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphEdgeInfo(BaseModel):
+    """Graph edge for rendering."""
+
+    source: str
+    target: str
+    predicate: str
+    confidence: float = 0.0
+    properties: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphStatsResponse(BaseModel):
+    """Graph statistics."""
+
+    total_nodes: int = 0
+    total_edges: int = 0
+    entity_types: Dict[str, int] = Field(default_factory=dict)
+    tenants_with_graph: List[str] = Field(default_factory=list)
+
+
+class GraphExploreResponse(BaseModel):
+    """Graph exploration result."""
+
+    nodes: List[GraphNodeInfo] = Field(default_factory=list)
+    edges: List[GraphEdgeInfo] = Field(default_factory=list)
+    center_entity: Optional[str] = None
+
+
+class GraphSearchResult(BaseModel):
+    """Entity search result."""
+
+    entity: str
+    entity_type: str
+    tenant_id: str
+    scope_id: str
+
+
+class GraphSearchResponse(BaseModel):
+    """Graph search results."""
+
+    results: List[GraphSearchResult] = Field(default_factory=list)
+
+
+# ---- Config Schemas ----
+
+
+class ConfigItem(BaseModel):
+    """A single config setting."""
+
+    key: str
+    value: Any = None
+    default_value: Any = None
+    is_secret: bool = False
+    is_editable: bool = False
+    source: str = "default"  # "default", "env", "override"
+    description: str = ""
+
+
+class ConfigSection(BaseModel):
+    """A group of config settings."""
+
+    name: str
+    items: List[ConfigItem] = Field(default_factory=list)
+
+
+class DashboardConfigResponse(BaseModel):
+    """Full config snapshot."""
+
+    sections: List[ConfigSection] = Field(default_factory=list)
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request to update config settings."""
+
+    updates: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ---- Labile / Reconsolidation Schemas ----
+
+
+class TenantLabileInfo(BaseModel):
+    """Labile state info per tenant."""
+
+    tenant_id: str
+    db_labile_count: int = 0
+    redis_scope_count: int = 0
+    redis_session_count: int = 0
+    redis_memory_count: int = 0
+
+
+class DashboardLabileResponse(BaseModel):
+    """Labile state overview."""
+
+    tenants: List[TenantLabileInfo] = Field(default_factory=list)
+    total_db_labile: int = 0
+    total_redis_scopes: int = 0
+    total_redis_sessions: int = 0
+    total_redis_memories: int = 0
+
+
+# ---- Retrieval / Read Test Schemas ----
+
+
+class DashboardRetrievalRequest(BaseModel):
+    """Request to test memory retrieval."""
+
+    tenant_id: str
+    query: str
+    max_results: int = Field(default=10, le=50)
+    context_filter: Optional[List[str]] = None
+    memory_types: Optional[List[str]] = None
+    format: Literal["packet", "list", "llm_context"] = "list"
+
+
+class RetrievalResultItem(BaseModel):
+    """A single retrieval result with score."""
+
+    id: UUID
+    text: str
+    type: str
+    confidence: float
+    relevance_score: float
+    retrieval_source: str = ""
+    timestamp: Optional[datetime] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardRetrievalResponse(BaseModel):
+    """Retrieval test results."""
+
+    query: str
+    results: List[RetrievalResultItem] = Field(default_factory=list)
+    llm_context: Optional[str] = None
+    total_count: int = 0
+    elapsed_ms: float = 0.0
+
+
+# ---- Job History Schemas ----
+
+
+class DashboardJobItem(BaseModel):
+    """A single job history entry."""
+
+    id: UUID
+    job_type: str
+    tenant_id: str
+    user_id: Optional[str] = None
+    dry_run: bool = False
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+
+
+class DashboardJobsResponse(BaseModel):
+    """Paginated job list."""
+
+    items: List[DashboardJobItem]
+    total: int
+
+
+# ---- Bulk Actions Schemas ----
+
+
+class BulkActionRequest(BaseModel):
+    """Request for bulk memory actions."""
+
+    memory_ids: List[UUID]
+    action: Literal["archive", "silence", "delete"]

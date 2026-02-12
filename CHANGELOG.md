@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Dashboard expansion** — Major enhancement of the admin dashboard with 6 new pages and multiple new features:
+  - **Tenants page** — Lists all tenants with memory/fact/event counts, active memory counts, last activity timestamps, and quick-link buttons to filter Overview/Memories/Events by tenant.
+  - **Sessions page** — Shows active sessions from Redis (with TTL badges and metadata) and memory counts per `source_session_id` from the database. Click a session to filter Memory Explorer.
+  - **Knowledge Graph page** — Interactive vis-network visualization of entities and relations from Neo4j. Search entities by name, explore neighborhoods with configurable depth (1-5 hops), view node/edge details.
+  - **API Usage page** — Current rate-limit buckets with utilization bars, hourly request volume chart (Chart.js). KPI cards for active keys, avg utilization, configured RPM, and 24h request count.
+  - **Configuration page** — Read-only config snapshot showing all settings grouped by section (Application, Database, Embedding, LLM, Auth) with secrets masked. Editable settings can be changed inline at runtime (stored in Redis).
+  - **Retrieval Test page** — Interactive query tool for debugging memory retrieval. Input tenant + query with optional filters; returns scored memories with relevance bars, type badges, and metadata.
+  - **Enhanced Overview** — Reconsolidation queue status KPI and 24h request sparkline chart.
+  - **Enhanced Management** — Reconsolidation/labile status per tenant; job history table persisted in PostgreSQL (`dashboard_jobs` table via Alembic migration `002`).
+  - **Enhanced Memory Explorer** — Bulk actions (archive/silence/delete selected memories via checkboxes), select-all, JSON export button.
+  - **New backend endpoints** — `/sessions`, `/ratelimits`, `/request-stats`, `/graph/stats`, `/graph/explore`, `/graph/search`, `/config` (GET + PUT), `/labile`, `/retrieval`, `/jobs`, `/memories/bulk-action`, `/export/memories`.
+  - **Request counting middleware** — `RequestLoggingMiddleware` now increments hourly counters in Redis for the API Usage page.
+  - **Alembic migration** — `002_dashboard_jobs.py` adds the `dashboard_jobs` table for consolidation/forgetting job history.
+
 - **X-Eval-Mode header on write** — Optional request header `X-Eval-Mode: true` on `POST /memory/write` and `POST /session/{session_id}/write`. When set, the response includes `eval_outcome` (`"stored"` or `"skipped"`) and `eval_reason` (write-gate reason) so evaluation scripts can aggregate gating statistics. See Usage documentation and `ProjectPlan/LocomoEval/RunEvaluation.md`.
 - **LoCoMo evaluation: gating and timing** — `evaluation/scripts/eval_locomo.py` supports `--eval-mode` (sends X-Eval-Mode on writes, writes `locomo10_gating_stats.json`) and `--log-timing` (records per-question CML read and Ollama latency and token usage, writes `locomo10_qa_cml_timing.json`). See evaluation README and RunEvaluation.md §4.2.
 - **DELETE /memory/all** — New admin-only endpoint; SDK `delete_all(confirm=True)` is now supported by the server.

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No changes yet._
 
+## [1.1.0] - 2026-02-12
+
+### Added
+
+- **Dashboard admin methods** — 13 new admin methods on both sync and async clients:
+  - `get_sessions()` — list active sessions from Redis with TTL and memory counts
+  - `get_rate_limits()` — current rate-limit usage per API key
+  - `get_request_stats()` — hourly request volume over the last N hours
+  - `get_graph_stats()` — knowledge graph node/edge statistics from Neo4j
+  - `explore_graph()` — explore entity neighborhood in the knowledge graph
+  - `search_graph()` — search entities by name pattern
+  - `get_config()` — read-only configuration snapshot (secrets masked)
+  - `update_config()` — set runtime configuration overrides via Redis
+  - `get_labile_status()` — reconsolidation / labile memory status per tenant
+  - `test_retrieval()` — interactive retrieval test via dashboard API
+  - `get_jobs()` — consolidation and forgetting job history
+  - `bulk_memory_action()` — archive, silence, or delete memories in bulk
+- All new methods are also available on `NamespacedClient` / `AsyncNamespacedClient`
+
 ## [1.0.11] - 2025-02-11
 
 ### Added

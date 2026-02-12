@@ -96,7 +96,7 @@ export function getOverview(tenantId) {
     return request('GET', '/overview', { params: { tenant_id: tenantId } });
 }
 
-export function getMemories({ page = 1, perPage = 25, type, status, search, tenantId, sortBy, order } = {}) {
+export function getMemories({ page = 1, perPage = 25, type, status, search, tenantId, sortBy, order, sourceSessionId } = {}) {
     return request('GET', '/memories', {
         params: {
             page,
@@ -107,12 +107,19 @@ export function getMemories({ page = 1, perPage = 25, type, status, search, tena
             tenant_id: tenantId,
             sort_by: sortBy,
             order,
+            source_session_id: sourceSessionId,
         },
     });
 }
 
 export function getMemoryDetail(memoryId) {
     return request('GET', `/memories/${memoryId}`);
+}
+
+export function bulkAction(memoryIds, action) {
+    return request('POST', '/memories/bulk-action', {
+        body: { memory_ids: memoryIds, action },
+    });
 }
 
 export function getEvents({ page = 1, perPage = 25, eventType, operation, tenantId } = {}) {
@@ -158,4 +165,70 @@ export function triggerForget(tenantId, userId, dryRun = true, maxMemories = 500
 
 export function resetDatabase() {
     return request('POST', '/database/reset');
+}
+
+// ---- New Dashboard API Methods ----
+
+export function getSessions(tenantId) {
+    return request('GET', '/sessions', { params: { tenant_id: tenantId } });
+}
+
+export function getRateLimits() {
+    return request('GET', '/ratelimits');
+}
+
+export function getRequestStats(hours = 24) {
+    return request('GET', '/request-stats', { params: { hours } });
+}
+
+export function getGraphStats() {
+    return request('GET', '/graph/stats');
+}
+
+export function getGraphExplore(tenantId, entity, scopeId = 'default', depth = 2) {
+    return request('GET', '/graph/explore', {
+        params: { tenant_id: tenantId, entity, scope_id: scopeId, depth },
+    });
+}
+
+export function getGraphSearch(query, tenantId, limit = 25) {
+    return request('GET', '/graph/search', {
+        params: { query, tenant_id: tenantId, limit },
+    });
+}
+
+export function getConfig() {
+    return request('GET', '/config');
+}
+
+export function updateConfig(updates) {
+    return request('PUT', '/config', { body: { updates } });
+}
+
+export function getLabile(tenantId) {
+    return request('GET', '/labile', { params: { tenant_id: tenantId } });
+}
+
+export function testRetrieval(tenantId, query, maxResults = 10, contextFilter = null, memoryTypes = null, format = 'list') {
+    return request('POST', '/retrieval', {
+        body: {
+            tenant_id: tenantId,
+            query,
+            max_results: maxResults,
+            context_filter: contextFilter,
+            memory_types: memoryTypes,
+            format,
+        },
+    });
+}
+
+export function getJobs(tenantId, jobType, limit = 50) {
+    return request('GET', '/jobs', {
+        params: { tenant_id: tenantId, job_type: jobType, limit },
+    });
+}
+
+export function exportMemories(tenantId) {
+    const params = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '';
+    window.open(`${API_BASE}/export/memories${params}`, '_blank');
 }

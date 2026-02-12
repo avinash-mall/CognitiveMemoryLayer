@@ -140,3 +140,28 @@ class SemanticFactModel(Base):
         Index("ix_semantic_facts_tenant_key", "tenant_id", "key", "is_current"),
         Index("ix_semantic_facts_tenant_category", "tenant_id", "category", "is_current"),
     )
+
+
+class DashboardJobModel(Base):
+    """Dashboard job history for consolidation/forgetting runs."""
+
+    __tablename__ = "dashboard_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_type = Column(String(30), nullable=False, index=True)  # consolidate / forget
+    tenant_id = Column(String(100), nullable=False, index=True)
+    user_id = Column(String(100), nullable=True)
+    dry_run = Column(Boolean, default=False)
+    status = Column(
+        String(20), nullable=False, default="running", index=True
+    )  # running / completed / failed
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    started_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    completed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (Index("ix_dashboard_jobs_tenant_type", "tenant_id", "job_type"),)
