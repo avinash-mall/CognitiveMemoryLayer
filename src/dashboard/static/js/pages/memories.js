@@ -1,10 +1,10 @@
 /**
  * Memory Explorer Page
- * Filterable, sortable, paginated table of memory records.
+ * Filterable, sortable, paginated table of memory records with bulk actions and export.
  */
 
-import { getMemories } from '../api.js';
-import { navigateTo } from '../app.js';
+import { getMemories, bulkAction, exportMemories } from '../api.js';
+import { navigateTo, showToast } from '../app.js';
 import { formatDate, formatFloat, formatNumber, truncate, shortUuid, statusBadgeClass, escapeHtml } from '../utils/formatters.js';
 
 const container = () => document.getElementById('page-memories');
@@ -20,6 +20,7 @@ let state = {
     order: 'desc',
     tenantId: '',
     data: null,
+    selectedIds: new Set(),
 };
 
 const MEMORY_TYPES = [
@@ -32,10 +33,18 @@ const MEMORY_STATUSES = ['active', 'silent', 'compressed', 'archived', 'deleted'
 
 export async function renderMemories({ tenantId } = {}) {
     state.tenantId = tenantId || '';
+    state.selectedIds.clear();
+
+    // Check for session filter from Sessions page
+    const sessionFilter = sessionStorage.getItem('cml_filter_session_id');
+    if (sessionFilter) {
+        sessionStorage.removeItem('cml_filter_session_id');
+    }
+
     const el = container();
     el.innerHTML = buildShell();
     attachListeners();
-    await loadData();
+    await loadData(sessionFilter);
 }
 
 function buildShell() {
@@ -61,6 +70,14 @@ function buildShell() {
                 <option value="asc" ${state.order === 'asc' ? 'selected' : ''}>Ascending</option>
             </select>
             <button id="mem-apply" class="btn btn-primary btn-sm">Apply</button>
+            <button id="mem-export" class="btn btn-ghost btn-sm" title="Export memories as JSON">Export</button>
+        </div>
+        <div id="mem-bulk-bar" class="bulk-action-bar hidden">
+            <span id="mem-selected-count">0 selected</span>
+            <button class="btn btn-ghost btn-xs" id="bulk-archive">Archive</button>
+            <button class="btn btn-ghost btn-xs" id="bulk-silence">Silence</button>
+            <button class="btn btn-danger btn-xs" id="bulk-delete">Delete</button>
+            <button class="btn btn-ghost btn-xs" id="bulk-clear">Clear</button>
         </div>
         <div id="mem-table-area">
             <div class="loading-overlay"><div class="spinner"></div> Loading...</div>
@@ -81,15 +98,52 @@ function attachListeners() {
         loadData();
     });
 
-    // Allow pressing Enter in search field
     el.querySelector('#mem-search')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            el.querySelector('#mem-apply')?.click();
-        }
+        if (e.key === 'Enter') el.querySelector('#mem-apply')?.click();
+    });
+
+    el.querySelector('#mem-export')?.addEventListener('click', () => {
+        exportMemories(state.tenantId);
+    });
+
+    // Bulk actions
+    el.querySelector('#bulk-archive')?.addEventListener('click', () => doBulkAction('archive'));
+    el.querySelector('#bulk-silence')?.addEventListener('click', () => doBulkAction('silence'));
+    el.querySelector('#bulk-delete')?.addEventListener('click', () => doBulkAction('delete'));
+    el.querySelector('#bulk-clear')?.addEventListener('click', () => {
+        state.selectedIds.clear();
+        updateBulkBar();
+        document.querySelectorAll('#page-memories .mem-checkbox').forEach(cb => { cb.checked = false; });
     });
 }
 
-async function loadData() {
+async function doBulkAction(action) {
+    if (state.selectedIds.size === 0) return;
+    const ids = [...state.selectedIds];
+    try {
+        const result = await bulkAction(ids, action);
+        showToast(`${action}: ${result.affected} memories affected`);
+        state.selectedIds.clear();
+        updateBulkBar();
+        loadData();
+    } catch (err) {
+        showToast(`Bulk ${action} failed: ${err.message}`, 'error');
+    }
+}
+
+function updateBulkBar() {
+    const bar = document.getElementById('mem-bulk-bar');
+    const count = document.getElementById('mem-selected-count');
+    if (!bar) return;
+    if (state.selectedIds.size > 0) {
+        bar.classList.remove('hidden');
+        count.textContent = `${state.selectedIds.size} selected`;
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+async function loadData(sourceSessionId) {
     const area = document.getElementById('mem-table-area');
     if (!area) return;
     area.innerHTML = `<div class="loading-overlay"><div class="spinner"></div> Loading...</div>`;
@@ -104,6 +158,7 @@ async function loadData() {
             tenantId: state.tenantId,
             sortBy: state.sortBy,
             order: state.order,
+            sourceSessionId: sourceSessionId || undefined,
         });
         state.data = data;
         area.innerHTML = buildTable(data) + buildPagination(data);
@@ -119,6 +174,7 @@ function buildTable(data) {
     }
     const rows = data.items.map(m => `
         <tr class="clickable-row" data-id="${m.id}">
+            <td><input type="checkbox" class="mem-checkbox" data-id="${m.id}" ${state.selectedIds.has(String(m.id)) ? 'checked' : ''}></td>
             <td><code class="mono" style="font-size:0.8rem;">${shortUuid(String(m.id))}</code></td>
             <td><div class="text-preview">${escapeHtml(truncate(m.text, 100))}</div></td>
             <td><span class="badge badge-type">${m.type}</span></td>
@@ -135,6 +191,7 @@ function buildTable(data) {
             <table>
                 <thead>
                     <tr>
+                        <th style="width:30px"><input type="checkbox" id="mem-select-all"></th>
                         <th>ID</th>
                         <th>Text</th>
                         <th>Type</th>
@@ -174,12 +231,34 @@ function buildPagination(data) {
 }
 
 function attachTableListeners() {
-    // Row clicks
+    // Row clicks (but not on checkbox)
     document.querySelectorAll('#page-memories .clickable-row').forEach(row => {
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (e) => {
+            if (e.target.type === 'checkbox') return;
             const id = row.dataset.id;
             if (id) navigateTo('detail', { memoryId: id });
         });
+    });
+
+    // Checkboxes
+    document.querySelectorAll('#page-memories .mem-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            e.stopPropagation();
+            if (cb.checked) { state.selectedIds.add(cb.dataset.id); }
+            else { state.selectedIds.delete(cb.dataset.id); }
+            updateBulkBar();
+        });
+    });
+
+    // Select all
+    document.getElementById('mem-select-all')?.addEventListener('change', (e) => {
+        const checked = e.target.checked;
+        document.querySelectorAll('#page-memories .mem-checkbox').forEach(cb => {
+            cb.checked = checked;
+            if (checked) { state.selectedIds.add(cb.dataset.id); }
+            else { state.selectedIds.delete(cb.dataset.id); }
+        });
+        updateBulkBar();
     });
 
     // Pagination

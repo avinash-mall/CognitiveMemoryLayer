@@ -1,9 +1,10 @@
 /**
  * Overview Dashboard Page
- * Displays KPI cards, charts, system health, and recent events.
+ * Displays KPI cards, charts, system health, recent events,
+ * reconsolidation status, and request sparkline.
  */
 
-import { getOverview, getTimeline, getComponents, getEvents } from '../api.js';
+import { getOverview, getTimeline, getComponents, getEvents, getLabile, getRequestStats } from '../api.js';
 import { formatNumber, formatFloat, formatMB, formatDate, formatLatency } from '../utils/formatters.js';
 import { createDoughnutChart, createBarChart, createLineChart } from '../utils/charts.js';
 
@@ -15,14 +16,16 @@ export async function renderOverview({ tenantId } = {}) {
 
     try {
         // Fetch all data in parallel
-        const [overview, timeline, components, events] = await Promise.all([
+        const [overview, timeline, components, events, labile, reqStats] = await Promise.all([
             getOverview(tenantId),
             getTimeline(30, tenantId),
             getComponents(),
             getEvents({ page: 1, perPage: 10, tenantId }),
+            getLabile(tenantId).catch(() => ({ total_db_labile: 0, total_redis_scopes: 0, total_redis_sessions: 0, total_redis_memories: 0 })),
+            getRequestStats(24).catch(() => ({ points: [], total_last_24h: 0 })),
         ]);
 
-        el.innerHTML = buildOverviewHTML(overview, timeline, components, events);
+        el.innerHTML = buildOverviewHTML(overview, timeline, components, events, labile, reqStats);
 
         // Render charts after DOM is ready
         requestAnimationFrame(() => {
@@ -30,6 +33,7 @@ export async function renderOverview({ tenantId } = {}) {
             renderStatusChart(overview);
             renderTimelineChart(timeline);
             renderFactsChart(overview);
+            renderRequestSparkline(reqStats);
         });
     } catch (err) {
         el.innerHTML = `<div class="empty-state">
@@ -39,7 +43,7 @@ export async function renderOverview({ tenantId } = {}) {
     }
 }
 
-function buildOverviewHTML(overview, timeline, components, events) {
+function buildOverviewHTML(overview, timeline, components, events, labile, reqStats) {
     return `
         <!-- KPI Cards -->
         <div class="kpi-grid">
@@ -49,9 +53,22 @@ function buildOverviewHTML(overview, timeline, components, events) {
             ${kpiCard('Avg Importance', formatFloat(overview.avg_importance, 3), scoreBar(overview.avg_importance))}
             ${kpiCard('Storage', formatMB(overview.estimated_size_mb), `${formatNumber(overview.total_events)} events`)}
             ${kpiCard('Semantic Facts', formatNumber(overview.total_semantic_facts), `${formatNumber(overview.current_semantic_facts)} current`)}
-            ${kpiCard('Labile', formatNumber(overview.labile_memories), 'In reconsolidation window')}
-            ${kpiCard('Avg Access', formatFloat(overview.avg_access_count, 1), `Decay: ${formatFloat(overview.avg_decay_rate, 4)}`)}
+            ${kpiCard('Labile', formatNumber(overview.labile_memories), `${formatNumber(labile.total_redis_scopes)} scopes, ${formatNumber(labile.total_redis_memories)} in Redis`)}
+            ${kpiCard('Requests (24h)', formatNumber(reqStats.total_last_24h), '<canvas id="chart-req-sparkline" height="30" style="max-width:120px"></canvas>')}
         </div>
+
+        <!-- Reconsolidation Quick Status -->
+        ${labile.total_db_labile > 0 || labile.total_redis_scopes > 0 ? `
+        <div class="card" style="margin-bottom:16px;border-left:3px solid var(--warning);">
+            <div class="card-title">Reconsolidation Queue</div>
+            <div style="display:flex;gap:32px;flex-wrap:wrap;">
+                <div class="component-detail"><span class="component-detail-label">DB Labile</span><span class="component-detail-value">${formatNumber(labile.total_db_labile)}</span></div>
+                <div class="component-detail"><span class="component-detail-label">Redis Scopes</span><span class="component-detail-value">${formatNumber(labile.total_redis_scopes)}</span></div>
+                <div class="component-detail"><span class="component-detail-label">Redis Sessions</span><span class="component-detail-value">${formatNumber(labile.total_redis_sessions)}</span></div>
+                <div class="component-detail"><span class="component-detail-label">Redis Memories</span><span class="component-detail-value">${formatNumber(labile.total_redis_memories)}</span></div>
+            </div>
+        </div>
+        ` : ''}
 
         <!-- Charts -->
         <div class="chart-grid">
@@ -218,4 +235,30 @@ function renderFactsChart(overview) {
         return;
     }
     createDoughnutChart(canvas, entries.map(e => e[0]), entries.map(e => e[1]));
+}
+
+function renderRequestSparkline(reqStats) {
+    const canvas = document.getElementById('chart-req-sparkline');
+    if (!canvas || !reqStats.points.length) return;
+    const ctx = canvas.getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: reqStats.points.map(() => ''),
+            datasets: [{
+                data: reqStats.points.map(p => p.count),
+                borderColor: '#6c8cff',
+                borderWidth: 1.5,
+                fill: false,
+                pointRadius: 0,
+                tension: 0.3,
+            }],
+        },
+        options: {
+            responsive: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false } },
+            animation: false,
+        },
+    });
 }

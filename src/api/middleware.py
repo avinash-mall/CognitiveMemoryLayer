@@ -16,8 +16,12 @@ _RATE_LIMIT_REDIS_PREFIX = "ratelimit:"
 _RATE_LIMIT_WINDOW_SECONDS = 60
 
 
+_REQUEST_COUNT_PREFIX = "dashboard:reqcount:"
+_REQUEST_COUNT_TTL = 48 * 3600  # 48 hours
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log all requests with timing."""
+    """Log all requests with timing and lightweight request counting."""
 
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
@@ -43,10 +47,31 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Response-Time"] = f"{elapsed * 1000:.2f}ms"
+
+            # Lightweight request counter in Redis (fire-and-forget)
+            await self._increment_request_counter(request)
+
             return response
         except Exception as e:
             logger.error("request_failed", request_id=request_id, error=str(e))
             raise
+
+    @staticmethod
+    async def _increment_request_counter(request: Request) -> None:
+        """Increment hourly request counter in Redis for dashboard stats."""
+        try:
+            db = getattr(request.app.state, "db", None)
+            redis_client = getattr(db, "redis", None) if db else None
+            if redis_client is None:
+                return
+            hour_key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+            rkey = f"{_REQUEST_COUNT_PREFIX}{hour_key}"
+            pipe = redis_client.pipeline()
+            pipe.incr(rkey)
+            pipe.expire(rkey, _REQUEST_COUNT_TTL)
+            await pipe.execute()
+        except Exception:
+            pass  # Non-critical; silently ignore
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
