@@ -39,7 +39,7 @@
 <summary><strong>Click to expand</strong></summary>
 
 - [Research Foundation](#-research-foundation)
-- [Architecture Overview](#-architecture-overview)
+- [Architecture Overview](#architecture-overview)
 - [Neuroscience-to-Implementation Mapping](#-neuroscience-to-implementation-mapping)
 - [System Components](#-system-components)
 - [Quick Start](#-quick-start)
@@ -85,7 +85,7 @@ Human memory is not a unitary faculty but an **orchestra of distinct functional 
 | 🧠**CLS Theory** | 1995 | Dual-system: fast hippocampal + slow neocortical learning            | `HippocampalStore` + `NeocorticalStore`       |
 
 ---
-
+<a name="architecture-overview"></a>
 ## 🏗️ Architecture Overview
 
 ### The Dual-Store Memory System
