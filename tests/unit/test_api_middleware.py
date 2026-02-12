@@ -61,7 +61,7 @@ def test_rate_limit_middleware_in_memory_returns_429_when_exceeded():
 
 
 def test_rate_limit_middleware_isolates_by_tenant():
-    """Rate limit is per X-Tenant-Id; different tenants have separate buckets."""
+    """Rate limit is per X-API-Key; different keys have separate buckets."""
     app = FastAPI()
 
     @app.get("/ok")
@@ -70,9 +70,10 @@ def test_rate_limit_middleware_isolates_by_tenant():
 
     app.add_middleware(RateLimitMiddleware, requests_per_minute=2)
     with TestClient(app) as client:
+        # Use different API keys to get separate rate limit buckets
         for i in range(3):
-            r = client.get("/ok", headers={"X-Tenant-Id": "tenant-a"})
+            r = client.get("/ok", headers={"X-API-Key": "key-tenant-a"})
             assert r.status_code == 200 if i < 2 else 429
         for i in range(2):
-            r = client.get("/ok", headers={"X-Tenant-Id": "tenant-b"})
+            r = client.get("/ok", headers={"X-API-Key": "key-tenant-b"})
             assert r.status_code == 200

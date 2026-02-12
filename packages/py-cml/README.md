@@ -122,6 +122,7 @@ Or use `CMLConfig` for validated, reusable config: `from cml import CMLConfig`.
 - [API Reference](docs/api-reference.md)
 - [Configuration](docs/configuration.md)
 - [Examples](docs/examples.md)
+- [Temporal Fidelity](docs/temporal-fidelity.md)
 
 [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues, server setup
 
