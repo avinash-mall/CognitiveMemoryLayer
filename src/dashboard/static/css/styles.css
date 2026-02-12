@@ -942,3 +942,274 @@ tr.event-expanded .event-payload { display: block; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+/* =========================================================================
+   NEW DASHBOARD COMPONENTS
+   ========================================================================= */
+
+/* --- Data Table (generic sortable/clickable) --- */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+.data-table th, .data-table td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+.data-table th {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.data-table tbody tr:hover {
+    background: var(--bg-tertiary);
+}
+.table-responsive {
+    overflow-x: auto;
+}
+.sortable-th:hover {
+    color: var(--accent);
+}
+
+/* --- Action Buttons Row --- */
+.action-btns {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.btn-xs {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+}
+
+/* --- Graph Container --- */
+.graph-container {
+    width: 100%;
+    height: 500px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    position: relative;
+    overflow: hidden;
+}
+.graph-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.graph-search-results {
+    position: absolute;
+    z-index: 10;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    max-height: 250px;
+    overflow-y: auto;
+    width: 350px;
+    box-shadow: var(--shadow-lg);
+}
+.search-result-item {
+    padding: 8px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.88rem;
+}
+.search-result-item:hover {
+    background: var(--bg-tertiary);
+}
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+/* --- Config Page --- */
+.config-section .config-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.config-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+    align-items: center;
+}
+.config-row:last-child {
+    border-bottom: none;
+}
+.config-key {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.config-key-name {
+    font-family: monospace;
+}
+.config-lock {
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+.config-value-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.config-value {
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+.config-desc {
+    grid-column: 1 / -1;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.config-default {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.config-edit-input {
+    padding: 4px 8px;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+/* --- Bulk Action Bar --- */
+.bulk-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
+    font-size: 0.88rem;
+    color: var(--accent);
+}
+.bulk-action-bar.hidden {
+    display: none;
+}
+
+/* --- Retrieval Form --- */
+.retrieval-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.retrieval-form .form-row-inline {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+.retrieval-form textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+.retrieval-result-card {
+    border-left: 3px solid var(--accent);
+}
+
+/* --- Gauge fill variant --- */
+.gauge-fill-danger {
+    background: linear-gradient(90deg, var(--danger), #ff4444);
+}
+
+/* --- Badge variants --- */
+.badge-labile {
+    background: var(--purple);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+}
+
+/* --- Tenant ID cell --- */
+.tenant-id-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- Form improvements --- */
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.form-row label {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* --- Job history detail row --- */
+.job-detail-row td {
+    background: var(--bg-tertiary);
+    padding: 0 !important;
+}
+.job-detail-row .result-box {
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 0.82rem;
+}
+
+/* --- Checkbox in table --- */
+.mem-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+/* --- Responsive for new sections --- */
+@media (max-width: 900px) {
+    .graph-container {
+        height: 350px;
+    }
+    .graph-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .config-row {
+        grid-template-columns: 1fr;
+    }
+    .retrieval-form .form-row-inline {
+        flex-direction: column;
+    }
+    .graph-search-results {
+        width: 100%;
+    }
+    .bulk-action-bar {
+        flex-wrap: wrap;
+    }
+}

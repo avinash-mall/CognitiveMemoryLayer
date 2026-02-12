@@ -824,12 +824,18 @@ A web-based dashboard provides comprehensive monitoring and management of memori
 
 Sign in with your **admin API key** (`AUTH__ADMIN_API_KEY`). The dashboard includes:
 
-- **Overview** — KPIs, memory type/status charts, activity timeline, system health (PostgreSQL, Neo4j, Redis), recent events
-- **Memory Explorer** — Filterable, sortable, paginated table of memories; click a row for full detail
+- **Overview** — KPIs, memory type/status charts, activity timeline, system health, reconsolidation queue, request sparkline
+- **Tenants** — All tenants with memory/fact/event counts, last activity, quick links to filter other pages
+- **Memory Explorer** — Filterable, sortable, paginated table of memories with bulk actions (archive/silence/delete) and JSON export
+- **Sessions** — Active sessions from Redis with TTL badges and memory counts per session from DB
 - **Memory Detail** — Full record view: content, metrics, provenance, entities/relations, related events
+- **Knowledge Graph** — Interactive vis-network visualization of entities and relations from Neo4j; search, explore by depth, node/edge detail panel
+- **API Usage** — Current rate-limit buckets with utilization bars, hourly request volume chart
 - **Components** — Health status and metrics for each storage backend
+- **Configuration** — Read-only config snapshot with secrets masked; inline editing for safe runtime settings (stored in Redis)
+- **Retrieval Test** — Interactive query tool: input tenant + query, returns scored memories; useful to debug "why didn't the assistant remember X?"
 - **Events** — Paginated event log with expandable payloads; optional auto-refresh
-- **Management** — Trigger consolidation and active forgetting (with dry-run) per tenant
+- **Management** — Trigger consolidation and active forgetting (with dry-run) per tenant; job history table; reconsolidation/labile status
 
 See [UsageDocumentation.md — Dashboard](./ProjectPlan/UsageDocumentation.md#dashboard-monitoring--management) for full details and API reference.
 
