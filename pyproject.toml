@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "cognitive-memory-layer"
+name = "cml-server"
 version = "0.1.0"
 description = "Neuro-inspired memory system for LLMs with event sourcing and CQRS"
 authors = []

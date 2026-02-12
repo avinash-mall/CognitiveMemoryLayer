@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **DELETE /memory/all** — New admin-only endpoint; SDK `delete_all(confirm=True)` is now supported by the server.
+- **Startup validation** — `validate_embedding_dimensions()` is called in the app lifespan to catch embedding-dimension vs DB schema mismatch at startup.
+
 - **Temporal fidelity**
   - Optional `timestamp` field in `WriteMemoryRequest` and `ProcessTurnRequest` allows specifying event time for memories
   - Enables historical replay for benchmarks (e.g., Locomo evaluation with session dates)
@@ -39,10 +42,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **CORS** — Default origins no longer use a placeholder. Tiered behavior: use `cors_origins` if set; in debug mode use `["*"]`; otherwise use `["http://localhost:3000", "http://localhost:8080"]`.
 - **DatabaseManager.close()** — Safe shutdown: only disposes/closes connections that are not `None`, avoiding `AttributeError` on partial initialization.
-- **Orchestrator read API** — Removed unused `memory_types` and `time_filter` parameters from `MemoryOrchestrator.read()` and from API route call sites; filtering remains at the retrieval layer where supported.
+- **Orchestrator read API** — Read now supports `memory_types`, `since`, and `until`; these are forwarded from the API through the orchestrator into the retriever and applied to retrieval steps.
+- **Packaging** — Root package name renamed from `cognitive-memory-layer` to `cml-server` to avoid pip collision with the SDK package.
+- **WriteDecision** — `STORE_SYNC` and `STORE_ASYNC` are collapsed into a single `STORE` (aliases kept for compatibility); async write path is not implemented.
+- **RetrievalSource** — Removed unused `LEXICAL` enum value (no lexical retrieval implementation).
+- **Read format "list"** — When `format` is `"list"`, the response now returns a flat `memories` list with empty `facts`, `preferences`, and `episodes` (differentiated from `"packet"`).
 
 ### Fixed
 
+- **Retrieval fact typing** — Semantic-fact text search results from the neocortical store are now correctly typed as `semantic_fact` (and appear under `packet.facts`) instead of falling back to episodic.
+- **API contract: write** — Request `metadata` is now merged into memory records (user keys override system defaults). Optional `memory_type` is respected as an override for the write gate classification.
+- **API contract: read** — Request fields `memory_types`, `since`, and `until` are now applied: they are forwarded from the API through the orchestrator into the retriever and used to filter vector/search steps.
+- **Rate limiting** — Rate-limit key is now derived from the `X-API-Key` header (hashed) instead of the spoofable `X-Tenant-Id`; fallback to client IP when no API key is present.
+- **CORS** — When `origins` includes `"*"`, `allow_credentials` is set to `False` to comply with the CORS spec.
+- **Session scoping** — `get_session_context(session_id)` now filters by `source_session_id`, returning only memories for that session when `session_id` is provided.
+- **Stats by type** — `PostgresMemoryStore.count()` now supports `type` (and `since`/`until`) filters so orchestrator `get_stats()` returns correct `by_type` counts.
+- **Dashboard routes** — Removed duplicate `/dashboard` route; the catch-all `/dashboard/{rest_of_path:path}` serves the root.
 - Empty `src/api/dependencies.py` — Implemented with re-exports of auth dependencies.
 - Redundant empty `src/memory/hippocampal/encoder.py` — Removed; encoding is handled by `HippocampalStore` in `store.py`.
 
