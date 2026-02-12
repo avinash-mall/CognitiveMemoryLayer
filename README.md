@@ -39,11 +39,11 @@
 <summary><strong>Click to expand</strong></summary>
 
 - [Research Foundation](#-research-foundation)
-- [Architecture Overview](#-architecture-overview)
+- [Architecture Overview](#architecture-overview)
 - [Neuroscience-to-Implementation Mapping](#-neuroscience-to-implementation-mapping)
 - [System Components](#-system-components)
 - [Quick Start](#-quick-start)
-- [Monitoring Dashboard](#-monitoring-dashboard)
+- [Monitoring Dashboard](#5-monitoring-dashboard)
 - [API Documentation](#-api-documentation)
 - [Project Structure](#-project-structure)
 - [References](#-references)
