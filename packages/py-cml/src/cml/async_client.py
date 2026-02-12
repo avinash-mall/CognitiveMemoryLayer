@@ -154,7 +154,9 @@ class AsyncCognitiveMemoryLayer:
             timestamp=timestamp,
         ).model_dump(exclude_none=True, mode="json")
         extra = {"X-Eval-Mode": "true"} if eval_mode else None
-        data = await self._transport.request("POST", "/memory/write", json=body, extra_headers=extra)
+        data = await self._transport.request(
+            "POST", "/memory/write", json=body, extra_headers=extra
+        )
         return WriteResponse(**data)
 
     async def read(
