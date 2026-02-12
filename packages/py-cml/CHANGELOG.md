@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(No unreleased changes.)
+### Changed
+
+- **delete_all** — The server now implements `DELETE /api/v1/memory/all`; `delete_all(confirm=True)` no longer returns 404 when using the admin API key.
 
 ## [1.0.9] - 2025-02-12
 

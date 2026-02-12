@@ -110,7 +110,7 @@ class HybridRetriever:
             if fact:
                 results.append(
                     {
-                        "type": "fact",
+                        "type": MemoryType.SEMANTIC_FACT.value,
                         "source": "facts",
                         "key": fact.key,
                         "text": f"{fact.predicate}: {fact.value}",
@@ -125,7 +125,7 @@ class HybridRetriever:
             for f in facts:
                 results.append(
                     {
-                        "type": "fact",
+                        "type": MemoryType.SEMANTIC_FACT.value,
                         "source": "facts",
                         "key": f.get("key"),
                         "text": f"{f.get('key', '')}: {f.get('value', '')}",

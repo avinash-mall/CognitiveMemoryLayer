@@ -293,6 +293,20 @@ class PostgresMemoryStore(MemoryStoreBase):
                 q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
             if filters and "status" in filters:
                 q = q.where(MemoryRecordModel.status == filters["status"])
+            if filters and "type" in filters:
+                t = filters["type"]
+                if isinstance(t, list):
+                    q = q.where(MemoryRecordModel.type.in_(t))
+                else:
+                    q = q.where(MemoryRecordModel.type == t)
+            if filters and "since" in filters:
+                since = _naive_utc(filters["since"])
+                if since is not None:
+                    q = q.where(MemoryRecordModel.timestamp >= since)
+            if filters and "until" in filters:
+                until = _naive_utc(filters["until"])
+                if until is not None:
+                    q = q.where(MemoryRecordModel.timestamp <= until)
             r = await session.execute(q)
             return r.scalar() or 0
 

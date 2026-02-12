@@ -219,6 +219,19 @@ class MemoryOrchestrator:
                 "message": "No significant information to store",
             }
 
+        # Resolve memory_type override if provided
+        from ..core.enums import MemoryType as _MemoryType
+
+        _memory_type_override = None
+        if memory_type is not None:
+            if isinstance(memory_type, _MemoryType):
+                _memory_type_override = memory_type
+            else:
+                try:
+                    _memory_type_override = _MemoryType(memory_type) if isinstance(memory_type, str) else _MemoryType(memory_type.value)
+                except (ValueError, AttributeError):
+                    pass  # Invalid memory_type; let write gate decide
+
         stored = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
             chunks=chunks_for_encoding,
@@ -227,6 +240,8 @@ class MemoryOrchestrator:
             agent_id=agent_id,
             namespace=namespace,
             timestamp=timestamp,
+            request_metadata=metadata if metadata else None,
+            memory_type_override=_memory_type_override,
         )
 
         return {
@@ -241,6 +256,9 @@ class MemoryOrchestrator:
         query: str,
         max_results: int = 10,
         context_filter: Optional[List[str]] = None,
+        memory_types: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories. Holistic: tenant-only."""
         return await self.retriever.retrieve(
@@ -248,6 +266,9 @@ class MemoryOrchestrator:
             query=query,
             max_results=max_results,
             context_filter=context_filter,
+            memory_types=memory_types,
+            since=since,
+            until=until,
         )
 
     async def update(
@@ -353,38 +374,91 @@ class MemoryOrchestrator:
         tenant_id: str,
         session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get full session context for LLM (messages, tool_results, scratch_pad, context_string). Holistic: tenant-only."""
-        packet = await self.retriever.retrieve(
-            tenant_id=tenant_id,
-            query="",
-            max_results=50,
-        )
-        messages = []
-        tool_results = []
-        scratch_pad = []
-        for m in packet.all_memories:
-            t = m.record.type.value if hasattr(m.record.type, "value") else str(m.record.type)
-            item = {
-                "id": m.record.id,
-                "text": m.record.text,
-                "type": t,
-                "confidence": m.record.confidence,
-                "relevance": m.relevance_score,
-                "timestamp": m.record.timestamp,
-                "metadata": m.record.metadata or {},
-            }
-            if t in ("message", "conversation"):
-                messages.append(item)
-            elif t == "tool_result":
-                tool_results.append(item)
-            elif t == "scratch":
-                scratch_pad.append(item)
-            else:
-                messages.append(item)
-        from ..retrieval.packet_builder import MemoryPacketBuilder
+        """Get full session context for LLM (messages, tool_results, scratch_pad, context_string).
 
-        builder = MemoryPacketBuilder()
-        context_string = builder.to_llm_context(packet, max_tokens=4000)
+        When session_id is provided, scopes retrieval to memories from that
+        session only (via source_session_id filter) instead of returning all
+        tenant memories.
+        """
+        if session_id:
+            # Scoped retrieval: only memories belonging to this session
+            filters: Dict[str, Any] = {
+                "status": MemoryStatus.ACTIVE.value,
+                "source_session_id": session_id,
+            }
+            records = await self.hippocampal.store.scan(
+                tenant_id, filters=filters, order_by="-timestamp", limit=50,
+            )
+            # Build items directly from records
+            messages = []
+            tool_results = []
+            scratch_pad = []
+            for r in records:
+                t = r.type.value if hasattr(r.type, "value") else str(r.type)
+                item = {
+                    "id": r.id,
+                    "text": r.text,
+                    "type": t,
+                    "confidence": r.confidence,
+                    "relevance": 1.0,
+                    "timestamp": r.timestamp,
+                    "metadata": r.metadata or {},
+                }
+                if t in ("message", "conversation"):
+                    messages.append(item)
+                elif t == "tool_result":
+                    tool_results.append(item)
+                elif t == "scratch":
+                    scratch_pad.append(item)
+                else:
+                    messages.append(item)
+
+            from ..retrieval.packet_builder import MemoryPacketBuilder
+            from ..core.schemas import MemoryPacket, RetrievedMemory, Provenance
+            from ..core.enums import MemorySource as _MemorySource
+
+            # Build a minimal packet for context string generation
+            retrieved = [
+                RetrievedMemory(record=r, relevance_score=1.0, retrieval_source="session")
+                for r in records
+            ]
+            builder = MemoryPacketBuilder()
+            packet = builder.build(retrieved, query="")
+            context_string = builder.to_llm_context(packet, max_tokens=4000)
+        else:
+            # Fallback: tenant-wide retrieval when no session specified
+            packet = await self.retriever.retrieve(
+                tenant_id=tenant_id,
+                query="",
+                max_results=50,
+            )
+            messages = []
+            tool_results = []
+            scratch_pad = []
+            for m in packet.all_memories:
+                t = m.record.type.value if hasattr(m.record.type, "value") else str(m.record.type)
+                item = {
+                    "id": m.record.id,
+                    "text": m.record.text,
+                    "type": t,
+                    "confidence": m.record.confidence,
+                    "relevance": m.relevance_score,
+                    "timestamp": m.record.timestamp,
+                    "metadata": m.record.metadata or {},
+                }
+                if t in ("message", "conversation"):
+                    messages.append(item)
+                elif t == "tool_result":
+                    tool_results.append(item)
+                elif t == "scratch":
+                    scratch_pad.append(item)
+                else:
+                    messages.append(item)
+            from ..retrieval.packet_builder import MemoryPacketBuilder
+
+            builder = MemoryPacketBuilder()
+            context_string = builder.to_llm_context(packet, max_tokens=4000)
+
         return {
             "messages": messages,
             "tool_results": tool_results,

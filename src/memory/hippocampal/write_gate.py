@@ -11,8 +11,9 @@ from ..working.models import ChunkType, SemanticChunk
 
 
 class WriteDecision(str, Enum):
-    STORE_SYNC = "store_sync"
-    STORE_ASYNC = "store_async"
+    STORE = "store"
+    STORE_SYNC = "store"  # Alias for backward compatibility
+    STORE_ASYNC = "store"  # Alias: async path not yet implemented; treated as STORE
     SKIP = "skip"
     REDACT_AND_STORE = "redact_and_store"
 
@@ -120,12 +121,10 @@ class WriteGate:
                 reason=f"Below importance threshold: {combined_score:.2f}",
             )
 
-        if importance >= self.config.sync_importance_threshold:
-            decision = (
-                WriteDecision.REDACT_AND_STORE if redaction_required else WriteDecision.STORE_SYNC
-            )
+        if redaction_required:
+            decision = WriteDecision.REDACT_AND_STORE
         else:
-            decision = WriteDecision.STORE_ASYNC
+            decision = WriteDecision.STORE
 
         return WriteGateResult(
             decision=decision,

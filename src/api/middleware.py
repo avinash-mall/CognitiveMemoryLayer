@@ -1,6 +1,7 @@
 """API middleware: request logging and rate limiting."""
 
 import asyncio
+import hashlib
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple
@@ -59,11 +60,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._redis_warning_logged = False
 
     async def dispatch(self, request: Request, call_next):
-        tenant_id = request.headers.get("X-Tenant-Id") or request.headers.get(
-            "X-Tenant-ID", "default"
-        )
+        # Key rate-limit from the API key (authenticated credential) rather than
+        # the spoofable X-Tenant-Id header.  Fall back to client IP.
+        api_key = request.headers.get("X-API-Key")
+        if api_key:
+            key = f"apikey:{hashlib.sha256(api_key.encode()).hexdigest()[:16]}"
+        else:
+            key = f"ip:{request.client.host if request.client else 'unknown'}"
         redis = self._get_redis(request)
-        allowed = await self._check_rate_limit(tenant_id, redis)
+        allowed = await self._check_rate_limit(key, redis)
         if not allowed:
             from starlette.responses import JSONResponse
 

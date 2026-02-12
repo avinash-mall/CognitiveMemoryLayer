@@ -12,7 +12,7 @@ from ..core.config import get_settings
 from ..memory.orchestrator import MemoryOrchestrator
 from ..memory.seamless_provider import SeamlessMemoryProvider
 from ..utils.metrics import MEMORY_READS, MEMORY_WRITES
-from .auth import AuthContext, get_auth_context, require_write_permission
+from .auth import AuthContext, get_auth_context, require_admin_permission, require_write_permission
 from .schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -147,19 +147,34 @@ async def read_memory(
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(timezone.utc)
     try:
+        memory_type_values = (
+            [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
+            if body.memory_types
+            else None
+        )
         packet = await orchestrator.read(
             tenant_id=auth.tenant_id,
             query=body.query,
             max_results=body.max_results,
             context_filter=body.context_filter,
+            memory_types=memory_type_values,
+            since=body.since,
+            until=body.until,
         )
 
         elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
         all_memories = [_to_memory_item(m) for m in packet.all_memories]
-        facts = [_to_memory_item(m) for m in packet.facts]
-        preferences = [_to_memory_item(m) for m in packet.preferences]
-        episodes = [_to_memory_item(m) for m in packet.recent_episodes]
+
+        if body.format == "list":
+            # "list" format: flat list only, no categorized buckets
+            facts = []
+            preferences = []
+            episodes = []
+        else:
+            facts = [_to_memory_item(m) for m in packet.facts]
+            preferences = [_to_memory_item(m) for m in packet.preferences]
+            episodes = [_to_memory_item(m) for m in packet.recent_episodes]
 
         llm_context = None
         if body.format == "llm_context":
@@ -331,18 +346,33 @@ async def session_read(
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(timezone.utc)
     try:
+        memory_type_values = (
+            [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
+            if body.memory_types
+            else None
+        )
         packet = await orchestrator.read(
             tenant_id=auth.tenant_id,
             query=body.query,
             max_results=body.max_results,
             context_filter=body.context_filter,
+            memory_types=memory_type_values,
+            since=body.since,
+            until=body.until,
         )
         elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
 
         all_memories = [_to_memory_item(m) for m in packet.all_memories]
-        facts = [_to_memory_item(m) for m in packet.facts]
-        preferences = [_to_memory_item(m) for m in packet.preferences]
-        episodes = [_to_memory_item(m) for m in packet.recent_episodes]
+
+        if body.format == "list":
+            facts = []
+            preferences = []
+            episodes = []
+        else:
+            facts = [_to_memory_item(m) for m in packet.facts]
+            preferences = [_to_memory_item(m) for m in packet.preferences]
+            episodes = [_to_memory_item(m) for m in packet.recent_episodes]
+
         llm_context = None
         if body.format == "llm_context":
             from ..retrieval.packet_builder import MemoryPacketBuilder
@@ -398,6 +428,20 @@ async def session_context(
         )
     except Exception as e:
         logger.exception("session_context_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
+
+
+@router.delete("/memory/all")
+async def delete_all_memories(
+    auth: AuthContext = Depends(require_admin_permission),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Delete all memories for the authenticated tenant. Admin-only (GDPR)."""
+    try:
+        affected = await orchestrator.delete_all(tenant_id=auth.tenant_id)
+        return {"affected_count": affected}
+    except Exception as e:
+        logger.exception("delete_all_failed", tenant_id=auth.tenant_id, error=str(e))
         raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
