@@ -98,49 +98,88 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**:
 | 🟣**Neocortical** | Slow (gradual)  | Distributed    | Semantic    |
 
 ```mermaid
-flowchart TB
-    subgraph API["REST API Layer - FastAPI"]
-        write["/memory/write"]
-        read["/memory/read"]
-        update["/memory/update"]
-        forget["/memory/forget"]
-        turn["/memory/turn"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#E2E8F0',
+      'primaryTextColor': '#0F172A',
+      'primaryBorderColor': '#334155',
+      'lineColor': '#64748B',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Custom Styles --- %%
+    classDef api fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px;
+    classDef logic fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#7C2D12;
+    classDef db fill:#0EA5E9,stroke:#0369A1,color:#fff,stroke-width:2px;
+    classDef feat fill:#F0F9FF,stroke:#0EA5E9,stroke-width:1px,stroke-dasharray: 5 5,color:#0369A1;
+    classDef worker fill:#DC2626,stroke:#7F1D1D,color:#fff,stroke-width:2px;
+
+    %% --- 1. API Layer (Stacked Vertical) --- %%
+    subgraph API_Layer ["⚡ REST API (FastAPI)"]
+        direction TB
+        %% Using 'flag' shape > for inputs
+        w>"/memory/write"]
+        r>"/memory/read"]
+        u>"/memory/update"]
+        t>"/memory/turn"]
+        f>"/memory/forget"]
     end
 
-    subgraph Orchestrator["Memory Orchestrator"]
-        gate["Write Gate"]
-        encoder["Encoder"]
-        retriever["Retriever"]
-        recon["Reconsolidate"]
-        gate --> encoder --> retriever --> recon
+    %% --- 2. Orchestrator (Stacked Vertical) --- %%
+    subgraph Orch_Layer ["🧠 Memory Orchestrator"]
+        direction TB
+        %% Using Hexagon for logic gates
+        Gate{{Write Gate}}
+        Enc[[Encoder]]
+        Ret[[Retriever]]
+        Recon{{Reconsolidate}}
+        
+        Gate --> Enc --> Ret --> Recon
     end
 
-    subgraph Stores["Dual-Store Memory System"]
-        subgraph Hippo["HIPPOCAMPAL STORE"]
-            pg["PostgreSQL + pgvector"]
-            pg_feat["Vector embeddings, Rapid write"]
+    %% --- 3. Memory Stores (Vertical Stack to fit screen) --- %%
+    subgraph Store_Layer ["💾 Dual-Store System"]
+        direction TB
+        
+        subgraph Hippo ["Hipocampal (Episodic)"]
+            direction TB
+            PG[("Postgres\n+ pgvector")]
+            PG_F["Vector Embeddings\nRapid Write"]
+            PG --- PG_F
         end
-        subgraph Neo["NEOCORTICAL STORE"]
-            neo4j["Neo4j Knowledge Graph"]
-            neo_feat["Entity nodes, Relations, PPR"]
+
+        subgraph Neo ["Neocortical (Semantic)"]
+            direction TB
+            KG[("Neo4j\nKnowledge Graph")]
+            KG_F["Entity Nodes\nRelations, PPR"]
+            KG --- KG_F
         end
     end
 
-    subgraph Workers["BACKGROUND WORKERS - Celery"]
-        consol["CONSOLIDATION"]
-        forg["FORGETTING"]
-        maint["MAINTENANCE"]
+    %% --- 4. Background Workers (Horizontal row at bottom) --- %%
+    subgraph Work_Layer ["⚙️ Background Workers"]
+        direction LR
+        W1(Consolidation)
+        W2(Forgetting)
+        W3(Maintenance)
     end
 
-    API --> Orchestrator
-    Orchestrator --> Stores
-    Stores --> Workers
+    %% --- Global Connections --- %%
+    API_Layer ==> Orch_Layer
+    Orch_Layer ==> Store_Layer
+    Store_Layer -.-> Work_Layer
 
-    style API fill:#e1f5fe,color:#000
-    style Orchestrator fill:#fff3e0,color:#000
-    style Hippo fill:#e3f2fd,color:#000
-    style Neo fill:#f3e5f5,color:#000
-    style Workers fill:#e8f5e9,color:#000
+    %% --- Apply Styles --- %%
+    class w,r,u,t,f api;
+    class Gate,Recon,Enc,Ret logic;
+    class PG,KG db;
+    class PG_F,KG_F feat;
+    class W1,W2,W3 worker;
 ```
 
 ---
@@ -153,13 +192,54 @@ flowchart TB
 **Biological Basis**: Sensory memory holds high-fidelity input for seconds. Working memory acts as a temporary workspace with limited capacity (~7±2 items).
 
 ```mermaid
-flowchart LR
-    subgraph STM["SENSORY + WORKING MEMORY"]
-        input["Input Stream"] --> sensory["Sensory Buffer"]
-        sensory --> working["Working Memory"]
-        sensory & working --> chunks["Chunks for Encoding"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#E2E8F0',
+      'primaryTextColor': '#0F172A',
+      'primaryBorderColor': '#334155',
+      'lineColor': '#64748B',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef input fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px;
+    classDef memory fill:#F0F9FF,stroke:#0EA5E9,stroke-width:2px,color:#0369A1;
+    classDef artifact fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,stroke-dasharray: 5 5,color:#9A3412;
+    
+    %% --- Spacer Style (Invisible) --- %%
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph STM ["⚡ SENSORY + WORKING MEMORY"]
+        direction TB
+        
+        %% 1. Invisible Spacer Node (with a non-breaking space inside)
+        Spacer("&nbsp;"):::hidden
+        
+        %% 2. Real Nodes
+        In([Input Stream]):::input
+        Sensory[[Sensory Buffer]]:::memory
+        Working[[Working Memory]]:::memory
+        Chunks[/"Chunks for\nEncoding"/]:::artifact
+
+        %% 3. Connection (Spacer to Input)
+        %% We use a normal link, then hide it below
+        Spacer --- In
+        
+        %% 4. Real Connections
+        In --> Sensory
+        Sensory --> Working
+        
+        %% Merge connection
+        Sensory & Working --> Chunks
     end
-    style STM fill:#e3f2fd,color:#000
+
+    %% Hide the first link (index 0) to create the gap
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 | Biological Concept   | Implementation                             | Location                          |
@@ -178,19 +258,58 @@ flowchart LR
 **Biological Basis**: Not all experiences become memories. The proteins **CREB** and **Npas4** regulate which neurons are recruited into memory engrams based on excitability.
 
 ```mermaid
-flowchart TB
-    subgraph WG["WRITE GATE - CREB/Npas4 memory allocation"]
-        input2["Input"] --> salience["Salience Scoring"]
-        salience --> novelty["Novelty Check"]
-        novelty --> risk["Risk Assessment"]
-      
-        salience -.-> q1{"importance > 0.3?"}
-        novelty -.-> q2{"is_new?"}
-        risk -.-> q3{"contains_pii?"}
-      
-        q1 & q2 & q3 --> decision["WriteDecision: STORE / SKIP"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#FFFBEB',
+      'primaryTextColor': '#451a03',
+      'primaryBorderColor': '#d97706',
+      'lineColor': '#b45309',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef input fill:#4338ca,stroke:#312e81,color:#fff,stroke-width:2px;
+    classDef process fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#9a3412;
+    classDef logic fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#166534;
+    classDef result fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#fff;
+
+    subgraph WG ["🛡️ WRITE GATE (CREB/Npas4)"]
+        direction TB
+        
+        %% 1. Input Node
+        In([Input Stream]):::input
+
+        %% 2. Processing Steps (Stacked)
+        Step1[[Salience Scoring]]:::process
+        Step2[[Novelty Check]]:::process
+        Step3[[Risk Assessment]]:::process
+
+        %% 3. Logic Gates (Hexagons)
+        Q1{{Importance > 0.3?}}:::logic
+        Q2{{Is New?}}:::logic
+        Q3{{Contains PII?}}:::logic
+
+        %% 4. Final Decision
+        Dec([WriteDecision:
+        STORE / SKIP]):::result
+
+        %% --- Wiring ---
+        In --> Step1
+        Step1 --> Step2
+        Step2 --> Step3
+
+        %% Connect steps to their specific logic checks
+        Step1 -.-> Q1
+        Step2 -.-> Q2
+        Step3 -.-> Q3
+
+        %% All logic flows into the final decision
+        Q1 & Q2 & Q3 ==> Dec
     end
-    style WG fill:#fff8e1,color:#000
 ```
 
 | Biological Concept       | Implementation             | Location                                 |
@@ -209,16 +328,66 @@ flowchart TB
 **Biological Basis**: The hippocampus rapidly encodes detailed, context-rich episodes with a single exposure using **pattern separation**.
 
 ```mermaid
-flowchart TB
-    subgraph Hippo2["HIPPOCAMPAL STORE - PostgreSQL + pgvector"]
-        chunk["Chunk"] --> pii["PIIRedactor"]
-        pii --> embed["Embeddings"]
-        pii --> entity["EntityExtract"]
-        embed --> dense["Dense Vector (1536-dim)"]
-        entity --> sparse["Sparse Keys (Entities)"]
-        dense & sparse --> record["MemoryRecord stored"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#EEF2FF',
+      'primaryTextColor': '#1e3a8a',
+      'primaryBorderColor': '#1d4ed8',
+      'lineColor': '#3b82f6',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef input fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e40af;
+    classDef process fill:#eff6ff,stroke:#60a5fa,stroke-width:2px,color:#1d4ed8;
+    classDef data fill:#f0f9ff,stroke:#0ea5e9,stroke-width:1px,stroke-dasharray: 5 5,color:#0369a1;
+    classDef storage fill:#1e40af,stroke:#1e3a8a,stroke-width:2px,color:#fff;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph Hippo ["🔵 HIPPOCAMPAL STORE (Episodic)"]
+        direction TB
+        
+        %% 1. Spacer for Gap
+        Spacer("&nbsp;"):::hidden
+        
+        %% 2. Input Node
+        Chunk(Chunk):::input
+        
+        %% 3. Cleaning Step
+        PII[[PII Redactor]]:::process
+        
+        %% 4. Feature Extraction Split
+        Embed[[Generate Embeddings]]:::process
+        Entity[[Extract Entities]]:::process
+        
+        %% 5. Data Artifacts (Using <br/> for line breaks)
+        Dense[/"Dense Vector<br/>(embed-dimms)"/]:::data
+        Sparse[/"Sparse Keys<br/>(Entities)"/]:::data
+        
+        %% 6. Final Storage
+        Record[("MemoryRecord<br/>Stored")]:::storage
+        
+        %% --- Wiring ---
+        %% Link Spacer to create the gap
+        Spacer --- Chunk
+        
+        Chunk --> PII
+        PII --> Embed
+        PII --> Entity
+        
+        Embed --> Dense
+        Entity --> Sparse
+        
+        Dense & Sparse ==> Record
     end
-    style Hippo2 fill:#e3f2fd,color:#000
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 | Biological Concept      | Implementation                         | Location                            |
@@ -237,15 +406,51 @@ flowchart TB
 **Biological Basis**: The neocortex gradually encodes generalized, semantic knowledge through slow learning, supporting **pattern completion** via associative networks.
 
 ```mermaid
-flowchart TB
-    subgraph Neo2["NEOCORTICAL STORE - Neo4j Knowledge Graph"]
-        user(("User:123"))
-        user -->|lives_in| paris["Paris"]
-        user -->|prefers| veg["vegetarian"]
-        user -->|works_at| acme["Acme Corp"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#FAF5FF',
+      'primaryTextColor': '#581c87',
+      'primaryBorderColor': '#9333ea',
+      'lineColor': '#a855f7',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef root fill:#d8b4fe,stroke:#7e22ce,stroke-width:2px,color:#3b0764;
+    classDef leaf fill:#f3e8ff,stroke:#a855f7,stroke-width:1px,color:#6b21a8;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph Neo ["🟣 NEOCORTICAL STORE (Semantic)"]
+        direction TB
+        
+        %% 1. Spacer for Gap
+        Spacer("&nbsp;"):::hidden
+        
+        %% 2. Central Root Node
+        User(((User:123))):::root
+        
+        %% 3. Connected Fact Nodes
+        Paris((Paris)):::leaf
+        Veg((Vegetarian)):::leaf
+        Acme((Acme Corp)):::leaf
+        
+        %% --- Wiring ---
+        %% Link Spacer to create gap
+        Spacer --- User
+        
+        %% Relationships
+        User -- "lives_in" --> Paris
+        User -- "prefers" --> Veg
+        User -- "works_at" --> Acme
     end
-    style Neo2 fill:#f3e5f5,color:#000
-    style user fill:#e1bee7,color:#000
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 | Biological Concept    | Implementation                              | Location                              |
@@ -263,15 +468,61 @@ flowchart TB
 **Biological Basis**: Memory retrieval is **ecphory**—the interaction between a retrieval cue and a stored engram that reconstructs the memory.
 
 ```mermaid
-flowchart TB
-    subgraph Retrieval["HYBRID RETRIEVAL - Ecphory"]
-        query["Query"] --> classifier["Query Classifier"]
-        classifier --> vector["Vector Search<br/>(Hippocampal)"]
-        classifier --> graphSearch["Graph Search<br/>(Neocortical)"]
-        vector & graphSearch --> reranker["Reranker"]
-        reranker --> packet["Memory Packet"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#F1F5F9',
+      'primaryTextColor': '#334155',
+      'primaryBorderColor': '#94a3b8',
+      'lineColor': '#64748B',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef input fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px;
+    classDef logic fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#9A3412;
+    classDef hippo fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e40af;
+    classDef neo fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#6b21a8;
+    classDef result fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph Retrieval ["🔍 HYBRID RETRIEVAL (Ecphory)"]
+        direction TB
+        
+        %% 1. Spacer for Gap
+        Spacer("&nbsp;"):::hidden
+
+        %% 2. Input & Classification
+        Query([User Query]):::input
+        Class{{Query Classifier}}:::logic
+        
+        %% 3. Parallel Search Paths
+        Vector[("Vector Search<br/>(Hippocampal)")]:::hippo
+        Graph[("Graph Search<br/>(Neocortical)")]:::neo
+        
+        %% 4. Synthesis
+        Rerank[[Reranker &<br/>Fusion]]:::logic
+        Packet(Memory Packet):::result
+        
+        %% --- Wiring ---
+        Spacer --- Query
+        Query --> Class
+        
+        %% Split Flow
+        Class --> Vector
+        Class --> Graph
+        
+        %% Merge Flow
+        Vector & Graph --> Rerank
+        Rerank --> Packet
     end
-    style Retrieval fill:#e8eaf6,color:#000
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 | Biological Concept | Implementation                 | Location                              |
@@ -289,17 +540,70 @@ flowchart TB
 **Biological Basis**: When a memory is retrieved, it enters a **labile state** and can be modified before being restabilized (reconsolidation).
 
 ```mermaid
-flowchart TB
-    subgraph Recon["RECONSOLIDATION"]
-        retrieved["Retrieved Memory"] --> mark["Mark Labile (5 min)"]
-        retrieved --> detect["Conflict Detection"]
-        detect --> types["ConflictType:<br/>• CONTRADICTION<br/>• REFINEMENT<br/>• TEMPORAL_SUPERSEDE"]
-        mark & types --> belief["Belief Revision Engine"]
-        belief --> reinforce["REINFORCE"]
-        belief --> timeslice["TIME_SLICE"]
-        belief --> correct["CORRECT"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#FFF7ED',
+      'primaryTextColor': '#7c2d12',
+      'primaryBorderColor': '#ea580c',
+      'lineColor': '#c2410c',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef input fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px;
+    classDef process fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#9a3412;
+    classDef list fill:#fff,stroke:#ea580c,stroke-width:1px,stroke-dasharray: 5 5,color:#c2410c;
+    classDef engine fill:#7c2d12,stroke:#431407,stroke-width:2px,color:#fff;
+    classDef result fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph Recon ["🔄 RECONSOLIDATION & BELIEF REVISION"]
+        direction TB
+        
+        %% 1. Spacer for Gap
+        Spacer("&nbsp;"):::hidden
+        
+        %% 2. Input
+        Retrieved([Retrieved Memory]):::input
+
+        %% 3. Analysis Phase
+        Mark[[Mark Labile: 5 min]]:::process
+        Detect{{Conflict Detection}}:::process
+        
+        %% 4. Data Artifact
+        Types[\"Conflict Types:<br/>• Contradiction<br/>• Refinement<br/>• Supersede"/]:::list
+        
+        %% 5. Core Engine
+        Belief[[Belief Revision<br/>Engine]]:::engine
+        
+        %% 6. Outcomes
+        Reinforce(REINFORCE):::result
+        Slice(TIME_SLICE):::result
+        Correct(CORRECT):::result
+        
+        %% --- Wiring ---
+        Spacer --- Retrieved
+        
+        Retrieved --> Mark
+        Retrieved --> Detect
+        
+        Detect --> Types
+        
+        Mark & Types ==> Belief
+        
+        %% Outcome Split
+        Belief --> Reinforce
+        Belief --> Slice
+        Belief --> Correct
     end
-    style Recon fill:#fff3e0,color:#000
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 | Biological Concept    | Implementation                          | Location                                   |
@@ -317,15 +621,56 @@ flowchart TB
 **Biological Basis**: During NREM sleep, the hippocampus "replays" recent experiences via **sharp-wave ripples**, training the neocortex to extract semantic structures.
 
 ```mermaid
-flowchart TB
-    subgraph Consol["CONSOLIDATION ENGINE - Sleep Cycle"]
-        trigger["Trigger"] --> sampler["Episode Sampler"]
-        sampler --> cluster["Semantic Clusterer"]
-        cluster --> gist["Gist Extractor"]
-        gist --> schema["Schema Aligner"]
-        schema --> migrator["Migrator<br/>(Hippo → Neocortex)"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#F3E8FF',
+      'primaryTextColor': '#581c87',
+      'primaryBorderColor': '#9333ea',
+      'lineColor': '#a855f7',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef input fill:#d8b4fe,stroke:#7e22ce,stroke-width:2px,color:#3b0764;
+    classDef process fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8;
+    classDef output fill:#4c1d95,stroke:#2e1065,stroke-width:2px,color:#fff;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph Consol ["😴 CONSOLIDATION ENGINE (Sleep Cycle)"]
+        direction TB
+        
+        %% 1. Spacer for Gap
+        Spacer("&nbsp;"):::hidden
+
+        %% 2. Trigger
+        Trigger((Trigger)):::input
+
+        %% 3. Processing Pipeline
+        Sample[[Episode Sampler]]:::process
+        Cluster[[Semantic Clusterer]]:::process
+        Gist[[Gist Extractor]]:::process
+        Schema[[Schema Aligner]]:::process
+
+        %% 4. Final Migration
+        Migrator(Migrator:<br/>Hippo → Neocortex):::output
+
+        %% --- Wiring ---
+        Spacer --- Trigger
+        
+        Trigger --> Sample
+        Sample --> Cluster
+        Cluster --> Gist
+        Gist --> Schema
+        Schema ==> Migrator
     end
-    style Consol fill:#f3e5f5,color:#000
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 📖 **Reference**: McClelland et al. (1995). "Why there are complementary learning systems"
@@ -338,19 +683,64 @@ flowchart TB
 **Biological Basis**: Forgetting is an **active process**. The proteins **Rac1** and **Cofilin** actively degrade memory traces by pruning synaptic connections.
 
 ```mermaid
-flowchart TB
-    subgraph Forget["ACTIVE FORGETTING - Rac1/Cofilin"]
-        bg["Background Process (24h)"] --> scorer["Relevance Scorer"]
-        scorer --> policy["Policy Engine"]
-        policy --> executor["Executor"]
-      
-        executor --> keep["KEEP (>0.7)"]
-        executor --> decay["DECAY (>0.5)"]
-        executor --> silent["SILENCE (>0.3)"]
-        executor --> compress["COMPRESS (>0.1)"]
-        executor --> delete["DELETE (≤0.1)"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#FEF2F2',
+      'primaryTextColor': '#7f1d1d',
+      'primaryBorderColor': '#ef4444',
+      'lineColor': '#f87171',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef start fill:#7f1d1d,stroke:#450a0a,stroke-width:2px,color:#fff;
+    classDef process fill:#fee2e2,stroke:#f87171,stroke-width:2px,color:#991b1b;
+    classDef safe fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46;
+    classDef warn fill:#fffbeb,stroke:#d97706,stroke-width:2px,color:#92400e;
+    classDef danger fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#b91c1c;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    subgraph Forget ["🗑️ ACTIVE FORGETTING (Rac1/Cofilin)"]
+        direction TB
+        
+        %% 1. Spacer for Gap
+        Spacer("&nbsp;"):::hidden
+
+        %% 2. Trigger
+        Start([Background Process<br/>Every 24h]):::start
+
+        %% 3. Analysis
+        Scorer[[Relevance Scorer]]:::process
+        Policy{{Policy Engine}}:::process
+
+        %% 4. Outcomes (Branching)
+        Keep(KEEP):::safe
+        Decay(DECAY):::warn
+        Silent(SILENCE):::warn
+        Comp(COMPRESS):::warn
+        Del(DELETE):::danger
+        
+        %% --- Wiring ---
+        Spacer --- Start
+        
+        Start --> Scorer
+        Scorer --> Policy
+        
+        %% Decision Tree
+        Policy -- "> 0.7" --> Keep
+        Policy -- "> 0.5" --> Decay
+        Policy -- "> 0.3" --> Silent
+        Policy -- "> 0.1" --> Comp
+        Policy -- "≤ 0.1" --> Del
     end
-    style Forget fill:#ffebee,color:#000
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 📖 **Reference**: Shuai et al. (2010). "Forgetting is regulated through Rac activity in Drosophila"
@@ -689,27 +1079,58 @@ The current CognitiveMemoryLayer operates as an advanced **external memory syste
 Our roadmap introduces three levels of memory integration, each deeper in the LLM's forward pass:
 
 ```mermaid
-flowchart TB
-    subgraph Interfaces["Memory Injection Interfaces"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#FAFAFA',
+      'primaryTextColor': '#262626',
+      'primaryBorderColor': '#525252',
+      'lineColor': '#a3a3a3',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef shallow fill:#ecfccb,stroke:#4d7c0f,stroke-width:2px,color:#1a2e05;
+    classDef mid fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#431407;
+    classDef deep fill:#fce7f3,stroke:#be185d,stroke-width:2px,color:#500724;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    %% 1. Spacer for Gap
+    Spacer("&nbsp;"):::hidden
+
+    %% 2. Interfaces Group
+    subgraph Interfaces ["💉 Memory Injection Interfaces"]
         direction TB
-        logit["🎯 LOGIT INTERFACE<br/>Token probability bias<br/>API-compatible • Safe"]
-        activation["⚡ ACTIVATION INTERFACE<br/>Steering vectors in residual stream<br/>Semantic control • Composable"]
-        synaptic["🧠 SYNAPTIC INTERFACE<br/>KV-Cache injection<br/>Virtual context • Deepest integration"]
+        
+        Logit["🎯 LOGIT INTERFACE<br/>Token probability bias<br/>API-compatible • Safe"]:::shallow
+        
+        Activation["⚡ ACTIVATION INTERFACE<br/>Steering vectors<br/>Semantic control • Composable"]:::mid
+        
+        Synaptic["🧠 SYNAPTIC INTERFACE<br/>KV-Cache injection<br/>Virtual context • Deepest"]:::deep
     end
-  
-    subgraph Depth["Integration Depth"]
-        shallow["Shallow (Output Layer)"]
-        mid["Mid (Hidden States)"]
-        deep["Deep (Attention Memory)"]
+
+    %% 3. Depth Group
+    subgraph Depth ["📉 Integration Depth"]
+        direction TB
+        
+        L1(Shallow: Output Layer):::shallow
+        L2(Mid: Hidden States):::mid
+        L3(Deep: Attention Memory):::deep
     end
-  
-    logit --> shallow
-    activation --> mid
-    synaptic --> deep
-  
-    style logit fill:#e8f5e9,color:#000
-    style activation fill:#fff3e0,color:#000
-    style synaptic fill:#fce4ec,color:#000
+
+    %% --- Wiring ---
+    Spacer --- Logit
+    
+    Logit ==> L1
+    Activation ==> L2
+    Synaptic ==> L3
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 #### 1️⃣ Logit Interface (Universal Compatibility)
@@ -737,37 +1158,87 @@ flowchart TB
 <summary><h3>📐 Technical Architecture (Planned)</h3></summary>
 
 ```mermaid
-flowchart LR
-    subgraph MAL["Model Access Layer"]
-        registry["Model Registry"]
-        hooks["Hook Manager"]
-        inspector["Model Inspector"]
+%%{
+  init: {
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#F0F9FF',
+      'primaryTextColor': '#0369a1',
+      'primaryBorderColor': '#0ea5e9',
+      'lineColor': '#38bdf8',
+      'tertiaryColor': '#ffffff',
+      'fontSize': '14px'
+    }
+  }
+}%%
+flowchart TD
+    %% --- Style Definitions --- %%
+    classDef mal fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0c4a6e;
+    classDef bus fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12;
+    classDef interface fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#581c87;
+    classDef cache fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#14532d;
+    classDef hidden fill:none,stroke:none,color:#fff,width:0px,height:0px;
+
+    %% 1. Spacer for Gap
+    Spacer("&nbsp;"):::hidden
+
+    %% 2. Model Access Layer
+    subgraph MAL ["💻 Model Access Layer"]
+        direction TB
+        Registry[[Model Registry]]:::mal
+        Hooks[[Hook Manager]]:::mal
+        Inspect[[Model Inspector]]:::mal
     end
-  
-    subgraph Bus["Intrinsic Memory Bus"]
-        channels["Channels:<br/>logit_bias | steering | kv_inject"]
+
+    %% 3. Bus
+    subgraph Bus ["🚌 Intrinsic Memory Bus"]
+        direction TB
+        Channels{{"Channels:
+        logit_bias | steering | kv_inject"}}:::bus
     end
-  
-    subgraph Interfaces["Injection Interfaces"]
-        logit2["Logit Interface<br/>kNN-LM + Bias Engine"]
-        activation2["Activation Interface<br/>Steering Vectors"]
-        synaptic2["Synaptic Interface<br/>KV Encoder + Injector"]
+
+    %% 4. Interfaces
+    subgraph Interfaces ["🔌 Injection Interfaces"]
+        direction TB
+        Logit["Logit Interface
+        (kNN-LM + Bias)"]:::interface
+        
+        Activation["Activation Interface
+        (Steering Vectors)"]:::interface
+        
+        Synaptic["Synaptic Interface
+        (KV Encoder)"]:::interface
     end
-  
-    subgraph Cache["Memory Cache Hierarchy"]
-        l1["L1: GPU HBM<br/>Working Memory"]
-        l2["L2: CPU DRAM<br/>Short-term"]
-        l3["L3: NVMe SSD<br/>Long-term"]
+
+    %% 5. Cache Hierarchy
+    subgraph Cache ["🚀 Memory Cache Hierarchy"]
+        direction TB
+        L1[("L1: GPU HBM
+        Working Memory")]:::cache
+        
+        L2[("L2: CPU DRAM
+        Short-term")]:::cache
+        
+        L3[("L3: NVMe SSD
+        Long-term")]:::cache
     end
-  
-    MAL --> Bus
-    Bus --> Interfaces
-    Interfaces --> Cache
-  
-    style MAL fill:#e3f2fd,color:#000
-    style Bus fill:#fff8e1,color:#000
-    style Interfaces fill:#f3e5f5,color:#000
-    style Cache fill:#e8f5e9,color:#000
+
+    %% --- Wiring ---
+    Spacer --- Registry
+
+    %% Logic Flow
+    Registry & Hooks & Inspect --> Channels
+    
+    Channels ==> Logit
+    Channels ==> Activation
+    Channels ==> Synaptic
+    
+    Logit & Activation & Synaptic --> L1
+    L1 --> L2
+    L2 --> L3
+
+    %% Hide the spacer link
+    linkStyle 0 stroke-width:0px,fill:none;
 ```
 
 **Key Components:**
