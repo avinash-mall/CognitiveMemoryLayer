@@ -91,6 +91,18 @@ From the **project root**, with CML API and Ollama running:
    - `evaluation/outputs/locomo10_qa_cml.json` – per-sample QA with predictions and F1/recall.
    - `evaluation/outputs/locomo10_qa_cml_stats.json` – aggregate stats by category.
 
+## Comparing to other systems
+
+To compare CML with LoCoMo baselines (base/long-context LLMs, RAG over dialog/observation/summary):
+
+1. **Run LoCoMo baselines** from `evaluation/locomo`: set `scripts/env.sh`, then run e.g. `scripts/evaluate_gpts.sh`, `scripts/evaluate_rag_gpts.sh`, etc. Their stats go to `evaluation/locomo/outputs/locomo10_qa_stats.json`.
+2. **Print a comparison table** (overall accuracy and recall for every model) from project root:
+   ```bash
+   python evaluation/scripts/compare_results.py evaluation/outputs/locomo10_qa_cml_stats.json evaluation/locomo/outputs/locomo10_qa_stats.json
+   ```
+
+Full steps (env, API keys, RAG prep) are in **`ProjectPlan/LocomoEval/RunEvaluation.md`** §9.
+
 ## Reference
 
 - [LoCoMo paper / site](https://snap-research.github.io/locomo/)
