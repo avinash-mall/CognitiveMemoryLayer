@@ -117,6 +117,23 @@ def test_write_response_parse() -> None:
     assert r.memory_id == UUID("00000000-0000-0000-0000-000000000001")
     assert r.chunks_created == 2
     assert r.message == "Stored"
+    assert r.eval_outcome is None
+    assert r.eval_reason is None
+
+
+def test_write_response_eval_mode() -> None:
+    """WriteResponse parses eval_outcome and eval_reason when present (X-Eval-Mode)."""
+    d = {
+        "success": True,
+        "memory_id": None,
+        "chunks_created": 0,
+        "message": "No significant information to store",
+        "eval_outcome": "skipped",
+        "eval_reason": "Below novelty threshold: 0.10 < 0.20",
+    }
+    r = WriteResponse.model_validate(d)
+    assert r.eval_outcome == "skipped"
+    assert r.eval_reason == "Below novelty threshold: 0.10 < 0.20"
 
 
 def test_read_response_parse() -> None:

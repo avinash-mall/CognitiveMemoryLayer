@@ -6,7 +6,7 @@ This folder contains the [LoCoMo](https://github.com/snap-research/locomo) bench
 
 - **`locomo/`** – Cloned [snap-research/locomo](https://github.com/snap-research/locomo) repo (data, `task_eval`, scripts).
 - **`scripts/eval_locomo.py`** – Driver: ingest conversations into CML, run QA via CML read + Ollama, score with LoCoMo’s `eval_question_answering` and `analyze_aggr_acc`.
-- **`outputs/`** – Created at run time; holds `locomo10_qa_cml.json` and `locomo10_qa_cml_stats.json`.
+- **`outputs/`** – Created at run time; holds `locomo10_qa_cml.json`, `locomo10_qa_cml_stats.json`, `locomo10_gating_stats.json` (default; use `--no-eval-mode` to skip), and optionally `locomo10_qa_cml_timing.json` (with `--log-timing`).
 
 ## Prerequisites
 
@@ -85,11 +85,15 @@ From the **project root**, with CML API and Ollama running:
    - `--skip-ingestion` – skip Phase A (reuse existing CML state).
    - `--overwrite` – overwrite existing predictions in the output file.
    - `--max-results 25` – CML read top-k (default 25).
+   - `--no-eval-mode` – disable X-Eval-Mode (eval mode is on by default); when on, API returns stored/skipped and reason; script writes **`locomo10_gating_stats.json`** (stored/skipped counts, skip reason counts).
+   - `--log-timing` – record per-question CML read and Ollama latency and token usage; script writes **`locomo10_qa_cml_timing.json`** (per_question and aggregate mean/p95 latency, total tokens).
    - `--cml-url`, `--cml-api-key`, `--ollama-url`, `--ollama-model` – override env.
 
 3. Outputs:
    - `evaluation/outputs/locomo10_qa_cml.json` – per-sample QA with predictions and F1/recall.
    - `evaluation/outputs/locomo10_qa_cml_stats.json` – aggregate stats by category.
+   - `evaluation/outputs/locomo10_gating_stats.json` – by default (unless `--no-eval-mode`): write-gate outcomes (total_writes, stored_count, skipped_count, skip_reason_counts).
+   - `evaluation/outputs/locomo10_qa_cml_timing.json` – when `--log-timing` is used: per-question and aggregate latency (CML read, Ollama) and token usage.
 
 ## Comparing to other systems
 

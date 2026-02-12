@@ -42,12 +42,14 @@ class MemoryItem(BaseModel):
 
 
 class WriteResponse(BaseModel):
-    """Response from write operation."""
+    """Response from write operation. When server receives X-Eval-Mode: true, includes eval_outcome and eval_reason."""
 
     success: bool
     memory_id: UUID | None = None
     chunks_created: int = 0
     message: str = ""
+    eval_outcome: str | None = None  # "stored" | "skipped" when X-Eval-Mode header was set
+    eval_reason: str | None = None  # Write-gate reason when X-Eval-Mode header was set
 
     def __str__(self) -> str:
         return f"WriteResponse(success={self.success}, chunks={self.chunks_created})"

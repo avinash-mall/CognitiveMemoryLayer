@@ -499,6 +499,7 @@ Store new information in memory.
 - `X-API-Key: <api_key>` (required)
 - `Content-Type: application/json`
 - `X-Tenant-ID: <tenant_id>` (optional; **admin key only** — standard keys use the tenant from config)
+- `X-Eval-Mode: true` (optional) — When set, the response includes write-gate outcome and reason (see **Response** below). Use for benchmark/evaluation scripts to aggregate gating statistics (stored vs skipped and reasons).
 
 **Request Body:**
 ```json
@@ -520,9 +521,13 @@ Store new information in memory.
   "success": true,
   "memory_id": "uuid",
   "chunks_created": 1,
-  "message": "Memory stored successfully"
+  "message": "Memory stored successfully",
+  "eval_outcome": "stored",
+  "eval_reason": "1 chunk(s) stored"
 }
 ```
+
+- `eval_outcome` and `eval_reason` are present only when the request included `X-Eval-Mode: true`. `eval_outcome` is `"stored"` or `"skipped"`; `eval_reason` is a short string (e.g. write-gate skip reason, or "N chunk(s) stored").
 
 **Notes:**
 - Request metadata is merged into the stored record; optional memory_type overrides automatic classification when provided.

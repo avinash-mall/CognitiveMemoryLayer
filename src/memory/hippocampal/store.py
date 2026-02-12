@@ -17,7 +17,12 @@ from ...storage.base import MemoryStoreBase
 from ...utils.embeddings import EmbeddingClient
 from ..working.models import SemanticChunk
 from .redactor import PIIRedactor
-from .write_gate import WriteDecision, WriteGate
+from .write_gate import WriteDecision, WriteGate, WriteGateResult
+
+
+def _gate_result_to_dict(g: WriteGateResult) -> dict:
+    """Serialize for API (eval mode)."""
+    return {"decision": g.decision.value, "reason": g.reason}
 
 
 class HippocampalStore:
@@ -54,10 +59,10 @@ class HippocampalStore:
         timestamp: Optional[datetime] = None,
         request_metadata: Optional[Dict[str, Any]] = None,
         memory_type_override: Optional[MemoryType] = None,
-    ) -> Optional[MemoryRecord]:
+    ) -> tuple[Optional[MemoryRecord], WriteGateResult]:
         gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_memories)
         if gate_result.decision == WriteDecision.SKIP:
-            return None
+            return (None, gate_result)
 
         text = chunk.text
         if gate_result.redaction_required:
@@ -119,7 +124,7 @@ class HippocampalStore:
             ),
         )
         stored = await self.store.upsert(record)
-        return stored
+        return (stored, gate_result)
 
     async def encode_batch(
         self,
@@ -132,7 +137,8 @@ class HippocampalStore:
         timestamp: Optional[datetime] = None,
         request_metadata: Optional[Dict[str, Any]] = None,
         memory_type_override: Optional[MemoryType] = None,
-    ) -> List[MemoryRecord]:
+        return_gate_results: bool = False,
+    ):
         existing = await self.store.scan(
             tenant_id,
             filters={"status": MemoryStatus.ACTIVE.value},
@@ -141,8 +147,9 @@ class HippocampalStore:
         )
         existing_dicts = [{"text": m.text} for m in existing]
         results: List[MemoryRecord] = []
+        gate_results: List[dict] = [] if return_gate_results else []
         for chunk in chunks:
-            record = await self.encode_chunk(
+            record, gate_result = await self.encode_chunk(
                 tenant_id,
                 chunk,
                 context_tags=context_tags,
@@ -154,9 +161,13 @@ class HippocampalStore:
                 request_metadata=request_metadata,
                 memory_type_override=memory_type_override,
             )
+            if return_gate_results:
+                gate_results.append(_gate_result_to_dict(gate_result))
             if record:
                 results.append(record)
                 existing_dicts.append({"text": record.text})
+        if return_gate_results:
+            return results, gate_results
         return results
 
     async def search(
