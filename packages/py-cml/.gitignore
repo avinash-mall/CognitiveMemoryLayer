@@ -4,10 +4,41 @@ build/
 *.egg-info/
 .eggs/
 *.egg
+*.manifest
 
-# Caches
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment and secrets
+.env
+.env.local
+*.pem
+
+# Caches and coverage
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
 htmlcov/
 .coverage
+coverage.xml
+
+# Local SQLite DBs (embedded mode)
+*.db
+cml_memory.db
+
+# Testing
+.tox/
+.nox/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
