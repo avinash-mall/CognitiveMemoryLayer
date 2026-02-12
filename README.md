@@ -25,14 +25,6 @@
 
 ---
 
-## ✨ Highlights
-
-<table>
-<tr>
-<td width="50%">
-
----
-
 ## 📚 Table of Contents
 
 <details open>
@@ -113,131 +105,42 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**:
   }
 }%%
 flowchart TD
-    %% --- Style Definitions --- %%
-    classDef client fill:#dcfce7,stroke:#166534,stroke-width:2px,color:#14532d;
-    classDef api fill:#f3e8ff,stroke:#6b21a8,stroke-width:2px,color:#581c87;
-    classDef orch fill:#fff7ed,stroke:#c2410c,stroke-width:2px,color:#7c2d12;
-    classDef module fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#9a3412;
-    classDef db fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#075985;
-    classDef worker fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,stroke-dasharray: 5 5,color:#991b1b;
-    classDef external fill:#f1f5f9,stroke:#334155,stroke-width:2px,stroke-dasharray: 5 5,color:#334155;
+    classDef client fill:#dcfce7,stroke:#166534,stroke-width:2px,color:#14532d
+    classDef api fill:#f3e8ff,stroke:#6b21a8,stroke-width:2px,color:#581c87
+    classDef orch fill:#fff7ed,stroke:#c2410c,stroke-width:2px,color:#7c2d12
+    classDef module fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#9a3412
+    classDef db fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#075985
+    classDef worker fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,stroke-dasharray:5 5,color:#991b1b
+    classDef external fill:#f1f5f9,stroke:#334155,stroke-width:2px,stroke-dasharray:5 5,color:#334155
 
-    %% ==========================================
-    %% 1. CLIENTS (Stacked)
-    %% ==========================================
-    subgraph Clients ["🔌 Clients"]
-        direction TB
-        SDK(["Python SDK"]):::client
-        Scripts(["Example Scripts"]):::client
-        CURL(["cURL"]):::client
-        Browser(["Dashboard SPA"]):::client
-    end
+    C(["🔌 SDK · Scripts · cURL · Dashboard"]):::client
+    C ==>|HTTP| A[["⚡ FastAPI + Auth"]]:::api
+    A ==>|invokes| O
 
-    %% ==========================================
-    %% 2. API LAYER
-    %% ==========================================
-    subgraph APILayer ["⚡ API Layer"]
+    subgraph Core ["🧠 Memory Pipeline"]
         direction TB
-        API[["FastAPI Service"]]:::api
-        Auth{{"Auth & Middleware"}}:::api
-        
-        %% Detail: Validation
-        API <-->|validates| Auth
-    end
-
-    %% ==========================================
-    %% 3. LOGIC CORE (The Spine)
-    %% ==========================================
-    subgraph Logic ["🧠 Logic Core"]
-        direction TB
-        
-        Orch[["Orchestrator"]]:::orch
+        O[["Orchestrator"]]:::orch
         WG{{"Write Gate"}}:::orch
-        
-        Sensory[["Sensory Manager"]]:::module
-        Working[["Working Memory"]]:::module
-        Extract[["Extraction Module"]]:::module
-        Retrieve[["Retrieval Module"]]:::module
-        Consol[["Consolidation"]]:::module
-        Recon[["Reconsolidation"]]:::module
-        Forget[["Forgetting"]]:::module
-        
-        %% Flow with Details
-        Orch -->|passes to| WG
-        WG --> Sensory --> Working --> Extract --> Retrieve
-        Retrieve --> Consol --> Recon --> Forget
+        Sens[["Sensory → Working"]]:::module
+        Ext[["Extraction"]]:::module
+        Ret[["Retrieval"]]:::module
+        Con[["Consolidation"]]:::module
+        Rec[["Reconsolidation"]]:::module
+        Fgt[["Forgetting"]]:::module
+        O --> WG --> Sens --> Ext --> Ret
+        Ret --> Con --> Rec --> Fgt
     end
 
-    %% ==========================================
-    %% 4. STORAGE (Stacked)
-    %% ==========================================
-    subgraph Storage ["💾 Storage Backends"]
-        direction TB
-        Redis[("Redis Cache")]:::db
-        PG[("Postgres Store")]:::db
-        Neo[("Neo4j Graph")]:::db
-        Logs[("Event Log")]:::db
-    end
+    Ext -.->|calls| LLM(["☁️ LLM"]):::external
 
-    %% ==========================================
-    %% 5. WORKERS & EXTERNAL
-    %% ==========================================
-    subgraph Workers ["⚙️ Async Workers"]
-        direction TB
-        W_Consol{{"Consolidation Worker"}}:::worker
-        W_Forget{{"Forgetting Worker"}}:::worker
-    end
-    
-    LLM(["☁️ LLM Provider"]):::external
+    Ret -->|search| DB[("💾 Postgres · Neo4j")]:::db
+    Con -->|write| DB
+    Rec -->|update| DB
+    Fgt -->|purge| Cache[("⚡ Redis · Logs")]:::db
 
-    %% ==========================================
-    %% CONNECTIONS (Restoring All Details)
-    %% ==========================================
-
-    %% Clients -> API
-    SDK & Scripts & CURL & Browser ==>|HTTP| API
-
-    %% API -> Logic
-    API ==>|invokes| Orch
-    API -.->|calls| LLM
-
-    %% Logic -> External
-    Extract -.->|calls| LLM
-
-    %% Retrieval Details
-    Retrieve -->|vector search| PG
-    Retrieve -->|graph search| Neo
-
-    %% Write/Update Details
-    Consol -->|writes| PG
-    Recon -->|updates| Neo
-    Forget -->|purges| Redis
-    Forget -->|logs| Logs
-
-    %% Worker Details
-    W_Consol -.->|tasks| Consol
-    W_Consol <-->|reads/writes| PG & Neo
-
-    W_Forget -.->|tasks| Forget
-    W_Forget <-->|reads/writes| Redis & Logs
-
-    %% ==========================================
-    %% CLICK EVENTS
-    %% ==========================================
-    click API "src/api/app.py"
-    click Auth "src/api/auth.py"
-    click Orch "src/memory/orchestrator.py"
-    click WG "src/memory/hippocampal/write_gate.py"
-    click Sensory "src/memory/sensory/manager.py"
-    click Working "src/memory/working/manager.py"
-    click Extract "src/extraction/entity_extractor.py"
-    click Retrieve "src/retrieval/retriever.py"
-    click Consol "src/consolidation/worker.py"
-    click Forget "src/forgetting/worker.py"
-    click PG "src/memory/hippocampal/store.py"
-    click Neo "src/memory/neocortical/fact_store.py"
-    click W_Consol "src/consolidation/worker.py"
-    click W_Forget "src/forgetting/worker.py"
+    W{{"⚙️ Workers"}}:::worker
+    W -.->|async| Con
+    W -.->|async| Fgt
 ```
 
 ---
