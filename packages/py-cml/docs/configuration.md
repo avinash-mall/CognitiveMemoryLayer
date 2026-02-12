@@ -13,7 +13,7 @@ Unset options are loaded from the environment (or a `.env` file). Use the `CML_`
 | `CML_MAX_RETRIES` | Maximum retry attempts | `3` |
 | `CML_RETRY_DELAY` | Base delay between retries (seconds) | `1.0` |
 | `CML_MAX_RETRY_DELAY` | Maximum backoff delay (seconds); caps exponential backoff | `60.0` |
-| `CML_ADMIN_API_KEY` | Admin API key (for admin operations) | — |
+| `CML_ADMIN_API_KEY` | Admin API key (for admin operations, e.g. `delete_all`, `list_tenants`, `get_events`) | — |
 | `CML_VERIFY_SSL` | Verify SSL certificates (`true`/`false`) | `true` |
 
 For **CMLOpenAIHelper**, set `OPENAI_MODEL` or `LLM__MODEL` in `.env` (or pass `model=` to the helper); no default model in code.

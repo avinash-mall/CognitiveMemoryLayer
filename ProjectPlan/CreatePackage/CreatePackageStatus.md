@@ -208,7 +208,7 @@ from cml.models import WriteRequest, ReadRequest, TurnRequest, UpdateRequest, Fo
 |:-------|:------------|
 | `consolidate(tenant_id)` | Trigger consolidation cycle |
 | `run_forgetting(tenant_id, dry_run)` | Run active forgetting |
-| `delete_all()` | Delete all memories (GDPR) |
+| `delete_all()` | Delete all memories (GDPR); server implements `DELETE /api/v1/memory/all` (admin key) |
 | `batch_write(items)` | Write multiple memories |
 | `batch_read(queries)` | Execute multiple reads |
 | `get_session_context(session_id)` | Get full session context |

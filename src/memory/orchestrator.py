@@ -228,7 +228,11 @@ class MemoryOrchestrator:
                 _memory_type_override = memory_type
             else:
                 try:
-                    _memory_type_override = _MemoryType(memory_type) if isinstance(memory_type, str) else _MemoryType(memory_type.value)
+                    _memory_type_override = (
+                        _MemoryType(memory_type)
+                        if isinstance(memory_type, str)
+                        else _MemoryType(memory_type.value)
+                    )
                 except (ValueError, AttributeError):
                     pass  # Invalid memory_type; let write gate decide
 
@@ -387,7 +391,10 @@ class MemoryOrchestrator:
                 "source_session_id": session_id,
             }
             records = await self.hippocampal.store.scan(
-                tenant_id, filters=filters, order_by="-timestamp", limit=50,
+                tenant_id,
+                filters=filters,
+                order_by="-timestamp",
+                limit=50,
             )
             # Build items directly from records
             messages = []
@@ -414,8 +421,7 @@ class MemoryOrchestrator:
                     messages.append(item)
 
             from ..retrieval.packet_builder import MemoryPacketBuilder
-            from ..core.schemas import MemoryPacket, RetrievedMemory, Provenance
-            from ..core.enums import MemorySource as _MemorySource
+            from ..core.schemas import RetrievedMemory
 
             # Build a minimal packet for context string generation
             retrieved = [
