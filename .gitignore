@@ -34,6 +34,10 @@ env/
 # Local config (project uses .env + src/core/config.py)
 config/
 
+# Local SQLite DBs (embedded/examples)
+*.db
+cml_memory.db
+
 # IDE
 .idea/
 .vscode/
@@ -43,6 +47,7 @@ config/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .tox/
 .nox/
@@ -52,6 +57,9 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+
+# uv
+.uv/
 
 # Evaluation (external Locomo benchmark; clone from snap-research/locomo if needed)
 evaluation/locomo/

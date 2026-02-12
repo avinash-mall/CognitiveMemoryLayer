@@ -33,6 +33,9 @@ cml_memory.db
 .tox/
 .nox/
 
+# uv
+.uv/
+
 # IDE
 .idea/
 .vscode/
