@@ -6,6 +6,8 @@
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+**What's new (1.0.11):** Eval mode for write — use `eval_mode=True` in `write()` or `remember()` to receive `eval_outcome` and `eval_reason` in the response for benchmarks and evaluation scripts. See [CHANGELOG](CHANGELOG.md).
+
 ---
 
 ## Installation
