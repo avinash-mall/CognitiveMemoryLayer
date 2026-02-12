@@ -14,7 +14,6 @@ class RetrievalSource(str, Enum):
     FACTS = "facts"
     VECTOR = "vector"
     GRAPH = "graph"
-    LEXICAL = "lexical"
     CACHE = "cache"
 
 

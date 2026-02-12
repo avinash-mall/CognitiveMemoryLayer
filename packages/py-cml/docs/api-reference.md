@@ -33,7 +33,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **get_context(query, \*, max_results=10, ...)** → `str` — Formatted LLM context string.
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
 - **get_session_context(session_id)** → `SessionContextResponse`
-- **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True.
+- **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True. Requires admin API key. Server implements DELETE /api/v1/memory/all.
 - **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` parameter.
 - **search(query, \*\*kwargs)** — Alias for read.
 
