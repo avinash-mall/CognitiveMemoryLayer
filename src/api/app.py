@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..core.config import get_settings
+from ..core.config import get_settings, validate_embedding_dimensions
 from ..storage.connection import DatabaseManager
 from .middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from .routes import router
@@ -23,7 +23,11 @@ _DASHBOARD_DIR = pathlib.Path(__file__).resolve().parent.parent / "dashboard" / 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan handler."""
-    get_settings()
+    settings = get_settings()
+
+    # Validate embedding dimensions match DB schema at startup
+    validate_embedding_dimensions(settings)
+
     db_manager = DatabaseManager.get_instance()
     app.state.db = db_manager
 
@@ -52,10 +56,14 @@ def create_app() -> FastAPI:
         origins = ["*"]
     else:
         origins = ["http://localhost:3000", "http://localhost:8080"]
+
+    # CORS spec: credentials are incompatible with wildcard origins
+    allow_credentials = "*" not in origins
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=True,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -84,14 +92,6 @@ def create_app() -> FastAPI:
         @app.get("/dashboard/{rest_of_path:path}")
         async def dashboard_spa(rest_of_path: str = ""):
             """Serve the dashboard SPA index.html for all dashboard routes."""
-            index = _DASHBOARD_DIR / "index.html"
-            if index.is_file():
-                return FileResponse(str(index))
-            return {"error": "Dashboard not found"}
-
-        @app.get("/dashboard")
-        async def dashboard_root():
-            """Serve the dashboard root."""
             index = _DASHBOARD_DIR / "index.html"
             if index.is_file():
                 return FileResponse(str(index))
