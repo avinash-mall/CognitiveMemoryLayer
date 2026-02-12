@@ -199,6 +199,7 @@ class MemoryOrchestrator:
         agent_id: Optional[str] = None,
         namespace: Optional[str] = None,
         timestamp: Optional[datetime] = None,
+        eval_mode: bool = False,
     ) -> Dict[str, Any]:
         """Write new information to memory. Holistic: tenant-only."""
         stm_result = await self.short_term.ingest_turn(
@@ -213,11 +214,15 @@ class MemoryOrchestrator:
         chunks_for_encoding = stm_result.get("chunks_for_encoding", [])
 
         if not chunks_for_encoding:
-            return {
+            out = {
                 "memory_id": None,
                 "chunks_created": 0,
                 "message": "No significant information to store",
             }
+            if eval_mode:
+                out["eval_outcome"] = "skipped"
+                out["eval_reason"] = "No significant information to store"
+            return out
 
         # Resolve memory_type override if provided
         from ..core.enums import MemoryType as _MemoryType
@@ -236,7 +241,7 @@ class MemoryOrchestrator:
                 except (ValueError, AttributeError):
                     pass  # Invalid memory_type; let write gate decide
 
-        stored = await self.hippocampal.encode_batch(
+        result = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
             chunks=chunks_for_encoding,
             context_tags=context_tags,
@@ -246,13 +251,43 @@ class MemoryOrchestrator:
             timestamp=timestamp,
             request_metadata=metadata if metadata else None,
             memory_type_override=_memory_type_override,
+            return_gate_results=eval_mode,
         )
 
-        return {
-            "memory_id": stored[0].id if stored else None,
-            "chunks_created": len(stored),
-            "message": f"Stored {len(stored)} memory chunks",
-        }
+        if eval_mode:
+            stored, gate_results = result
+            n_stored = len(stored)
+            n_skipped = sum(1 for g in gate_results if g.get("decision") == "skip")
+            if n_stored == 0:
+                eval_outcome = "skipped"
+                eval_reason = (
+                    gate_results[0].get("reason", "unknown") if gate_results else "all skipped"
+                )
+            else:
+                eval_outcome = "stored"
+                if n_skipped:
+                    reasons = [
+                        g.get("reason", "") for g in gate_results if g.get("decision") == "skip"
+                    ]
+                    eval_reason = f"{n_stored} stored, {n_skipped} skipped: " + (
+                        reasons[0] if reasons else ""
+                    )
+                else:
+                    eval_reason = f"{n_stored} chunk(s) stored"
+            return {
+                "memory_id": stored[0].id if stored else None,
+                "chunks_created": n_stored,
+                "message": f"Stored {n_stored} memory chunks",
+                "eval_outcome": eval_outcome,
+                "eval_reason": eval_reason,
+            }
+        else:
+            stored = result
+            return {
+                "memory_id": stored[0].id if stored else None,
+                "chunks_created": len(stored),
+                "message": f"Stored {len(stored)} memory chunks",
+            }
 
     async def read(
         self,

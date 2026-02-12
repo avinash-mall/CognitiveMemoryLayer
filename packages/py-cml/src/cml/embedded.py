@@ -252,8 +252,9 @@ class EmbeddedCognitiveMemoryLayer:
         turn_id: str | None = None,
         agent_id: str | None = None,
         timestamp: datetime | None = None,
+        eval_mode: bool = False,
     ) -> WriteResponse:
-        """Store a memory."""
+        """Store a memory. When eval_mode=True, response includes eval_outcome and eval_reason from the write gate."""
         self._ensure_initialized()
         result = await self._orchestrator.write(
             tenant_id=self._config.tenant_id,
@@ -266,6 +267,7 @@ class EmbeddedCognitiveMemoryLayer:
             agent_id=agent_id,
             namespace=namespace,
             timestamp=timestamp,
+            eval_mode=eval_mode,
         )
         mid = result.get("memory_id")
         return WriteResponse(
@@ -273,6 +275,8 @@ class EmbeddedCognitiveMemoryLayer:
             memory_id=UUID(str(mid)) if mid else None,
             chunks_created=result.get("chunks_created", 0),
             message=result.get("message", ""),
+            eval_outcome=result.get("eval_outcome"),
+            eval_reason=result.get("eval_reason"),
         )
 
     async def read(

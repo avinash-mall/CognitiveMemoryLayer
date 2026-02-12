@@ -22,7 +22,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 ### Methods
 
-- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. Optional `timestamp` (datetime) for event time; defaults to now.
+- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. Optional `timestamp` (datetime) for event time; defaults to now. When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason)—useful for benchmark scripts to aggregate gating statistics.
 - **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format)** → `ReadResponse` — Retrieve memories. The server applies `memory_types`, `since`, and `until`. `response_format`: "packet" (categorized), "list" (flat), "llm_context" (markdown string).
 - **read_safe(query, \*\*kwargs)** → `ReadResponse` — Like read; returns empty result on connection/timeout.
 - **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now.
@@ -34,7 +34,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
 - **get_session_context(session_id)** → `SessionContextResponse` — Session context is scoped to memories with that `session_id` when provided.
 - **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True. Requires admin API key. Server implements DELETE /api/v1/memory/all.
-- **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` parameter.
+- **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` and `eval_mode` parameters.
 - **search(query, \*\*kwargs)** — Alias for read.
 
 Admin/batch: consolidate, run_forgetting, batch_write, batch_read, list_tenants, get_events, component_health, with_namespace(namespace), iter_memories(...).
@@ -66,6 +66,18 @@ When `timestamp` is not provided, it defaults to the current time. This feature 
 - Importing historical data with correct event times
 - Testing temporal reasoning capabilities
 
+### Eval mode (write gate)
+
+For benchmark or evaluation scripts, use **eval_mode=True** so the server returns whether each write was stored or skipped and why:
+
+```python
+resp = memory.write("User said okay.", eval_mode=True)
+print(resp.eval_outcome)  # "stored" or "skipped"
+print(resp.eval_reason)   # e.g. "1 chunk(s) stored" or "Below novelty threshold: ..."
+```
+
+Use this to aggregate gating statistics (e.g. stored vs skipped counts and skip reasons) when running evaluations. Works with sync, async, and embedded clients.
+
 ## AsyncCognitiveMemoryLayer
 
 Same methods as sync client, all async. Use `async with AsyncCognitiveMemoryLayer(...) as memory:` then `await memory.write(...)` etc.
@@ -79,7 +91,8 @@ Same API as async client. Use `async with EmbeddedCognitiveMemoryLayer()` or pas
 - **MemoryType** — EPISODIC_EVENT, SEMANTIC_FACT, PREFERENCE, CONVERSATION, MESSAGE, etc.
 - **MemoryStatus** — ACTIVE, SILENT, COMPRESSED, ARCHIVED, DELETED
 - **MemoryItem** — id, text, type, confidence, relevance, timestamp, metadata
-- **WriteResponse, ReadResponse, TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in cml.models.
+- **WriteResponse** — success, memory_id, chunks_created, message; when eval_mode was used, optional eval_outcome ("stored"|"skipped") and eval_reason.
+- **ReadResponse, TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in cml.models.
 
 ## Exceptions
 

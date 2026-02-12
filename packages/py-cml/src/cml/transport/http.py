@@ -152,9 +152,12 @@ class HTTPTransport:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         use_admin_key: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         url = API_PREFIX + path
-        headers: dict[str, str] = self._build_headers(use_admin_key=True) if use_admin_key else {}
+        headers: dict[str, str] = self._build_headers(use_admin_key=use_admin_key)
+        if extra_headers:
+            headers = {**headers, **extra_headers}
         if json is not None:
             json = serialize_for_api(json)
         start = time.perf_counter()
@@ -164,7 +167,7 @@ class HTTPTransport:
                 url=url,
                 json=json,
                 params=params,
-                headers=headers or None,
+                headers=headers,
             )
             _raise_for_status(response)
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -190,6 +193,7 @@ class HTTPTransport:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         use_admin_key: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Execute an HTTP request with retry and error handling."""
         return retry_sync(
@@ -200,6 +204,7 @@ class HTTPTransport:
             json=json,
             params=params,
             use_admin_key=use_admin_key,
+            extra_headers=extra_headers,
         )
 
     def close(self) -> None:
@@ -256,9 +261,12 @@ class AsyncHTTPTransport:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         use_admin_key: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         url = API_PREFIX + path
-        headers = self._build_headers(use_admin_key=True) if use_admin_key else {}
+        headers = self._build_headers(use_admin_key=use_admin_key)
+        if extra_headers:
+            headers = {**headers, **extra_headers}
         if json is not None:
             json = serialize_for_api(json)
         start = time.perf_counter()
@@ -268,7 +276,7 @@ class AsyncHTTPTransport:
                 url=url,
                 json=json,
                 params=params,
-                headers=headers or None,
+                headers=headers,
             )
             _raise_for_status(response)
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -294,6 +302,7 @@ class AsyncHTTPTransport:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         use_admin_key: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Execute an HTTP request with retry and error handling."""
         return await retry_async(
@@ -304,6 +313,7 @@ class AsyncHTTPTransport:
             json=json,
             params=params,
             use_admin_key=use_admin_key,
+            extra_headers=extra_headers,
         )
 
     async def close(self) -> None:

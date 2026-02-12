@@ -42,7 +42,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         timestamp=datetime.now(timezone.utc),
     )
     dims = get_settings().embedding.dimensions
-    record = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
+    record, _ = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
     assert record is not None
     assert record.text == chunk.text
     assert record.embedding is not None
@@ -70,7 +70,7 @@ async def test_encode_chunk_skip_low_salience(pg_session_factory):
         chunk_type=ChunkType.STATEMENT,
         salience=0.1,
     )
-    record = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
+    record, _ = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
     # May be None if write gate skips
     if record is None:
         return
