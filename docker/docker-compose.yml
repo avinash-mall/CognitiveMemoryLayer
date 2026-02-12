@@ -48,6 +48,9 @@ services:
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
+      # Match config default so migration and tests use same vector dimension.
+      # If you see "expected N dimensions, not M", run: docker compose -f docker/docker-compose.yml down -v
+      EMBEDDING__DIMENSIONS: "1536"
     depends_on:
       postgres:
         condition: service_healthy

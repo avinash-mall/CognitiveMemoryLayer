@@ -114,6 +114,8 @@ Or use `CMLConfig` for validated, reusable config: `from cml import CMLConfig`.
 
 **Temporal fidelity:** Optional `timestamp` in `write()`, `turn()`, `remember()` for historical data replay (benchmarks, migration, testing).
 
+**Eval mode:** Optional `eval_mode=True` in `write()` or `remember()` so the server returns `eval_outcome` and `eval_reason` (stored/skipped and write-gate reason) for benchmark scripts; see [API Reference — Eval mode](docs/api-reference.md#eval-mode-write-gate).
+
 ---
 
 ## Documentation

@@ -877,6 +877,7 @@ curl -X POST http://localhost:8000/api/v1/memory/write \
     "context_tags": ["preference", "personal"]
   }'
 ```
+For evaluation scripts, add `-H "X-Eval-Mode: true"` to receive `eval_outcome` and `eval_reason` in the response (stored/skipped and write-gate reason). See [UsageDocumentation](ProjectPlan/UsageDocumentation.md) and [evaluation/README](evaluation/README.md).
 
 ### 3. Retrieve Memories
 

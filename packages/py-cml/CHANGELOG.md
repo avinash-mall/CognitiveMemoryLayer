@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(No unreleased changes.)
+### Added
+
+- **Eval mode for write** — `write()` and `remember()` now accept an optional `eval_mode: bool = False`. When `True`, the client sends the `X-Eval-Mode: true` header; the server (and embedded orchestrator) return `eval_outcome` (`"stored"` or `"skipped"`) and `eval_reason` in the response. Use this in benchmark or evaluation scripts to aggregate write-gate gating statistics. Available on sync, async, and embedded clients. `WriteResponse` includes optional `eval_outcome` and `eval_reason` fields.
 
 ## [1.0.10] - 2025-02-12
 
