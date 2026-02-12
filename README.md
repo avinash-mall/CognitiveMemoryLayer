@@ -1,46 +1,32 @@
 # Cognitive Memory Layer
 
-## Table of Contents
-1. [Introduction](#introduction)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Usage](#usage)
-5. [Monitoring Dashboard](#-monitoring-dashboard)
-6. [Contributing](#contributing)
-7. [License](#license)
-
-## Introduction
-
-Welcome to the Cognitive Memory Layer project! This project aims to provide a framework for cognitive memory operations.
-
-## Features
-
-- 🔍 Feature One
-- 🌐 Feature Two
+This repository contains the code and resources related to the Cognitive Memory Layer project. It aims to provide insights and frameworks for understanding cognitive processes in artificial intelligence.
 
 ## Installation
 
-To install, clone the repository and install the dependencies:
+To get started with the Cognitive Memory Layer, clone the repository and install the necessary dependencies:
+
 ```bash
 git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
 cd CognitiveMemoryLayer
-npm install
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-To start using the library, import it as follows:
-```javascript
-import { CognitiveMemoryLayer } from 'cognitive-memory-layer';
+You can use the Cognitive Memory Layer as follows:
+
+```python
+from cognitive_memory_layer import CognitiveMemory
+
+memory = CognitiveMemory()
+# Your code here
 ```
 
-## Monitoring Dashboard
-<a id='-monitoring-dashboard'></a>
-
-Ensure to navigate effectively in this section related to monitoring.
-
 ## Contributing
-For contributions, please fork the repository and submit a pull request.
+
+We welcome contributions! Please read the [CONTRIBUTING.md](CONTRIBUTING.md) file for more details.
 
 ## License
-This project is licensed under the MIT License.
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
