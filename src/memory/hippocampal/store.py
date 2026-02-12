@@ -52,6 +52,8 @@ class HippocampalStore:
         existing_memories: Optional[List[Dict[str, Any]]] = None,
         namespace: Optional[str] = None,
         timestamp: Optional[datetime] = None,
+        request_metadata: Optional[Dict[str, Any]] = None,
+        memory_type_override: Optional[MemoryType] = None,
     ) -> Optional[MemoryRecord]:
         gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_memories)
         if gate_result.decision == WriteDecision.SKIP:
@@ -77,10 +79,22 @@ class HippocampalStore:
             entity_texts = [e.normalized for e in entities]
             relations = await self.relation_extractor.extract(text, entities=entity_texts)
 
-        memory_type = (
+        # Use caller-provided memory_type override, else fall back to gate classification
+        memory_type = memory_type_override or (
             gate_result.memory_types[0] if gate_result.memory_types else MemoryType.EPISODIC_EVENT
         )
         key = self._generate_key(chunk, memory_type)
+
+        # Merge request-level metadata with system metadata; request metadata wins on conflict
+        system_metadata: Dict[str, Any] = {
+            "chunk_type": chunk.chunk_type.value,
+            "source_turn_id": chunk.source_turn_id,
+            "source_role": chunk.source_role,
+        }
+        if request_metadata:
+            merged_metadata = {**system_metadata, **request_metadata}
+        else:
+            merged_metadata = system_metadata
 
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
@@ -94,11 +108,7 @@ class HippocampalStore:
             embedding=embedding_result.embedding,
             entities=entities,
             relations=relations,
-            metadata={
-                "chunk_type": chunk.chunk_type.value,
-                "source_turn_id": chunk.source_turn_id,
-                "source_role": chunk.source_role,
-            },
+            metadata=merged_metadata,
             timestamp=timestamp or chunk.timestamp,
             confidence=chunk.confidence,
             importance=gate_result.importance,
@@ -120,6 +130,8 @@ class HippocampalStore:
         agent_id: Optional[str] = None,
         namespace: Optional[str] = None,
         timestamp: Optional[datetime] = None,
+        request_metadata: Optional[Dict[str, Any]] = None,
+        memory_type_override: Optional[MemoryType] = None,
     ) -> List[MemoryRecord]:
         existing = await self.store.scan(
             tenant_id,
@@ -139,6 +151,8 @@ class HippocampalStore:
                 existing_memories=existing_dicts,
                 namespace=namespace,
                 timestamp=timestamp,
+                request_metadata=request_metadata,
+                memory_type_override=memory_type_override,
             )
             if record:
                 results.append(record)

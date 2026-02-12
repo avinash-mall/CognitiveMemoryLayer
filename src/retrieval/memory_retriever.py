@@ -1,5 +1,6 @@
 """Main memory retriever facade."""
 
+from datetime import datetime
 from typing import List, Optional
 
 from ..core.schemas import MemoryPacket
@@ -37,10 +38,27 @@ class MemoryRetriever:
         context_filter: Optional[List[str]] = None,
         recent_context: Optional[str] = None,
         return_packet: bool = True,
+        memory_types: Optional[List[str]] = None,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories for a query. Holistic: tenant-only."""
         analysis = await self.classifier.classify(query, recent_context=recent_context)
         plan = self.planner.plan(analysis)
+
+        # Inject API-level filters into every retrieval step
+        if memory_types or since or until:
+            for step in plan.steps:
+                if memory_types and not step.memory_types:
+                    step.memory_types = memory_types
+                if since or until:
+                    time_filter = step.time_filter or {}
+                    if since:
+                        time_filter["since"] = since
+                    if until:
+                        time_filter["until"] = until
+                    step.time_filter = time_filter
+
         raw_results = await self.retriever.retrieve(tenant_id, plan, context_filter=context_filter)
         reranked = self.reranker.rerank(raw_results, query, max_results=max_results)
         if return_packet:

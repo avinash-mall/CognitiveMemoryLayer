@@ -24,7 +24,7 @@
 The Cognitive Memory Layer is a neuro-inspired memory system designed for LLMs and AI agents. It provides persistent, intelligent memory that goes beyond simple context windows by:
 
 - **Storing** information with automatic importance filtering (Write Gate)
-- **Retrieving** relevant memories using hybrid search (semantic + graph + lexical)
+- **Retrieving** relevant memories using hybrid search (semantic + graph)
 - **Updating** memories with belief revision and reconsolidation
 - **Forgetting** irrelevant information through intelligent decay and compression
 - **Consolidating** episodic memories into semantic facts during "sleep cycles"
@@ -232,7 +232,7 @@ memory = CognitiveMemoryLayer(
 | `health()` | Server health check |
 | `get_context(query)` | Convenience: returns formatted LLM context string |
 | `create_session(...)`, `get_session_context(session_id)` | Session management |
-| `delete_all(confirm=True)` | Delete all memories for tenant (GDPR) |
+| `delete_all(confirm=True)` | Delete all memories for tenant (GDPR); admin-only; server implements DELETE /memory/all |
 
 Aliases: `remember()` = `write()`, `search()` = `read()`. For full signatures and async/embedded usage, see [packages/py-cml/docs/api-reference.md](../packages/py-cml/docs/api-reference.md).
 
@@ -525,6 +525,7 @@ Store new information in memory.
 ```
 
 **Notes:**
+- Request metadata is merged into the stored record; optional memory_type overrides automatic classification when provided.
 - The Write Gate automatically filters low-importance content
 - PII is automatically redacted before storage
 - Content is chunked semantically if too long
@@ -560,7 +561,7 @@ Process a conversation turn: auto-retrieve relevant context and optionally auto-
 
 #### POST /memory/read
 
-Retrieve relevant memories. Holistic: tenant from auth.
+Retrieve relevant memories. Holistic: tenant from auth. The server applies memory_types, since, and until to retrieval; format controls response shape (packet vs flat list vs llm_context).
 
 **Request Headers:**
 - `X-API-Key: <api_key>` (required)
@@ -614,6 +615,8 @@ Retrieve relevant memories. Holistic: tenant from auth.
   "elapsed_ms": 52.1
 }
 ```
+
+**Response (format: "list"):** When format is `"list"`, the response contains a single flat list in `memories`; `facts`, `preferences`, and `episodes` are empty (no server-side categorization).
 
 ---
 
@@ -728,7 +731,7 @@ Read from memory (body same as POST /memory/read; session_id kept for API compat
 
 **GET /session/{session_id}/context**
 
-Get full session context for LLM injection (messages, tool_results, scratch_pad, context_string).
+Get full session context for LLM injection (messages, tool_results, scratch_pad, context_string). When session_id is provided, the server returns only memories scoped to that session (source_session_id).
 
 ---
 
@@ -912,6 +915,10 @@ Returns categorized memories with full metadata:
   "elapsed_ms": 45.0
 }
 ```
+
+### Format: list
+
+When `format` is `"list"`, the response contains a single flat list in `memories`; `facts`, `preferences`, and `episodes` are empty (no server-side categorization).
 
 ### Format: llm_context
 
