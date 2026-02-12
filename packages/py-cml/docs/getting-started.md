@@ -5,6 +5,8 @@
 - Python 3.11+
 - A running CML server (for client mode), or use embedded mode to run without a server
 
+The CML server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), write `metadata` and optional `memory_type`, session-scoped context via `get_session_context(session_id)`, and `delete_all` (admin API key).
+
 ## Installation
 
 ```bash

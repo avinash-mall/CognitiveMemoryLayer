@@ -22,8 +22,8 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 ### Methods
 
-- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp)** → `WriteResponse` — Store new memory. Optional `timestamp` (datetime) for event time; defaults to now.
-- **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format)** → `ReadResponse` — Retrieve memories. `response_format`: "packet", "list", "llm_context".
+- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. Optional `timestamp` (datetime) for event time; defaults to now.
+- **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format)** → `ReadResponse` — Retrieve memories. The server applies `memory_types`, `since`, and `until`. `response_format`: "packet" (categorized), "list" (flat), "llm_context" (markdown string).
 - **read_safe(query, \*\*kwargs)** → `ReadResponse` — Like read; returns empty result on connection/timeout.
 - **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now.
 - **update(memory_id, \*, text, confidence, importance, metadata, feedback)** → `UpdateResponse` — Update an existing memory.
@@ -32,7 +32,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **health()** → `HealthResponse` — Server health check.
 - **get_context(query, \*, max_results=10, ...)** → `str` — Formatted LLM context string.
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
-- **get_session_context(session_id)** → `SessionContextResponse`
+- **get_session_context(session_id)** → `SessionContextResponse` — Session context is scoped to memories with that `session_id` when provided.
 - **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True. Requires admin API key. Server implements DELETE /api/v1/memory/all.
 - **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` parameter.
 - **search(query, \*\*kwargs)** — Alias for read.
