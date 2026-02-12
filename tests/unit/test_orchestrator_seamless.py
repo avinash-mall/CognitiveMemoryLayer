@@ -214,10 +214,11 @@ class TestMemoryOrchestrator:
             }
         )
         deps["hippocampal"].encode_batch = AsyncMock(return_value=[])
-        # Setup store mock for update operations
+        # Setup store mock for update operations and scan (used by get_session_context)
         deps["hippocampal"].store = MagicMock()
         deps["hippocampal"].store.get_by_id = AsyncMock(return_value=None)
         deps["hippocampal"].store.update = AsyncMock(return_value=None)
+        deps["hippocampal"].store.scan = AsyncMock(return_value=[])
         deps["retriever"].retrieve = AsyncMock(
             return_value=MemoryPacket(
                 query="test",
