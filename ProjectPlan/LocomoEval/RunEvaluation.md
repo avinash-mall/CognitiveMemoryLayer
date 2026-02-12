@@ -265,3 +265,56 @@ mkdir -p evaluation/outputs && nohup python evaluation/scripts/run_full_eval.py 
 ```
 
 Check progress with `tail -f evaluation/outputs/run_full_eval.log` (Unix) or by opening `evaluation/outputs/run_full_eval.log` (Windows).
+
+---
+
+## 9. Comparing to other systems
+
+CML’s LoCoMo run produces **overall accuracy** and **recall** (and per-category stats) in `evaluation/outputs/locomo10_qa_cml_stats.json`. To compare with the **LoCoMo paper baselines**, run their scripts for the same data and then compare metrics.
+
+### 9.1. What to compare
+
+- **Base / long-context LLMs** (no RAG): GPT-4, GPT-3.5 with different context lengths, Claude, Gemini, or HuggingFace models. They use truncated conversation as context.
+- **RAG baselines**: GPT-3.5-turbo with retrieval over (a) **dialogs**, (b) **observations**, or (c) **session summaries** (LoCoMo uses Dragon + embeddings; we use CML as the retriever).
+
+Same metrics: **overall accuracy** (F1), **overall recall** (when evidence is available), and per-category accuracy/recall.
+
+### 9.2. Running LoCoMo baselines
+
+From the **LoCoMo repo** (not project root):
+
+```bash
+cd evaluation/locomo
+```
+
+1. **Set environment:** Edit `scripts/env.sh`: set `OUT_DIR`, `DATA_FILE_PATH` (e.g. `./data/locomo10.json`), and the API keys you need (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`, `HF_TOKEN`). Source it: `source scripts/env.sh`.
+
+2. **Optional (for RAG):** Generate observations and session summaries (needed for RAG baselines):
+   ```bash
+   bash scripts/generate_observations.sh
+   bash scripts/generate_session_summaries.sh
+   ```
+   This writes under `$EMB_DIR` / `$OUT_DIR`. RAG scripts also need embeddings (Dragon/Contriever); see LoCoMo README.
+
+3. **Run one or more baselines** (examples; require the corresponding API keys):
+   - OpenAI (base or long-context): `bash scripts/evaluate_gpts.sh`
+   - RAG (dialog / observation / summary): `bash scripts/evaluate_rag_gpts.sh`
+   - HuggingFace: `bash scripts/evaluate_hf_llm.sh`
+   - Claude: `bash scripts/evaluate_claude.sh`
+   - Gemini: `bash scripts/evaluate_gemini.sh`
+
+Outputs go to **`evaluation/locomo/outputs/`**: `locomo10_qa.json` (predictions) and **`locomo10_qa_stats.json`** (aggregate stats). Each run **appends** a new model entry to the same stats file, so one stats file can hold many baselines.
+
+### 9.3. Comparison table (same metrics)
+
+CML results are in **`evaluation/outputs/locomo10_qa_cml_stats.json`** (one model key, e.g. `gpt-oss-20b_cml_top_25`). LoCoMo baseline results are in **`evaluation/locomo/outputs/locomo10_qa_stats.json`** (multiple model keys).
+
+From the **project root**, run the comparison script on one or more stats files; it prints overall accuracy and recall for every model:
+
+```bash
+python evaluation/scripts/compare_results.py evaluation/outputs/locomo10_qa_cml_stats.json evaluation/locomo/outputs/locomo10_qa_stats.json
+```
+
+You can pass only the CML stats file, or only the LoCoMo one, or both. Output is a text table: one row per model, columns e.g. **Model**, **Overall accuracy**, **Overall recall**.
+
+Interpretation: same **annotation file** (`locomo10.json`) and same **metrics** (F1 for accuracy, evidence-based recall). Compare CML (memory-backed RAG) vs. base LLMs (truncated context) vs. LoCoMo RAG (dialog/observation/summary + Dragon).
