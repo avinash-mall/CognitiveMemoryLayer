@@ -1,6 +1,6 @@
 # Examples
 
-The `examples/` directory contains runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`; see [API Reference](api-reference.md).
+The `examples/` directory contains runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`. For benchmark scripts, use `write(..., eval_mode=True)` to get `eval_outcome` and `eval_reason` in the response; see [API Reference — Eval mode](api-reference.md#eval-mode-write-gate).
 
 ## Quickstart
 

@@ -175,6 +175,8 @@ The script will:
 | `--cml-api-key KEY` | API key (default from `CML_API_KEY` or `test-key`). |
 | `--ollama-url URL` | Ollama base URL without `/v1` (default from `OLLAMA_BASE_URL` or `http://localhost:11434`). |
 | `--ollama-model NAME` | Ollama model for QA (default from `OLLAMA_QA_MODEL` or `gpt-oss-20b`). |
+| `--no-eval-mode` | Disable eval mode (on by default). When eval mode is on, sends `X-Eval-Mode: true` on each write; API returns `eval_outcome` and `eval_reason` (stored/skipped). Script aggregates and writes **`locomo10_gating_stats.json`** (total_writes, stored_count, skipped_count, skip_reason_counts). |
+| `--log-timing` | Record per-question CML read and Ollama latency and token usage; write **`locomo10_qa_cml_timing.json`** with per_question and aggregate (mean/p95 latency, total tokens). |
 
 Example (one sample, quick test):
 ```bash
@@ -195,6 +197,8 @@ python evaluation/scripts/eval_locomo.py --data-file evaluation/locomo/data/loco
 
 - **`evaluation/outputs/locomo10_qa_cml.json`** — Per-sample QA with predictions, F1, and recall (and `_context` for recall).
 - **`evaluation/outputs/locomo10_qa_cml_stats.json`** — Aggregate stats by category (counts, accuracy, recall).
+- **`evaluation/outputs/locomo10_gating_stats.json`** — Written by default (unless `--no-eval-mode`): write-gate outcomes (stored/skipped counts, skip reason counts).
+- **`evaluation/outputs/locomo10_qa_cml_timing.json`** — Written when `--log-timing` is used: per-question and aggregate latency (CML read, Ollama) and token usage.
 
 Scoring is only run when there are predictions (e.g. not when `--limit-samples 0` with no QA phase).
 

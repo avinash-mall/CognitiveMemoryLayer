@@ -46,6 +46,9 @@ class WriteMemoryResponse(BaseModel):
     memory_id: Optional[UUID] = None
     chunks_created: int = 0
     message: str = ""
+    # Eval mode (when X-Eval-Mode: true): outcome and reason from write gate
+    eval_outcome: Optional[Literal["stored", "skipped"]] = None
+    eval_reason: Optional[str] = None
 
 
 class ReadMemoryRequest(BaseModel):
