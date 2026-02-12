@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests"><img src="https://img.shields.io/badge/Tests-248%20Passed-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="./tests"><img src="https://img.shields.io/badge/Tests-297-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
 </p>
 
 <p align="center">
@@ -476,7 +476,7 @@ See [UsageDocumentation.md — Dashboard](./ProjectPlan/UsageDocumentation.md#da
 ### Run Tests
 
 ```bash
-# Build and run project tests (248 unit + e2e; exclude integration for no DB: pytest tests -v --ignore=tests/integration)
+# Build and run project tests (297 total: unit, integration, e2e; exclude integration for no DB: pytest tests -v --ignore=tests/integration)
 docker compose -f docker/docker-compose.yml build app
 docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade head && pytest tests -v --tb=short"
 ```
@@ -496,7 +496,10 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 | 8     | Active Forgetting                 |            28 |
 | 9     | REST API & Integration            |            11 |
 | 10    | Testing & Deployment              |             6 |
-|       | **Total**                   | **138** |
+|       | **Total (phase breakdown)** | **138** |
+|       | **All tests (unit + integration + e2e)** | **297** |
+
+The SDK in `packages/py-cml` has its own test suite (168 tests: unit, integration, embedded, e2e). Run from `packages/py-cml`: `pytest tests/ -v`.
 
 </details>
 
@@ -534,31 +537,33 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 
 ```
 CognitiveMemoryLayer/
-├── 📂 src/
-│   ├── api/                    # REST API endpoints
-│   ├── core/                   # Core schemas, enums, config
-│   ├── dashboard/              # 📊 Web dashboard (monitoring & management)
-│   │   └── static/             # HTML, CSS, JS SPA (overview, memories, events, management)
+├── 📂 src/                      # Server engine (package name: cml-server)
+│   ├── api/                     # REST API endpoints, auth, middleware
+│   ├── core/                    # Core schemas, enums, config
+│   ├── dashboard/               # 📊 Web dashboard (monitoring & management)
+│   │   └── static/              # HTML, CSS, JS SPA (overview, memories, events, management)
 │   ├── memory/
 │   │   ├── sensory/            # 👁️ Sensory buffer
-│   │   ├── working/            # 🧠 Working memory + chunker
-│   │   ├── hippocampal/        # 🔵 Episodic store (pgvector)
-│   │   ├── neocortical/        # 🟣 Semantic store (Neo4j)
+│   │   ├── working/             # 🧠 Working memory + chunker
+│   │   ├── hippocampal/         # 🔵 Episodic store (pgvector)
+│   │   ├── neocortical/         # 🟣 Semantic store (Neo4j)
 │   │   └── orchestrator.py     # 🎭 Main coordinator
-│   ├── retrieval/              # 🔍 Hybrid retrieval system
+│   ├── retrieval/              # 🔍 Hybrid retrieval (semantic + graph)
 │   ├── consolidation/          # 😴 Sleep cycle workers
 │   ├── reconsolidation/        # 🔄 Belief revision
 │   ├── forgetting/             # 🗑️ Active forgetting
 │   ├── extraction/             # 📤 Entity/fact extraction
-│   ├── storage/                # 💾 Database adapters
+│   ├── storage/                # 💾 Database adapters (Postgres, Neo4j, Redis)
 │   └── utils/                  # 🛠️ LLM, embeddings, metrics
 ├── 📂 packages/
 │   └── py-cml/                 # 🐍 Python SDK (pip install cognitive-memory-layer)
-├── 📂 tests/                   # Unit, integration, E2E tests
-├── 📂 config/                  # Configuration files
+├── 📂 tests/                   # 297 tests: unit, integration, e2e
 ├── 📂 migrations/              # Alembic database migrations
 ├── 📂 docker/                  # Docker configuration
-└── 📂 ProjectPlan/             # Documentation and phase plans
+├── 📂 evaluation/              # LoCoMo evaluation scripts
+├── 📂 examples/                # Example scripts (quickstart, chat, embedded, etc.)
+├── 📂 scripts/                 # Dev scripts (init_structure, verify_celery_config)
+└── 📂 ProjectPlan/              # Documentation and phase plans
 ```
 
 ---
