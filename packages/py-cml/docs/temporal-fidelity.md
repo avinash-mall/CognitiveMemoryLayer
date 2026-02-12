@@ -186,7 +186,7 @@ When no timestamp is provided, each layer defaults to the current time, ensuring
 
 1. **Always use timezone-aware datetimes** — Use `timezone.utc` or another explicit timezone
 2. **Validate historical timestamps** — Ensure timestamps are reasonable (not in the future, not too far in the past)
-3. **Document timestamp source** — Use metadata to track where timestamps came from (e.g., `{"timestamp_source": "benchmark_data"}`)
+3. **Document timestamp source** — Use metadata to track where timestamps came from (e.g., `{"timestamp_source": "benchmark_data"}`). Request metadata is merged into the stored record by the server.
 4. **Test temporal ordering** — Verify that retrieval respects temporal relationships
 5. **Consider time zones** — Store all timestamps in UTC and convert for display
 

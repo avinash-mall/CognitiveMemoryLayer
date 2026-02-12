@@ -104,6 +104,8 @@ Or use `CMLConfig` for validated, reusable config: `from cml import CMLConfig`.
 
 **Memory API:** `write`, `read`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`
 
+**Server compatibility:** The CML server supports `delete_all` (admin API key), read filters (`memory_types`, `since`, `until`) and response formats (`packet`, `list`, `llm_context`), and persists write `metadata` and optional `memory_type`. Session context is scoped by `session_id` when provided.
+
 **Advanced:** `batch_write`, `batch_read`, `consolidate`, `run_forgetting`, `with_namespace`, `iter_memories`, `list_tenants`, `get_events`, `component_health`
 
 **OpenAI integration:** `CMLOpenAIHelper(memory_client, openai_client)` — `helper.chat(user_message, session_id=...)` for memory-augmented chat. Set `OPENAI_MODEL` or `LLM__MODEL` in `.env`.
