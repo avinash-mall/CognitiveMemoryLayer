@@ -39,7 +39,7 @@
 <summary><strong>Click to expand</strong></summary>
 
 - [Research Foundation](#-research-foundation)
-- [Architecture Overview](#architecture-overview)
+- [Architecture Overview](#-architecture-overview)
 - [Neuroscience-to-Implementation Mapping](#-neuroscience-to-implementation-mapping)
 - [System Components](#-system-components)
 - [Quick Start](#-quick-start)
@@ -102,9 +102,9 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**:
   init: {
     'theme': 'base',
     'themeVariables': {
-      'primaryColor': '#E2E8F0',
+      'primaryColor': '#F8FAFC',
       'primaryTextColor': '#0F172A',
-      'primaryBorderColor': '#334155',
+      'primaryBorderColor': '#475569',
       'lineColor': '#64748B',
       'tertiaryColor': '#ffffff',
       'fontSize': '14px'
@@ -112,74 +112,131 @@ Our architecture implements the **Complementary Learning Systems (CLS) theory**:
   }
 }%%
 flowchart TD
-    %% --- Custom Styles --- %%
-    classDef api fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px;
-    classDef logic fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#7C2D12;
-    classDef db fill:#0EA5E9,stroke:#0369A1,color:#fff,stroke-width:2px;
-    classDef feat fill:#F0F9FF,stroke:#0EA5E9,stroke-width:1px,stroke-dasharray: 5 5,color:#0369A1;
-    classDef worker fill:#DC2626,stroke:#7F1D1D,color:#fff,stroke-width:2px;
+    %% --- Style Definitions --- %%
+    classDef client fill:#dcfce7,stroke:#166534,stroke-width:2px,color:#14532d;
+    classDef api fill:#f3e8ff,stroke:#6b21a8,stroke-width:2px,color:#581c87;
+    classDef orch fill:#fff7ed,stroke:#c2410c,stroke-width:2px,color:#7c2d12;
+    classDef module fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#9a3412;
+    classDef db fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#075985;
+    classDef worker fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,stroke-dasharray: 5 5,color:#991b1b;
+    classDef external fill:#f1f5f9,stroke:#334155,stroke-width:2px,stroke-dasharray: 5 5,color:#334155;
 
-    %% --- 1. API Layer (Stacked Vertical) --- %%
-    subgraph API_Layer ["⚡ REST API (FastAPI)"]
+    %% ==========================================
+    %% 1. CLIENTS (Stacked)
+    %% ==========================================
+    subgraph Clients ["🔌 Clients"]
         direction TB
-        %% Using 'flag' shape > for inputs
-        w>"/memory/write"]
-        r>"/memory/read"]
-        u>"/memory/update"]
-        t>"/memory/turn"]
-        f>"/memory/forget"]
+        SDK(["Python SDK"]):::client
+        Scripts(["Example Scripts"]):::client
+        CURL(["cURL"]):::client
+        Browser(["Dashboard SPA"]):::client
     end
 
-    %% --- 2. Orchestrator (Stacked Vertical) --- %%
-    subgraph Orch_Layer ["🧠 Memory Orchestrator"]
+    %% ==========================================
+    %% 2. API LAYER
+    %% ==========================================
+    subgraph APILayer ["⚡ API Layer"]
         direction TB
-        %% Using Hexagon for logic gates
-        Gate{{Write Gate}}
-        Enc[[Encoder]]
-        Ret[[Retriever]]
-        Recon{{Reconsolidate}}
+        API[["FastAPI Service"]]:::api
+        Auth{{"Auth & Middleware"}}:::api
         
-        Gate --> Enc --> Ret --> Recon
+        %% Detail: Validation
+        API <-->|validates| Auth
     end
 
-    %% --- 3. Memory Stores (Vertical Stack to fit screen) --- %%
-    subgraph Store_Layer ["💾 Dual-Store System"]
+    %% ==========================================
+    %% 3. LOGIC CORE (The Spine)
+    %% ==========================================
+    subgraph Logic ["🧠 Logic Core"]
         direction TB
         
-        subgraph Hippo ["Hipocampal (Episodic)"]
-            direction TB
-            PG[("Postgres\n+ pgvector")]
-            PG_F["Vector Embeddings\nRapid Write"]
-            PG --- PG_F
-        end
-
-        subgraph Neo ["Neocortical (Semantic)"]
-            direction TB
-            KG[("Neo4j\nKnowledge Graph")]
-            KG_F["Entity Nodes\nRelations, PPR"]
-            KG --- KG_F
-        end
+        Orch[["Orchestrator"]]:::orch
+        WG{{"Write Gate"}}:::orch
+        
+        Sensory[["Sensory Manager"]]:::module
+        Working[["Working Memory"]]:::module
+        Extract[["Extraction Module"]]:::module
+        Retrieve[["Retrieval Module"]]:::module
+        Consol[["Consolidation"]]:::module
+        Recon[["Reconsolidation"]]:::module
+        Forget[["Forgetting"]]:::module
+        
+        %% Flow with Details
+        Orch -->|passes to| WG
+        WG --> Sensory --> Working --> Extract --> Retrieve
+        Retrieve --> Consol --> Recon --> Forget
     end
 
-    %% --- 4. Background Workers (Horizontal row at bottom) --- %%
-    subgraph Work_Layer ["⚙️ Background Workers"]
-        direction LR
-        W1(Consolidation)
-        W2(Forgetting)
-        W3(Maintenance)
+    %% ==========================================
+    %% 4. STORAGE (Stacked)
+    %% ==========================================
+    subgraph Storage ["💾 Storage Backends"]
+        direction TB
+        Redis[("Redis Cache")]:::db
+        PG[("Postgres Store")]:::db
+        Neo[("Neo4j Graph")]:::db
+        Logs[("Event Log")]:::db
     end
 
-    %% --- Global Connections --- %%
-    API_Layer ==> Orch_Layer
-    Orch_Layer ==> Store_Layer
-    Store_Layer -.-> Work_Layer
+    %% ==========================================
+    %% 5. WORKERS & EXTERNAL
+    %% ==========================================
+    subgraph Workers ["⚙️ Async Workers"]
+        direction TB
+        W_Consol{{"Consolidation Worker"}}:::worker
+        W_Forget{{"Forgetting Worker"}}:::worker
+    end
+    
+    LLM(["☁️ LLM Provider"]):::external
 
-    %% --- Apply Styles --- %%
-    class w,r,u,t,f api;
-    class Gate,Recon,Enc,Ret logic;
-    class PG,KG db;
-    class PG_F,KG_F feat;
-    class W1,W2,W3 worker;
+    %% ==========================================
+    %% CONNECTIONS (Restoring All Details)
+    %% ==========================================
+
+    %% Clients -> API
+    SDK & Scripts & CURL & Browser ==>|HTTP| API
+
+    %% API -> Logic
+    API ==>|invokes| Orch
+    API -.->|calls| LLM
+
+    %% Logic -> External
+    Extract -.->|calls| LLM
+
+    %% Retrieval Details
+    Retrieve -->|vector search| PG
+    Retrieve -->|graph search| Neo
+
+    %% Write/Update Details
+    Consol -->|writes| PG
+    Recon -->|updates| Neo
+    Forget -->|purges| Redis
+    Forget -->|logs| Logs
+
+    %% Worker Details
+    W_Consol -.->|tasks| Consol
+    W_Consol <-->|reads/writes| PG & Neo
+
+    W_Forget -.->|tasks| Forget
+    W_Forget <-->|reads/writes| Redis & Logs
+
+    %% ==========================================
+    %% CLICK EVENTS
+    %% ==========================================
+    click API "src/api/app.py"
+    click Auth "src/api/auth.py"
+    click Orch "src/memory/orchestrator.py"
+    click WG "src/memory/hippocampal/write_gate.py"
+    click Sensory "src/memory/sensory/manager.py"
+    click Working "src/memory/working/manager.py"
+    click Extract "src/extraction/entity_extractor.py"
+    click Retrieve "src/retrieval/retriever.py"
+    click Consol "src/consolidation/worker.py"
+    click Forget "src/forgetting/worker.py"
+    click PG "src/memory/hippocampal/store.py"
+    click Neo "src/memory/neocortical/fact_store.py"
+    click W_Consol "src/consolidation/worker.py"
+    click W_Forget "src/forgetting/worker.py"
 ```
 
 ---
