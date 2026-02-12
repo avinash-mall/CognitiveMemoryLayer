@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Run all LoCoMo evaluation phases in order: tear down Docker + volumes,
-rebuild and start services, wait for API health, then run eval_locomo.py.
+rebuild and start services, wait for API health, run eval_locomo.py, then
+print a result comparison table (CML + LoCoMo baselines if present).
 
 Prints the current step and phase so progress is visible. Run from project root:
   python evaluation/scripts/run_full_eval.py
@@ -22,10 +23,14 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _ROOT = _SCRIPT_DIR.parent.parent
 _COMPOSE_FILE = _ROOT / "docker" / "docker-compose.yml"
 _EVAL_SCRIPT = _ROOT / "evaluation" / "scripts" / "eval_locomo.py"
+_COMPARE_SCRIPT = _ROOT / "evaluation" / "scripts" / "compare_results.py"
 _DATA_FILE = _ROOT / "evaluation" / "locomo" / "data" / "locomo10.json"
 _OUT_DIR = _ROOT / "evaluation" / "outputs"
+_LOCOMO_OUTPUTS = _ROOT / "evaluation" / "locomo" / "outputs"
 _LOCOMO_ROOT = _ROOT / "evaluation" / "locomo"
 HEALTH_URL = "http://localhost:8000/api/v1/health"
+_CML_STATS = _OUT_DIR / "locomo10_qa_cml_stats.json"
+_LOCOMO_BASELINE_STATS = _LOCOMO_OUTPUTS / "locomo10_qa_stats.json"
 HEALTH_POLL_INTERVAL = 5
 HEALTH_TIMEOUT_SEC = 180
 
@@ -39,7 +44,7 @@ def _run(cmd: list[str], step_name: str) -> None:
 
 
 def main() -> None:
-    print("LoCoMo full evaluation pipeline (4 steps)", flush=True)
+    print("LoCoMo full evaluation pipeline (4 steps + comparison)", flush=True)
     print("Project root:", _ROOT, flush=True)
 
     # Step 1
@@ -96,7 +101,18 @@ def main() -> None:
         sys.exit(result.returncode)
 
     print("\n--- All steps completed successfully. ---", flush=True)
-    print(f"Outputs: {_OUT_DIR / 'locomo10_qa_cml.json'}, {_OUT_DIR / 'locomo10_qa_cml_stats.json'}", flush=True)
+    print(f"Outputs: {_OUT_DIR / 'locomo10_qa_cml.json'}, {_CML_STATS}", flush=True)
+
+    # Comparison: CML stats + LoCoMo baseline stats (if present); print table
+    stats_files = [_CML_STATS]
+    if _LOCOMO_BASELINE_STATS.exists():
+        stats_files.append(_LOCOMO_BASELINE_STATS)
+    if _CML_STATS.exists():
+        print("\n--- Result comparison (overall accuracy & recall) ---", flush=True)
+        compare_cmd = [sys.executable, str(_COMPARE_SCRIPT)] + [str(p) for p in stats_files]
+        subprocess.run(compare_cmd, cwd=str(_ROOT))
+    else:
+        print("  (No CML stats file; skip comparison.)", flush=True)
 
 
 if __name__ == "__main__":
