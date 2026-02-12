@@ -6,6 +6,7 @@
     <title>Cognitive Memory Layer - Dashboard</title>
     <link rel="stylesheet" href="/dashboard/static/css/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
     <!-- Login overlay -->
@@ -52,17 +53,41 @@
                     <span class="nav-icon">&#9634;</span>
                     <span class="nav-label">Overview</span>
                 </a>
+                <a href="#tenants" class="nav-item" data-page="tenants">
+                    <span class="nav-icon">&#9782;</span>
+                    <span class="nav-label">Tenants</span>
+                </a>
                 <a href="#memories" class="nav-item" data-page="memories">
                     <span class="nav-icon">&#9733;</span>
                     <span class="nav-label">Memories</span>
+                </a>
+                <a href="#sessions" class="nav-item" data-page="sessions">
+                    <span class="nav-icon">&#8644;</span>
+                    <span class="nav-label">Sessions</span>
+                </a>
+                <a href="#events" class="nav-item" data-page="events">
+                    <span class="nav-icon">&#9776;</span>
+                    <span class="nav-label">Events</span>
+                </a>
+                <a href="#graph" class="nav-item" data-page="graph">
+                    <span class="nav-icon">&#9672;</span>
+                    <span class="nav-label">Knowledge Graph</span>
+                </a>
+                <a href="#apiusage" class="nav-item" data-page="apiusage">
+                    <span class="nav-icon">&#9889;</span>
+                    <span class="nav-label">API Usage</span>
                 </a>
                 <a href="#components" class="nav-item" data-page="components">
                     <span class="nav-icon">&#9881;</span>
                     <span class="nav-label">Components</span>
                 </a>
-                <a href="#events" class="nav-item" data-page="events">
-                    <span class="nav-icon">&#9776;</span>
-                    <span class="nav-label">Events</span>
+                <a href="#config" class="nav-item" data-page="config">
+                    <span class="nav-icon">&#9881;</span>
+                    <span class="nav-label">Configuration</span>
+                </a>
+                <a href="#retrieval" class="nav-item" data-page="retrieval">
+                    <span class="nav-icon">&#128269;</span>
+                    <span class="nav-label">Retrieval Test</span>
                 </a>
                 <a href="#management" class="nav-item" data-page="management">
                     <span class="nav-icon">&#9879;</span>
@@ -93,10 +118,16 @@
             <div id="page-container" class="page-container">
                 <!-- Pages are rendered here dynamically -->
                 <div id="page-overview" class="page active"></div>
+                <div id="page-tenants" class="page"></div>
                 <div id="page-memories" class="page"></div>
+                <div id="page-sessions" class="page"></div>
                 <div id="page-detail" class="page"></div>
                 <div id="page-components" class="page"></div>
                 <div id="page-events" class="page"></div>
+                <div id="page-graph" class="page"></div>
+                <div id="page-apiusage" class="page"></div>
+                <div id="page-config" class="page"></div>
+                <div id="page-retrieval" class="page"></div>
                 <div id="page-management" class="page"></div>
             </div>
         </main>

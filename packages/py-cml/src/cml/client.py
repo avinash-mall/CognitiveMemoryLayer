@@ -703,6 +703,279 @@ class CognitiveMemoryLayer:
             use_admin_key=True,
         )
 
+    # ---- Dashboard: Sessions ----
+
+    def get_sessions(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        """List active sessions from Redis and memory counts per session (admin only).
+
+        Args:
+            tenant_id: Optional tenant filter.
+
+        Returns:
+            Dict with sessions[], total_active, total_memories_with_session.
+        """
+        params: dict[str, Any] = {}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        return self._transport.request(
+            "GET",
+            "/dashboard/sessions",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Rate limits & request stats ----
+
+    def get_rate_limits(self) -> dict[str, Any]:
+        """Get current rate-limit usage per key (admin only).
+
+        Returns:
+            Dict with entries[], configured_rpm.
+        """
+        return self._transport.request(
+            "GET",
+            "/dashboard/ratelimits",
+            use_admin_key=True,
+        )
+
+    def get_request_stats(self, *, hours: int = 24) -> dict[str, Any]:
+        """Get hourly request counts (admin only).
+
+        Args:
+            hours: Number of hours to retrieve (1-48, default 24).
+
+        Returns:
+            Dict with points[] and total_last_24h.
+        """
+        return self._transport.request(
+            "GET",
+            "/dashboard/request-stats",
+            params={"hours": hours},
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Knowledge graph ----
+
+    def get_graph_stats(self) -> dict[str, Any]:
+        """Get knowledge graph statistics from Neo4j (admin only).
+
+        Returns:
+            Dict with total_nodes, total_edges, entity_types, tenants_with_graph.
+        """
+        return self._transport.request(
+            "GET",
+            "/dashboard/graph/stats",
+            use_admin_key=True,
+        )
+
+    def explore_graph(
+        self,
+        *,
+        tenant_id: str | None = None,
+        entity: str,
+        scope_id: str = "default",
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        """Explore the neighborhood of an entity in the knowledge graph (admin only).
+
+        Args:
+            tenant_id: Target tenant (defaults to configured tenant).
+            entity: Center entity name.
+            scope_id: Scope identifier (default "default").
+            depth: Exploration depth (1-5 hops).
+
+        Returns:
+            Dict with nodes[], edges[], center_entity.
+        """
+        return self._transport.request(
+            "GET",
+            "/dashboard/graph/explore",
+            params={
+                "tenant_id": tenant_id or self._config.tenant_id,
+                "entity": entity,
+                "scope_id": scope_id,
+                "depth": depth,
+            },
+            use_admin_key=True,
+        )
+
+    def search_graph(
+        self,
+        query: str,
+        *,
+        tenant_id: str | None = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Search entities by name pattern in the knowledge graph (admin only).
+
+        Args:
+            query: Entity name pattern.
+            tenant_id: Optional tenant filter.
+            limit: Max results.
+
+        Returns:
+            Dict with results[].
+        """
+        params: dict[str, Any] = {"query": query, "limit": limit}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        return self._transport.request(
+            "GET",
+            "/dashboard/graph/search",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Configuration ----
+
+    def get_config(self) -> dict[str, Any]:
+        """Get application configuration snapshot with secrets masked (admin only).
+
+        Returns:
+            Dict with sections[], each containing items[].
+        """
+        return self._transport.request(
+            "GET",
+            "/dashboard/config",
+            use_admin_key=True,
+        )
+
+    def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update editable config settings at runtime (admin only).
+
+        Args:
+            updates: Dict of setting key -> new value.
+
+        Returns:
+            Dict with success and current overrides.
+        """
+        return self._transport.request(
+            "PUT",
+            "/dashboard/config",
+            json={"updates": updates},
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Labile / Reconsolidation ----
+
+    def get_labile_status(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        """Get labile memory / reconsolidation status (admin only).
+
+        Args:
+            tenant_id: Optional tenant filter.
+
+        Returns:
+            Dict with tenants[], total_db_labile, total_redis_scopes, etc.
+        """
+        params: dict[str, Any] = {}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        return self._transport.request(
+            "GET",
+            "/dashboard/labile",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Retrieval test ----
+
+    def test_retrieval(
+        self,
+        query: str,
+        *,
+        tenant_id: str | None = None,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        response_format: Literal["packet", "list", "llm_context"] = "list",
+    ) -> dict[str, Any]:
+        """Test memory retrieval via the dashboard API (admin only).
+
+        Args:
+            query: Search query.
+            tenant_id: Target tenant (defaults to configured tenant).
+            max_results: Max results (1-50).
+            context_filter: Optional context tags.
+            memory_types: Optional memory type filter.
+            response_format: Response format.
+
+        Returns:
+            Dict with query, results[], total_count, elapsed_ms, llm_context.
+        """
+        payload: dict[str, Any] = {
+            "tenant_id": tenant_id or self._config.tenant_id,
+            "query": query,
+            "max_results": max_results,
+            "format": response_format,
+        }
+        if context_filter is not None:
+            payload["context_filter"] = context_filter
+        if memory_types is not None:
+            payload["memory_types"] = memory_types
+        return self._transport.request(
+            "POST",
+            "/dashboard/retrieval",
+            json=payload,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Job history ----
+
+    def get_jobs(
+        self,
+        *,
+        tenant_id: str | None = None,
+        job_type: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List recent consolidation/forgetting job history (admin only).
+
+        Args:
+            tenant_id: Optional tenant filter.
+            job_type: Optional type filter ("consolidate" or "forget").
+            limit: Max results.
+
+        Returns:
+            Dict with items[] and total.
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        if job_type is not None:
+            params["job_type"] = job_type
+        return self._transport.request(
+            "GET",
+            "/dashboard/jobs",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Bulk memory actions ----
+
+    def bulk_memory_action(
+        self,
+        memory_ids: list[UUID],
+        action: Literal["archive", "silence", "delete"],
+    ) -> dict[str, Any]:
+        """Apply a bulk action to multiple memories (admin only).
+
+        Args:
+            memory_ids: List of memory UUIDs to act on.
+            action: "archive", "silence", or "delete".
+
+        Returns:
+            Dict with success, affected count, action.
+        """
+        return self._transport.request(
+            "POST",
+            "/dashboard/memories/bulk-action",
+            json={
+                "memory_ids": [str(mid) for mid in memory_ids],
+                "action": action,
+            },
+            use_admin_key=True,
+        )
+
     # ---- Phase 5: Namespace isolation ----
 
     def with_namespace(self, namespace: str) -> NamespacedClient:
@@ -1143,3 +1416,70 @@ class NamespacedClient:
             status=status,
             batch_size=batch_size,
         )
+
+    def get_sessions(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        return self._parent.get_sessions(tenant_id=tenant_id)
+
+    def get_rate_limits(self) -> dict[str, Any]:
+        return self._parent.get_rate_limits()
+
+    def get_request_stats(self, *, hours: int = 24) -> dict[str, Any]:
+        return self._parent.get_request_stats(hours=hours)
+
+    def get_graph_stats(self) -> dict[str, Any]:
+        return self._parent.get_graph_stats()
+
+    def explore_graph(
+        self,
+        *,
+        tenant_id: str | None = None,
+        entity: str,
+        scope_id: str = "default",
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        return self._parent.explore_graph(
+            tenant_id=tenant_id, entity=entity, scope_id=scope_id, depth=depth
+        )
+
+    def search_graph(
+        self, query: str, *, tenant_id: str | None = None, limit: int = 25
+    ) -> dict[str, Any]:
+        return self._parent.search_graph(query, tenant_id=tenant_id, limit=limit)
+
+    def get_config(self) -> dict[str, Any]:
+        return self._parent.get_config()
+
+    def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        return self._parent.update_config(updates)
+
+    def get_labile_status(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        return self._parent.get_labile_status(tenant_id=tenant_id)
+
+    def test_retrieval(
+        self,
+        query: str,
+        *,
+        tenant_id: str | None = None,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        response_format: Literal["packet", "list", "llm_context"] = "list",
+    ) -> dict[str, Any]:
+        return self._parent.test_retrieval(
+            query,
+            tenant_id=tenant_id,
+            max_results=max_results,
+            context_filter=context_filter,
+            memory_types=memory_types,
+            response_format=response_format,
+        )
+
+    def get_jobs(
+        self, *, tenant_id: str | None = None, job_type: str | None = None, limit: int = 50
+    ) -> dict[str, Any]:
+        return self._parent.get_jobs(tenant_id=tenant_id, job_type=job_type, limit=limit)
+
+    def bulk_memory_action(
+        self, memory_ids: list[UUID], action: Literal["archive", "silence", "delete"]
+    ) -> dict[str, Any]:
+        return self._parent.bulk_memory_action(memory_ids, action)

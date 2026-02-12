@@ -10,6 +10,12 @@ import { renderDetail } from './pages/detail.js';
 import { renderComponents } from './pages/components.js';
 import { renderEvents } from './pages/events.js';
 import { renderManagement } from './pages/management.js';
+import { renderTenants } from './pages/tenants.js';
+import { renderSessions } from './pages/sessions.js';
+import { renderApiUsage } from './pages/apiusage.js';
+import { renderGraph } from './pages/graph.js';
+import { renderConfig } from './pages/config.js';
+import { renderRetrieval } from './pages/retrieval.js';
 
 // ---- State ----
 let currentPage = 'overview';
@@ -31,10 +37,16 @@ const logoutBtn = document.getElementById('logout-btn');
 // ---- Pages Config ----
 const pages = {
     overview: { title: 'Overview', render: renderOverview },
+    tenants: { title: 'Tenants', render: renderTenants },
     memories: { title: 'Memory Explorer', render: renderMemories },
+    sessions: { title: 'Sessions', render: renderSessions },
     detail: { title: 'Memory Detail', render: renderDetail },
     components: { title: 'Components', render: renderComponents },
     events: { title: 'Event Log', render: renderEvents },
+    graph: { title: 'Knowledge Graph', render: renderGraph },
+    apiusage: { title: 'API Usage & Rate Limits', render: renderApiUsage },
+    config: { title: 'Configuration', render: renderConfig },
+    retrieval: { title: 'Retrieval Test', render: renderRetrieval },
     management: { title: 'Management', render: renderManagement },
 };
 
@@ -128,6 +140,13 @@ export function navigateTo(page, params = {}) {
         return;
     }
     window.location.hash = `#${page}`;
+}
+
+/** Set the global tenant filter and navigate to a page. */
+export function setTenantAndNavigate(tenantId, page) {
+    selectedTenantId = tenantId;
+    tenantSelector.value = tenantId;
+    navigateTo(page);
 }
 
 function handleHashChange() {

@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-**What's new (1.0.11):** Eval mode for write — use `eval_mode=True` in `write()` or `remember()` to receive `eval_outcome` and `eval_reason` in the response for benchmarks and evaluation scripts. See [CHANGELOG](CHANGELOG.md).
+**What's new (1.1.0):** Dashboard admin methods — 13 new methods for sessions, rate limits, knowledge graph, configuration, labile status, retrieval testing, job history, and bulk actions. See [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -108,7 +108,9 @@ Or use `CMLConfig` for validated, reusable config: `from cml import CMLConfig`.
 
 **Server compatibility:** The CML server supports `delete_all` (admin API key), read filters (`memory_types`, `since`, `until`) and response formats (`packet`, `list`, `llm_context`), and persists write `metadata` and optional `memory_type`. Session context is scoped by `session_id` when provided.
 
-**Advanced:** `batch_write`, `batch_read`, `consolidate`, `run_forgetting`, `with_namespace`, `iter_memories`, `list_tenants`, `get_events`, `component_health`
+**Admin & batch:** `batch_write`, `batch_read`, `consolidate`, `run_forgetting`, `with_namespace`, `iter_memories`, `list_tenants`, `get_events`, `component_health`
+
+**Dashboard admin (new):** `get_sessions`, `get_rate_limits`, `get_request_stats`, `get_graph_stats`, `explore_graph`, `search_graph`, `get_config`, `update_config`, `get_labile_status`, `test_retrieval`, `get_jobs`, `bulk_memory_action`
 
 **OpenAI integration:** `CMLOpenAIHelper(memory_client, openai_client)` — `helper.chat(user_message, session_id=...)` for memory-augmented chat. Set `OPENAI_MODEL` or `LLM__MODEL` in `.env`.
 
