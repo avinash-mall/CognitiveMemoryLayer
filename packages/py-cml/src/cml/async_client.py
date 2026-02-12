@@ -663,6 +663,203 @@ class AsyncCognitiveMemoryLayer:
             use_admin_key=True,
         )
 
+    # ---- Dashboard: Sessions ----
+
+    async def get_sessions(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        """List active sessions from Redis and memory counts per session (admin only)."""
+        self._ensure_same_loop()
+        params: dict[str, Any] = {}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        return await self._transport.request(
+            "GET",
+            "/dashboard/sessions",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Rate limits & request stats ----
+
+    async def get_rate_limits(self) -> dict[str, Any]:
+        """Get current rate-limit usage per key (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "GET",
+            "/dashboard/ratelimits",
+            use_admin_key=True,
+        )
+
+    async def get_request_stats(self, *, hours: int = 24) -> dict[str, Any]:
+        """Get hourly request counts (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "GET",
+            "/dashboard/request-stats",
+            params={"hours": hours},
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Knowledge graph ----
+
+    async def get_graph_stats(self) -> dict[str, Any]:
+        """Get knowledge graph statistics from Neo4j (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "GET",
+            "/dashboard/graph/stats",
+            use_admin_key=True,
+        )
+
+    async def explore_graph(
+        self,
+        *,
+        tenant_id: str | None = None,
+        entity: str,
+        scope_id: str = "default",
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        """Explore the neighborhood of an entity in the knowledge graph (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "GET",
+            "/dashboard/graph/explore",
+            params={
+                "tenant_id": tenant_id or self._config.tenant_id,
+                "entity": entity,
+                "scope_id": scope_id,
+                "depth": depth,
+            },
+            use_admin_key=True,
+        )
+
+    async def search_graph(
+        self,
+        query: str,
+        *,
+        tenant_id: str | None = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """Search entities by name pattern in the knowledge graph (admin only)."""
+        self._ensure_same_loop()
+        params: dict[str, Any] = {"query": query, "limit": limit}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        return await self._transport.request(
+            "GET",
+            "/dashboard/graph/search",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Configuration ----
+
+    async def get_config(self) -> dict[str, Any]:
+        """Get application configuration snapshot with secrets masked (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "GET",
+            "/dashboard/config",
+            use_admin_key=True,
+        )
+
+    async def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update editable config settings at runtime (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "PUT",
+            "/dashboard/config",
+            json={"updates": updates},
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Labile / Reconsolidation ----
+
+    async def get_labile_status(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        """Get labile memory / reconsolidation status (admin only)."""
+        self._ensure_same_loop()
+        params: dict[str, Any] = {}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        return await self._transport.request(
+            "GET",
+            "/dashboard/labile",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Retrieval test ----
+
+    async def test_retrieval(
+        self,
+        query: str,
+        *,
+        tenant_id: str | None = None,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        response_format: Literal["packet", "list", "llm_context"] = "list",
+    ) -> dict[str, Any]:
+        """Test memory retrieval via the dashboard API (admin only)."""
+        self._ensure_same_loop()
+        payload: dict[str, Any] = {
+            "tenant_id": tenant_id or self._config.tenant_id,
+            "query": query,
+            "max_results": max_results,
+            "format": response_format,
+        }
+        if context_filter is not None:
+            payload["context_filter"] = context_filter
+        if memory_types is not None:
+            payload["memory_types"] = memory_types
+        return await self._transport.request(
+            "POST",
+            "/dashboard/retrieval",
+            json=payload,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Job history ----
+
+    async def get_jobs(
+        self,
+        *,
+        tenant_id: str | None = None,
+        job_type: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List recent consolidation/forgetting job history (admin only)."""
+        self._ensure_same_loop()
+        params: dict[str, Any] = {"limit": limit}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        if job_type is not None:
+            params["job_type"] = job_type
+        return await self._transport.request(
+            "GET",
+            "/dashboard/jobs",
+            params=params,
+            use_admin_key=True,
+        )
+
+    # ---- Dashboard: Bulk memory actions ----
+
+    async def bulk_memory_action(
+        self,
+        memory_ids: list[UUID],
+        action: Literal["archive", "silence", "delete"],
+    ) -> dict[str, Any]:
+        """Apply a bulk action to multiple memories (admin only)."""
+        self._ensure_same_loop()
+        return await self._transport.request(
+            "POST",
+            "/dashboard/memories/bulk-action",
+            json={
+                "memory_ids": [str(mid) for mid in memory_ids],
+                "action": action,
+            },
+            use_admin_key=True,
+        )
+
     # ---- Phase 5: Namespace isolation ----
 
     def with_namespace(self, namespace: str) -> AsyncNamespacedClient:
@@ -1088,3 +1285,70 @@ class AsyncNamespacedClient:
             batch_size=batch_size,
         ):
             yield item
+
+    async def get_sessions(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        return await self._parent.get_sessions(tenant_id=tenant_id)
+
+    async def get_rate_limits(self) -> dict[str, Any]:
+        return await self._parent.get_rate_limits()
+
+    async def get_request_stats(self, *, hours: int = 24) -> dict[str, Any]:
+        return await self._parent.get_request_stats(hours=hours)
+
+    async def get_graph_stats(self) -> dict[str, Any]:
+        return await self._parent.get_graph_stats()
+
+    async def explore_graph(
+        self,
+        *,
+        tenant_id: str | None = None,
+        entity: str,
+        scope_id: str = "default",
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        return await self._parent.explore_graph(
+            tenant_id=tenant_id, entity=entity, scope_id=scope_id, depth=depth
+        )
+
+    async def search_graph(
+        self, query: str, *, tenant_id: str | None = None, limit: int = 25
+    ) -> dict[str, Any]:
+        return await self._parent.search_graph(query, tenant_id=tenant_id, limit=limit)
+
+    async def get_config(self) -> dict[str, Any]:
+        return await self._parent.get_config()
+
+    async def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        return await self._parent.update_config(updates)
+
+    async def get_labile_status(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        return await self._parent.get_labile_status(tenant_id=tenant_id)
+
+    async def test_retrieval(
+        self,
+        query: str,
+        *,
+        tenant_id: str | None = None,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        response_format: Literal["packet", "list", "llm_context"] = "list",
+    ) -> dict[str, Any]:
+        return await self._parent.test_retrieval(
+            query,
+            tenant_id=tenant_id,
+            max_results=max_results,
+            context_filter=context_filter,
+            memory_types=memory_types,
+            response_format=response_format,
+        )
+
+    async def get_jobs(
+        self, *, tenant_id: str | None = None, job_type: str | None = None, limit: int = 50
+    ) -> dict[str, Any]:
+        return await self._parent.get_jobs(tenant_id=tenant_id, job_type=job_type, limit=limit)
+
+    async def bulk_memory_action(
+        self, memory_ids: list[UUID], action: Literal["archive", "silence", "delete"]
+    ) -> dict[str, Any]:
+        return await self._parent.bulk_memory_action(memory_ids, action)

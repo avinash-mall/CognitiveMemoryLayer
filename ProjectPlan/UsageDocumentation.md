@@ -769,39 +769,117 @@ A web-based dashboard provides comprehensive monitoring and management of the me
 
 | Page | Description |
 |------|-------------|
-| **Overview** | KPI cards (total/active memories, avg confidence/importance, storage size, semantic facts), memory type/status charts, activity timeline, semantic facts by category, system health (PostgreSQL, Neo4j, Redis), recent events, events by type/operation, temporal range. |
-| **Memory Explorer** | Paginated, filterable table of memory records. Filter by type, status, search text; sort by timestamp, confidence, importance, access count. Click a row to open the memory detail view. |
+| **Overview** | KPI cards (total/active memories, avg confidence/importance, storage size, semantic facts, labile memories, 24h requests), memory type/status charts, activity timeline, semantic facts by category, system health (PostgreSQL, Neo4j, Redis), recent events, reconsolidation queue status, request sparkline, events by type/operation, temporal range. |
+| **Tenants** | Lists all tenants with memory counts (total and active), fact counts, event counts, last memory timestamp, and last event timestamp. Sortable by any column. Quick-link buttons navigate to Overview, Memories, or Events pre-filtered by that tenant. Summary KPI cards show total tenants, total memories, and the most active tenant. |
+| **Memory Explorer** | Paginated, filterable table of memory records. Filter by type, status, search text; sort by timestamp, confidence, importance, access count. Click a row to open the memory detail view. **Bulk actions**: select memories via checkboxes and apply Archive, Silence, or Delete in bulk. **Export**: download memories as JSON. |
+| **Sessions** | Active sessions from Redis with TTL, creation/expiry timestamps, and metadata. Displays TTL badges (green/yellow/red based on time remaining). Also shows memory counts per `source_session_id` from the database. Click a session ID to filter the Memory Explorer by that session. |
 | **Memory Detail** | Full record view: content, key, namespace, context tags, entities/relations, metadata, confidence/importance gauges, access count, decay rate, provenance, version/supersedes, related events. |
+| **Knowledge Graph** | Interactive graph visualization powered by vis-network. Shows graph stats (nodes, edges, entity types, tenants with graph data). Search for entities by name, select a tenant, adjust exploration depth (1-5 hops), and render an interactive network. Click nodes/edges to see details in a side panel. Entity type distribution table. |
+| **API Usage** | Current rate-limit buckets from Redis with key type, identifier (masked for API keys), current count, limit, utilization progress bar, and TTL. KPI cards for active keys, avg utilization, configured RPM, and 24h request count. Chart.js line chart of hourly request volume. |
 | **Components** | Health status for PostgreSQL, Neo4j, and Redis (connection, latency, row/key counts). Short architecture description of sensory buffer, working memory, hippocampal/neocortical stores, consolidation, and forgetting. |
+| **Configuration** | Read-only config snapshot showing all settings grouped by section (Application, Database, Embedding, LLM, Auth). Secret values (API keys, passwords) are masked. Each setting shows its current value, default, source (env/override/default), and description. Editable settings (e.g. rate limit RPM, embedding model, debug mode) can be changed inline; overrides are stored in Redis. |
+| **Retrieval Test** | Interactive query tool for debugging memory retrieval. Select a tenant, enter a query, set max results (1-50), optional context filter tags, and format (list/packet/llm_context). Returns scored memory results with relevance bars, type badges, confidence, timestamps, and metadata. If format is `llm_context`, shows the formatted context string in a code block. |
 | **Events** | Paginated event log with filters (event type, operation). Expandable rows show full payload JSON. Optional auto-refresh every 5 seconds. |
-| **Management** | Trigger **consolidation** (tenant/user) and **active forgetting** (tenant/user, dry-run, max memories). Results displayed in place. |
+| **Management** | Trigger **consolidation** (tenant/user) and **active forgetting** (tenant/user, dry-run, max memories). Results displayed in place. **Reconsolidation status** section shows labile memory counts from DB and Redis (scopes, sessions, memories) per tenant. **Job history** table shows the last N consolidation/forgetting runs with type, tenant, status, dry-run flag, duration, and expandable result details. Jobs are persisted in the `dashboard_jobs` PostgreSQL table. |
 
 ### Tenant Filtering
 
-Use the **tenant selector** in the top bar to restrict overview, memory list, events, and management to a single tenant. "All Tenants" shows aggregated data.
+Use the **tenant selector** in the top bar to restrict overview, memory list, events, sessions, and management to a single tenant. "All Tenants" shows aggregated data. On the Tenants page, quick-link buttons let you jump to a filtered view for any tenant.
 
 ### Dashboard API Endpoints
 
 All dashboard endpoints live under `/api/v1/dashboard` and require **admin** permission (`X-API-Key` must be the admin key).
 
+#### Core Endpoints
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/dashboard/overview` | KPIs, type/status breakdowns, quality metrics, storage, semantic facts, event stats. Optional `tenant_id` query. |
-| GET | `/api/v1/dashboard/memories` | Paginated memory list. Query params: `page`, `per_page`, `type`, `status`, `search`, `tenant_id`, `sort_by`, `order`. |
+| GET | `/api/v1/dashboard/memories` | Paginated memory list. Query params: `page`, `per_page`, `type`, `status`, `search`, `tenant_id`, `source_session_id`, `sort_by`, `order`. |
 | GET | `/api/v1/dashboard/memories/{id}` | Full memory detail including related events. |
+| POST | `/api/v1/dashboard/memories/bulk-action` | Bulk memory actions. Body: `{ "memory_ids": ["..."], "action": "archive|silence|delete" }`. |
 | GET | `/api/v1/dashboard/events` | Paginated event log. Query params: `page`, `per_page`, `event_type`, `operation`, `tenant_id`. |
 | GET | `/api/v1/dashboard/timeline` | Memory counts per day for charts. Query params: `days`, `tenant_id`. |
 | GET | `/api/v1/dashboard/components` | Health check for PostgreSQL, Neo4j, Redis (latency, counts). |
-| GET | `/api/v1/dashboard/tenants` | List all tenants with memory/fact/event counts. |
-| POST | `/api/v1/dashboard/consolidate` | Trigger consolidation. Body: `{ "tenant_id": "...", "user_id": "..." }` (user_id optional, falls back to tenant_id). |
-| POST | `/api/v1/dashboard/forget` | Trigger forgetting. Body: `{ "tenant_id": "...", "user_id": "...", "dry_run": true, "max_memories": 5000 }`. |
+| GET | `/api/v1/dashboard/tenants` | List all tenants with memory/fact/event counts, active memory count, and last activity timestamps. |
+
+#### Sessions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/sessions` | Active sessions from Redis + memory counts per `source_session_id` from DB. Optional `tenant_id` query. |
+
+#### Rate Limits & Request Stats
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/ratelimits` | Current rate-limit usage per key from Redis (type, identifier, count, limit, utilization, TTL). |
+| GET | `/api/v1/dashboard/request-stats` | Hourly request counts from Redis counters. Query param: `hours` (default 24, max 48). |
+
+#### Knowledge Graph
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/graph/stats` | Node/edge counts, entity type distribution, tenants with graph data. |
+| GET | `/api/v1/dashboard/graph/explore` | Explore entity neighborhood. Query params: `tenant_id`, `entity`, `scope_id`, `depth`. |
+| GET | `/api/v1/dashboard/graph/search` | Search entities by name pattern. Query params: `query`, `tenant_id`, `limit`. |
+
+#### Configuration
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/config` | Read-only config snapshot grouped by section with secrets masked. |
+| PUT | `/api/v1/dashboard/config` | Update editable settings. Body: `{ "updates": { "key": "value" } }`. Stored in Redis. Only safe settings are writable. |
+
+#### Labile / Reconsolidation
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/labile` | DB labile counts + Redis scope/session/memory counts per tenant. Optional `tenant_id` query. |
+
+#### Retrieval Test
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/dashboard/retrieval` | Test memory retrieval. Body: `{ "tenant_id", "query", "max_results", "context_filter", "memory_types", "format" }`. Returns scored results. |
+
+#### Job History & Management
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/jobs` | Paginated job history. Query params: `tenant_id`, `job_type`, `limit`. |
+| POST | `/api/v1/dashboard/consolidate` | Trigger consolidation (with job tracking). Body: `{ "tenant_id": "...", "user_id": "..." }`. |
+| POST | `/api/v1/dashboard/forget` | Trigger forgetting (with job tracking). Body: `{ "tenant_id": "...", "user_id": "...", "dry_run": true, "max_memories": 5000 }`. |
 | POST | `/api/v1/dashboard/database/reset` | Drop all tables and re-run migrations (use with caution). |
+
+#### Export
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/dashboard/export/memories` | Export memories as JSON. Optional `tenant_id` query. |
 
 ### Implementation Notes
 
-- **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/` (no build step). Chart.js is loaded via CDN for overview charts.
-- **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`).
+- **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/` (no build step). Chart.js for charts; vis-network for knowledge graph visualization. Both loaded via CDN.
+- **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`, `SessionInfo`, `GraphExploreResponse`, `ConfigSection`, `DashboardJobItem`, `DashboardRetrievalRequest`).
+- **Job tracking**: Consolidation and forgetting runs are recorded in the `dashboard_jobs` PostgreSQL table (migration: `002_dashboard_jobs.py`). Job status, result, errors, and duration are tracked.
+- **Request counting**: The `RequestLoggingMiddleware` increments hourly counters in Redis (`dashboard:reqcount:{YYYY-MM-DD-HH}`) with 48-hour TTL for the API Usage page.
+- **Config overrides**: Runtime config changes are stored in Redis (`dashboard:config:overrides`) as JSON. Only safe settings (non-secrets, non-connection strings) are writable.
 - **Static files**: Served at `/dashboard/static/*`; `/dashboard` and `/dashboard/*` (except `/dashboard/static/*`) serve `index.html` for client-side routing.
+
+### Sidebar Navigation Order
+
+1. Overview
+2. Tenants
+3. Memories
+4. Sessions
+5. Events
+6. Knowledge Graph
+7. API Usage
+8. Components
+9. Configuration
+10. Retrieval Test
+11. Management
 
 ---
 

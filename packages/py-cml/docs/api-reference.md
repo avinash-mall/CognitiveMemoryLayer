@@ -37,7 +37,36 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` and `eval_mode` parameters.
 - **search(query, \*\*kwargs)** — Alias for read.
 
-Admin/batch: consolidate, run_forgetting, batch_write, batch_read, list_tenants, get_events, component_health, with_namespace(namespace), iter_memories(...).
+### Admin & Batch Methods
+
+**Existing admin methods:**
+
+- **consolidate(\*, tenant_id, user_id)** → `dict` — Trigger memory consolidation (episodic → semantic). Requires admin API key.
+- **run_forgetting(\*, tenant_id, user_id, dry_run=True, max_memories=5000)** → `dict` — Trigger active forgetting cycle.
+- **batch_write(items, \*, session_id, namespace)** → `list[WriteResponse]` — Write multiple memories sequentially.
+- **batch_read(queries, \*, max_results, response_format)** → `list[ReadResponse]` — Execute multiple read queries.
+- **list_tenants()** → `list[dict]` — List all tenants with memory/fact/event counts and last activity.
+- **get_events(\*, limit, page, event_type, since)** → `dict` — Query the event log with pagination.
+- **component_health()** → `dict` — Detailed health status of all CML components.
+- **with_namespace(namespace)** → `NamespacedClient` — Create a namespace-scoped view.
+- **iter_memories(\*, memory_types, status, batch_size)** → `Iterator[MemoryItem]` — Paginated iteration over memories.
+
+**New dashboard admin methods (v1.1.0):**
+
+- **get_sessions(\*, tenant_id)** → `dict` — List active sessions from Redis with TTL and memory counts per session.
+- **get_rate_limits()** → `dict` — Current rate-limit bucket usage per API key with remaining capacity and TTL.
+- **get_request_stats(\*, hours=24)** → `dict` — Hourly request volume over the last N hours (1–48).
+- **get_graph_stats()** → `dict` — Knowledge graph statistics from Neo4j (total nodes, edges, entity types).
+- **explore_graph(\*, tenant_id, entity, scope_id="default", depth=2)** → `dict` — Explore the neighborhood of an entity in the knowledge graph (1–5 hops).
+- **search_graph(query, \*, tenant_id, limit=25)** → `dict` — Search entities by name pattern.
+- **get_config()** → `dict` — Read-only application configuration snapshot with secrets masked.
+- **update_config(updates)** → `dict` — Set runtime configuration overrides stored in Redis.
+- **get_labile_status(\*, tenant_id)** → `dict` — Reconsolidation / labile memory status per tenant.
+- **test_retrieval(query, \*, tenant_id, max_results=10, context_filter, memory_types, response_format="list")** → `dict` — Test retrieval via the dashboard API; returns scored memories and optional LLM context.
+- **get_jobs(\*, tenant_id, job_type, limit=50)** → `dict` — List recent consolidation/forgetting job history with status and results.
+- **bulk_memory_action(memory_ids, action)** → `dict` — Apply "archive", "silence", or "delete" to multiple memories in bulk.
+
+All admin methods require `CML_ADMIN_API_KEY` to be configured. They are available on both `CognitiveMemoryLayer` / `AsyncCognitiveMemoryLayer` and their `NamespacedClient` / `AsyncNamespacedClient` wrappers.
 
 ### Temporal Fidelity
 
