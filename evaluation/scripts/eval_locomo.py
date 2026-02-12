@@ -30,6 +30,9 @@ from tqdm import tqdm
 
 # Throttle writes (set AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=600 for bulk eval)
 INGESTION_DELAY_SEC = 0.2
+# 429 retry: max attempts and backoff (seconds); cap so we don't wait forever
+_CML_WRITE_MAX_429_ATTEMPTS = 15
+_CML_WRITE_BACKOFF_CAP_SEC = 65
 
 # QA prompts aligned with LoCoMo gpt_utils
 QA_PROMPT = """
@@ -66,6 +69,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--limit-samples", type=int, default=None, help="Limit to first N samples (for testing)")
     p.add_argument("--skip-ingestion", action="store_true", help="Skip Phase A (use existing CML state)")
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing predictions in output file")
+    p.add_argument("--no-eval-mode", dest="eval_mode", action="store_false", default=True, help="Disable X-Eval-Mode on writes and gating stats")
+    p.add_argument("--log-timing", action="store_true", help="Log latency and token usage; write timing summary JSON")
     return p.parse_args()
 
 
@@ -100,7 +105,9 @@ def _cml_write(
     timestamp: str | None,
     metadata: dict,
     turn_id: str | None,
-) -> None:
+    eval_mode: bool = True,
+) -> dict | None:
+    """Write one turn to CML. When eval_mode=True, returns response JSON (for eval_outcome/eval_reason)."""
     url = f"{base_url.rstrip('/')}/api/v1/memory/write"
     payload = {
         "content": content,
@@ -111,18 +118,35 @@ def _cml_write(
     iso_ts = _parse_timestamp(timestamp)
     if iso_ts:
         payload["timestamp"] = iso_ts
-    for attempt in range(6):
-        resp = requests.post(
-            url,
-            json=payload,
-            headers={"X-API-Key": api_key, "X-Tenant-ID": tenant_id},
-            timeout=60,
-        )
-        if resp.status_code == 429 and attempt < 5:
-            time.sleep(3.0 * (attempt + 1))
+    headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id}
+    if eval_mode:
+        headers["X-Eval-Mode"] = "true"
+    last_429_response = None
+    for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
+        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        if resp.status_code == 429:
+            last_429_response = resp
+            if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
+                break
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    wait = min(int(retry_after), _CML_WRITE_BACKOFF_CAP_SEC)
+                except ValueError:
+                    wait = min(_CML_WRITE_BACKOFF_CAP_SEC, 5 * (2**attempt))
+            else:
+                wait = min(_CML_WRITE_BACKOFF_CAP_SEC, 5 * (2**attempt))
+            time.sleep(wait)
             continue
         resp.raise_for_status()
-        break
+        if eval_mode:
+            return resp.json()
+        return None
+    raise requests.exceptions.HTTPError(
+        "429 Too Many Requests (rate limit). Set AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=600 "
+        "in project root .env and restart the API, then re-run. See ProjectPlan/LocomoEval/RunEvaluation.md.",
+        response=last_429_response,
+    )
 
 
 def _cml_read(
@@ -162,7 +186,14 @@ def _cml_read(
     return llm_context, dia_ids
 
 
-def _ollama_chat(base_url: str, model: str, user_content: str, max_tokens: int = 64) -> str:
+def _ollama_chat(
+    base_url: str,
+    model: str,
+    user_content: str,
+    max_tokens: int = 64,
+    return_usage: bool = False,
+) -> str | tuple[str, dict]:
+    """Return content string, or (content, usage_dict) when return_usage=True."""
     url = f"{base_url.rstrip('/')}/v1/chat/completions"
     payload = {
         "model": model,
@@ -174,9 +205,13 @@ def _ollama_chat(base_url: str, model: str, user_content: str, max_tokens: int =
     resp.raise_for_status()
     data = resp.json()
     choices = data.get("choices", [])
-    if not choices:
-        return ""
-    return (choices[0].get("message") or {}).get("content", "").strip()
+    content = ""
+    if choices:
+        content = (choices[0].get("message") or {}).get("content", "").strip()
+    usage = (data.get("usage") or {}) if return_usage else {}
+    if return_usage:
+        return content, usage
+    return content
 
 
 def _get_session_nums(conversation: dict) -> list[int]:
@@ -189,8 +224,12 @@ def phase_a_ingestion(
     cml_url: str,
     cml_api_key: str,
     limit: int | None,
+    eval_mode: bool = True,
+    gating_results: list[dict] | None = None,
 ) -> None:
     """Ingest each sample's conversation into CML (one tenant per sample_id)."""
+    if gating_results is None and eval_mode:
+        gating_results = []
     for sample in tqdm(
         (samples[:limit] if limit is not None else samples), desc="Ingestion"
     ):
@@ -205,7 +244,7 @@ def phase_a_ingestion(
                 content = dialog["speaker"] + ": " + dialog["text"]
                 if dialog.get("blip_caption"):
                     content += " [shared: " + dialog["blip_caption"] + "]"
-                _cml_write(
+                out = _cml_write(
                     base_url=cml_url,
                     api_key=cml_api_key,
                     tenant_id=tenant_id,
@@ -218,7 +257,13 @@ def phase_a_ingestion(
                         "dia_id": dialog.get("dia_id"),
                     },
                     turn_id=dialog.get("dia_id"),
+                    eval_mode=eval_mode,
                 )
+                if eval_mode and out and gating_results is not None:
+                    gating_results.append({
+                        "eval_outcome": out.get("eval_outcome"),
+                        "eval_reason": out.get("eval_reason"),
+                    })
                 time.sleep(INGESTION_DELAY_SEC)
 
 
@@ -245,8 +290,12 @@ def phase_b_qa(
     prediction_key: str,
     limit: int | None,
     overwrite: bool,
+    log_timing: bool = False,
+    timing_entries: list[dict] | None = None,
 ) -> None:
     """For each sample and each QA, read from CML, call Ollama, store prediction and context for recall."""
+    if log_timing and timing_entries is None:
+        timing_entries = []
     for sample in tqdm(
         (samples[:limit] if limit is not None else samples), desc="QA"
     ):
@@ -257,7 +306,9 @@ def phase_b_qa(
                 continue
             question = qa_item["question"]
             category = qa_item.get("category", 3)
+            t0 = time.perf_counter()
             llm_context, dia_ids = _cml_read(cml_url, cml_api_key, tenant_id, question, max_results)
+            cml_read_sec = time.perf_counter() - t0
             if category == 2:
                 question_for_prompt = question + " Use DATE of CONVERSATION to answer with an approximate date."
             elif category == 5:
@@ -277,9 +328,29 @@ def phase_b_qa(
                 answer_key = {}
             prompt = (QA_PROMPT_CAT_5 if category == 5 else QA_PROMPT).format(question_for_prompt)
             user_content = (llm_context or "(No retrieved context.)") + "\n\n" + prompt
-            answer = _ollama_chat(ollama_url, ollama_model, user_content)
+            t1 = time.perf_counter()
+            if log_timing and timing_entries is not None:
+                result = _ollama_chat(
+                    ollama_url, ollama_model, user_content, return_usage=True
+                )
+                answer, usage = (result[0], result[1]) if isinstance(result, tuple) else (result, {})
+                ollama_sec = time.perf_counter() - t1
+                timing_entries.append({
+                    "sample_id": tenant_id,
+                    "qa_index": i,
+                    "cml_read_sec": round(cml_read_sec, 3),
+                    "ollama_sec": round(ollama_sec, 3),
+                    "prompt_tokens": usage.get("prompt_tokens"),
+                    "completion_tokens": usage.get("completion_tokens"),
+                    "total_tokens": usage.get("total_tokens"),
+                })
+            else:
+                answer = _ollama_chat(ollama_url, ollama_model, user_content)
+                if isinstance(answer, tuple):
+                    answer = answer[0]
             if category == 5:
-                answer = _get_cat5_answer(answer, answer_key)
+                ans_str = answer[0] if isinstance(answer, tuple) else answer
+                answer = _get_cat5_answer(ans_str, answer_key)
             out_data["qa"][i][prediction_key] = answer.strip() if isinstance(answer, str) else str(answer).strip()
             if dia_ids:
                 out_data["qa"][i][prediction_key + "_context"] = dia_ids
@@ -316,9 +387,36 @@ def main() -> None:
     prediction_key = f"cml_top_{args.max_results}_prediction"
     model_key = f"{args.ollama_model}_cml_top_{args.max_results}"
 
+    gating_results: list[dict] = []
     if not args.skip_ingestion:
-        phase_a_ingestion(samples, args.cml_url, args.cml_api_key, args.limit_samples)
+        phase_a_ingestion(
+            samples,
+            args.cml_url,
+            args.cml_api_key,
+            args.limit_samples,
+            eval_mode=args.eval_mode,
+            gating_results=gating_results,
+        )
+        if args.eval_mode and gating_results:
+            stored = sum(1 for g in gating_results if g.get("eval_outcome") == "stored")
+            skipped = sum(1 for g in gating_results if g.get("eval_outcome") == "skipped")
+            reasons: dict[str, int] = {}
+            for g in gating_results:
+                r = (g.get("eval_reason") or "unknown").strip()
+                if len(r) > 120:
+                    r = r[:117] + "..."
+                reasons[r] = reasons.get(r, 0) + 1
+            gating_stats = {
+                "total_writes": len(gating_results),
+                "stored_count": stored,
+                "skipped_count": skipped,
+                "skip_reason_counts": reasons,
+            }
+            gating_file = out_dir / "locomo10_gating_stats.json"
+            gating_file.write_text(json.dumps(gating_stats, indent=2), encoding="utf-8")
+            print(f"Gating: {gating_file}")
 
+    timing_entries: list[dict] = []
     phase_b_qa(
         samples,
         out_data_by_id,
@@ -330,7 +428,41 @@ def main() -> None:
         prediction_key,
         args.limit_samples,
         args.overwrite,
+        log_timing=args.log_timing,
+        timing_entries=timing_entries,
     )
+
+    if args.log_timing and timing_entries:
+        cml_times = [e["cml_read_sec"] for e in timing_entries]
+        ollama_times = [e["ollama_sec"] for e in timing_entries]
+        pt: list[int] = [
+            int(v) for e in timing_entries
+            if (v := e.get("prompt_tokens")) is not None and isinstance(v, (int, float))
+        ]
+        ct: list[int] = [
+            int(v) for e in timing_entries
+            if (v := e.get("completion_tokens")) is not None and isinstance(v, (int, float))
+        ]
+        tt: list[int] = [
+            int(v) for e in timing_entries
+            if (v := e.get("total_tokens")) is not None and isinstance(v, (int, float))
+        ]
+        timing_summary = {
+            "per_question": timing_entries,
+            "aggregate": {
+                "count": len(timing_entries),
+                "mean_cml_read_sec": round(sum(cml_times) / len(cml_times), 3) if cml_times else None,
+                "mean_ollama_sec": round(sum(ollama_times) / len(ollama_times), 3) if ollama_times else None,
+                "p95_cml_read_sec": round(sorted(cml_times)[min(len(cml_times) - 1, max(0, int(len(cml_times) * 0.95)))], 3) if cml_times else None,
+                "p95_ollama_sec": round(sorted(ollama_times)[min(len(ollama_times) - 1, max(0, int(len(ollama_times) * 0.95)))], 3) if ollama_times else None,
+                "total_prompt_tokens": sum(pt) if pt else None,
+                "total_completion_tokens": sum(ct) if ct else None,
+                "total_tokens": sum(tt) if tt else None,
+            },
+        }
+        timing_file = out_dir / "locomo10_qa_cml_timing.json"
+        timing_file.write_text(json.dumps(timing_summary, indent=2), encoding="utf-8")
+        print(f"Timing: {timing_file}")
 
     # Write raw output (list of per-sample dicts) for analyze_aggr_acc
     out_list = list(out_data_by_id.values())
@@ -341,8 +473,8 @@ def main() -> None:
         prediction_key in q for d in out_list for q in d["qa"]
     )
     if has_predictions:
-        from task_eval.evaluation import eval_question_answering
-        from task_eval.evaluation_stats import analyze_aggr_acc
+        from task_eval.evaluation import eval_question_answering  # type: ignore[import-untyped]
+        from task_eval.evaluation_stats import analyze_aggr_acc  # type: ignore[import-untyped]
 
         for out_data in out_list:
             if not out_data["qa"]:

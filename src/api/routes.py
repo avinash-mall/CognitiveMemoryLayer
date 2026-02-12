@@ -65,11 +65,13 @@ def _to_memory_item(mem) -> MemoryItem:
 
 @router.post("/memory/write", response_model=WriteMemoryResponse)
 async def write_memory(
+    request: Request,
     body: WriteMemoryRequest,
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Store new information in memory. Holistic: tenant-only."""
+    """Store new information in memory. Holistic: tenant-only. Set X-Eval-Mode: true for eval outcome/reason."""
+    eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
             tenant_id=auth.tenant_id,
@@ -82,13 +84,16 @@ async def write_memory(
             agent_id=body.agent_id,
             namespace=body.namespace,
             timestamp=body.timestamp,
+            eval_mode=eval_mode,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
         return WriteMemoryResponse(
             success=True,
             memory_id=result.get("memory_id"),
             chunks_created=result.get("chunks_created", 0),
-            message="Memory stored successfully",
+            message=result.get("message", "Memory stored successfully"),
+            eval_outcome=result.get("eval_outcome"),
+            eval_reason=result.get("eval_reason"),
         )
     except Exception as e:
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="error").inc()
@@ -304,12 +309,14 @@ async def create_session(
 
 @router.post("/session/{session_id}/write", response_model=WriteMemoryResponse)
 async def session_write(
+    request: Request,
     session_id: str,
     body: WriteMemoryRequest,
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Write to memory with session_id for origin tracking. Holistic: tenant-only."""
+    """Write to memory with session_id for origin tracking. Set X-Eval-Mode: true for eval outcome/reason."""
+    eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
             tenant_id=auth.tenant_id,
@@ -321,13 +328,17 @@ async def session_write(
             turn_id=body.turn_id,
             agent_id=body.agent_id,
             namespace=body.namespace,
+            timestamp=body.timestamp,
+            eval_mode=eval_mode,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
         return WriteMemoryResponse(
             success=True,
             memory_id=result.get("memory_id"),
             chunks_created=result.get("chunks_created", 0),
-            message="Memory stored successfully",
+            message=result.get("message", "Memory stored successfully"),
+            eval_outcome=result.get("eval_outcome"),
+            eval_reason=result.get("eval_reason"),
         )
     except Exception as e:
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="error").inc()

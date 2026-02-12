@@ -122,6 +122,7 @@ class AsyncCognitiveMemoryLayer:
         turn_id: str | None = None,
         agent_id: str | None = None,
         timestamp: datetime | None = None,
+        eval_mode: bool = False,
     ) -> WriteResponse:
         """Store a memory.
 
@@ -135,9 +136,10 @@ class AsyncCognitiveMemoryLayer:
             turn_id: Optional turn identifier.
             agent_id: Optional agent identifier.
             timestamp: Optional event timestamp (defaults to now).
+            eval_mode: If True, send X-Eval-Mode header; server returns eval_outcome and eval_reason (stored/skipped and write-gate reason). Useful for benchmarks.
 
         Returns:
-            WriteResponse with success, memory_id, chunks_created.
+            WriteResponse with success, memory_id, chunks_created; when eval_mode=True, also eval_outcome and eval_reason.
         """
         self._ensure_same_loop()
         body = WriteRequest(
@@ -151,7 +153,8 @@ class AsyncCognitiveMemoryLayer:
             agent_id=agent_id,
             timestamp=timestamp,
         ).model_dump(exclude_none=True, mode="json")
-        data = await self._transport.request("POST", "/memory/write", json=body)
+        extra = {"X-Eval-Mode": "true"} if eval_mode else None
+        data = await self._transport.request("POST", "/memory/write", json=body, extra_headers=extra)
         return WriteResponse(**data)
 
     async def read(
@@ -469,6 +472,8 @@ class AsyncCognitiveMemoryLayer:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
+        eval_mode: bool = False,
     ) -> WriteResponse:
         """Alias for write(): store a memory."""
         self._ensure_same_loop()
@@ -481,6 +486,8 @@ class AsyncCognitiveMemoryLayer:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
+            eval_mode=eval_mode,
         )
 
     async def search(

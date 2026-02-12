@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **X-Eval-Mode header on write** — Optional request header `X-Eval-Mode: true` on `POST /memory/write` and `POST /session/{session_id}/write`. When set, the response includes `eval_outcome` (`"stored"` or `"skipped"`) and `eval_reason` (write-gate reason) so evaluation scripts can aggregate gating statistics. See Usage documentation and `ProjectPlan/LocomoEval/RunEvaluation.md`.
+- **LoCoMo evaluation: gating and timing** — `evaluation/scripts/eval_locomo.py` supports `--eval-mode` (sends X-Eval-Mode on writes, writes `locomo10_gating_stats.json`) and `--log-timing` (records per-question CML read and Ollama latency and token usage, writes `locomo10_qa_cml_timing.json`). See evaluation README and RunEvaluation.md §4.2.
 - **DELETE /memory/all** — New admin-only endpoint; SDK `delete_all(confirm=True)` is now supported by the server.
 - **Startup validation** — `validate_embedding_dimensions()` is called in the app lifespan to catch embedding-dimension vs DB schema mismatch at startup.
 
