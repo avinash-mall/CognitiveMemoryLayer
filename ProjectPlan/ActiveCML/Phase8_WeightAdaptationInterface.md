@@ -1,5 +1,7 @@
 # Phase 8: Weight Adaptation Interface — Dynamic LoRA
 
+**Intrinsic Phase I-8** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 The Weight Adaptation Interface is the most **advanced** and **deepest** injection mechanism. Instead of modifying activations or caches during inference, it modifies the model's **weights themselves** by loading task-specific Low-Rank Adaptation (LoRA) adapters at runtime. This is the equivalent of **synaptic plasticity** — the model temporarily "learns" from the memory.

@@ -2,7 +2,7 @@
 
 This document lists **every step** required to run the LoCoMo evaluation with CML as the RAG backend and local Ollama (e.g. `gpt-oss-20b` for QA, `embeddinggemma` for embeddings). Do not skip steps; order matters.
 
-**References:** [EvaluationPlan.md](EvaluationPlan.md) (strategy), [evaluation/README.md](../../evaluation/README.md) (layout), [LoCoMo repo](https://github.com/snap-research/locomo).
+**References:** [evaluation/README.md](../../evaluation/README.md) (layout and overview), [LoCoMo repo](https://github.com/snap-research/locomo). Strategy and steps are described in this runbook.
 
 ---
 

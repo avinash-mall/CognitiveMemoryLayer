@@ -1,5 +1,7 @@
 # Phase 5: Controller & Gating Unit — Intelligent Orchestration
 
+**Intrinsic Phase I-5** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 The Controller is the **brain** of the intrinsic memory system. It decides **which memories** to inject, **through which interface** (logit, activation, KV-cache, or LoRA), and **at what strength**. Without it, the injection interfaces are just raw capabilities — the Controller provides the intelligence that ties them together.

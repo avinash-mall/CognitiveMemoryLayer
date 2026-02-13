@@ -49,7 +49,7 @@ memory.write("This memory gets the current timestamp")
 
 ### 1. Benchmark Evaluations
 
-Temporal fidelity is essential for benchmark evaluations like [Locomo](https://github.com/google/locomo) that test long-term memory capabilities by replaying historical conversations:
+Temporal fidelity is essential for benchmark evaluations like [Locomo](https://github.com/snap-research/locomo) that test long-term memory capabilities by replaying historical conversations:
 
 ```python
 from datetime import datetime, timezone

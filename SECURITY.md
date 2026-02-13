@@ -2,24 +2,20 @@
 
 ## Supported versions
 
-We release security updates for the current major version. Supported versions are documented in the [releases](https://github.com/your-org/CognitiveMemoryLayer/releases) page.
+| Version | Supported     |
+|---------|----------------|
+| 1.x     | Yes            |
+| 0.x     | Best effort    |
+
+Supported versions are also documented on the [releases](https://github.com/avinash-mall/CognitiveMemoryLayer/releases) page.
 
 ## Reporting a vulnerability
 
-We take security seriously. If you believe you have found a security vulnerability, please report it responsibly.
+We take security seriously. Please report security vulnerabilities via **GitHub Security Advisories**:
 
-**Do not** open a public GitHub issue for security-sensitive bugs.
+**https://github.com/avinash-mall/CognitiveMemoryLayer/security/advisories/new**
 
-**Do:**
-
-1. **Email** the maintainers (or use the project’s private security contact if one is listed on GitHub) with:
-   - A clear description of the issue and steps to reproduce
-   - Impact (e.g. data exposure, privilege escalation)
-   - Any suggested fix or mitigation, if you have one
-
-2. Allow a reasonable time for a fix (e.g. 90 days) before any public disclosure.
-
-We will acknowledge receipt and work with you to understand and address the issue. We may ask for more detail and will keep you updated on progress.
+Do **not** open a public GitHub issue for security-sensitive bugs. We will acknowledge receipt and work with you to understand and address the issue. Allow a reasonable time for a fix (e.g. 90 days) before any public disclosure.
 
 ## Security practices
 

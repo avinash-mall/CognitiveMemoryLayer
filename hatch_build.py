@@ -1,8 +1,23 @@
 """Hatch build plugin: set package version from .env (VERSION) or env var or VERSION file."""
 
+import os
 from pathlib import Path
 
 from hatchling.metadata.plugin.interface import MetadataHookInterface
+
+
+def get_version(root: Path | None = None) -> str:
+    """Return project version (same logic as the metadata hook). Use for badges/scripts.
+    If root is None, uses the directory containing this file (repo root).
+    """
+    if root is None:
+        root = Path(__file__).resolve().parent
+    return (
+        _read_version_from_env_file(root)
+        or os.environ.get("VERSION")
+        or _read_version_from_version_file(root)
+        or "0.0.0"
+    )
 
 
 def _read_version_from_env_file(root: Path) -> str | None:
@@ -32,13 +47,5 @@ class VersionFromEnvMetadataHook(MetadataHookInterface):
     """Set project version from .env (VERSION=...), then env var VERSION, then VERSION file."""
 
     def update(self, metadata: dict) -> None:
-        import os
-
         root = Path(self.root)
-        version = (
-            _read_version_from_env_file(root)
-            or os.environ.get("VERSION")
-            or _read_version_from_version_file(root)
-            or "0.0.0"
-        )
-        metadata["version"] = version
+        metadata["version"] = get_version(root)

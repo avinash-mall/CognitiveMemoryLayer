@@ -94,7 +94,7 @@ CognitiveMemoryLayer/               # Existing repo (unchanged)
 
 **Current implementation:** Phase 1 (package layout, Hatchling, CI), Phase 2 (Pydantic config, env/.env, exceptions, httpx transport, retry, request/response models, `health()`, context managers), Phase 3 (memory operations: write, read, turn, update, forget, stats, create_session, get_session_context, get_context, remember, search, delete_all), Phase 4 (embedded mode: EmbeddedCognitiveMemoryLayer, lite SQLite + local embeddings, optional background workers, export/import), Phase 5 (advanced features: consolidate, run_forgetting, batch_write, batch_read, set_tenant, list_tenants, get_events, component_health, with_namespace, iter_memories, CMLOpenAIHelper), Phase 6 (developer experience: structured errors with suggestion/request_id, configure_logging, read_safe, TypedDicts, response __str__, serialization, session() context manager, HTTP/2 and limits, deprecation decorator, thread-safe set_tenant, async event-loop check), and Phase 7 (testing: shared conftest fixtures and mock helpers, unit tests including test_models, extended transport/retry, test_serialization/test_logging, integration tests with live_client, embedded tests for lite mode and lifecycle, e2e chat flow and migration, pytest markers and coverage in pyproject.toml, CI running unit-only by default), and Phase 8 (README with PyPI/Python badges and tagline, docs/getting-started, api-reference, configuration, examples; examples/quickstart, chat_with_memory, async_example, embedded_mode, agent_integration; GitHub issue and PR templates; SECURITY.md; CONTRIBUTING with releasing section and PR checklist; publish workflow on py-cml-v* already in place) are implemented in `packages/py-cml/`.
 
-**Code review (2026-02-10):** The issues in [Issues.md](Issues.md) have been addressed. Resolved items include: admin endpoint URL paths (leading slash), shared `dashboard_item_to_memory_item` in `cml.utils.converters`, CML exception names (`CMLConnectionError`/`CMLTimeoutError` with aliases), retry logic for `RateLimitError` and max delay cap, request body serialization (datetime/UUID), SQLite upsert by content_hash, OpenAI helper single-turn flow, background task logging, `database_url` rename, `iter_memories` multi-type validation, conftest type hints, examples using env vars for API keys, `__del__` warning for unclosed clients, and `pyproject.toml` project URLs. See Issues.md for full resolution summary.
+**Code review (2026-02-10):** The issues in [ActiveCML/Issues.md](../ActiveCML/Issues.md) have been addressed. Resolved items include: admin endpoint URL paths (leading slash), shared `dashboard_item_to_memory_item` in `cml.utils.converters`, CML exception names (`CMLConnectionError`/`CMLTimeoutError` with aliases), retry logic for `RateLimitError` and max delay cap, request body serialization (datetime/UUID), SQLite upsert by content_hash, OpenAI helper single-turn flow, background task logging, `database_url` rename, `iter_memories` multi-type validation, conftest type hints, examples using env vars for API keys, `__del__` warning for unclosed clients, and `pyproject.toml` project URLs. See [ActiveCML/Issues.md](../ActiveCML/Issues.md) for full resolution summary.
 
 **Testing (integration and e2e):** Integration and e2e tests require a running CML server. Start with `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api` from the repo root. The project `.env.example` uses `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key`; use the same in `.env` so the API accepts the key. If `CML_TEST_API_KEY` is unset, test conftests load the repo `.env` and use `AUTH__API_KEY`/`AUTH__ADMIN_API_KEY`. Run from `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`.
 
@@ -5526,7 +5526,7 @@ Create comprehensive documentation, usage examples, and establish the GitHub rel
 
 [![PyPI](https://img.shields.io/pypi/v/py-cml)](https://pypi.org/project/py-cml/)
 [![Python](https://img.shields.io/pypi/pyversions/py-cml)](https://pypi.org/project/py-cml/)
-[![License](https://img.shields.io/github/license/<org>/CognitiveMemoryLayer)](LICENSE)
+[![License](https://img.shields.io/github/license/<org>/CognitiveMemoryLayer)](../../LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/<org>/CognitiveMemoryLayer/py-cml-test.yml)](https://github.com/<org>/CognitiveMemoryLayer/actions)
 
 Give your AI applications human-like memory — store, retrieve, consolidate, and forget information just like the brain does.
@@ -5623,14 +5623,14 @@ memory = CognitiveMemoryLayer(
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
-- [API Reference](docs/api-reference.md)
-- [Configuration](docs/configuration.md)
-- [Examples](docs/examples.md)
+- [Getting Started](../../packages/py-cml/docs/getting-started.md)
+- [API Reference](../../packages/py-cml/docs/api-reference.md)
+- [Configuration](../../packages/py-cml/docs/configuration.md)
+- [Examples](../../packages/py-cml/docs/examples.md)
 
 ## License
 
-GPL-3.0 — See [LICENSE](LICENSE) for details.
+GPL-3.0 — See [LICENSE](../../LICENSE) for details.
 ```
 
 **Pseudo-code for README sections**:
@@ -6376,7 +6376,7 @@ Do NOT open a public issue for security vulnerabilities.
 
 The following has been implemented:
 
-**README** ([packages/py-cml/README.md](packages/py-cml/README.md)): Added PyPI and Python version badges, one-line tagline ("Give your AI applications human-like memory..."), and Documentation section with links to [Getting Started](packages/py-cml/docs/getting-started.md), [API Reference](packages/py-cml/docs/api-reference.md), [Configuration](packages/py-cml/docs/configuration.md), [Examples](packages/py-cml/docs/examples.md).
+**README** ([packages/py-cml/README.md](../../packages/py-cml/README.md)): Added PyPI and Python version badges, one-line tagline ("Give your AI applications human-like memory..."), and Documentation section with links to [Getting Started](../../packages/py-cml/docs/getting-started.md), [API Reference](../../packages/py-cml/docs/api-reference.md), [Configuration](../../packages/py-cml/docs/configuration.md), [Examples](../../packages/py-cml/docs/examples.md).
 
 **Docs** (packages/py-cml/docs/): Created getting-started.md (prerequisites, installation, connect to server, next steps), api-reference.md (sync/async/embedded clients, methods, models, exceptions, config), configuration.md (env vars table, direct init, CMLConfig, priority order, embedded config, versioning), examples.md (overview of the five examples with paths and run instructions).
 

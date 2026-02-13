@@ -1,5 +1,7 @@
 # Phase 3: Activation Interface — Hidden State Steering
 
+**Intrinsic Phase I-3** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 The Activation Interface is the **primary mechanism** for intrinsic memory integration. Unlike the Logit Interface (which only influences the final token distribution), activation steering injects memory directly into the model's **residual stream** — the hidden state representations flowing between transformer layers. This influences the model's entire reasoning process: its "mood," "topic focus," "reasoning style," and factual priors.

@@ -1,5 +1,7 @@
 # Phase 2: Logit Interface — Token-Level Memory Integration
 
+**Intrinsic Phase I-2** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 The Logit Interface is the **safest and most universally available** memory injection mechanism. It operates at the very end of the forward pass, modulating the probability distribution over the vocabulary before token sampling. This is the only interface that works with API-only providers (OpenAI, Anthropic) via the `logit_bias` parameter.
