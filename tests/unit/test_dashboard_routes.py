@@ -39,10 +39,10 @@ def admin_headers(monkeypatch):
 
 @pytest.fixture
 def user_headers(monkeypatch):
-    """Set up auth environment from .env and return headers for non-admin API key."""
-    api_key, admin_key, tenant = _env_auth()
+    """Set up auth environment with distinct admin key so user key returns 403 on dashboard."""
+    api_key, _, tenant = _env_auth()
     monkeypatch.setenv("AUTH__API_KEY", api_key)
-    monkeypatch.setenv("AUTH__ADMIN_API_KEY", admin_key)
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-for-tests")
     monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
     try:
