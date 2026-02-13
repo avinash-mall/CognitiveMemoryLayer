@@ -1,5 +1,6 @@
 """Memory orchestrator: coordinates all memory operations."""
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -7,7 +8,9 @@ from uuid import UUID
 from ..consolidation.worker import ConsolidationWorker
 from ..core.enums import MemoryStatus
 from ..core.schemas import MemoryPacket
+from ..extraction.entity_extractor import EntityExtractor
 from ..extraction.fact_extractor import LLMFactExtractor
+from ..extraction.relation_extractor import RelationExtractor
 from ..forgetting.worker import ForgettingWorker
 from ..memory.conversation import ConversationMemory
 from ..memory.hippocampal.store import HippocampalStore
@@ -26,6 +29,8 @@ from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.embeddings import EmbeddingClient, get_embedding_client
 from ..utils.llm import LLMClient, get_llm_client
+
+logger = logging.getLogger(__name__)
 
 try:
     from ..core.enums import MemoryType
@@ -78,9 +83,13 @@ class MemoryOrchestrator:
         neocortical = NeocorticalStore(graph_store, fact_store)
 
         short_term = ShortTermMemory(llm_client=llm_client)
+        entity_extractor = EntityExtractor(llm_client)
+        relation_extractor = RelationExtractor(llm_client)
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
+            entity_extractor=entity_extractor,
+            relation_extractor=relation_extractor,
         )
 
         retriever = MemoryRetriever(
@@ -256,6 +265,15 @@ class MemoryOrchestrator:
 
         if eval_mode:
             stored, gate_results = result
+        else:
+            stored = result
+            gate_results = None
+
+        # Sync extracted entities and relations to Neo4j knowledge graph
+        if stored:
+            await self._sync_to_graph(tenant_id, stored)
+
+        if eval_mode:
             n_stored = len(stored)
             n_skipped = sum(1 for g in gate_results if g.get("decision") == "skip")
             if n_stored == 0:
@@ -282,12 +300,62 @@ class MemoryOrchestrator:
                 "eval_reason": eval_reason,
             }
         else:
-            stored = result
             return {
                 "memory_id": stored[0].id if stored else None,
                 "chunks_created": len(stored),
                 "message": f"Stored {len(stored)} memory chunks",
             }
+
+    async def _sync_to_graph(
+        self,
+        tenant_id: str,
+        records: list,
+    ) -> None:
+        """Sync extracted entities and relations from stored records to Neo4j.
+
+        Failures are logged but never propagated — the Postgres write has
+        already succeeded and must not be rolled back because of a graph issue.
+        """
+        for record in records:
+            # 1. Merge entity nodes so the graph contains discoverable vertices
+            for entity in getattr(record, "entities", None) or []:
+                try:
+                    await self.neocortical.graph.merge_node(
+                        tenant_id=tenant_id,
+                        scope_id=tenant_id,
+                        entity=entity.normalized,
+                        entity_type=entity.entity_type,
+                    )
+                except Exception:
+                    logger.warning(
+                        "neo4j_entity_sync_failed",
+                        extra={
+                            "tenant_id": tenant_id,
+                            "entity": getattr(entity, "normalized", "?"),
+                            "memory_id": str(record.id),
+                        },
+                        exc_info=True,
+                    )
+
+            # 2. Merge relation edges
+            relations = getattr(record, "relations", None) or []
+            if relations:
+                try:
+                    await self.neocortical.store_relations_batch(
+                        tenant_id=tenant_id,
+                        relations=relations,
+                        evidence_ids=[str(record.id)],
+                    )
+                except Exception:
+                    logger.warning(
+                        "neo4j_relation_sync_failed",
+                        extra={
+                            "tenant_id": tenant_id,
+                            "memory_id": str(record.id),
+                            "relation_count": len(relations),
+                        },
+                        exc_info=True,
+                    )
 
     async def read(
         self,

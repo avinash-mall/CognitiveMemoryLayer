@@ -1,13 +1,20 @@
 """Unit tests for SeamlessMemoryProvider and MemoryOrchestrator."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.core.enums import MemorySource, MemoryType
-from src.core.schemas import MemoryPacket, MemoryRecord, Provenance, RetrievedMemory
+from src.core.schemas import (
+    EntityMention,
+    MemoryPacket,
+    MemoryRecord,
+    Provenance,
+    Relation,
+    RetrievedMemory,
+)
 
 
 def _make_memory_record(
@@ -316,3 +323,220 @@ class TestMemoryOrchestrator:
 
         assert result is not None
         assert "version" in result
+
+    # ------------------------------------------------------------------
+    # Neo4j graph sync tests
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_write_calls_sync_to_graph(self, orchestrator, mock_dependencies):
+        """After a successful write, _sync_to_graph pushes entities + relations to Neo4j."""
+        entity = EntityMention(text="Paris", normalized="Paris", entity_type="LOCATION")
+        relation = Relation(subject="user", predicate="lives_in", object="Paris", confidence=0.9)
+        stored_record = _make_memory_record(text="I live in Paris")
+        stored_record.entities = [entity]
+        stored_record.relations = [relation]
+
+        # STM returns chunks so encode_batch is invoked
+        mock_dependencies["short_term"].ingest_turn = AsyncMock(
+            return_value={
+                "tokens_buffered": 10,
+                "chunks_created": 1,
+                "all_chunks": [],
+                "chunks_for_encoding": [MagicMock()],
+            }
+        )
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+
+        # Setup neocortical graph mock
+        mock_dependencies["neocortical"].graph = MagicMock()
+        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(return_value="node-1")
+        mock_dependencies["neocortical"].store_relations_batch = AsyncMock(return_value=["edge-1"])
+
+        result = await orchestrator.write(tenant_id="t1", content="I live in Paris")
+
+        assert result["chunks_created"] == 1
+
+        # Entity node should have been merged
+        mock_dependencies["neocortical"].graph.merge_node.assert_called_once_with(
+            tenant_id="t1",
+            scope_id="t1",
+            entity="Paris",
+            entity_type="LOCATION",
+        )
+
+        # Relation edge should have been merged
+        mock_dependencies["neocortical"].store_relations_batch.assert_called_once_with(
+            tenant_id="t1",
+            relations=[relation],
+            evidence_ids=[str(stored_record.id)],
+        )
+
+    @pytest.mark.asyncio
+    async def test_write_graph_sync_failure_does_not_break_write(
+        self, orchestrator, mock_dependencies
+    ):
+        """If Neo4j sync fails, the write still succeeds (Postgres already committed)."""
+        entity = EntityMention(text="Berlin", normalized="Berlin", entity_type="LOCATION")
+        stored_record = _make_memory_record(text="I visited Berlin")
+        stored_record.entities = [entity]
+        stored_record.relations = []
+
+        mock_dependencies["short_term"].ingest_turn = AsyncMock(
+            return_value={
+                "tokens_buffered": 5,
+                "chunks_created": 1,
+                "all_chunks": [],
+                "chunks_for_encoding": [MagicMock()],
+            }
+        )
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+
+        # Make Neo4j merge_node explode
+        mock_dependencies["neocortical"].graph = MagicMock()
+        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(
+            side_effect=RuntimeError("Neo4j connection refused")
+        )
+
+        # Write should still succeed despite graph failure
+        result = await orchestrator.write(tenant_id="t1", content="I visited Berlin")
+
+        assert result["chunks_created"] == 1
+        assert result["memory_id"] == stored_record.id
+
+    @pytest.mark.asyncio
+    async def test_write_relation_sync_failure_does_not_break_write(
+        self, orchestrator, mock_dependencies
+    ):
+        """If relation sync to Neo4j fails, the write still returns successfully."""
+        relation = Relation(subject="user", predicate="works_at", object="ACME", confidence=0.8)
+        stored_record = _make_memory_record(text="I work at ACME")
+        stored_record.entities = []
+        stored_record.relations = [relation]
+
+        mock_dependencies["short_term"].ingest_turn = AsyncMock(
+            return_value={
+                "tokens_buffered": 5,
+                "chunks_created": 1,
+                "all_chunks": [],
+                "chunks_for_encoding": [MagicMock()],
+            }
+        )
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+
+        # Make store_relations_batch explode
+        mock_dependencies["neocortical"].graph = MagicMock()
+        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(return_value="ok")
+        mock_dependencies["neocortical"].store_relations_batch = AsyncMock(
+            side_effect=RuntimeError("Neo4j timeout")
+        )
+
+        result = await orchestrator.write(tenant_id="t1", content="I work at ACME")
+
+        assert result["chunks_created"] == 1
+        assert result["memory_id"] == stored_record.id
+
+    @pytest.mark.asyncio
+    async def test_write_no_entities_or_relations_skips_graph_sync(
+        self, orchestrator, mock_dependencies
+    ):
+        """When stored records have no entities or relations, graph sync is a no-op."""
+        stored_record = _make_memory_record(text="Hello world")
+        stored_record.entities = []
+        stored_record.relations = []
+
+        mock_dependencies["short_term"].ingest_turn = AsyncMock(
+            return_value={
+                "tokens_buffered": 5,
+                "chunks_created": 1,
+                "all_chunks": [],
+                "chunks_for_encoding": [MagicMock()],
+            }
+        )
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+
+        mock_dependencies["neocortical"].graph = MagicMock()
+        mock_dependencies["neocortical"].graph.merge_node = AsyncMock()
+        mock_dependencies["neocortical"].store_relations_batch = AsyncMock()
+
+        result = await orchestrator.write(tenant_id="t1", content="Hello world")
+
+        assert result["chunks_created"] == 1
+        # Neither merge_node nor store_relations_batch should be called
+        mock_dependencies["neocortical"].graph.merge_node.assert_not_called()
+        mock_dependencies["neocortical"].store_relations_batch.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_write_eval_mode_also_syncs_to_graph(self, orchestrator, mock_dependencies):
+        """In eval_mode, graph sync still runs before the eval result is returned."""
+        entity = EntityMention(text="Tokyo", normalized="Tokyo", entity_type="LOCATION")
+        stored_record = _make_memory_record(text="I traveled to Tokyo")
+        stored_record.entities = [entity]
+        stored_record.relations = []
+
+        gate_result = {"decision": "store", "reason": "significant"}
+
+        mock_dependencies["short_term"].ingest_turn = AsyncMock(
+            return_value={
+                "tokens_buffered": 5,
+                "chunks_created": 1,
+                "all_chunks": [],
+                "chunks_for_encoding": [MagicMock()],
+            }
+        )
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(
+            return_value=([stored_record], [gate_result])
+        )
+
+        mock_dependencies["neocortical"].graph = MagicMock()
+        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(return_value="node-1")
+        mock_dependencies["neocortical"].store_relations_batch = AsyncMock()
+
+        result = await orchestrator.write(
+            tenant_id="t1", content="I traveled to Tokyo", eval_mode=True
+        )
+
+        assert result["eval_outcome"] == "stored"
+        mock_dependencies["neocortical"].graph.merge_node.assert_called_once_with(
+            tenant_id="t1",
+            scope_id="t1",
+            entity="Tokyo",
+            entity_type="LOCATION",
+        )
+
+
+class TestOrchestratorFactory:
+    """Tests for MemoryOrchestrator.create() factory wiring."""
+
+    @pytest.mark.asyncio
+    async def test_create_wires_entity_and_relation_extractors(self):
+        """orchestrator.create() should inject EntityExtractor and RelationExtractor
+        into HippocampalStore so entities and relations are extracted at write time."""
+        from src.extraction.entity_extractor import EntityExtractor
+        from src.extraction.relation_extractor import RelationExtractor
+        from src.memory.orchestrator import MemoryOrchestrator
+
+        mock_db = MagicMock()
+        mock_db.pg_session = MagicMock()
+        mock_db.neo4j_driver = MagicMock()
+        mock_db.redis = None
+
+        with (
+            patch("src.memory.orchestrator.get_llm_client") as mock_llm,
+            patch("src.memory.orchestrator.get_embedding_client") as mock_emb,
+            patch("src.memory.orchestrator.Neo4jGraphStore"),
+            patch("src.memory.orchestrator.PostgresMemoryStore"),
+            patch("src.memory.orchestrator.SemanticFactStore"),
+        ):
+            mock_llm.return_value = MagicMock()
+            mock_emb_instance = MagicMock()
+            mock_emb_instance.dimensions = 1024
+            mock_emb.return_value = mock_emb_instance
+
+            orch = await MemoryOrchestrator.create(mock_db)
+
+            # HippocampalStore should have real extractors, not None
+            assert orch.hippocampal.entity_extractor is not None
+            assert orch.hippocampal.relation_extractor is not None
+            assert isinstance(orch.hippocampal.entity_extractor, EntityExtractor)
+            assert isinstance(orch.hippocampal.relation_extractor, RelationExtractor)
