@@ -113,7 +113,7 @@ A production-ready, neuro-inspired memory system for LLMs that replicates human 
 - ✅ Enables Locomo evaluation and other benchmarks with historical session dates
 - ✅ Documentation updated: CHANGELOG, UsageDocumentation, API reference
 
-This enhancement addresses the requirement from [LocomoEval/EvaluationPlan.md](../LocomoEval/EvaluationPlan.md) to support explicit event timestamps for temporal fidelity in benchmark evaluations.
+This enhancement addresses the requirement from [LocomoEval/RunEvaluation.md](../LocomoEval/RunEvaluation.md) to support explicit event timestamps for temporal fidelity in benchmark evaluations.
 
 ## Key Design Principles
 
@@ -1687,7 +1687,24 @@ Update all documentation and examples to reflect the holistic, seamless API.
 
 **Last updated:** 2026-02-08
 
-This document tracks what has been implemented against the plan in the `ProjectPlan` folder. It includes both the original RAG-based phases (1–14) and the new **Intrinsic Memory System** phases (I1–I10), which are planned but not yet implemented.
+This document tracks what has been implemented against the plan in the `ProjectPlan` folder. It includes both the original RAG-based phases (1–14) and the new **Intrinsic Memory System** phases (I-1 to I-10), which are planned but not yet implemented.
+
+**Important:** The phase numbers 1–10 in this document refer to the **core CML** plan (Foundation, Sensory Buffer, Hippocampal Store, etc.). The **Intrinsic Memory** plan reuses numbers 1–10 for a different scope (Model Access, Logit Interface, Activation Interface, etc.). To avoid confusion, intrinsic phases are referred to as **I-1 through I-10** and are documented in [ActiveCML](ActiveCML/).
+
+### Intrinsic Memory Implementation (Phases I-1 to I-10)
+
+| Intrinsic Phase | Document | Scope |
+|-----------------|----------|--------|
+| I-1 | [Phase1_Foundation_ModelAccessLayer.md](ActiveCML/Phase1_Foundation_ModelAccessLayer.md) | Foundation & Model Access Layer |
+| I-2 | [Phase2_LogitInterface.md](ActiveCML/Phase2_LogitInterface.md) | Logit Interface |
+| I-3 | [Phase3_ActivationInterface.md](ActiveCML/Phase3_ActivationInterface.md) | Activation Interface |
+| I-4 | [Phase4_SynapticInterface.md](ActiveCML/Phase4_SynapticInterface.md) | Synaptic Interface |
+| I-5 | [Phase5_ControllerGatingUnit.md](ActiveCML/Phase5_ControllerGatingUnit.md) | Controller & Gating Unit |
+| I-6 | [Phase6_MemoryEncodingPipeline.md](ActiveCML/Phase6_MemoryEncodingPipeline.md) | Memory Encoding Pipeline |
+| I-7 | [Phase7_MemoryHierarchyCacheManagement.md](ActiveCML/Phase7_MemoryHierarchyCacheManagement.md) | Memory Hierarchy & Cache Management |
+| I-8 | [Phase8_WeightAdaptationInterface.md](ActiveCML/Phase8_WeightAdaptationInterface.md) | Weight Adaptation Interface |
+| I-9 | [Phase9_IntegrationMigration.md](ActiveCML/Phase9_IntegrationMigration.md) | Integration & Migration |
+| I-10 | [Phase10_ObservabilityBenchmarking.md](ActiveCML/Phase10_ObservabilityBenchmarking.md) | Observability & Benchmarking |
 
 ```pseudo
 # Pseudo: Implementation as per task description.

@@ -89,8 +89,9 @@ Hooks run ruff (check + format), mypy, and generic checks (trailing whitespace, 
 1. Create a branch from `main`, make changes in `packages/py-cml/`.
 2. Add or update tests; ensure `pytest tests/unit/`, `mypy src/cml/`, and `ruff check src/ tests/` pass.
 3. Update docstrings, README, or CHANGELOG as applicable (see PR template checklist).
-4. Open a PR. CI runs cognitive-memory-layer tests and lint when paths under `packages/py-cml/**` or the workflow file change.
-5. Get review approval and merge.
+4. **README badges:** If the repository version (root `VERSION` file) or the main test count has changed, run `python scripts/update_readme_badges.py` from the **repository root** to refresh version and test count in the root and py-cml READMEs, then include the updated file(s) in your commit (see root [CONTRIBUTING.md](../../CONTRIBUTING.md)).
+5. Open a PR. CI runs cognitive-memory-layer tests and lint when paths under `packages/py-cml/**` or the workflow file change.
+6. Get review approval and merge.
 
 ## Commit message conventions
 
@@ -164,4 +165,4 @@ To try the release flow without publishing to production PyPI: add a trusted pub
 
 ## General repository guidelines
 
-For broader contribution guidelines (code of conduct, issue templates, repository structure), see the root [CONTRIBUTING.md](../../CONTRIBUTING.md) of the CognitiveMemoryLayer repository.
+For broader contribution guidelines (code of conduct, issue templates, repository structure, and refreshing README badges), see the root [CONTRIBUTING.md](../../CONTRIBUTING.md) of the CognitiveMemoryLayer repository.

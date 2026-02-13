@@ -1,5 +1,7 @@
 # Phase 1: Foundation & Model Access Layer
 
+**Intrinsic Phase I-1** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 Phase 1 establishes the foundational infrastructure for intrinsic LLM memory integration. The current system operates as an external REST-based RAG tool — memories are retrieved as text chunks and stuffed into prompts. This phase builds the **Model Access Layer (MAL)** — the bridge between the CognitiveMemoryLayer and the LLM's internal computation graph (hidden states, attention KV-cache, logits, and optionally weights).

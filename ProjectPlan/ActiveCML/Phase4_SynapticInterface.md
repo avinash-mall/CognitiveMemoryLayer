@@ -1,5 +1,7 @@
 # Phase 4: Synaptic Interface — KV-Cache Memory Injection
 
+**Intrinsic Phase I-4** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 The Synaptic Interface is the **deepest** non-weight-modifying injection mechanism. It operates on the attention mechanism's memory — the Key-Value (KV) cache — by injecting pre-computed KV pairs that the model treats as if it had "already read" the memory content. This effectively implants **virtual context** that the model attends to during generation, without those tokens ever appearing in the actual prompt.

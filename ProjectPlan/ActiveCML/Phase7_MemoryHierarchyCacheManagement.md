@@ -1,5 +1,7 @@
 # Phase 7: Memory Hierarchy & Cache Management
 
+**Intrinsic Phase I-7** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 Intrinsic memory injection introduces a new resource management challenge: latent representations (steering vectors, KV pairs, encoded memories) must be stored, retrieved, and managed across a tiered memory hierarchy. This phase builds the **LMCache-inspired** tiered storage system that keeps hot memories on GPU, warm memories in CPU RAM, and cold memories on disk.

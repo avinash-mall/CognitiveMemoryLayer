@@ -5,51 +5,16 @@ This folder contains the [LoCoMo](https://github.com/snap-research/locomo) bench
 ## Layout
 
 - **`locomo/`** – Cloned [snap-research/locomo](https://github.com/snap-research/locomo) repo (data, `task_eval`, scripts).
-- **`scripts/eval_locomo.py`** – Driver: ingest conversations into CML, run QA via CML read + Ollama, score with LoCoMo’s `eval_question_answering` and `analyze_aggr_acc`.
+- **`scripts/eval_locomo.py`** – Driver: ingest conversations into CML, run QA via CML read + Ollama, score with LoCoMo's `eval_question_answering` and `analyze_aggr_acc`.
 - **`outputs/`** – Created at run time; holds `locomo10_qa_cml.json`, `locomo10_qa_cml_stats.json`, `locomo10_gating_stats.json` (default; use `--no-eval-mode` to skip), and optionally `locomo10_qa_cml_timing.json` (with `--log-timing`).
 
 ## Prerequisites
 
-1. **CML API** running (e.g. Docker with embedding and LLM set for Ollama; see main project README and “Build” below).
-2. **Ollama** on the host with:
-   - **Embedding model**: `embeddinggemma` (used by CML for ingestion/retrieval).
-   - **QA model**: `gpt-oss-20b` (used by the eval script to generate answers).
-3. **Embedding dimension**: CML’s DB vector size must match the embedding model output (see “Embedding dimension” below).
-4. **Python deps**: `requests`, `tqdm`; for LoCoMo scoring, install from `locomo/requirements.txt` or at least: `bert-score`, `nltk`, `regex`, `numpy` (and run `python -m nltk.downloader punkt` if needed).
+1. **CML API** running (e.g. Docker with embedding and LLM set for Ollama; see main project README).
+2. **Ollama** on the host: **embedding model** `embeddinggemma` (for CML ingestion/retrieval), **QA model** `gpt-oss-20b` (for the eval script). Set **`EMBEDDING__DIMENSIONS`** in project root `.env` to match your embedding model (e.g. 768 for EmbeddingGemma); if you change it, drop DBs and re-run migrations.
+3. **Python deps**: `requests`, `tqdm`; for LoCoMo scoring, install from `locomo/requirements.txt` or at least: `bert-score`, `nltk`, `regex`, `numpy` (and run `python -m nltk.downloader punkt` if needed).
 
-## Embedding dimension (EmbeddingGemma)
-
-- EmbeddingGemma in Ollama typically outputs **768** dimensions (confirm with one call: `ollama run embeddinggemma "test"` and check vector length, or use the [Ollama embed API](https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings)).
-- Set in the **project root `.env`** (used by CML API):
-  - `EMBEDDING__PROVIDER=ollama`
-  - `EMBEDDING__MODEL=embeddinggemma` (or `embeddinggemma:latest`)
-  - **`EMBEDDING__DIMENSIONS=768`** (or the actual dimension from your run)
-  - `EMBEDDING__BASE_URL=http://localhost:11434/v1`
-- The migration creates the pgvector column using `EMBEDDING__DIMENSIONS` at import time. The server and tests read this from `.env`; the Docker `app` and `api` services do not override `EMBEDDING__DIMENSIONS`, so migrations and tests use the same value. If you change the embedding model or dimension, you must **drop databases and re-run migrations** (see “Build” below).
-
-## Build (drop DBs and recreate Docker)
-
-From the **project root**:
-
-1. Set `.env` (see main `.env.example`), including:
-   - Embedding: `EMBEDDING__PROVIDER=ollama`, `EMBEDDING__MODEL=embeddinggemma`, `EMBEDDING__DIMENSIONS=768`, `EMBEDDING__BASE_URL=http://localhost:11434/v1`
-   - LLM (for CML internals if needed): `LLM__PROVIDER=ollama`, `LLM__MODEL=gpt-oss-20b`, `LLM__BASE_URL=http://localhost:11434/v1`
-   - If the API runs **inside Docker** and Ollama is on the host: use `http://host.docker.internal:11434/v1` for `EMBEDDING__BASE_URL` and `LLM__BASE_URL`.
-
-2. Tear down containers and **remove volumes** (drops DB data):
-   ```bash
-   docker compose -f docker/docker-compose.yml down -v
-   ```
-
-3. Rebuild and start the API (and its DBs):
-   ```bash
-   docker compose -f docker/docker-compose.yml up -d --build postgres neo4j redis api
-   ```
-
-4. Check health:
-   ```bash
-   curl -s http://localhost:8000/api/v1/health
-   ```
+For the full step-by-step runbook (env, API keys, RAG prep, troubleshooting), see [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md).
 
 ## Configuration (eval script)
 
@@ -105,10 +70,8 @@ To compare CML with LoCoMo baselines (base/long-context LLMs, RAG over dialog/ob
    python evaluation/scripts/compare_results.py evaluation/outputs/locomo10_qa_cml_stats.json evaluation/locomo/outputs/locomo10_qa_stats.json
    ```
 
-Full steps (env, API keys, RAG prep) are in **`ProjectPlan/LocomoEval/RunEvaluation.md`** §9.
-
 ## Reference
 
 - [LoCoMo paper / site](https://snap-research.github.io/locomo/)
 - [LoCoMo repo](https://github.com/snap-research/locomo)
-- [Project evaluation plan](../ProjectPlan/LocomoEval/EvaluationPlan.md)
+- [Evaluation runbook (full steps)](../ProjectPlan/LocomoEval/RunEvaluation.md)
