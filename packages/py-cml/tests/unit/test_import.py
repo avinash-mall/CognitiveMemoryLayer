@@ -52,15 +52,17 @@ def test_import_exceptions() -> None:
     assert issubclass(ValidationError, CMLError)
 
 
-def test_client_instantiation() -> None:
-    """Sync and async clients can be instantiated with minimal args."""
+def test_client_instantiation(cml_config) -> None:
+    """Sync and async clients can be instantiated with minimal args (config from .env)."""
     from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer
 
-    sync_client = CognitiveMemoryLayer(api_key="sk-test", base_url="http://localhost:8000")
-    assert sync_client._config.api_key == "sk-test"
-    assert sync_client._config.base_url == "http://localhost:8000"
+    sync_client = CognitiveMemoryLayer(
+        api_key=cml_config.api_key, base_url=cml_config.base_url
+    )
+    assert sync_client._config.api_key == cml_config.api_key
+    assert sync_client._config.base_url == cml_config.base_url
     assert sync_client._transport is not None
 
-    async_client = AsyncCognitiveMemoryLayer(api_key="sk-test")
-    assert async_client._config.api_key == "sk-test"
+    async_client = AsyncCognitiveMemoryLayer(api_key=cml_config.api_key)
+    assert async_client._config.api_key == cml_config.api_key
     assert async_client._transport is not None

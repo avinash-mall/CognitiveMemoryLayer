@@ -1350,7 +1350,7 @@ All configuration uses nested environment variables with `__` delimiter.
 |----------|---------|-------------|
 | `EMBEDDING__PROVIDER` | `openai` | Provider: `openai`, `local`, `openai_compatible`, `ollama` |
 | `EMBEDDING__MODEL` | `text-embedding-3-small` | OpenAI embedding model |
-| `EMBEDDING__DIMENSIONS` | `1536` | Embedding dimensions (must match DB after migrations) |
+| `EMBEDDING__DIMENSIONS` | `1536` | Embedding dimensions (must match DB after migrations). Server and tests read from `.env`; Docker app/api use `.env` without override. |
 | `EMBEDDING__LOCAL_MODEL` | `all-MiniLM-L6-v2` | Local model when provider=local (sentence-transformers) |
 | `EMBEDDING__API_KEY` | None | API key (or use `OPENAI_API_KEY`) |
 | `EMBEDDING__BASE_URL` | None | Base URL for openai_compatible/ollama embedding endpoint |

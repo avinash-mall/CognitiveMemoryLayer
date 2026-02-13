@@ -17,8 +17,12 @@ from cml.models.enums import MemoryType
 # ---- Admin operations ----
 
 
-def test_consolidate_calls_dashboard_consolidate() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", tenant_id="t1")
+def test_consolidate_calls_dashboard_consolidate(cml_config: CMLConfig) -> None:
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t1",
+    )
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -37,8 +41,12 @@ def test_consolidate_calls_dashboard_consolidate() -> None:
     assert call[1]["use_admin_key"] is True
 
 
-def test_consolidate_with_user_id() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", tenant_id="t1")
+def test_consolidate_with_user_id(cml_config: CMLConfig) -> None:
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t1",
+    )
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={"status": "completed", "episodes_sampled": 0}
@@ -49,8 +57,12 @@ def test_consolidate_with_user_id() -> None:
     assert call[1]["json"]["user_id"] == "u1"
 
 
-def test_run_forgetting_calls_dashboard_forget() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", tenant_id="t1")
+def test_run_forgetting_calls_dashboard_forget(cml_config: CMLConfig) -> None:
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t1",
+    )
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -73,8 +85,8 @@ def test_run_forgetting_calls_dashboard_forget() -> None:
 # ---- Batch operations ----
 
 
-def test_batch_write_sequential() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_batch_write_sequential(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     ids = [str(uuid4()), str(uuid4())]
     client._transport.request = MagicMock(  # type: ignore[method-assign]
@@ -95,8 +107,8 @@ def test_batch_write_sequential() -> None:
     assert client._transport.request.call_args_list[1][1]["json"]["namespace"] == "ns1"
 
 
-def test_batch_read_sequential() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_batch_read_sequential(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -115,8 +127,12 @@ def test_batch_read_sequential() -> None:
 # ---- Tenant management ----
 
 
-def test_set_tenant_updates_config_and_closes_transport() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", tenant_id="t1")
+def test_set_tenant_updates_config_and_closes_transport(cml_config: CMLConfig) -> None:
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t1",
+    )
     client = CognitiveMemoryLayer(config=config)
     client._transport.close = MagicMock()  # type: ignore[method-assign]
     client.set_tenant("t2")
@@ -124,14 +140,18 @@ def test_set_tenant_updates_config_and_closes_transport() -> None:
     client._transport.close.assert_called_once()
 
 
-def test_tenant_id_property() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", tenant_id="my-tenant")
+def test_tenant_id_property(cml_config: CMLConfig) -> None:
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="my-tenant",
+    )
     client = CognitiveMemoryLayer(config=config)
     assert client.tenant_id == "my-tenant"
 
 
-def test_list_tenants_calls_dashboard_tenants() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_list_tenants_calls_dashboard_tenants(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -152,8 +172,8 @@ def test_list_tenants_calls_dashboard_tenants() -> None:
 # ---- Event log ----
 
 
-def test_get_events_calls_dashboard_events() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_get_events_calls_dashboard_events(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -175,8 +195,8 @@ def test_get_events_calls_dashboard_events() -> None:
     assert call[1]["use_admin_key"] is True
 
 
-def test_get_events_with_since() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_get_events_with_since(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={"items": [], "total": 0, "page": 1, "per_page": 50, "total_pages": 1}
@@ -190,8 +210,8 @@ def test_get_events_with_since() -> None:
 # ---- Component health ----
 
 
-def test_component_health_calls_dashboard_components() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_component_health_calls_dashboard_components(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -211,8 +231,8 @@ def test_component_health_calls_dashboard_components() -> None:
 # ---- Namespace isolation ----
 
 
-def test_with_namespace_returns_namespaced_client() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_with_namespace_returns_namespaced_client(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     wrapped = client.with_namespace("user-123")
     assert isinstance(wrapped, NamespacedClient)
@@ -220,8 +240,8 @@ def test_with_namespace_returns_namespaced_client() -> None:
     assert wrapped._parent is client
 
 
-def test_namespaced_client_write_injects_namespace() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_namespaced_client_write_injects_namespace(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={
@@ -237,8 +257,8 @@ def test_namespaced_client_write_injects_namespace() -> None:
     assert call[1]["json"]["namespace"] == "ns1"
 
 
-def test_namespaced_client_read_delegates() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_namespaced_client_read_delegates(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={"query": "q", "memories": [], "total_count": 0, "elapsed_ms": 1.0}
@@ -252,8 +272,8 @@ def test_namespaced_client_read_delegates() -> None:
 # ---- Memory iteration ----
 
 
-def test_iter_memories_one_page() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_iter_memories_one_page(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     mid = uuid4()
     ts = "2025-01-01T12:00:00Z"
@@ -287,8 +307,8 @@ def test_iter_memories_one_page() -> None:
     assert call[1]["use_admin_key"] is True
 
 
-def test_iter_memories_empty() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_iter_memories_empty(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={"items": [], "total": 0, "page": 1, "per_page": 100, "total_pages": 1}
@@ -297,19 +317,19 @@ def test_iter_memories_empty() -> None:
     assert len(items) == 0
 
 
-def test_iter_memories_raises_when_multiple_memory_types() -> None:
+def test_iter_memories_raises_when_multiple_memory_types(cml_config: CMLConfig) -> None:
     """iter_memories() raises ValueError when more than one memory type is requested."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     with pytest.raises(ValueError, match="at most one memory type"):
         list(client.iter_memories(memory_types=[MemoryType.PREFERENCE, MemoryType.SEMANTIC_FACT]))
 
 
-def test_session_scope_turn_injects_session_id() -> None:
+def test_session_scope_turn_injects_session_id(cml_config: CMLConfig) -> None:
     """SessionScope.turn() calls parent.turn() with session_id injected."""
     from cml.client import SessionScope
 
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     parent = CognitiveMemoryLayer(config=config)
     parent.turn = MagicMock(  # type: ignore[method-assign]
         return_value=TurnResponse(
@@ -331,9 +351,9 @@ def test_session_scope_turn_injects_session_id() -> None:
 # ---- OpenAI helper ----
 
 
-def test_openai_helper_chat_flow() -> None:
+def test_openai_helper_chat_flow(cml_config: CMLConfig) -> None:
     memory = CognitiveMemoryLayer(
-        config=CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+        config=cml_config
     )
     # First call: get_context() -> read(); second call: turn() to store exchange
     memory._transport.request = MagicMock(  # type: ignore[method-assign]

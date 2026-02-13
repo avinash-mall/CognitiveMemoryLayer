@@ -22,11 +22,14 @@ pip install cognitive-memory-layer
 pip install cognitive-memory-layer[embedded]
 ```
 
-Embedded mode requires the CML engine from the monorepo. From the repo root:
+From the monorepo, the server and SDK are built from the **repository root** (single `pyproject.toml`). Install in editable mode with optional extras:
 
 ```bash
+# From repo root: install server + SDK
 pip install -e .
-pip install -e packages/py-cml[embedded]
+
+# With embedded mode (in-process engine)
+pip install -e ".[embedded]"
 ```
 
 ---
@@ -81,7 +84,7 @@ asyncio.run(main())
 
 ## Configuration
 
-**Environment variables** (use `.env` or set directly): `CML_API_KEY`, `CML_BASE_URL`, `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, `CML_VERIFY_SSL`. See [Configuration](docs/configuration.md).
+**Environment variables** (use `.env` or set directly): `CML_API_KEY`, `CML_BASE_URL`, `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, `CML_VERIFY_SSL`. For **embedded mode**, `EMBEDDING__DIMENSIONS`, `EMBEDDING__MODEL`, and `LLM__*` are read from `.env` when not set in code. See [Configuration](docs/configuration.md).
 
 **Constructor:**
 

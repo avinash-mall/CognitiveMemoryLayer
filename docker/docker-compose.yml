@@ -42,15 +42,15 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    env_file:
+      - ../.env
     environment:
       DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
       DATABASE__NEO4J_URL: bolt://neo4j:7687
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
-      # Match config default so migration and tests use same vector dimension.
-      # If you see "expected N dimensions, not M", run: docker compose -f docker/docker-compose.yml down -v
-      EMBEDDING__DIMENSIONS: "1536"
+      # Do not override EMBEDDING__DIMENSIONS; app and api use .env so migration and tests match.
     depends_on:
       postgres:
         condition: service_healthy

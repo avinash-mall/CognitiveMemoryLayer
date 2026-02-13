@@ -12,19 +12,23 @@ import pytest_asyncio
 from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer
 from cml.config import CMLConfig
 
-# Use CML_TEST_API_KEY if set; else try repo .env AUTH__API_KEY so server and tests share one key
-INTEGRATION_URL = os.environ.get("CML_TEST_URL", "http://localhost:8000")
-_key = os.environ.get("CML_TEST_API_KEY")
-if not _key:
-    try:
-        from dotenv import load_dotenv
+# Load repo .env then read URL and key (no hardcoded fallbacks)
+try:
+    from dotenv import load_dotenv
 
-        _root = Path(__file__).resolve().parents[4]
-        load_dotenv(_root / ".env")
-        _key = os.environ.get("AUTH__API_KEY", "test-key")
-    except Exception:
-        _key = "test-key"
-INTEGRATION_KEY = _key
+    _root = Path(__file__).resolve().parents[4]
+    load_dotenv(_root / ".env")
+except Exception:
+    pass
+
+# Use env when set; fallback so tests run (no skip) and fail at first request if server is down
+INTEGRATION_URL = (
+    os.environ.get("CML_TEST_URL")
+    or os.environ.get("CML_BASE_URL")
+    or os.environ.get("MEMORY_API_URL")
+    or "http://localhost:8000"
+).strip()
+INTEGRATION_KEY = os.environ.get("CML_TEST_API_KEY") or os.environ.get("AUTH__API_KEY") or "test-key"
 INTEGRATION_ADMIN_KEY = os.environ.get("AUTH__ADMIN_API_KEY") or INTEGRATION_KEY
 INTEGRATION_TENANT = f"test-{os.getpid()}"
 
@@ -58,8 +62,6 @@ async def live_client(
     integration_config: CMLConfig,
 ) -> pytest.AsyncGenerator[AsyncCognitiveMemoryLayer, None]:
     """Async client against live server; teardown tries delete_all then close."""
-    if not _server_reachable(integration_config):
-        pytest.skip("CML server not reachable; set CML_TEST_URL and run server")
     client = AsyncCognitiveMemoryLayer(config=integration_config)
     yield client
     with contextlib.suppress(Exception):
@@ -72,8 +74,6 @@ def live_sync_client(
     integration_config: CMLConfig,
 ) -> pytest.Generator[CognitiveMemoryLayer, None, None]:
     """Sync client against live server; teardown tries delete_all then close."""
-    if not _server_reachable(integration_config):
-        pytest.skip("CML server not reachable; set CML_TEST_URL and run server")
     client = CognitiveMemoryLayer(config=integration_config)
     yield client
     with contextlib.suppress(Exception):

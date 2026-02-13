@@ -1,5 +1,7 @@
 """Unit tests for API routes and middleware."""
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,15 +11,18 @@ from src.core.config import get_settings
 
 @pytest.fixture
 def auth_headers(monkeypatch):
-    """Set up auth environment and return headers."""
-    monkeypatch.setenv("AUTH__API_KEY", "test-key-123")
-    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
-    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "test-tenant")
+    """Set up auth environment from .env and return headers."""
+    api_key = os.environ.get("AUTH__API_KEY") or "test-key"
+    admin_key = os.environ.get("AUTH__ADMIN_API_KEY") or api_key
+    tenant = os.environ.get("AUTH__DEFAULT_TENANT_ID", "default")
+    monkeypatch.setenv("AUTH__API_KEY", api_key)
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", admin_key)
+    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
     try:
         yield {
-            "X-API-Key": "test-key-123",
-            "X-Tenant-ID": "test-tenant",
+            "X-API-Key": api_key,
+            "X-Tenant-ID": tenant,
         }
     finally:
         get_settings.cache_clear()
