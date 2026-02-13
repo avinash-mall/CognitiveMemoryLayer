@@ -1,14 +1,13 @@
 """Conflict detection between new information and existing memories."""
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from ..core.schemas import MemoryRecord
 from ..utils.llm import LLMClient
 
 
-class ConflictType(str, Enum):
+class ConflictType(StrEnum):
     NONE = "none"
     TEMPORAL_CHANGE = "temporal_change"
     DIRECT_CONTRADICTION = "contradiction"
@@ -25,8 +24,8 @@ class ConflictResult:
     confidence: float
     old_statement: str
     new_statement: str
-    conflicting_aspect: Optional[str] = None
-    suggested_resolution: Optional[str] = None
+    conflicting_aspect: str | None = None
+    suggested_resolution: str | None = None
     is_superseding: bool = False
     reasoning: str = ""
 
@@ -58,14 +57,14 @@ Return only valid JSON, no other text:
 class ConflictDetector:
     """Detects conflicts between new information and existing memories."""
 
-    def __init__(self, llm_client: Optional[LLMClient] = None):
+    def __init__(self, llm_client: LLMClient | None = None):
         self.llm = llm_client
 
     async def detect(
         self,
         old_memory: MemoryRecord,
         new_statement: str,
-        context: Optional[str] = None,
+        context: str | None = None,
     ) -> ConflictResult:
         """Detect if new statement conflicts with existing memory."""
         fast_result = self._fast_detect(old_memory.text, new_statement)
@@ -95,7 +94,7 @@ class ConflictDetector:
         self,
         old_statement: str,
         new_statement: str,
-    ) -> Optional[ConflictResult]:
+    ) -> ConflictResult | None:
         """Fast heuristic conflict detection."""
         old_lower = old_statement.lower()
         new_lower = new_statement.lower()
@@ -176,7 +175,7 @@ class ConflictDetector:
         self,
         old_statement: str,
         new_statement: str,
-        context: Optional[str] = None,
+        context: str | None = None,
     ) -> ConflictResult:
         """LLM-based conflict detection. Uses complete_json() for reliable parsing (MED-45)."""
         prompt = CONFLICT_DETECTION_PROMPT.format(

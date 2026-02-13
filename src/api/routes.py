@@ -2,7 +2,7 @@
 
 import json
 import traceback
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import structlog
@@ -150,7 +150,7 @@ async def read_memory(
 ):
     """Retrieve relevant memories for a query. Holistic: tenant-only."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     try:
         memory_type_values = (
             [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
@@ -167,7 +167,7 @@ async def read_memory(
             until=body.until,
         )
 
-        elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+        elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 
         all_memories = [_to_memory_item(m) for m in packet.all_memories]
 
@@ -283,7 +283,7 @@ async def create_session(
 ):
     """Create a new memory session. Returns session_id for subsequent calls. Persisted in Redis."""
     session_id = str(uuid4())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     ttl_hours = body.ttl_hours if body.ttl_hours is not None else 24
     expires_at = now + timedelta(hours=ttl_hours)
     ttl_seconds = max(1, int(ttl_hours * 3600))
@@ -355,7 +355,7 @@ async def session_read(
 ):
     """Read from memory. Holistic: tenant-only (session_id kept for API compatibility)."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     try:
         memory_type_values = (
             [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
@@ -371,7 +371,7 @@ async def session_read(
             since=body.since,
             until=body.until,
         )
-        elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+        elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 
         all_memories = [_to_memory_item(m) for m in packet.all_memories]
 
@@ -459,4 +459,4 @@ async def delete_all_memories(
 @router.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": "healthy", "timestamp": datetime.now(UTC).isoformat()}

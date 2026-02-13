@@ -2,7 +2,6 @@
 
 import json
 from dataclasses import dataclass
-from typing import List
 
 from ..utils.llm import LLMClient
 
@@ -34,7 +33,7 @@ class FactExtractor:
     or for tests that do not need fact extraction.
     """
 
-    async def extract(self, text: str) -> List[ExtractedFact]:
+    async def extract(self, text: str) -> list[ExtractedFact]:
         """Extract facts from text. Base: no extraction (no-op)."""
         return []
 
@@ -45,7 +44,7 @@ class LLMFactExtractor(FactExtractor):
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm = llm_client
 
-    async def extract(self, text: str) -> List[ExtractedFact]:
+    async def extract(self, text: str) -> list[ExtractedFact]:
         """Extract facts from text using LLM."""
         if not text or not text.strip():
             return []

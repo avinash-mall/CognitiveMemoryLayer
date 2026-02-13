@@ -16,6 +16,6 @@ from .auth import (
 __all__ = [
     "AuthContext",
     "get_auth_context",
-    "require_write_permission",
     "require_admin_permission",
+    "require_write_permission",
 ]

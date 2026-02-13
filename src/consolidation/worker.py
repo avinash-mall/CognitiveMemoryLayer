@@ -1,20 +1,20 @@
 """Consolidation worker orchestrating the full flow."""
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
+from ..memory.neocortical.store import NeocorticalStore
+from ..storage.postgres import PostgresMemoryStore
+from ..utils.llm import LLMClient
+from ..utils.logging_config import get_logger
 from .clusterer import SemanticClusterer
 from .migrator import ConsolidationMigrator, MigrationResult
 from .sampler import EpisodeSampler
 from .schema_aligner import SchemaAligner
 from .summarizer import GistExtractor
 from .triggers import ConsolidationScheduler, ConsolidationTask
-from ..memory.neocortical.store import NeocorticalStore
-from ..storage.postgres import PostgresMemoryStore
-from ..utils.llm import LLMClient
-from ..utils.logging_config import get_logger
 
 
 @dataclass
@@ -46,7 +46,7 @@ class ConsolidationWorker:
         episodic_store: PostgresMemoryStore,
         neocortical_store: NeocorticalStore,
         llm_client: LLMClient,
-        scheduler: Optional[ConsolidationScheduler] = None,
+        scheduler: ConsolidationScheduler | None = None,
     ):
         self.sampler = EpisodeSampler(episodic_store)
         self.clusterer = SemanticClusterer()
@@ -57,16 +57,16 @@ class ConsolidationWorker:
         self.scheduler = scheduler or ConsolidationScheduler()
 
         self._running = False
-        self._worker_task: Optional[asyncio.Task] = None
+        self._worker_task: asyncio.Task | None = None
 
     async def consolidate(
         self,
         tenant_id: str,
         user_id: str,
-        task: Optional[ConsolidationTask] = None,
+        task: ConsolidationTask | None = None,
     ) -> ConsolidationReport:
         """Run full consolidation for a user."""
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
 
         episode_limit = task.episode_limit if task else 200
         episodes = await self.sampler.sample(tenant_id, user_id, max_episodes=episode_limit)
@@ -76,7 +76,7 @@ class ConsolidationWorker:
                 tenant_id=tenant_id,
                 user_id=user_id,
                 started_at=started,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
                 episodes_sampled=0,
                 clusters_formed=0,
                 gists_extracted=0,
@@ -95,7 +95,7 @@ class ConsolidationWorker:
             compress_episodes=False,
         )
 
-        completed = datetime.now(timezone.utc)
+        completed = datetime.now(UTC)
         return ConsolidationReport(
             tenant_id=tenant_id,
             user_id=user_id,
@@ -118,10 +118,8 @@ class ConsolidationWorker:
         self._running = False
         if self._worker_task:
             self._worker_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._worker_task
-            except asyncio.CancelledError:
-                pass
 
     async def _worker_loop(self):
         """Background worker loop."""

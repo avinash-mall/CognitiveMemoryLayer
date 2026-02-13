@@ -1,16 +1,15 @@
 """Write gate: decide whether and how to store incoming information."""
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Dict, List, Optional, Set
-
 import re
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any
 
 from ...core.enums import MemoryType
 from ..working.models import ChunkType, SemanticChunk
 
 
-class WriteDecision(str, Enum):
+class WriteDecision(StrEnum):
     STORE = "store"
     STORE_SYNC = "store"  # Alias for backward compatibility
     STORE_ASYNC = "store"  # Alias: async path not yet implemented; treated as STORE
@@ -21,10 +20,10 @@ class WriteDecision(str, Enum):
 @dataclass
 class WriteGateResult:
     decision: WriteDecision
-    memory_types: List[MemoryType]
+    memory_types: list[MemoryType]
     importance: float
     novelty: float
-    risk_flags: List[str]
+    risk_flags: list[str]
     redaction_required: bool
     reason: str
 
@@ -33,8 +32,8 @@ class WriteGateResult:
 class WriteGateConfig:
     min_importance: float = 0.3
     min_novelty: float = 0.2
-    pii_patterns: List[str] = field(default_factory=list)
-    secret_patterns: List[str] = field(default_factory=list)
+    pii_patterns: list[str] = field(default_factory=list)
+    secret_patterns: list[str] = field(default_factory=list)
     sync_importance_threshold: float = 0.7
 
     def __post_init__(self) -> None:
@@ -59,8 +58,8 @@ class WriteGate:
 
     def __init__(
         self,
-        config: Optional[WriteGateConfig] = None,
-        known_facts_cache: Optional[Set[str]] = None,
+        config: WriteGateConfig | None = None,
+        known_facts_cache: set[str] | None = None,
     ) -> None:
         self.config = config or WriteGateConfig()
         self._known_facts = known_facts_cache or set()
@@ -70,10 +69,10 @@ class WriteGate:
     def evaluate(
         self,
         chunk: SemanticChunk,
-        existing_memories: Optional[List[Dict[str, Any]]] = None,
-        context: Optional[Dict[str, Any]] = None,
+        existing_memories: list[dict[str, Any]] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> WriteGateResult:
-        risk_flags: List[str] = []
+        risk_flags: list[str] = []
         redaction_required = False
 
         if self._check_secrets(chunk.text):
@@ -121,10 +120,7 @@ class WriteGate:
                 reason=f"Below importance threshold: {combined_score:.2f}",
             )
 
-        if redaction_required:
-            decision = WriteDecision.REDACT_AND_STORE
-        else:
-            decision = WriteDecision.STORE
+        decision = WriteDecision.REDACT_AND_STORE if redaction_required else WriteDecision.STORE
 
         return WriteGateResult(
             decision=decision,
@@ -137,19 +133,13 @@ class WriteGate:
         )
 
     def _check_pii(self, text: str) -> bool:
-        for pattern in self._pii_patterns:
-            if pattern.search(text):
-                return True
-        return False
+        return any(pattern.search(text) for pattern in self._pii_patterns)
 
     def _check_secrets(self, text: str) -> bool:
-        for pattern in self._secret_patterns:
-            if pattern.search(text):
-                return True
-        return False
+        return any(pattern.search(text) for pattern in self._secret_patterns)
 
     def _compute_importance(
-        self, chunk: SemanticChunk, context: Optional[Dict[str, Any]] = None
+        self, chunk: SemanticChunk, context: dict[str, Any] | None = None
     ) -> float:
         score = chunk.salience
         type_boosts = {
@@ -171,7 +161,7 @@ class WriteGate:
     def _compute_novelty(
         self,
         chunk: SemanticChunk,
-        existing_memories: Optional[List[Dict[str, Any]]] = None,
+        existing_memories: list[dict[str, Any]] | None = None,
     ) -> float:
         # Check known facts cache first (MED-16)
         chunk_text_lower = chunk.text.lower().strip()
@@ -194,7 +184,7 @@ class WriteGate:
                     return 0.5
         return 1.0
 
-    def _determine_memory_types(self, chunk: SemanticChunk) -> List[MemoryType]:
+    def _determine_memory_types(self, chunk: SemanticChunk) -> list[MemoryType]:
         mapping = {
             ChunkType.PREFERENCE: [MemoryType.PREFERENCE],
             ChunkType.FACT: [MemoryType.SEMANTIC_FACT, MemoryType.EPISODIC_EVENT],

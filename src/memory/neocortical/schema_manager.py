@@ -1,17 +1,15 @@
 """Schema management for neocortical fact types."""
 
-from typing import Dict, Optional
-
 from .schemas import DEFAULT_FACT_SCHEMAS, FactCategory, FactSchema
 
 
 class SchemaManager:
     """Manages fact schemas and validation for the neocortical store."""
 
-    def __init__(self, schemas: Optional[Dict[str, FactSchema]] = None):
+    def __init__(self, schemas: dict[str, FactSchema] | None = None):
         self.schemas = schemas or DEFAULT_FACT_SCHEMAS
 
-    def get_schema(self, key: str) -> Optional[FactSchema]:
+    def get_schema(self, key: str) -> FactSchema | None:
         """Get schema for a key (exact or wildcard match)."""
         if key in self.schemas:
             return self.schemas[key]
@@ -22,7 +20,7 @@ class SchemaManager:
                     return schema
         return None
 
-    def get_schemas_for_category(self, category: FactCategory) -> Dict[str, FactSchema]:
+    def get_schemas_for_category(self, category: FactCategory) -> dict[str, FactSchema]:
         """Return all schemas in a category."""
         return {k: v for k, v in self.schemas.items() if v.category == category}
 

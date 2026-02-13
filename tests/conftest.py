@@ -1,8 +1,8 @@
 """Pytest fixtures for Phase 1 and beyond."""
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -49,8 +49,8 @@ def _clear_settings_cache():
 @pytest.fixture
 def sample_memory_record():
     """Sample memory record for testing. Holistic: context_tags, source_session_id."""
+    from src.core.enums import MemorySource, MemoryStatus, MemoryType
     from src.core.schemas import MemoryRecord, Provenance
-    from src.core.enums import MemoryType, MemorySource, MemoryStatus
 
     return MemoryRecord(
         id=uuid4(),
@@ -72,7 +72,7 @@ def sample_memory_record():
 @pytest.fixture
 def sample_chunk():
     """Sample semantic chunk for testing."""
-    from src.memory.working.models import SemanticChunk, ChunkType
+    from src.memory.working.models import ChunkType, SemanticChunk
 
     return SemanticChunk(
         id="test-chunk-1",

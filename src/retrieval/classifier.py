@@ -2,7 +2,6 @@
 
 import json
 import re
-from typing import List, Optional
 
 from ..utils.llm import LLMClient
 from .query_types import QueryAnalysis, QueryIntent
@@ -65,7 +64,7 @@ Rules:
 class QueryClassifier:
     """Classifies queries to determine retrieval strategy. Fast patterns first, then LLM."""
 
-    def __init__(self, llm_client: Optional[LLMClient] = None):
+    def __init__(self, llm_client: LLMClient | None = None):
         self.llm = llm_client
         self._compiled_patterns = {
             intent: [re.compile(p, re.IGNORECASE) for p in patterns]
@@ -75,7 +74,7 @@ class QueryClassifier:
     async def classify(
         self,
         query: str,
-        recent_context: Optional[str] = None,
+        recent_context: str | None = None,
     ) -> QueryAnalysis:
         """Classify a query and extract relevant information. Uses recent_context when
         query is vague (e.g. 'Any suggestions?')."""
@@ -112,7 +111,7 @@ class QueryClassifier:
         )
         return any(q.startswith(p) or q == p for p in vague_starts)
 
-    def _fast_classify(self, query: str) -> Optional[QueryAnalysis]:
+    def _fast_classify(self, query: str) -> QueryAnalysis | None:
         """Fast pattern-based classification."""
         query_lower = query.lower()
         for intent, patterns in self._compiled_patterns.items():
@@ -131,7 +130,7 @@ class QueryClassifier:
     async def _llm_classify(
         self,
         query: str,
-        recent_context: Optional[str] = None,
+        recent_context: str | None = None,
     ) -> QueryAnalysis:
         """LLM-based classification for complex queries."""
         prompt = CLASSIFICATION_PROMPT.format(query=query)
@@ -166,7 +165,7 @@ class QueryClassifier:
                 suggested_top_k=10,
             )
 
-    def _extract_entities_simple(self, query: str) -> List[str]:
+    def _extract_entities_simple(self, query: str) -> list[str]:
         """Simple entity extraction using capitalization.
 
         Only treats capitalized words as entities if they do NOT appear at a
@@ -184,7 +183,7 @@ class QueryClassifier:
                 entities.append(w)
         return entities
 
-    def _get_sources_for_intent(self, intent: QueryIntent) -> List[str]:
+    def _get_sources_for_intent(self, intent: QueryIntent) -> list[str]:
         """Map intent to retrieval sources."""
         mapping = {
             QueryIntent.PREFERENCE_LOOKUP: ["facts"],

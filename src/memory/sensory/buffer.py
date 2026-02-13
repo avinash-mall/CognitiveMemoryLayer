@@ -1,11 +1,10 @@
 """Sensory buffer: high-fidelity short-term token storage with decay."""
 
+import asyncio
+import contextlib
+import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, List, Optional
-
-import asyncio
-import time
 
 
 @dataclass
@@ -14,8 +13,8 @@ class BufferedToken:
 
     token: str
     timestamp: float  # Unix timestamp for fast comparison
-    turn_id: Optional[str] = None
-    role: Optional[str] = None  # "user", "assistant", "system"
+    turn_id: str | None = None
+    role: str | None = None  # "user", "assistant", "system"
 
 
 @dataclass
@@ -35,18 +34,18 @@ class SensoryBuffer:
     Uses deque for O(1) append and popleft operations.
     """
 
-    def __init__(self, config: Optional[SensoryBufferConfig] = None):
+    def __init__(self, config: SensoryBufferConfig | None = None):
         self.config = config or SensoryBufferConfig()
-        self._tokens: Deque[BufferedToken] = deque()
+        self._tokens: deque[BufferedToken] = deque()
         self._lock = asyncio.Lock()
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
         self._last_activity: float = time.time()
 
     async def ingest(
         self,
         text: str,
-        turn_id: Optional[str] = None,
-        role: Optional[str] = None,
+        turn_id: str | None = None,
+        role: str | None = None,
     ) -> int:
         """
         Ingest new text into the buffer.
@@ -79,10 +78,10 @@ class SensoryBuffer:
 
     async def get_recent(
         self,
-        max_tokens: Optional[int] = None,
-        since_seconds: Optional[float] = None,
-        role_filter: Optional[str] = None,
-    ) -> List[BufferedToken]:
+        max_tokens: int | None = None,
+        since_seconds: float | None = None,
+        role_filter: str | None = None,
+    ) -> list[BufferedToken]:
         """
         Get recent tokens from buffer.
 
@@ -111,8 +110,8 @@ class SensoryBuffer:
 
     async def get_text(
         self,
-        max_tokens: Optional[int] = None,
-        role_filter: Optional[str] = None,
+        max_tokens: int | None = None,
+        role_filter: str | None = None,
     ) -> str:
         """Get buffered content as joined text. Normalizes spacing (e.g. after tiktoken tokens)."""
         tokens = await self.get_recent(max_tokens=max_tokens, role_filter=role_filter)
@@ -132,7 +131,7 @@ class SensoryBuffer:
         while len(self._tokens) > self.config.max_tokens:
             self._tokens.popleft()
 
-    def _tokenize(self, text: str) -> List[str]:
+    def _tokenize(self, text: str) -> list[str]:
         """Tokenize text using tiktoken for accurate token counting; fallback to whitespace if unavailable."""
         try:
             import tiktoken
@@ -172,8 +171,6 @@ class SensoryBuffer:
         """Stop background cleanup task."""
         if self._cleanup_task:
             self._cleanup_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
             self._cleanup_task = None

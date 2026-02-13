@@ -1,11 +1,11 @@
 """Schema alignment for consolidated gists."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .summarizer import ExtractedGist
 from ..memory.neocortical.fact_store import SemanticFactStore
 from ..memory.neocortical.schemas import FactCategory
+from .summarizer import ExtractedGist
 
 
 @dataclass
@@ -14,13 +14,13 @@ class AlignmentResult:
 
     gist: ExtractedGist
 
-    matched_schema: Optional[str] = None
+    matched_schema: str | None = None
     schema_similarity: float = 0.0
 
     can_integrate_rapidly: bool = False
-    integration_key: Optional[str] = None
+    integration_key: str | None = None
 
-    suggested_schema: Optional[Dict[str, Any]] = None
+    suggested_schema: dict[str, Any] | None = None
 
 
 class SchemaAligner:
@@ -89,8 +89,8 @@ class SchemaAligner:
         self,
         tenant_id: str,
         user_id: str,
-        gists: List[ExtractedGist],
-    ) -> List[AlignmentResult]:
+        gists: list[ExtractedGist],
+    ) -> list[AlignmentResult]:
         """Align multiple gists."""
         import asyncio
 
@@ -106,7 +106,7 @@ class SchemaAligner:
         union = len(words1 | words2)
         return intersection / union if union > 0 else 0.0
 
-    def _suggest_schema(self, gist: ExtractedGist) -> Dict[str, Any]:
+    def _suggest_schema(self, gist: ExtractedGist) -> dict[str, Any]:
         if gist.gist_type == "preference":
             category = FactCategory.PREFERENCE
         elif gist.gist_type == "fact":

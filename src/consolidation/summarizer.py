@@ -2,10 +2,10 @@
 
 import json
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
-from .clusterer import EpisodeCluster
 from ..utils.llm import LLMClient
+from .clusterer import EpisodeCluster
 
 GIST_EXTRACTION_PROMPT = """Analyze these related memories and extract the key semantic information.
 
@@ -46,12 +46,12 @@ class ExtractedGist:
     text: str
     gist_type: str  # "fact", "preference", "pattern", "summary"
     confidence: float
-    supporting_episode_ids: List[str]
+    supporting_episode_ids: list[str]
 
-    key: Optional[str] = None
-    subject: Optional[str] = None
-    predicate: Optional[str] = None
-    value: Optional[Any] = None
+    key: str | None = None
+    subject: str | None = None
+    predicate: str | None = None
+    value: Any | None = None
 
 
 class GistExtractor:
@@ -60,7 +60,7 @@ class GistExtractor:
     def __init__(self, llm_client: LLMClient):
         self.llm = llm_client
 
-    async def extract_gist(self, cluster: EpisodeCluster) -> List[ExtractedGist]:
+    async def extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
         """Extract gists from a single cluster."""
         if not cluster.episodes:
             return []
@@ -93,10 +93,7 @@ class GistExtractor:
                 raw = "\n".join(lines)
             data = json.loads(raw)
 
-            if isinstance(data, list):
-                gists_data = data
-            else:
-                gists_data = [data]
+            gists_data = data if isinstance(data, list) else [data]
 
             gists = []
             for gd in gists_data:
@@ -125,7 +122,7 @@ class GistExtractor:
                 )
             ]
 
-    async def extract_from_clusters(self, clusters: List[EpisodeCluster]) -> List[ExtractedGist]:
+    async def extract_from_clusters(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist]:
         """Extract gists from all clusters."""
         import asyncio
 

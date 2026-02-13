@@ -1,6 +1,6 @@
 """Unit tests for SeamlessMemoryProvider and MemoryOrchestrator."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -24,7 +24,7 @@ def _make_memory_record(
         text=text,
         confidence=confidence,
         provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 

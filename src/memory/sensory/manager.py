@@ -1,7 +1,5 @@
 """Per-scope sensory buffer management."""
 
-from typing import Dict, Optional
-
 import asyncio
 
 from .buffer import SensoryBuffer, SensoryBufferConfig
@@ -13,9 +11,9 @@ class SensoryBufferManager:
     Each scope gets its own isolated buffer.
     """
 
-    def __init__(self, config: Optional[SensoryBufferConfig] = None):
+    def __init__(self, config: SensoryBufferConfig | None = None):
         self.config = config or SensoryBufferConfig()
-        self._buffers: Dict[str, SensoryBuffer] = {}
+        self._buffers: dict[str, SensoryBuffer] = {}
         self._lock = asyncio.Lock()
 
     def _get_key(self, tenant_id: str, scope_id: str) -> str:
@@ -34,8 +32,8 @@ class SensoryBufferManager:
         tenant_id: str,
         scope_id: str,
         text: str,
-        turn_id: Optional[str] = None,
-        role: Optional[str] = None,
+        turn_id: str | None = None,
+        role: str | None = None,
     ) -> int:
         """Ingest text into scope's buffer."""
         buffer = await self.get_buffer(tenant_id, scope_id)
@@ -45,7 +43,7 @@ class SensoryBufferManager:
         self,
         tenant_id: str,
         scope_id: str,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
     ) -> str:
         """Get recent text from scope's buffer."""
         buffer = await self.get_buffer(tenant_id, scope_id)

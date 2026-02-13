@@ -1,10 +1,10 @@
 """No-op storage implementations for embedded lite mode (no Neo4j/Postgres facts)."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .base import GraphStoreBase
 from ..memory.neocortical.schemas import FactCategory, SemanticFact
+from .base import GraphStoreBase
 
 
 class NoOpGraphStore(GraphStoreBase):
@@ -16,8 +16,8 @@ class NoOpGraphStore(GraphStoreBase):
         scope_id: str,
         entity: str,
         entity_type: str,
-        properties: Optional[Dict[str, Any]] = None,
-        namespace: Optional[str] = None,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> str:
         return "noop-node"
 
@@ -28,8 +28,8 @@ class NoOpGraphStore(GraphStoreBase):
         subject: str,
         predicate: str,
         object: str,
-        properties: Optional[Dict[str, Any]] = None,
-        namespace: Optional[str] = None,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> str:
         return "noop-edge"
 
@@ -39,17 +39,17 @@ class NoOpGraphStore(GraphStoreBase):
         scope_id: str,
         entity: str,
         max_depth: int = 2,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return []
 
     async def personalized_pagerank(
         self,
         tenant_id: str,
         scope_id: str,
-        seed_entities: List[str],
+        seed_entities: list[str],
         top_k: int = 20,
         damping: float = 0.85,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return []
 
     async def get_entity_facts(
@@ -57,7 +57,7 @@ class NoOpGraphStore(GraphStoreBase):
         tenant_id: str,
         scope_id: str,
         entity: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Neo4jGraphStore also has this method; return empty for no-op."""
         return []
 
@@ -71,9 +71,9 @@ class NoOpFactStore:
         key: str,
         value: Any,
         confidence: float = 0.8,
-        evidence_ids: Optional[List[str]] = None,
-        valid_from: Optional[datetime] = None,
-        context_tags: Optional[List[str]] = None,
+        evidence_ids: list[str] | None = None,
+        valid_from: datetime | None = None,
+        context_tags: list[str] | None = None,
     ) -> SemanticFact:
         parts = key.split(":")
         subject = parts[0] if len(parts) > 0 else "unknown"
@@ -96,7 +96,7 @@ class NoOpFactStore:
         tenant_id: str,
         key: str,
         include_historical: bool = False,
-    ) -> Optional[SemanticFact]:
+    ) -> SemanticFact | None:
         return None
 
     async def get_facts_by_category(
@@ -104,10 +104,10 @@ class NoOpFactStore:
         tenant_id: str,
         category: FactCategory,
         current_only: bool = True,
-    ) -> List[SemanticFact]:
+    ) -> list[SemanticFact]:
         return []
 
-    async def get_tenant_profile(self, tenant_id: str) -> Dict[str, Any]:
+    async def get_tenant_profile(self, tenant_id: str) -> dict[str, Any]:
         return {}
 
     async def search_facts(
@@ -115,5 +115,5 @@ class NoOpFactStore:
         tenant_id: str,
         query: str,
         limit: int = 20,
-    ) -> List[SemanticFact]:
+    ) -> list[SemanticFact]:
         return []

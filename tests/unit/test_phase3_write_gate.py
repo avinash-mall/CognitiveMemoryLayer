@@ -1,12 +1,12 @@
 """Unit tests for Phase 3: write gate and redactor."""
 
-from src.memory.working.models import ChunkType, SemanticChunk
+from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.write_gate import (
     WriteDecision,
     WriteGate,
     WriteGateConfig,
 )
-from src.memory.hippocampal.redactor import PIIRedactor
+from src.memory.working.models import ChunkType, SemanticChunk
 
 
 class TestWriteGate:

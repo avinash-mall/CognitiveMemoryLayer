@@ -6,8 +6,8 @@ import pytest
 
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
-from src.storage.postgres import PostgresMemoryStore
 from src.reconsolidation.service import ReconsolidationService
+from src.storage.postgres import PostgresMemoryStore
 
 
 @pytest.mark.asyncio

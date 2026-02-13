@@ -3,13 +3,12 @@
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
 from ..storage.postgres import PostgresMemoryStore
-
 from .belief_revision import RevisionOperation, RevisionPlan
 from .conflict_detector import ConflictDetector
 from .labile_tracker import LabileStateTracker
@@ -33,7 +32,7 @@ class ReconsolidationResult:
 
     turn_id: str
     memories_processed: int
-    operations_applied: List[Dict[str, Any]]
+    operations_applied: list[dict[str, Any]]
     conflicts_found: int
     elapsed_ms: float
 
@@ -53,9 +52,9 @@ class ReconsolidationService:
     def __init__(
         self,
         memory_store: PostgresMemoryStore,
-        llm_client: Optional[Any] = None,
-        fact_extractor: Optional[Any] = None,
-        redis_client: Optional[Any] = None,
+        llm_client: Any | None = None,
+        fact_extractor: Any | None = None,
+        redis_client: Any | None = None,
     ):
         self.store = memory_store
         self.labile_tracker = LabileStateTracker(redis_client=redis_client)
@@ -72,11 +71,11 @@ class ReconsolidationService:
         turn_id: str,
         user_message: str,
         assistant_response: str,
-        retrieved_memories: List[MemoryRecord],
+        retrieved_memories: list[MemoryRecord],
     ) -> ReconsolidationResult:
         """Process a conversation turn for reconsolidation."""
-        start = datetime.now(timezone.utc)
-        operations_applied: List[Dict[str, Any]] = []
+        start = datetime.now(UTC)
+        operations_applied: list[dict[str, Any]] = []
         conflicts_found = 0
 
         if retrieved_memories:
@@ -95,7 +94,7 @@ class ReconsolidationService:
 
         if not new_facts:
             await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
-            elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+            elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
             return ReconsolidationResult(
                 turn_id=turn_id,
                 memories_processed=len(retrieved_memories),
@@ -136,7 +135,7 @@ class ReconsolidationService:
                     )
 
         await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
-        elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+        elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
 
         return ReconsolidationResult(
             turn_id=turn_id,
@@ -150,7 +149,7 @@ class ReconsolidationService:
         self,
         user_message: str,
         assistant_response: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Extract facts from conversation turn."""
         if self.fact_extractor:
             text = f"User: {user_message}\nAssistant: {assistant_response}"

@@ -1,6 +1,6 @@
 """Unit tests for API route helpers (_to_memory_item, _safe_500_detail)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from src.api.routes import _safe_500_detail, _to_memory_item
@@ -22,7 +22,7 @@ def _make_retrieved_memory(
         type=memory_type,
         text=text,
         confidence=confidence,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         provenance=Provenance(source=MemorySource.USER_EXPLICIT),
     )
     if metadata is not None:

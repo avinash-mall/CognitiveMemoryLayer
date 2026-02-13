@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Any
 
 
-class QueryIntent(str, Enum):
+class QueryIntent(StrEnum):
     """Classified intent of a user query."""
 
     PREFERENCE_LOOKUP = "preference_lookup"
@@ -28,11 +28,11 @@ class QueryAnalysis:
     original_query: str
     intent: QueryIntent
     confidence: float
-    entities: List[str] = field(default_factory=list)
-    key_phrases: List[str] = field(default_factory=list)
-    time_reference: Optional[str] = None
-    time_start: Optional[datetime] = None
-    time_end: Optional[datetime] = None
-    suggested_sources: List[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    key_phrases: list[str] = field(default_factory=list)
+    time_reference: str | None = None
+    time_start: datetime | None = None
+    time_end: datetime | None = None
+    suggested_sources: list[str] = field(default_factory=list)
     suggested_top_k: int = 10
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)

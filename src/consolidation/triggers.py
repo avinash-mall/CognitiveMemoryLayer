@@ -1,14 +1,12 @@
 """Consolidation triggers and scheduler."""
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import Dict, List, Optional
-
 import asyncio
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 
-class TriggerType(str, Enum):
+class TriggerType(StrEnum):
     SCHEDULED = "scheduled"
     QUOTA = "quota"
     EVENT = "event"
@@ -22,17 +20,17 @@ class TriggerCondition:
     trigger_type: TriggerType
 
     # For SCHEDULED
-    interval_hours: Optional[float] = None
+    interval_hours: float | None = None
 
     # For QUOTA
-    min_episodes: Optional[int] = None
-    max_memory_mb: Optional[float] = None
+    min_episodes: int | None = None
+    max_memory_mb: float | None = None
 
     # For EVENT
-    event_types: List[str] = field(default_factory=list)
+    event_types: list[str] = field(default_factory=list)
 
     # Metadata
-    last_triggered: Optional[datetime] = None
+    last_triggered: datetime | None = None
     trigger_count: int = 0
 
 
@@ -45,7 +43,7 @@ class ConsolidationTask:
     trigger_type: TriggerType
     trigger_reason: str
     priority: int = 0
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Scope
     episode_limit: int = 200
@@ -65,10 +63,10 @@ class ConsolidationScheduler:
         self.quota_episodes = quota_threshold_episodes
         self.quota_mb = quota_threshold_mb
 
-        self._conditions: Dict[str, List[TriggerCondition]] = {}
+        self._conditions: dict[str, list[TriggerCondition]] = {}
         self._task_queue: asyncio.Queue[ConsolidationTask] = asyncio.Queue()
         self._running = False
-        self._worker_task: Optional[asyncio.Task] = None
+        self._worker_task: asyncio.Task | None = None
 
     def _user_key(self, tenant_id: str, user_id: str) -> str:
         return f"{tenant_id}:{user_id}"
@@ -77,7 +75,7 @@ class ConsolidationScheduler:
         self,
         tenant_id: str,
         user_id: str,
-        conditions: Optional[List[TriggerCondition]] = None,
+        conditions: list[TriggerCondition] | None = None,
     ):
         """Register a user with their trigger conditions."""
         key = self._user_key(tenant_id, user_id)
@@ -102,13 +100,13 @@ class ConsolidationScheduler:
         user_id: str,
         episode_count: int,
         memory_size_mb: float,
-        event: Optional[str] = None,
+        event: str | None = None,
     ) -> bool:
         """Check if any trigger conditions are met. Returns True if consolidation should run."""
         key = self._user_key(tenant_id, user_id)
         conditions = self._conditions.get(key, [])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         triggered = False
         trigger_reason = ""
 
@@ -172,11 +170,11 @@ class ConsolidationScheduler:
             )
         )
 
-    async def get_next_task(self) -> Optional[ConsolidationTask]:
+    async def get_next_task(self) -> ConsolidationTask | None:
         """Get next consolidation task from queue."""
         try:
             return await asyncio.wait_for(self._task_queue.get(), timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
 
     def has_pending_tasks(self) -> bool:

@@ -1,7 +1,7 @@
 """Core Pydantic schemas for memory records, events, and retrieval."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,10 +13,10 @@ class Provenance(BaseModel):
     """Tracks origin and evidence for a memory."""
 
     source: MemorySource
-    evidence_refs: List[str] = Field(default_factory=list)  # Event IDs, turn IDs
-    tool_refs: List[str] = Field(default_factory=list)  # Tool call IDs
-    model_version: Optional[str] = None  # Extraction model
-    extraction_prompt_hash: Optional[str] = None  # For reproducibility
+    evidence_refs: list[str] = Field(default_factory=list)  # Event IDs, turn IDs
+    tool_refs: list[str] = Field(default_factory=list)  # Tool call IDs
+    model_version: str | None = None  # Extraction model
+    extraction_prompt_hash: str | None = None  # For reproducibility
 
 
 class EntityMention(BaseModel):
@@ -25,8 +25,8 @@ class EntityMention(BaseModel):
     text: str
     normalized: str  # Canonical form
     entity_type: str  # PERSON, LOCATION, ORG, DATE, etc.
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
+    start_char: int | None = None
+    end_char: int | None = None
 
 
 class Relation(BaseModel):
@@ -46,29 +46,27 @@ class MemoryRecord(BaseModel):
     # Identity
     id: UUID = Field(default_factory=uuid4)
     tenant_id: str
-    context_tags: List[str] = Field(default_factory=list)  # Flexible categorization
-    source_session_id: Optional[str] = None  # Origin tracking (not retrieval filter)
-    agent_id: Optional[str] = None
-    namespace: Optional[str] = None
+    context_tags: list[str] = Field(default_factory=list)  # Flexible categorization
+    source_session_id: str | None = None  # Origin tracking (not retrieval filter)
+    agent_id: str | None = None
+    namespace: str | None = None
 
     # Type and content
     type: MemoryType
     text: str  # Human-readable content
-    key: Optional[str] = None  # Unique key for facts (e.g., "user:location")
-    embedding: Optional[List[float]] = None  # Dense vector
+    key: str | None = None  # Unique key for facts (e.g., "user:location")
+    embedding: list[float] | None = None  # Dense vector
 
     # Structured extractions
-    entities: List[EntityMention] = Field(default_factory=list)
-    relations: List[Relation] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    entities: list[EntityMention] = Field(default_factory=list)
+    relations: list[Relation] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     # Temporal validity
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )  # When event occurred
-    written_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # When stored
-    valid_from: Optional[datetime] = None
-    valid_to: Optional[datetime] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))  # When event occurred
+    written_at: datetime = Field(default_factory=lambda: datetime.now(UTC))  # When stored
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
 
     # Scoring
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -76,7 +74,7 @@ class MemoryRecord(BaseModel):
 
     # Usage tracking
     access_count: int = Field(default=0)
-    last_accessed_at: Optional[datetime] = None
+    last_accessed_at: datetime | None = None
     decay_rate: float = Field(default=0.01)  # Per day
 
     # Status
@@ -88,28 +86,28 @@ class MemoryRecord(BaseModel):
 
     # Versioning
     version: int = Field(default=1)
-    supersedes_id: Optional[UUID] = None  # Previous version
+    supersedes_id: UUID | None = None  # Previous version
 
     # Deduplication
-    content_hash: Optional[str] = None
+    content_hash: str | None = None
 
 
 class MemoryRecordCreate(BaseModel):
     """Schema for creating a new memory."""
 
     tenant_id: str
-    context_tags: List[str] = Field(default_factory=list)
-    source_session_id: Optional[str] = None
-    agent_id: Optional[str] = None
-    namespace: Optional[str] = None
+    context_tags: list[str] = Field(default_factory=list)
+    source_session_id: str | None = None
+    agent_id: str | None = None
+    namespace: str | None = None
     type: MemoryType
     text: str
-    key: Optional[str] = None
-    embedding: Optional[List[float]] = None
-    entities: List[EntityMention] = Field(default_factory=list)
-    relations: List[Relation] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    timestamp: Optional[datetime] = None
+    key: str | None = None
+    embedding: list[float] | None = None
+    entities: list[EntityMention] = Field(default_factory=list)
+    relations: list[Relation] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime | None = None
     confidence: float = 0.5
     importance: float = 0.5
     provenance: Provenance
@@ -121,33 +119,33 @@ class EventLog(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     tenant_id: str
     scope_id: str
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
 
     event_type: str  # "turn", "memory_op", "consolidation", etc.
-    operation: Optional[OperationType] = None
+    operation: OperationType | None = None
 
     # Content
-    payload: Dict[str, Any]  # Full turn data or operation details
+    payload: dict[str, Any]  # Full turn data or operation details
 
     # References
-    memory_ids: List[UUID] = Field(default_factory=list)  # Affected memories
-    parent_event_id: Optional[UUID] = None  # For chaining
+    memory_ids: list[UUID] = Field(default_factory=list)  # Affected memories
+    parent_event_id: UUID | None = None  # For chaining
 
     # Timing
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Audit
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
+    ip_address: str | None = None
+    user_agent: str | None = None
 
 
 class MemoryOperation(BaseModel):
     """Planned operation on a memory."""
 
     op: OperationType
-    record_id: Optional[UUID] = None  # For UPDATE/DELETE
-    record: Optional[MemoryRecordCreate] = None  # For ADD
-    patch: Optional[Dict[str, Any]] = None  # For UPDATE
+    record_id: UUID | None = None  # For UPDATE/DELETE
+    record: MemoryRecordCreate | None = None  # For ADD
+    patch: dict[str, Any] | None = None  # For UPDATE
     reason: str = ""
     confidence: float = 1.0
 
@@ -164,21 +162,21 @@ class MemoryPacket(BaseModel):
     """Structured bundle returned from retrieval."""
 
     query: str
-    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Categorized memories
-    facts: List[RetrievedMemory] = Field(default_factory=list)
-    recent_episodes: List[RetrievedMemory] = Field(default_factory=list)
-    preferences: List[RetrievedMemory] = Field(default_factory=list)
-    procedures: List[RetrievedMemory] = Field(default_factory=list)
-    constraints: List[RetrievedMemory] = Field(default_factory=list)
+    facts: list[RetrievedMemory] = Field(default_factory=list)
+    recent_episodes: list[RetrievedMemory] = Field(default_factory=list)
+    preferences: list[RetrievedMemory] = Field(default_factory=list)
+    procedures: list[RetrievedMemory] = Field(default_factory=list)
+    constraints: list[RetrievedMemory] = Field(default_factory=list)
 
     # Meta
-    open_questions: List[str] = Field(default_factory=list)  # Needs confirmation
-    warnings: List[str] = Field(default_factory=list)  # Conflicts detected
+    open_questions: list[str] = Field(default_factory=list)  # Needs confirmation
+    warnings: list[str] = Field(default_factory=list)  # Conflicts detected
 
     @property
-    def all_memories(self) -> List[RetrievedMemory]:
+    def all_memories(self) -> list[RetrievedMemory]:
         return (
             self.facts
             + self.recent_episodes

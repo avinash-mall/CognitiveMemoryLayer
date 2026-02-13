@@ -1,7 +1,6 @@
 """Interference detection between memories (duplicates, overlap)."""
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 from ..core.schemas import MemoryRecord
 
@@ -15,14 +14,14 @@ class InterferenceResult:
     similarity: float
     interference_type: str  # "duplicate", "conflicting", "overlapping"
     recommendation: str  # "merge", "keep_newer", "keep_higher_confidence"
-    keep_id: Optional[str] = None  # id of record to keep when deleting the other
+    keep_id: str | None = None  # id of record to keep when deleting the other
 
 
-def _cosine_similarity(v1: List[float], v2: List[float]) -> float:
+def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
     """Cosine similarity in pure Python (no numpy)."""
     if len(v1) != len(v2) or not v1:
         return 0.0
-    dot = sum(a * b for a, b in zip(v1, v2))
+    dot = sum(a * b for a, b in zip(v1, v2, strict=False))
     norm1 = sum(a * a for a in v1) ** 0.5
     norm2 = sum(b * b for b in v2) ** 0.5
     if norm1 * norm2 == 0:
@@ -37,7 +36,7 @@ class InterferenceDetector:
 
     def __init__(
         self,
-        embedding_client: Optional[object] = None,
+        embedding_client: object | None = None,
         similarity_threshold: float = 0.9,
         conflict_threshold: float = 0.7,
     ) -> None:
@@ -47,10 +46,10 @@ class InterferenceDetector:
 
     def detect_duplicates(
         self,
-        records: List[MemoryRecord],
-    ) -> List[InterferenceResult]:
+        records: list[MemoryRecord],
+    ) -> list[InterferenceResult]:
         """Detect near-duplicate memories using embeddings."""
-        results: List[InterferenceResult] = []
+        results: list[InterferenceResult] = []
         with_embedding = [(r, r.embedding) for r in records if r.embedding]
         ids = [str(r.id) for r, _ in with_embedding]
         vecs = {str(r.id): emb for r, emb in with_embedding}
@@ -77,11 +76,11 @@ class InterferenceDetector:
 
     def detect_overlapping(
         self,
-        records: List[MemoryRecord],
+        records: list[MemoryRecord],
         text_overlap_threshold: float = 0.7,
-    ) -> List[InterferenceResult]:
+    ) -> list[InterferenceResult]:
         """Detect memories with significant text overlap."""
-        results: List[InterferenceResult] = []
+        results: list[InterferenceResult] = []
         for i, r1 in enumerate(records):
             for r2 in records[i + 1 :]:
                 overlap = self._text_overlap(r1.text, r2.text)
@@ -124,7 +123,7 @@ class InterferenceDetector:
 
     def _resolve_keep_id(
         self, r1: MemoryRecord, r2: MemoryRecord, recommendation: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Return the id of the record to keep; the other will be deleted."""
         if recommendation == "merge":
             return None
