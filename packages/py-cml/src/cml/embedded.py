@@ -182,7 +182,7 @@ class EmbeddedCognitiveMemoryLayer:
             if s.llm.base_url:
                 self._config.llm.base_url = s.llm.base_url
                 self._config.llm.model = s.llm.model
-                self._config.llm.provider = cast(Any, s.llm.provider)
+                self._config.llm.provider = cast("Any", s.llm.provider)
         except Exception:
             pass
 
