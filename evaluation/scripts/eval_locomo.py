@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000"), help="CML API base URL")
     p.add_argument("--cml-api-key", type=str, default=os.environ.get("CML_API_KEY", "test-key"), help="CML API key")
     p.add_argument("--ollama-url", type=str, default=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"), help="Ollama base URL (no /v1)")
-    p.add_argument("--ollama-model", type=str, default=os.environ.get("OLLAMA_QA_MODEL", "gpt-oss-20b"), help="Ollama model for QA")
+    p.add_argument("--ollama-model", type=str, default=os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b"), help="Ollama model for QA")
     p.add_argument("--max-results", type=int, default=25, help="CML read max_results (top-k)")
     p.add_argument("--limit-samples", type=int, default=None, help="Limit to first N samples (for testing)")
     p.add_argument("--skip-ingestion", action="store_true", help="Skip Phase A (use existing CML state)")
