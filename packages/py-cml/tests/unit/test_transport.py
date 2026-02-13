@@ -1,5 +1,6 @@
 """Tests for HTTP transport (mocked httpx)."""
 
+import os
 from unittest.mock import MagicMock
 
 import httpx
@@ -19,11 +20,11 @@ from cml.exceptions import (
 from cml.transport.http import API_PREFIX, HTTPTransport
 
 
-def test_transport_builds_correct_url_and_headers() -> None:
+def test_transport_builds_correct_url_and_headers(cml_config: CMLConfig) -> None:
     """Transport uses API prefix and sends API key and tenant headers."""
     config = CMLConfig(
-        api_key="sk-test",
-        base_url="http://localhost:8000",
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
         tenant_id="my-tenant",
     )
     transport = HTTPTransport(config)
@@ -46,24 +47,24 @@ def test_transport_builds_correct_url_and_headers() -> None:
     assert call_kwargs["method"] == "GET"
 
 
-def test_build_headers_includes_api_key_and_tenant() -> None:
+def test_build_headers_includes_api_key_and_tenant(cml_config: CMLConfig) -> None:
     """_build_headers returns X-API-Key and X-Tenant-ID when set in config."""
     config = CMLConfig(
-        api_key="sk-test",
-        base_url="http://localhost:8000",
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
         tenant_id="my-tenant",
     )
     transport = HTTPTransport(config)
     headers = transport._build_headers()
-    assert headers["X-API-Key"] == "sk-test"
+    assert headers["X-API-Key"] == cml_config.api_key
     assert headers["X-Tenant-ID"] == "my-tenant"
     assert "User-Agent" in headers
     assert "py-cml/" in headers["User-Agent"]
 
 
-def test_raise_for_status_401() -> None:
+def test_raise_for_status_401(cml_config: CMLConfig) -> None:
     """Transport maps 401 to AuthenticationError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_response = MagicMock()
     mock_response.is_success = False
@@ -80,9 +81,9 @@ def test_raise_for_status_401() -> None:
     assert "Invalid API key" in str(exc_info.value)
 
 
-def test_raise_for_status_404() -> None:
+def test_raise_for_status_404(cml_config: CMLConfig) -> None:
     """Transport maps 404 to NotFoundError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_response = MagicMock()
     mock_response.is_success = False
@@ -98,9 +99,9 @@ def test_raise_for_status_404() -> None:
     assert exc_info.value.status_code == 404
 
 
-def test_raise_for_status_403() -> None:
+def test_raise_for_status_403(cml_config: CMLConfig) -> None:
     """Transport maps 403 to AuthorizationError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_response = MagicMock()
     mock_response.is_success = False
@@ -117,9 +118,9 @@ def test_raise_for_status_403() -> None:
     assert exc_info.value.status_code == 403
 
 
-def test_raise_for_status_422() -> None:
+def test_raise_for_status_422(cml_config: CMLConfig) -> None:
     """Transport maps 422 to ValidationError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_response = MagicMock()
     mock_response.is_success = False
@@ -136,9 +137,9 @@ def test_raise_for_status_422() -> None:
     assert exc_info.value.status_code == 422
 
 
-def test_raise_for_status_429_with_retry_after() -> None:
+def test_raise_for_status_429_with_retry_after(cml_config: CMLConfig) -> None:
     """Transport maps 429 to RateLimitError and passes Retry-After."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_response = MagicMock()
     mock_response.is_success = False
@@ -156,9 +157,9 @@ def test_raise_for_status_429_with_retry_after() -> None:
     assert exc_info.value.retry_after == 60.0
 
 
-def test_raise_for_status_500() -> None:
+def test_raise_for_status_500(cml_config: CMLConfig) -> None:
     """Transport maps 500 to ServerError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_response = MagicMock()
     mock_response.is_success = False
@@ -175,9 +176,9 @@ def test_raise_for_status_500() -> None:
     assert exc_info.value.status_code == 500
 
 
-def test_do_request_connection_error() -> None:
+def test_do_request_connection_error(cml_config: CMLConfig) -> None:
     """Transport maps httpx.ConnectError to ConnectionError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_client = MagicMock()
     mock_client.is_closed = False
@@ -189,9 +190,13 @@ def test_do_request_connection_error() -> None:
     assert "Failed to connect" in str(exc_info.value)
 
 
-def test_do_request_timeout_error() -> None:
+def test_do_request_timeout_error(cml_config: CMLConfig) -> None:
     """Transport maps httpx.TimeoutException to TimeoutError."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", timeout=5.0)
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        timeout=5.0,
+    )
     transport = HTTPTransport(config)
     mock_client = MagicMock()
     mock_client.is_closed = False
@@ -203,23 +208,24 @@ def test_do_request_timeout_error() -> None:
     assert "timed out" in str(exc_info.value).lower()
 
 
-def test_build_headers_uses_admin_key_when_requested() -> None:
+def test_build_headers_uses_admin_key_when_requested(cml_config: CMLConfig) -> None:
     """When use_admin_key is True and admin_api_key is set, X-API-Key is admin key."""
+    admin_key = os.environ.get("AUTH__ADMIN_API_KEY") or cml_config.api_key
     config = CMLConfig(
-        api_key="sk-user",
-        base_url="http://localhost:8000",
-        admin_api_key="sk-admin",
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        admin_api_key=admin_key,
     )
     transport = HTTPTransport(config)
     normal = transport._build_headers(use_admin_key=False)
     admin = transport._build_headers(use_admin_key=True)
-    assert normal["X-API-Key"] == "sk-user"
-    assert admin["X-API-Key"] == "sk-admin"
+    assert normal["X-API-Key"] == cml_config.api_key
+    assert admin["X-API-Key"] == admin_key
 
 
-def test_close_closes_client() -> None:
+def test_close_closes_client(cml_config: CMLConfig) -> None:
     """close() closes the underlying httpx client."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     transport = HTTPTransport(config)
     mock_client = MagicMock()
     mock_client.is_closed = False

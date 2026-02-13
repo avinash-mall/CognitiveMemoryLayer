@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator, Generator
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -10,16 +12,31 @@ import pytest_asyncio
 from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer
 from cml.config import CMLConfig
 
+# Load repo-root .env so tests read CML_* / AUTH__* (no hardcoded fallbacks)
+try:
+    from dotenv import load_dotenv
+
+    _repo_root = Path(__file__).resolve().parents[3]
+    load_dotenv(_repo_root / ".env")
+except ImportError:
+    pass
+
+# Test config values from env; fallback so tests run (no skip)
+_TEST_API_KEY = os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY") or "test-key"
+_TEST_BASE_URL = (
+    os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000"
+).strip()
+
 # --- Configuration Fixtures ---
 
 
 @pytest.fixture
 def test_config() -> CMLConfig:
-    """Create a test configuration."""
+    """Create a test configuration from .env (with fallbacks so tests run)."""
     return CMLConfig(
-        api_key="test-api-key",
-        base_url="http://localhost:8000",
-        tenant_id="test-tenant",
+        api_key=_TEST_API_KEY,
+        base_url=_TEST_BASE_URL,
+        tenant_id=os.environ.get("CML_TENANT_ID", "default"),
         timeout=10.0,
         max_retries=0,
     )
@@ -27,11 +44,23 @@ def test_config() -> CMLConfig:
 
 @pytest.fixture
 def mock_config() -> CMLConfig:
-    """Config for unit tests (no real server)."""
+    """Config for unit tests (no real server); API key from env (with fallback)."""
     return CMLConfig(
-        api_key="mock-key",
+        api_key=_TEST_API_KEY,
         base_url="http://mock-server:8000",
         tenant_id="mock-tenant",
+        max_retries=0,
+    )
+
+
+@pytest.fixture
+def cml_config() -> CMLConfig:
+    """Config from .env for unit tests (with fallbacks so tests run)."""
+    return CMLConfig(
+        api_key=_TEST_API_KEY,
+        base_url=_TEST_BASE_URL,
+        tenant_id="test-tenant",
+        timeout=10.0,
         max_retries=0,
     )
 

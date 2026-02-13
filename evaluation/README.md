@@ -25,7 +25,7 @@ This folder contains the [LoCoMo](https://github.com/snap-research/locomo) bench
   - `EMBEDDING__MODEL=embeddinggemma` (or `embeddinggemma:latest`)
   - **`EMBEDDING__DIMENSIONS=768`** (or the actual dimension from your run)
   - `EMBEDDING__BASE_URL=http://localhost:11434/v1`
-- The migration creates the pgvector column using `EMBEDDING__DIMENSIONS` at import time. If you change the embedding model or dimension, you must **drop databases and re-run migrations** (see “Build” below).
+- The migration creates the pgvector column using `EMBEDDING__DIMENSIONS` at import time. The server and tests read this from `.env`; the Docker `app` and `api` services do not override `EMBEDDING__DIMENSIONS`, so migrations and tests use the same value. If you change the embedding model or dimension, you must **drop databases and re-run migrations** (see “Build” below).
 
 ## Build (drop DBs and recreate Docker)
 

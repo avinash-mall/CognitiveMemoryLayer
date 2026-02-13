@@ -1,6 +1,7 @@
 """Pytest fixtures for Phase 1 and beyond."""
 
 from datetime import datetime
+from pathlib import Path
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -8,12 +9,19 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+# Load repo .env so tests read AUTH__API_KEY, etc. (no hardcoded fallbacks in tests)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 # Allow importing src when run from project root or with PYTHONPATH
 try:
     import src.storage.models  # noqa: F401 - ensure module loaded for fixtures
 except ImportError:
     import sys
-    from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
     if str(root) not in sys.path:
@@ -87,16 +95,17 @@ def mock_llm():
 
 @pytest.fixture
 def mock_embeddings():
-    """Mock embedding client for tests."""
-    # Use 384 dimensions to match the test database schema
-    # (default config is 1536, but test DB may be created with 384)
+    """Mock embedding client for tests. Dimensions from .env (get_settings().embedding.dimensions)."""
+    from src.core.config import get_settings
+
+    dims = get_settings().embedding.dimensions
     client = MagicMock()
-    client.dimensions = 384
+    client.dimensions = dims
     client.embed = AsyncMock(
         return_value=MagicMock(
-            embedding=[0.1] * 384,
+            embedding=[0.1] * dims,
             model="test-model",
-            dimensions=384,
+            dimensions=dims,
             tokens_used=10,
         )
     )

@@ -9,6 +9,7 @@ Working examples for the Cognitive Memory Layer with LLMs and as a standalone se
    docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
    docker compose -f docker/docker-compose.yml up api
    ```
+   The server reads configuration from the project root **`.env`** (copy `.env.example` to `.env`). Set `EMBEDDING__DIMENSIONS` to match your embedding model when using write/read; see main project [.env.example](../.env.example) and [tests/README.md](../tests/README.md).
 
 2. **Install dependencies**:
    ```bash

@@ -14,9 +14,7 @@ async def test_batch_write_then_read(live_client):
     ]
     try:
         results = await live_client.batch_write(items)
-    except Exception as e:
-        if "404" in str(e) or "501" in str(e):
-            pytest.skip("Server may not implement batch_write")
+    except Exception:
         raise
     assert len(results) == 3
     r = await live_client.read("Batch item")
@@ -31,8 +29,6 @@ async def test_batch_read(live_client):
     await live_client.write("Query B content")
     try:
         results = await live_client.batch_read(["Query A", "Query B"])
-    except Exception as e:
-        if "404" in str(e) or "501" in str(e):
-            pytest.skip("Server may not implement batch_read")
+    except Exception:
         raise
     assert len(results) >= 2
