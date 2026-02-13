@@ -2,9 +2,18 @@
 """
 LoCoMo evaluation with CML as the RAG backend.
 
-Phase A: Ingest each sample's conversation into CML (one tenant per sample_id).
-Phase B: For each QA item, read from CML (llm_context), call Ollama to generate answer.
-Phase C: Score with LoCoMo's eval_question_answering and analyze_aggr_acc.
+Phase A (ingestion): For each sample, write each dialog turn to CML via POST /api/v1/memory/write.
+  - One tenant per sample_id; 429 on write is retried with backoff; INGESTION_DELAY_SEC between writes.
+  - We use /memory/write (not /memory/turn) so we can set session_id, timestamp, turn_id, and metadata
+    per line for LoCoMo; /memory/turn is for live chat (one user message + optional assistant, auto-store).
+Phase B (QA): For each sample and each QA item, POST /api/v1/memory/read (CML) then Ollama chat.
+  - 429 on read is retried with backoff; QA_READ_DELAY_SEC after each read to ease rate limits.
+  - We use /memory/read only (not /memory/turn): we need retrieval for the question and do not store
+    the QA back into CML; turn would do read+write and is for conversational flows.
+Phase C (scoring): Local only — eval_question_answering() and analyze_aggr_acc() on the output JSON.
+  - No CML or Ollama calls; writes per-sample F1/recall and aggregate stats to locomo10_qa_cml_stats.json.
+
+Rate limit: Applied to all /api/v1 routes (including /memory/read) per API key in RateLimitMiddleware.
 
 Usage:
   Set PYTHONPATH to include the LoCoMo repo root (e.g. evaluation/locomo).
@@ -33,6 +42,10 @@ INGESTION_DELAY_SEC = 0.2
 # 429 retry: max attempts and backoff (seconds); cap so we don't wait forever
 _CML_WRITE_MAX_429_ATTEMPTS = 15
 _CML_WRITE_BACKOFF_CAP_SEC = 65
+_CML_READ_MAX_429_ATTEMPTS = 15
+_CML_READ_BACKOFF_CAP_SEC = 65
+# Optional delay after each CML read in Phase B to avoid rate limit (seconds; 0 = no delay)
+QA_READ_DELAY_SEC = 0.05
 
 # QA prompts aligned with LoCoMo gpt_utils
 QA_PROMPT = """
@@ -156,34 +169,52 @@ def _cml_read(
     query: str,
     max_results: int,
 ) -> tuple[str, list[str]]:
-    """Return (llm_context, list of dia_ids from retrieved memories for recall)."""
+    """Return (llm_context, list of dia_ids from retrieved memories for recall).
+    Retries on 429 with backoff (same pattern as _cml_write).
+    """
     url = f"{base_url.rstrip('/')}/api/v1/memory/read"
     payload = {
         "query": query,
         "format": "llm_context",
         "max_results": max_results,
     }
-    resp = requests.post(
-        url,
-        json=payload,
-        headers={"X-API-Key": api_key, "X-Tenant-ID": tenant_id},
-        timeout=60,
+    headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id}
+    last_429_response = None
+    for attempt in range(_CML_READ_MAX_429_ATTEMPTS):
+        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        if resp.status_code == 429:
+            last_429_response = resp
+            if attempt == _CML_READ_MAX_429_ATTEMPTS - 1:
+                break
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    wait = min(int(retry_after), _CML_READ_BACKOFF_CAP_SEC)
+                except ValueError:
+                    wait = min(_CML_READ_BACKOFF_CAP_SEC, 5 * (2**attempt))
+            else:
+                wait = min(_CML_READ_BACKOFF_CAP_SEC, 5 * (2**attempt))
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        llm_context = data.get("llm_context") or ""
+        dia_ids: list[str] = []
+        for mem in (
+            data.get("memories", [])
+            + data.get("episodes", [])
+            + data.get("facts", [])
+            + data.get("preferences", [])
+        ):
+            meta = mem.get("metadata") or {}
+            if "dia_id" in meta:
+                dia_ids.append(meta["dia_id"])
+        return llm_context, dia_ids
+    raise requests.exceptions.HTTPError(
+        "429 Too Many Requests (rate limit) on CML read. "
+        "Set AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=600 in .env and restart the API, or re-run with fewer concurrent requests.",
+        response=last_429_response,
     )
-    resp.raise_for_status()
-    data = resp.json()
-    llm_context = data.get("llm_context") or ""
-    # Collect dia_ids from retrieved memories for recall
-    dia_ids: list[str] = []
-    for mem in (
-        data.get("memories", [])
-        + data.get("episodes", [])
-        + data.get("facts", [])
-        + data.get("preferences", [])
-    ):
-        meta = mem.get("metadata") or {}
-        if "dia_id" in meta:
-            dia_ids.append(meta["dia_id"])
-    return llm_context, dia_ids
 
 
 def _ollama_chat(
@@ -193,25 +224,77 @@ def _ollama_chat(
     max_tokens: int = 64,
     return_usage: bool = False,
 ) -> str | tuple[str, dict]:
-    """Return content string, or (content, usage_dict) when return_usage=True."""
-    url = f"{base_url.rstrip('/')}/v1/chat/completions"
-    payload = {
+    """Return content string, or (content, usage_dict) when return_usage=True.
+    Tries Ollama native /api/chat first, then OpenAI-compatible /v1/chat/completions.
+    """
+    base = base_url.rstrip("/")
+    messages = [{"role": "user", "content": user_content}]
+
+    # 1) Try native Ollama /api/chat
+    url_native = f"{base}/api/chat"
+    payload_native = {
         "model": model,
-        "messages": [{"role": "user", "content": user_content}],
-        "max_tokens": max_tokens,
-        "temperature": 0,
+        "messages": messages,
+        "stream": False,
+        "options": {"num_predict": max_tokens, "temperature": 0},
     }
-    resp = requests.post(url, json=payload, timeout=120)
+    resp = requests.post(url_native, json=payload_native, timeout=120)
+    if resp.status_code == 200:
+        data = resp.json()
+        message = data.get("message") or {}
+        content = (message.get("content") or "").strip()
+        usage = {}
+        if return_usage:
+            prompt_count = data.get("prompt_eval_count")
+            eval_count = data.get("eval_count")
+            if prompt_count is not None:
+                usage["prompt_tokens"] = prompt_count
+            if eval_count is not None:
+                usage["completion_tokens"] = eval_count
+            if "prompt_tokens" in usage or "completion_tokens" in usage:
+                usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+        return (content, usage) if return_usage else content
+
+    # 2) On 404, try OpenAI-compatible /v1/chat/completions
+    if resp.status_code == 404:
+        url_openai = f"{base}/v1/chat/completions"
+        payload_openai = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
+        resp = requests.post(url_openai, json=payload_openai, timeout=120)
+        if resp.status_code == 200:
+            data = resp.json()
+            choices = data.get("choices", [])
+            content = ""
+            if choices:
+                content = (choices[0].get("message") or {}).get("content", "").strip()
+            usage = (data.get("usage") or {}).copy() if return_usage else {}
+            return (content, usage) if return_usage else content
+
+    # 3) No success: raise with helpful message
+    if resp.status_code == 404:
+        msg = None
+        try:
+            body = resp.json()
+            err = body.get("error", "")
+            if "not found" in err.lower() or "model" in err.lower():
+                msg = (
+                    f"Ollama reported: {err}. "
+                    f"Pull the model with: ollama pull {model}"
+                )
+        except Exception:
+            pass
+        if not msg:
+            msg = (
+                f"Ollama returned 404 at {base}. "
+                "Ensure Ollama is running and the model is pulled: ollama pull " + model
+            )
+        raise requests.exceptions.HTTPError(msg, response=resp)
     resp.raise_for_status()
-    data = resp.json()
-    choices = data.get("choices", [])
-    content = ""
-    if choices:
-        content = (choices[0].get("message") or {}).get("content", "").strip()
-    usage = (data.get("usage") or {}) if return_usage else {}
-    if return_usage:
-        return content, usage
-    return content
+    return "" if not return_usage else ("", {})
 
 
 def _get_session_nums(conversation: dict) -> list[int]:
@@ -279,6 +362,35 @@ def _get_cat5_answer(model_prediction: str, answer_key: dict) -> str:
     return model_prediction
 
 
+def _ollama_available(base_url: str, model: str | None = None) -> None:
+    """Raise with a clear message if Ollama is not reachable or the model is not available."""
+    base = base_url.rstrip("/")
+    for path in ("/api/tags", "/api/version"):
+        try:
+            r = requests.get(f"{base}{path}", timeout=5)
+            if r.status_code == 200:
+                if model and path == "/api/tags":
+                    data = r.json()
+                    models = data.get("models") or []
+                    model_base = model.split(":")[0]
+                    names = [(m.get("name") or "").split(":")[0] for m in models]
+                    if names and model_base not in names:
+                        raise RuntimeError(
+                            f"Model {model!r} not found in Ollama. "
+                            f"Available: {', '.join(names[:10])}{'...' if len(names) > 10 else ''}. "
+                            f"Pull it with: ollama pull {model}"
+                        )
+                return
+        except RuntimeError:
+            raise
+        except requests.RequestException:
+            pass
+    raise RuntimeError(
+        f"Cannot reach Ollama at {base_url}. "
+        "Start Ollama (e.g. run 'ollama serve') and ensure OLLAMA_BASE_URL is correct."
+    )
+
+
 def phase_b_qa(
     samples: list[dict],
     out_data_by_id: dict[str, dict],
@@ -294,6 +406,7 @@ def phase_b_qa(
     timing_entries: list[dict] | None = None,
 ) -> None:
     """For each sample and each QA, read from CML, call Ollama, store prediction and context for recall."""
+    _ollama_available(ollama_url, ollama_model)
     if log_timing and timing_entries is None:
         timing_entries = []
     for sample in tqdm(
@@ -309,20 +422,23 @@ def phase_b_qa(
             t0 = time.perf_counter()
             llm_context, dia_ids = _cml_read(cml_url, cml_api_key, tenant_id, question, max_results)
             cml_read_sec = time.perf_counter() - t0
+            if QA_READ_DELAY_SEC > 0:
+                time.sleep(QA_READ_DELAY_SEC)
             if category == 2:
                 question_for_prompt = question + " Use DATE of CONVERSATION to answer with an approximate date."
             elif category == 5:
-                # Adversarial: present two options (a) and (b)
+                # Adversarial: present two options (a) and (b). LoCoMo uses "adversarial_answer" or "answer".
+                other_opt = qa_item.get("answer") or qa_item.get("adversarial_answer", "Not mentioned in the conversation")
                 if random.random() < 0.5:
                     question_for_prompt = question + " Select the correct answer: (a) {} (b) {}. Short answer:".format(
-                        "Not mentioned in the conversation", qa_item["answer"]
+                        "Not mentioned in the conversation", other_opt
                     )
-                    answer_key = {"a": "Not mentioned in the conversation", "b": qa_item["answer"]}
+                    answer_key = {"a": "Not mentioned in the conversation", "b": other_opt}
                 else:
                     question_for_prompt = question + " Select the correct answer: (a) {} (b) {}. Short answer:".format(
-                        qa_item["answer"], "Not mentioned in the conversation"
+                        other_opt, "Not mentioned in the conversation"
                     )
-                    answer_key = {"a": qa_item["answer"], "b": "Not mentioned in the conversation"}
+                    answer_key = {"a": other_opt, "b": "Not mentioned in the conversation"}
             else:
                 question_for_prompt = question
                 answer_key = {}

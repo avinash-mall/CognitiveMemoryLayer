@@ -16,7 +16,7 @@ Thank you for your interest in contributing. This document outlines how to get s
 
 2. **Environment**
 
-   Copy `.env.example` to `.env` and fill in your local database URLs and API keys (see [Quick Start](README.md#-quick-start) for services).
+   Copy `.env.example` to `.env` and fill in your local database URLs and API keys (see [Quick Start](README.md#quick-start) for services).
 
 3. **Tests**
 
@@ -35,33 +35,24 @@ Thank you for your interest in contributing. This document outlines how to get s
 ## Submitting changes
 
 1. **Branch:** Create a feature branch from `main` (e.g. `feature/your-feature` or `fix/issue-description`).
-2. **Tests:** Ensure all tests pass and add or update tests for new behavior.
+2. **Tests:** Ensure all tests pass and add or update tests for new behavior. From repo root: `pytest tests` (see [tests/README.md](tests/README.md)).
 3. **Commit:** Use clear, concise commit messages.
 4. **Pull request:** Open a PR against `main`. Describe what changed and why; reference any related issues.
+5. **README badges:** If you changed the project version (e.g. `VERSION` file) or added/removed tests, run `python scripts/update_readme_badges.py` from the repo root to refresh the version and test count in the README badges, then commit the updated README(s).
 
 ## Project structure
 
 - `src/` — Application code: `core`, `api`, `memory`, `storage`, `retrieval`, `consolidation`, `forgetting`, `reconsolidation`, `extraction`, `utils`.
 - `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
-- `tests/` — Pytest tests.
-- `ProjectPlan/` — Design docs and issue tracking (e.g. `CurrentIssues.md`, `ProjectPlan_Complete.md`).
+- `tests/` — Pytest tests (unit, integration, e2e); see [tests/README.md](tests/README.md).
+- `scripts/` — Dev scripts (e.g. `update_readme_badges.py` to refresh version and test count in README badges).
+- `ProjectPlan/` — Design docs and phase plans (e.g. [ActiveCML/Issues.md](ProjectPlan/ActiveCML/Issues.md), [CreatePackage/CreatePackageStatus.md](ProjectPlan/CreatePackage/CreatePackageStatus.md)).
 
 For full architecture and API details, see [README](README.md) and [Usage Documentation](ProjectPlan/UsageDocumentation.md).
 
-## Publishing the Python SDK (cognitive-memory-layer)
+## Publishing the Python SDK
 
-To publish the `cognitive-memory-layer` package to PyPI:
-
-1. Bump version in `packages/py-cml/pyproject.toml` and `packages/py-cml/src/cml/_version.py`, update CHANGELOG, commit and push to `main`.
-2. From the repository root, push the tag:
-   ```bash
-   git pull origin main
-   git tag py-cml-v0.1.0   # use the same version as in pyproject.toml
-   git push origin py-cml-v0.1.0
-   ```
-3. The tag push triggers the workflow; **Build and publish to PyPI** runs. Verify in **Actions** and on [pypi.org/project/cognitive-memory-layer](https://pypi.org/project/cognitive-memory-layer/).
-
-For prerequisites (PyPI trusted publisher, GitHub pypi environment), alternative methods (GitHub Actions Run workflow, GitHub Releases), and troubleshooting, see [packages/py-cml/CONTRIBUTING.md#publishing-the-package-to-pypi](packages/py-cml/CONTRIBUTING.md#publishing-the-package-to-pypi).
+To publish the Python SDK, see [packages/py-cml/CONTRIBUTING.md#publishing-the-package-to-pypi](packages/py-cml/CONTRIBUTING.md#publishing-the-package-to-pypi).
 
 ## Questions
 

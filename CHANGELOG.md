@@ -97,4 +97,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-*For earlier history and detailed project plan, see [ProjectPlan_Complete.md](ProjectPlan/ProjectPlan_Complete.md) and [CurrentIssues.md](ProjectPlan/CurrentIssues.md).*
+*For earlier history and design docs, see the [ProjectPlan/](ProjectPlan/) directory (e.g. [ActiveCML/Issues.md](ProjectPlan/ActiveCML/Issues.md), [CreatePackage/CreatePackageStatus.md](ProjectPlan/CreatePackage/CreatePackageStatus.md)).*

@@ -1,5 +1,7 @@
 # Phase 6: Memory Encoding Pipeline — Hippocampal Encoder Redesign
 
+**Intrinsic Phase I-6** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 Phases 2-4 introduced the injection interfaces (Logit, Activation, KV-Cache), each requiring memories in a specific latent format. Phase 6 builds the **unified encoding pipeline** — the **Hippocampal Encoder** — that transforms raw text memories into all required latent representations in a single pass.

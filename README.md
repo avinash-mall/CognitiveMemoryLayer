@@ -9,9 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
   <a href="./tests"><img src="https://img.shields.io/badge/Tests-297-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version">
 </p>
 
 <p align="center">
@@ -30,15 +31,15 @@
 <details open>
 <summary><strong>Click to expand</strong></summary>
 
-- [Research Foundation](#-research-foundation)
+- [Research Foundation](#research-foundation)
 - [Architecture Overview](#architecture-overview)
-- [Neuroscience-to-Implementation Mapping](#-neuroscience-to-implementation-mapping)
-- [System Components](#-system-components)
-- [Quick Start](#-quick-start)
+- [Neuroscience-to-Implementation Mapping](#neuroscience-to-implementation-mapping)
+- [System Components](#system-components)
+- [Quick Start](#quick-start)
 - [Monitoring Dashboard](#5-monitoring-dashboard)
-- [API Documentation](#-api-documentation)
-- [Project Structure](#-project-structure)
-- [References](#-references)
+- [API Documentation](#api-documentation)
+- [Project Structure](#project-structure)
+- [References](#references)
 
 </details>
 
@@ -206,8 +207,8 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| Sensory buffer | `SensoryBuffer` | `sensory/buffer.py` |
-| Working memory limit | `WorkingMemoryManager` (max=10) | `working/manager.py` |
+| Sensory buffer | `SensoryBuffer` | `src/memory/sensory/buffer.py` |
+| Working memory limit | `WorkingMemoryManager` (max=10) | `src/memory/working/manager.py` |
 | Semantic chunking | `SemanticChunker` (LLM) | `working/chunker.py` |
 
 📖 **Reference**: Miller, G.A. (1956). "The Magical Number Seven, Plus or Minus Two"
@@ -277,9 +278,9 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| CREB allocation | `WriteGate.evaluate()` | `hippocampal/write_gate.py` |
+| CREB allocation | `WriteGate.evaluate()` | `src/memory/hippocampal/write_gate.py` |
 | Npas4 gating | Write gate threshold (0.3) | `WriteGateConfig` |
-| PII redaction | `PIIRedactor` | `hippocampal/redactor.py` |
+| PII redaction | `PIIRedactor` | `src/memory/hippocampal/redactor.py` |
 
 📖 **Reference**: Han et al. (2007). "Neuronal Competition and Selection During Memory Formation"
 
@@ -356,7 +357,7 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| One-shot encoding | `HippocampalStore.encode_chunk()` | `hippocampal/store.py` |
+| One-shot encoding | `HippocampalStore.encode_chunk()` (used via `encode_batch` from orchestrator) | `src/memory/hippocampal/store.py` |
 | Pattern separation | Content hash + unique embeddings | `PostgresMemoryStore` |
 | Contextual binding | Metadata: time, agent, turn | `MemoryRecord` schema |
 
@@ -420,7 +421,7 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| Schema-based storage | `FactSchema` + `FactCategory` | `neocortical/schemas.py` |
+| Schema-based storage | `FactSchema` + `FactCategory` | `src/memory/neocortical/schemas.py` |
 | Personalized PageRank | `Neo4jGraphStore.personalized_pagerank()` | `storage/neo4j.py` |
 
 📖 **Reference**: HippoRAG uses PPR for "pattern completion across a whole graph structure"
@@ -493,7 +494,7 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| Ecphory | `MemoryRetriever.retrieve()` | `retrieval/memory_retriever.py` |
+| Ecphory | `MemoryRetriever.retrieve()` | `src/retrieval/memory_retriever.py` |
 | Hybrid search | `HybridRetriever` | `retrieval/retriever.py` |
 
 📖 **Reference**: Tulving, E. (1983). "Elements of Episodic Memory" - Encoding Specificity Principle
@@ -575,8 +576,8 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| Labile state tracking | `LabileStateTracker` | `reconsolidation/labile_tracker.py` |
-| Belief revision | `BeliefRevisionEngine` (6 strategies) | `reconsolidation/belief_revision.py` |
+| Labile state tracking | `LabileStateTracker` | `src/reconsolidation/labile_tracker.py` |
+| Belief revision | `BeliefRevisionEngine` (6 strategies) | `src/reconsolidation/belief_revision.py` |
 
 📖 **Reference**: Nader et al. (2000). "Fear memories require protein synthesis in the amygdala for reconsolidation"
 
@@ -752,6 +753,10 @@ flowchart TD
 | 🧮 Embeddings | **OpenAI / sentence-transformers** | Configurable dense vectors |
 | 🤖 LLM | **OpenAI / compatible** | Extraction, summarization |
 
+### Embedded mode (lite)
+
+The Python SDK can run the memory engine **in-process** without a server (embedded mode with `storage_mode="lite"`). In this mode, storage is SQLite and the neocortical (graph/semantic) store is disabled: the system uses only the **episodic** (vector) store. Hybrid retrieval and consolidation still run, but the semantic store is a no-op, so there is no real knowledge graph or consolidation from hippocampal to neocortical. Use embedded lite for development, demos, or single-machine apps; use the full server (Postgres + Neo4j) when you need graph-based retrieval and semantic consolidation.
+
 ---
 
 ## 🚀 Quick Start
@@ -811,7 +816,7 @@ curl -X POST http://localhost:8000/api/v1/memory/turn \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
-**From Python:** `pip install cognitive-memory-layer` — see [packages/py-cml](packages/py-cml/) and [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-cognitive-memory-layer).
+**From Python:** `pip install cognitive-memory-layer` — see [packages/py-cml](packages/py-cml/) and [packages/py-cml/docs](packages/py-cml/docs/).
 
 ### 5. Monitoring Dashboard
 
@@ -869,6 +874,8 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 
 The SDK in `packages/py-cml` has its own test suite (168 tests: unit, integration, embedded, e2e). Run from `packages/py-cml`: `pytest tests/ -v`.
 
+To refresh the version and test count in the badges at the top of this README, run `python scripts/update_readme_badges.py` from the repo root.
+
 </details>
 
 ---
@@ -877,7 +884,7 @@ The SDK in `packages/py-cml` has its own test suite (168 tests: unit, integratio
 
 📚 **Full API Reference**: [UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md)
 
-🐍 **Python SDK (cognitive-memory-layer)**: Use CML from Python with `pip install cognitive-memory-layer` — [packages/py-cml](packages/py-cml/) | [Usage docs — Python SDK](./ProjectPlan/UsageDocumentation.md#python-sdk-cognitive-memory-layer)
+🐍 **Python SDK (cognitive-memory-layer)**: Use CML from Python with `pip install cognitive-memory-layer` — [packages/py-cml](packages/py-cml/) and [packages/py-cml/docs](packages/py-cml/docs/)
 
 🔗 **Interactive Docs**: http://localhost:8000/docs
 
@@ -905,7 +912,7 @@ The SDK in `packages/py-cml` has its own test suite (168 tests: unit, integratio
 
 ```
 CognitiveMemoryLayer/
-├── 📂 src/                      # Server engine (package name: cml-server)
+├── 📂 src/                      # Server engine (runs from this repo; installable as cognitive-memory-layer)
 │   ├── api/                     # REST API endpoints, auth, middleware
 │   ├── core/                    # Core schemas, enums, config
 │   ├── dashboard/               # 📊 Web dashboard (monitoring & management)
@@ -1038,6 +1045,8 @@ CognitiveMemoryLayer/
 ---
 
 ## 🚀 Future Roadmap: LLM Intrinsic Memory Integration
+
+**Note:** The following describes a **planned** evolution; the current release provides the external (RAG) memory system only.
 
 > *"The brain does not simply store memories; it actively reconstructs them."*
 > — **Bartlett, 1932**
