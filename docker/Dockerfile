@@ -32,7 +32,7 @@ FROM base AS production
 COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=dependencies /usr/local/bin /usr/local/bin
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md hatch_build.py ./
 COPY src ./src
 COPY tests ./tests
 COPY scripts ./scripts
