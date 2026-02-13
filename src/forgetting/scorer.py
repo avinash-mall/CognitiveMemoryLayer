@@ -2,8 +2,7 @@
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryRecord
@@ -46,7 +45,7 @@ class RelevanceScore:
     type_bonus_score: float
     dependency_score: float
 
-    computed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    computed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     suggested_action: str = "keep"  # keep, decay, silence, compress, delete
 
 
@@ -57,7 +56,7 @@ class ScorerConfig:
     weights: RelevanceWeights = field(default_factory=RelevanceWeights)
     recency_half_life_days: float = 30.0
     frequency_log_base: float = 10.0
-    type_bonuses: Dict[str, float] = field(
+    type_bonuses: dict[str, float] = field(
         default_factory=lambda: {
             MemoryType.CONSTRAINT.value: 1.0,
             MemoryType.PREFERENCE.value: 0.8,
@@ -82,7 +81,7 @@ class RelevanceScorer:
     recent, and high-confidence things are remembered.
     """
 
-    def __init__(self, config: Optional[ScorerConfig] = None) -> None:
+    def __init__(self, config: ScorerConfig | None = None) -> None:
         self.config = config or ScorerConfig()
         self.config.weights.validate()
 
@@ -95,9 +94,9 @@ class RelevanceScorer:
         importance = record.importance
 
         ts = record.timestamp
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
         age_days = (now - ts).total_seconds() / 86400
         recency = pow(0.5, age_days / self.config.recency_half_life_days)
 
@@ -137,9 +136,9 @@ class RelevanceScorer:
 
     def score_batch(
         self,
-        records: List[MemoryRecord],
-        dependency_counts: Optional[Dict[str, int]] = None,
-    ) -> List[RelevanceScore]:
+        records: list[MemoryRecord],
+        dependency_counts: dict[str, int] | None = None,
+    ) -> list[RelevanceScore]:
         """Score multiple records."""
         dep_counts = dependency_counts or {}
         return [self.score(r, dep_counts.get(str(r.id), 0)) for r in records]

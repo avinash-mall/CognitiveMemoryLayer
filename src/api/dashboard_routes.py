@@ -6,9 +6,9 @@ import os
 import sys
 import time
 import uuid as uuid_mod
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -49,9 +49,9 @@ from .schemas import (
     DashboardSessionsResponse,
     DashboardTenantsResponse,
     DashboardTimelineResponse,
+    GraphEdgeInfo,
     GraphExploreResponse,
     GraphNodeInfo,
-    GraphEdgeInfo,
     GraphSearchResponse,
     GraphSearchResult,
     GraphStatsResponse,
@@ -101,7 +101,7 @@ def _get_db(request: Request) -> DatabaseManager:
 
 @dashboard_router.get("/overview", response_model=DashboardOverview)
 async def dashboard_overview(
-    tenant_id: Optional[str] = Query(None, description="Filter by tenant (omit for all)"),
+    tenant_id: str | None = Query(None, description="Filter by tenant (omit for all)"),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
@@ -265,11 +265,11 @@ async def dashboard_overview(
 async def dashboard_memories(
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=200),
-    type: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    tenant_id: Optional[str] = Query(None),
-    source_session_id: Optional[str] = Query(None),
+    type: str | None = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
+    tenant_id: str | None = Query(None),
+    source_session_id: str | None = Query(None),
     sort_by: str = Query(
         "timestamp",
         pattern="^(timestamp|confidence|importance|access_count|written_at|type|status)$",
@@ -464,9 +464,9 @@ async def dashboard_bulk_action(
 async def dashboard_events(
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=200),
-    event_type: Optional[str] = Query(None),
-    operation: Optional[str] = Query(None),
-    tenant_id: Optional[str] = Query(None),
+    event_type: str | None = Query(None),
+    operation: str | None = Query(None),
+    tenant_id: str | None = Query(None),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
@@ -530,14 +530,14 @@ async def dashboard_events(
 @dashboard_router.get("/timeline", response_model=DashboardTimelineResponse)
 async def dashboard_timeline(
     days: int = Query(30, ge=1, le=365),
-    tenant_id: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
     """Memory creation timeline aggregated by day."""
     try:
         async with db.pg_session() as session:
-            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+            cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
             filters = [MemoryRecordModel.timestamp >= cutoff]
             if tenant_id:
                 filters.append(MemoryRecordModel.tenant_id == tenant_id)
@@ -572,7 +572,7 @@ async def dashboard_components(
     db: DatabaseManager = Depends(_get_db),
 ):
     """Health check for all system components."""
-    components: List[ComponentStatus] = []
+    components: list[ComponentStatus] = []
 
     # PostgreSQL
     try:
@@ -681,7 +681,7 @@ async def dashboard_tenants(
                 func.max(MemoryRecordModel.timestamp).label("last_mem"),
             ).group_by(MemoryRecordModel.tenant_id)
             mem_rows = (await session.execute(mem_q)).all()
-            mem_map: Dict[str, dict] = {}
+            mem_map: dict[str, dict] = {}
             for r in mem_rows:
                 mem_map[r[0]] = {"count": r[1], "active": r[2], "last_mem": r[3]}
 
@@ -699,7 +699,7 @@ async def dashboard_tenants(
                 func.max(EventLogModel.created_at).label("last_evt"),
             ).group_by(EventLogModel.tenant_id)
             event_rows = (await session.execute(event_q)).all()
-            event_map: Dict[str, dict] = {}
+            event_map: dict[str, dict] = {}
             for r in event_rows:
                 event_map[r[0]] = {"count": r[1], "last_evt": r[2]}
 
@@ -730,14 +730,14 @@ async def dashboard_tenants(
 
 @dashboard_router.get("/sessions", response_model=DashboardSessionsResponse)
 async def dashboard_sessions(
-    tenant_id: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
     """List active sessions from Redis + memory counts per source_session_id from DB."""
     try:
-        sessions_list: List[SessionInfo] = []
-        redis_sessions: Dict[str, SessionInfo] = {}
+        sessions_list: list[SessionInfo] = []
+        redis_sessions: dict[str, SessionInfo] = {}
 
         # --- Redis: scan session:* keys ---
         if db.redis:
@@ -828,7 +828,7 @@ async def dashboard_ratelimits(
     """Show current rate-limit usage per key from Redis."""
     settings = get_settings()
     rpm = settings.auth.rate_limit_requests_per_minute
-    entries: List[RateLimitEntry] = []
+    entries: list[RateLimitEntry] = []
 
     if db.redis:
         cursor = 0
@@ -877,11 +877,11 @@ async def dashboard_request_stats(
     db: DatabaseManager = Depends(_get_db),
 ):
     """Hourly request counts from Redis counters."""
-    points: List[HourlyRequestCount] = []
+    points: list[HourlyRequestCount] = []
     total = 0
 
     if db.redis:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for i in range(hours - 1, -1, -1):
             dt = now - timedelta(hours=i)
             hour_key = dt.strftime("%Y-%m-%d-%H")
@@ -975,10 +975,10 @@ async def dashboard_graph_explore(
             result = await session.run(query, tenant_id=tenant_id, scope_id=scope_id, entity=entity)
             record = await result.single()
 
-            nodes: List[GraphNodeInfo] = [
+            nodes: list[GraphNodeInfo] = [
                 GraphNodeInfo(id=entity, entity=entity, entity_type="center")
             ]
-            edges: List[GraphEdgeInfo] = []
+            edges: list[GraphEdgeInfo] = []
             seen_nodes = {entity}
 
             if record:
@@ -1027,7 +1027,7 @@ async def dashboard_graph_explore(
 @dashboard_router.get("/graph/search", response_model=GraphSearchResponse)
 async def dashboard_graph_search(
     query: str = Query(..., min_length=1, description="Entity name pattern"),
-    tenant_id: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
     limit: int = Query(25, ge=1, le=100),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
@@ -1041,7 +1041,7 @@ async def dashboard_graph_search(
             MATCH (n:Entity)
             WHERE toLower(n.entity) CONTAINS toLower($pattern)
             """
-            params: Dict[str, Any] = {"pattern": query, "lim": limit}
+            params: dict[str, Any] = {"pattern": query, "lim": limit}
             if tenant_id:
                 cypher += " AND n.tenant_id = $tenant_id"
                 params["tenant_id"] = tenant_id
@@ -1085,7 +1085,7 @@ async def dashboard_config(
     settings = get_settings()
 
     # Load overrides from Redis
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
     if db.redis:
         try:
             raw = await db.redis.get(_CONFIG_OVERRIDES_KEY)
@@ -1094,7 +1094,7 @@ async def dashboard_config(
         except Exception:
             pass
 
-    sections: List[ConfigSection] = []
+    sections: list[ConfigSection] = []
 
     # Application
     app_items = [
@@ -1324,7 +1324,7 @@ async def dashboard_config_update(
 
 @dashboard_router.get("/labile", response_model=DashboardLabileResponse)
 async def dashboard_labile(
-    tenant_id: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
@@ -1343,7 +1343,7 @@ async def dashboard_labile(
             db_map = {r[0]: r[1] for r in rows}
 
         # Redis labile scopes
-        redis_scope_map: Dict[str, Dict[str, int]] = {}  # tenant -> {scopes, sessions, memories}
+        redis_scope_map: dict[str, dict[str, int]] = {}  # tenant -> {scopes, sessions, memories}
         if db.redis:
             cursor = 0
             while True:
@@ -1416,7 +1416,7 @@ async def dashboard_retrieval(
     """Test memory retrieval - same as POST /memory/read but via dashboard auth."""
     try:
         orchestrator = request.app.state.orchestrator
-        start = datetime.now(timezone.utc)
+        start = datetime.now(UTC)
         packet = await orchestrator.read(
             tenant_id=body.tenant_id,
             query=body.query,
@@ -1424,9 +1424,9 @@ async def dashboard_retrieval(
             context_filter=body.context_filter,
             memory_types=body.memory_types,
         )
-        elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+        elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 
-        results: List[RetrievalResultItem] = []
+        results: list[RetrievalResultItem] = []
         for mem in packet.all_memories:
             results.append(
                 RetrievalResultItem(
@@ -1470,8 +1470,8 @@ async def dashboard_retrieval(
 
 @dashboard_router.get("/jobs", response_model=DashboardJobsResponse)
 async def dashboard_jobs(
-    tenant_id: Optional[str] = Query(None),
-    job_type: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
+    job_type: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
@@ -1536,7 +1536,7 @@ async def dashboard_consolidate(
     db: DatabaseManager = request.app.state.db
     user_id = body.user_id or body.tenant_id
     job_id = uuid_mod.uuid4()
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     # Record job start
     try:
@@ -1580,7 +1580,7 @@ async def dashboard_consolidate(
                     .values(
                         status="completed",
                         result=result_data,
-                        completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
                     )
                 )
                 await session.commit()
@@ -1597,7 +1597,7 @@ async def dashboard_consolidate(
                     .values(
                         status="failed",
                         error=str(e),
-                        completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
                     )
                 )
                 await session.commit()
@@ -1622,7 +1622,7 @@ async def dashboard_forget(
     db: DatabaseManager = request.app.state.db
     user_id = body.user_id or body.tenant_id
     job_id = uuid_mod.uuid4()
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     # Record job start
     try:
@@ -1676,7 +1676,7 @@ async def dashboard_forget(
                     .values(
                         status="completed",
                         result=result_data,
-                        completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
                     )
                 )
                 await session.commit()
@@ -1692,7 +1692,7 @@ async def dashboard_forget(
                     .values(
                         status="failed",
                         error=str(e),
-                        completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
                     )
                 )
                 await session.commit()
@@ -1743,7 +1743,7 @@ async def dashboard_database_reset(
 
 @dashboard_router.get("/export/memories")
 async def dashboard_export_memories(
-    tenant_id: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):

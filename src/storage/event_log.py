@@ -1,7 +1,7 @@
 """Event log repository - append-only event store."""
 
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import AsyncIterator, List, Optional
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -46,7 +46,7 @@ class EventLogRepository:
             await self.session.commit()
         return event
 
-    async def get_by_id(self, event_id: UUID) -> Optional[EventLog]:
+    async def get_by_id(self, event_id: UUID) -> EventLog | None:
         """Fetch a single event by ID."""
         result = await self.session.execute(
             select(EventLogModel).where(EventLogModel.id == event_id)
@@ -58,10 +58,10 @@ class EventLogRepository:
         self,
         tenant_id: str,
         user_id: str,
-        since: Optional[datetime] = None,
-        event_types: Optional[List[str]] = None,
+        since: datetime | None = None,
+        event_types: list[str] | None = None,
         limit: int = 100,
-    ) -> List[EventLog]:
+    ) -> list[EventLog]:
         """List events for a user with optional filters."""
         query = select(EventLogModel).where(
             and_(
@@ -84,7 +84,7 @@ class EventLogRepository:
         self,
         tenant_id: str,
         user_id: str,
-        from_event_id: Optional[UUID] = None,
+        from_event_id: UUID | None = None,
     ) -> AsyncIterator[EventLog]:
         """Generator for replaying events (for rebuilding state)."""
         query = (

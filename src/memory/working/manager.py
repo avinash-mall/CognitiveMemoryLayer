@@ -1,9 +1,7 @@
 """Working memory manager: per-scope state and chunk processing."""
 
-from datetime import datetime
-from typing import Dict, List, Optional, Union
-
 import asyncio
+from datetime import datetime
 
 from ...utils.llm import LLMClient
 from .chunker import RuleBasedChunker, SemanticChunker
@@ -22,16 +20,16 @@ class WorkingMemoryManager:
 
     def __init__(
         self,
-        llm_client: Optional[LLMClient] = None,
+        llm_client: LLMClient | None = None,
         max_chunks_per_user: int = 10,
         use_fast_chunker: bool = False,
     ) -> None:
-        self._states: Dict[str, WorkingMemoryState] = {}
+        self._states: dict[str, WorkingMemoryState] = {}
         self._lock = asyncio.Lock()
         self.max_chunks = max_chunks_per_user
 
         if llm_client and not use_fast_chunker:
-            self.chunker: Union[SemanticChunker, RuleBasedChunker] = SemanticChunker(llm_client)
+            self.chunker: SemanticChunker | RuleBasedChunker = SemanticChunker(llm_client)
             self._use_llm = True
         else:
             self.chunker = RuleBasedChunker()
@@ -57,10 +55,10 @@ class WorkingMemoryManager:
         tenant_id: str,
         scope_id: str,
         text: str,
-        turn_id: Optional[str] = None,
+        turn_id: str | None = None,
         role: str = "user",
-        timestamp: Optional[datetime] = None,
-    ) -> List[SemanticChunk]:
+        timestamp: datetime | None = None,
+    ) -> list[SemanticChunk]:
         """
         Process new input into working memory.
 
@@ -91,7 +89,7 @@ class WorkingMemoryManager:
         tenant_id: str,
         scope_id: str,
         min_salience: float = 0.4,
-    ) -> List[SemanticChunk]:
+    ) -> list[SemanticChunk]:
         """Get chunks that should be encoded into long-term memory."""
         state = await self.get_state(tenant_id, scope_id)
         return [c for c in state.chunks if c.salience >= min_salience]
@@ -119,7 +117,7 @@ class WorkingMemoryManager:
             if key in self._states:
                 del self._states[key]
 
-    async def get_stats(self, tenant_id: str, scope_id: str) -> Dict[str, object]:
+    async def get_stats(self, tenant_id: str, scope_id: str) -> dict[str, object]:
         """Get working memory statistics."""
         state = await self.get_state(tenant_id, scope_id)
         avg_salience = (

@@ -1,14 +1,13 @@
 """Forgetting actions and policy engine."""
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import List, Optional
+from enum import StrEnum
 from uuid import UUID
 
 from .scorer import RelevanceScore
 
 
-class ForgettingAction(str, Enum):
+class ForgettingAction(StrEnum):
     """Type of forgetting action."""
 
     KEEP = "keep"
@@ -25,8 +24,8 @@ class ForgettingOperation:
 
     action: ForgettingAction
     memory_id: UUID
-    new_confidence: Optional[float] = None
-    compressed_text: Optional[str] = None
+    new_confidence: float | None = None
+    compressed_text: str | None = None
     reason: str = ""
     relevance_score: float = 0.0
 
@@ -43,7 +42,7 @@ class ForgettingResult:
     compressed: int = 0
     archived: int = 0
     deleted: int = 0
-    errors: Optional[List[str]] = None
+    errors: list[str] | None = None
 
     def __post_init__(self) -> None:
         if self.errors is None:
@@ -65,11 +64,11 @@ class ForgettingPolicyEngine:
 
     def plan_operations(
         self,
-        scores: List[RelevanceScore],
-        max_operations: Optional[int] = None,
-    ) -> List[ForgettingOperation]:
+        scores: list[RelevanceScore],
+        max_operations: int | None = None,
+    ) -> list[ForgettingOperation]:
         """Plan forgetting operations based on scores."""
-        operations: List[ForgettingOperation] = []
+        operations: list[ForgettingOperation] = []
 
         for score in scores:
             try:

@@ -56,9 +56,7 @@ def test_client_instantiation(cml_config) -> None:
     """Sync and async clients can be instantiated with minimal args (config from .env)."""
     from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer
 
-    sync_client = CognitiveMemoryLayer(
-        api_key=cml_config.api_key, base_url=cml_config.base_url
-    )
+    sync_client = CognitiveMemoryLayer(api_key=cml_config.api_key, base_url=cml_config.base_url)
     assert sync_client._config.api_key == cml_config.api_key
     assert sync_client._config.base_url == cml_config.base_url
     assert sync_client._transport is not None

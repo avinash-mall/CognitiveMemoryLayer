@@ -1,15 +1,15 @@
 """Integration test: encode chunk through hippocampal store (with mock embedding)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
 from src.core.config import get_settings
-from src.memory.working.models import ChunkType, SemanticChunk
+from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.store import HippocampalStore
 from src.memory.hippocampal.write_gate import WriteGate
-from src.memory.hippocampal.redactor import PIIRedactor
+from src.memory.working.models import ChunkType, SemanticChunk
 from src.storage.postgres import PostgresMemoryStore
 from src.utils.embeddings import MockEmbeddingClient
 
@@ -39,7 +39,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         chunk_type=ChunkType.PREFERENCE,
         salience=0.8,
         confidence=0.9,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
     dims = get_settings().embedding.dimensions
     record, _ = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
@@ -55,9 +55,9 @@ async def test_encode_chunk_stores_record(pg_session_factory):
     # Vector search smoke test (no exception; may return 0 results depending on pgvector/embedding env)
     results = await hippocampal_store.search(tenant_id, "user preference dark mode", top_k=5)
     if results:
-        assert any(
-            r.id == record.id for r in results
-        ), "stored record should appear in search when results returned"
+        assert any(r.id == record.id for r in results), (
+            "stored record should appear in search when results returned"
+        )
 
 
 @pytest.mark.asyncio

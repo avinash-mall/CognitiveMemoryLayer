@@ -5,10 +5,10 @@ from .models import Base, EventLogModel, MemoryRecordModel, SemanticFactModel
 from .postgres import PostgresMemoryStore
 
 __all__ = [
-    "DatabaseManager",
     "Base",
+    "DatabaseManager",
     "EventLogModel",
     "MemoryRecordModel",
-    "SemanticFactModel",
     "PostgresMemoryStore",
+    "SemanticFactModel",
 ]

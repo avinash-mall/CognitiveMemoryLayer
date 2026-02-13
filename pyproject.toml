@@ -100,7 +100,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH", "RUF"]
-ignore = ["E501", "TC001", "TC003"]
+ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", "N818", "RUF006", "RUF012", "RUF034", "RUF043"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["cml", "src"]

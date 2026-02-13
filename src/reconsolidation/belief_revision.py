@@ -1,18 +1,17 @@
 """Belief revision strategies based on conflict detection."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from ..core.enums import MemorySource, MemoryType, OperationType
 from ..core.schemas import MemoryRecord, MemoryRecordCreate, Provenance
-
 from .conflict_detector import ConflictResult, ConflictType
 
 
-class RevisionStrategy(str, Enum):
+class RevisionStrategy(StrEnum):
     REINFORCE = "reinforce"
     TIME_SLICE = "time_slice"
     OVERWRITE = "overwrite"
@@ -27,9 +26,9 @@ class RevisionOperation:
     """A single revision operation to apply."""
 
     op_type: OperationType
-    target_id: Optional[UUID] = None
-    new_record: Optional[MemoryRecordCreate] = None
-    patch: Optional[Dict[str, Any]] = None
+    target_id: UUID | None = None
+    new_record: MemoryRecordCreate | None = None
+    patch: dict[str, Any] | None = None
     reason: str = ""
 
 
@@ -38,7 +37,7 @@ class RevisionPlan:
     """Complete revision plan."""
 
     strategy: RevisionStrategy
-    operations: List[RevisionOperation]
+    operations: list[RevisionOperation]
     confidence: float
     reasoning: str
 
@@ -54,7 +53,7 @@ class BeliefRevisionEngine:
         old_memory: MemoryRecord,
         new_info_type: MemoryType,
         tenant_id: str,
-        evidence_id: Optional[str] = None,
+        evidence_id: str | None = None,
     ) -> RevisionPlan:
         """Create a revision plan based on conflict analysis. Holistic: uses old_memory context_tags/source_session_id."""
         if conflict.conflict_type == ConflictType.NONE:
@@ -93,7 +92,7 @@ class BeliefRevisionEngine:
                     patch={
                         "confidence": new_confidence,
                         "access_count": old_memory.access_count + 1,
-                        "last_accessed_at": datetime.now(timezone.utc),
+                        "last_accessed_at": datetime.now(UTC),
                     },
                     reason="Consistent with new information - reinforcing",
                 )
@@ -108,12 +107,12 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        evidence_id: Optional[str],
+        evidence_id: str | None,
     ) -> RevisionPlan:
         """Plan time-slice for temporal changes. Archive old record (valid_to, status=archived)."""
         from ..core.enums import MemoryStatus
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         meta = dict(old_memory.metadata)
         meta["superseded"] = True
         return RevisionPlan(
@@ -162,12 +161,12 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        evidence_id: Optional[str],
+        evidence_id: str | None,
     ) -> RevisionPlan:
         """Plan correction when user explicitly corrects. Archive old record instead of delete."""
         from ..core.enums import MemoryStatus
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         meta = dict(old_memory.metadata)
         meta["invalidated_by"] = evidence_id
         meta["invalidated_at"] = now.isoformat()
@@ -215,7 +214,7 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        evidence_id: Optional[str],
+        evidence_id: str | None,
     ) -> RevisionPlan:
         """Plan resolution for direct contradictions. Holistic: inherit context_tags/source_session_id."""
         old_is_user_confirmed = old_memory.provenance.source == MemorySource.USER_CONFIRMED
@@ -272,7 +271,7 @@ class BeliefRevisionEngine:
         conflict: ConflictResult,
         new_type: MemoryType,
         tenant_id: str,
-        evidence_id: Optional[str],
+        evidence_id: str | None,
     ) -> RevisionPlan:
         """Plan refinement when new info adds to existing. Holistic: inherit context_tags/source_session_id."""
         return RevisionPlan(
@@ -318,7 +317,7 @@ class BeliefRevisionEngine:
         old_memory: MemoryRecord,
         conflict: ConflictResult,
         tenant_id: str,
-        evidence_id: Optional[str],
+        evidence_id: str | None,
     ) -> RevisionPlan:
         """Plan adding new info as hypothesis (uncertain). Holistic: inherit context_tags/source_session_id."""
         return RevisionPlan(

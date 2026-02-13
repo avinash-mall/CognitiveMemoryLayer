@@ -43,7 +43,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-class SQLiteMemoryStore(MemoryStoreBase):  # type: ignore[misc]
+class SQLiteMemoryStore(MemoryStoreBase):
     """Memory store backed by SQLite with in-memory cosine similarity for vector search."""
 
     def __init__(self, db_path: str = ":memory:") -> None:

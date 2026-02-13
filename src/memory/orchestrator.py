@@ -1,12 +1,13 @@
 """Memory orchestrator: coordinates all memory operations."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
+from ..consolidation.worker import ConsolidationWorker
 from ..core.enums import MemoryStatus
 from ..core.schemas import MemoryPacket
-from ..consolidation.worker import ConsolidationWorker
+from ..extraction.fact_extractor import LLMFactExtractor
 from ..forgetting.worker import ForgettingWorker
 from ..memory.conversation import ConversationMemory
 from ..memory.hippocampal.store import HippocampalStore
@@ -16,7 +17,6 @@ from ..memory.neocortical.store import NeocorticalStore
 from ..memory.scratch_pad import ScratchPad
 from ..memory.short_term import ShortTermMemory
 from ..memory.tool_memory import ToolMemory
-from ..extraction.fact_extractor import LLMFactExtractor
 from ..reconsolidation.service import ReconsolidationService
 from ..retrieval.memory_retriever import MemoryRetriever
 from ..storage.base import MemoryStoreBase
@@ -191,16 +191,16 @@ class MemoryOrchestrator:
         self,
         tenant_id: str,
         content: str,
-        context_tags: Optional[List[str]] = None,
-        session_id: Optional[str] = None,
-        memory_type: Optional[Any] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        turn_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        namespace: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        context_tags: list[str] | None = None,
+        session_id: str | None = None,
+        memory_type: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+        turn_id: str | None = None,
+        agent_id: str | None = None,
+        namespace: str | None = None,
+        timestamp: datetime | None = None,
         eval_mode: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Write new information to memory. Holistic: tenant-only."""
         stm_result = await self.short_term.ingest_turn(
             tenant_id=tenant_id,
@@ -294,10 +294,10 @@ class MemoryOrchestrator:
         tenant_id: str,
         query: str,
         max_results: int = 10,
-        context_filter: Optional[List[str]] = None,
-        memory_types: Optional[List[str]] = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        context_filter: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories. Holistic: tenant-only."""
         return await self.retriever.retrieve(
@@ -314,12 +314,12 @@ class MemoryOrchestrator:
         self,
         tenant_id: str,
         memory_id: UUID,
-        text: Optional[str] = None,
-        confidence: Optional[float] = None,
-        importance: Optional[float] = None,
-        metadata: Optional[Dict] = None,
-        feedback: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        text: str | None = None,
+        confidence: float | None = None,
+        importance: float | None = None,
+        metadata: dict | None = None,
+        feedback: str | None = None,
+    ) -> dict[str, Any]:
         """Update an existing memory. Holistic: tenant-only."""
         record = await self.hippocampal.store.get_by_id(memory_id)
         if not record:
@@ -327,7 +327,7 @@ class MemoryOrchestrator:
         if record.tenant_id != tenant_id:
             raise ValueError("Memory does not belong to tenant")
 
-        patch: Dict[str, Any] = {}
+        patch: dict[str, Any] = {}
         if text is not None:
             patch["text"] = text
             # Re-embed and re-extract entities when text changes
@@ -351,7 +351,7 @@ class MemoryOrchestrator:
             patch["confidence"] = 0.0
             patch["status"] = MemoryStatus.DELETED.value
         elif feedback == "outdated":
-            patch["valid_to"] = datetime.now(timezone.utc)
+            patch["valid_to"] = datetime.now(UTC)
 
         result = await self.hippocampal.store.update(memory_id, patch)
         return {
@@ -361,11 +361,11 @@ class MemoryOrchestrator:
     async def forget(
         self,
         tenant_id: str,
-        memory_ids: Optional[List[UUID]] = None,
-        query: Optional[str] = None,
-        before: Optional[datetime] = None,
+        memory_ids: list[UUID] | None = None,
+        query: str | None = None,
+        before: datetime | None = None,
         action: str = "delete",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Forget memories. Holistic: tenant-only.
 
         Collects all target IDs into a set first to avoid double-counting when
@@ -411,8 +411,8 @@ class MemoryOrchestrator:
     async def get_session_context(
         self,
         tenant_id: str,
-        session_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
         """Get full session context for LLM (messages, tool_results, scratch_pad, context_string).
 
         When session_id is provided, scopes retrieval to memories from that
@@ -421,7 +421,7 @@ class MemoryOrchestrator:
         """
         if session_id:
             # Scoped retrieval: only memories belonging to this session
-            filters: Dict[str, Any] = {
+            filters: dict[str, Any] = {
                 "status": MemoryStatus.ACTIVE.value,
                 "source_session_id": session_id,
             }
@@ -455,8 +455,8 @@ class MemoryOrchestrator:
                 else:
                     messages.append(item)
 
-            from ..retrieval.packet_builder import MemoryPacketBuilder
             from ..core.schemas import RetrievedMemory
+            from ..retrieval.packet_builder import MemoryPacketBuilder
 
             # Build a minimal packet for context string generation
             retrieved = [
@@ -525,7 +525,7 @@ class MemoryOrchestrator:
     async def get_stats(
         self,
         tenant_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get memory statistics for tenant. Holistic: tenant-only.
 
         Uses count queries per status and per type for accurate results even
@@ -546,7 +546,7 @@ class MemoryOrchestrator:
         )
 
         # Count per type using dedicated count queries (not limited to first N records)
-        by_type: Dict[str, int] = {}
+        by_type: dict[str, int] = {}
         if MemoryType is not None:
             for mt in MemoryType:
                 cnt = await self.hippocampal.store.count(tenant_id, filters={"type": mt.value})

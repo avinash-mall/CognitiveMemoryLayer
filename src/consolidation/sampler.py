@@ -2,8 +2,7 @@
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 
 from ..core.enums import MemoryStatus, MemoryType
 from ..core.schemas import MemoryRecord
@@ -29,7 +28,7 @@ class EpisodeSampler:
     def __init__(
         self,
         store: PostgresMemoryStore,
-        config: Optional[SamplingConfig] = None,
+        config: SamplingConfig | None = None,
     ):
         self.store = store
         self.config = config or SamplingConfig()
@@ -38,9 +37,9 @@ class EpisodeSampler:
         self,
         tenant_id: str,
         user_id: str,
-        max_episodes: Optional[int] = None,
+        max_episodes: int | None = None,
         exclude_consolidated: bool = True,
-    ) -> List[MemoryRecord]:
+    ) -> list[MemoryRecord]:
         """Sample episodes for consolidation."""
         max_eps = max_episodes or self.config.max_episodes
 
@@ -51,7 +50,7 @@ class EpisodeSampler:
                 MemoryType.PREFERENCE.value,
                 MemoryType.HYPOTHESIS.value,
             ],
-            "since": datetime.now(timezone.utc) - timedelta(days=self.config.time_window_days),
+            "since": datetime.now(UTC) - timedelta(days=self.config.time_window_days),
         }
 
         candidates = await self.store.scan(
@@ -82,8 +81,8 @@ class EpisodeSampler:
         importance_score = record.importance
         access_score = math.log1p(record.access_count) / 5.0
         access_score = min(access_score, 1.0)
-        ts = record.timestamp or datetime.now(timezone.utc)
-        now_naive = naive_utc(datetime.now(timezone.utc))
+        ts = record.timestamp or datetime.now(UTC)
+        now_naive = naive_utc(datetime.now(UTC))
         ts_naive = naive_utc(ts)
         age_days = (now_naive - ts_naive).days if (now_naive and ts_naive) else 0
         recency_score = 1.0 / (1.0 + age_days * 0.1)

@@ -1,6 +1,6 @@
 """Conversation memory: store and retrieve conversation history."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from ..core.enums import MemorySource, MemoryType
@@ -24,10 +24,10 @@ class ConversationMemory:
         session_id: str,
         role: str,
         content: str,
-        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> UUID:
         """Add a conversation message. Returns the memory record id."""
-        meta: Dict[str, Any] = {"role": role}
+        meta: dict[str, Any] = {"role": role}
         if tool_calls:
             meta["tool_calls"] = tool_calls
         text = content
@@ -52,7 +52,7 @@ class ConversationMemory:
         tenant_id: str,
         session_id: str,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get recent conversation history (messages in time order)."""
         records = await self.store.scan(
             tenant_id=tenant_id,
@@ -64,7 +64,7 @@ class ConversationMemory:
             order_by="-timestamp",
             limit=limit,
         )
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for r in reversed(records):
             meta = r.metadata or {}
             out.append(
@@ -83,7 +83,7 @@ class ConversationMemory:
         tenant_id: str,
         session_id: str,
         keep_recent: int = 10,
-        summary_text: Optional[str] = None,
+        summary_text: str | None = None,
     ) -> str:
         """
         Summarize old messages and keep recent ones.

@@ -5,11 +5,12 @@ Tests that the optional timestamp parameter is correctly threaded through
 the entire write pipeline from API to storage.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import pytest
 
-from src.api.schemas import WriteMemoryRequest, ProcessTurnRequest
-from src.memory.working.models import SemanticChunk, ChunkType
+from src.api.schemas import ProcessTurnRequest, WriteMemoryRequest
+from src.memory.working.models import ChunkType, SemanticChunk
 
 
 class TestTimestampInSchemas:
@@ -17,7 +18,7 @@ class TestTimestampInSchemas:
 
     def test_write_memory_request_accepts_timestamp(self):
         """WriteMemoryRequest should accept optional timestamp."""
-        ts = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
         req = WriteMemoryRequest(content="Test memory", timestamp=ts)
         assert req.timestamp == ts
 
@@ -28,7 +29,7 @@ class TestTimestampInSchemas:
 
     def test_process_turn_request_accepts_timestamp(self):
         """ProcessTurnRequest should accept optional timestamp."""
-        ts = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
         req = ProcessTurnRequest(user_message="Hello", timestamp=ts)
         assert req.timestamp == ts
 
@@ -43,7 +44,7 @@ class TestTimestampInChunker:
 
     def test_semantic_chunk_uses_provided_timestamp(self):
         """SemanticChunk should use provided timestamp."""
-        ts = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
         chunk = SemanticChunk(
             id="test-chunk", text="Test content", chunk_type=ChunkType.STATEMENT, timestamp=ts
         )
@@ -51,9 +52,9 @@ class TestTimestampInChunker:
 
     def test_semantic_chunk_defaults_to_now_when_no_timestamp(self):
         """SemanticChunk should default to current time when no timestamp provided."""
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
         chunk = SemanticChunk(id="test-chunk", text="Test content", chunk_type=ChunkType.STATEMENT)
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
 
         # Timestamp should be between before and after
         assert before <= chunk.timestamp <= after
@@ -65,8 +66,9 @@ class TestTimestampInOrchestrator:
     @pytest.mark.asyncio
     async def test_orchestrator_write_method_signature_accepts_timestamp(self):
         """Orchestrator.write method should have timestamp parameter."""
-        from src.memory.orchestrator import MemoryOrchestrator
         import inspect
+
+        from src.memory.orchestrator import MemoryOrchestrator
 
         # Check that write method accepts timestamp parameter
         sig = inspect.signature(MemoryOrchestrator.write)
@@ -83,8 +85,9 @@ class TestTimestampInSeamlessProvider:
     @pytest.mark.asyncio
     async def test_seamless_provider_process_turn_method_signature_accepts_timestamp(self):
         """SeamlessMemoryProvider.process_turn method should have timestamp parameter."""
-        from src.memory.seamless_provider import SeamlessMemoryProvider
         import inspect
+
+        from src.memory.seamless_provider import SeamlessMemoryProvider
 
         # Check that process_turn method accepts timestamp parameter
         sig = inspect.signature(SeamlessMemoryProvider.process_turn)
@@ -110,13 +113,14 @@ class TestTimestampBackwardCompatibility:
 
     def test_timestamp_parameter_is_optional_in_all_layers(self):
         """Timestamp parameter should be optional throughout the stack."""
-        from src.memory.orchestrator import MemoryOrchestrator
-        from src.memory.short_term import ShortTermMemory
-        from src.memory.working.manager import WorkingMemoryManager
-        from src.memory.working.chunker import RuleBasedChunker, SemanticChunker
-        from src.memory.hippocampal.store import HippocampalStore
-        from src.memory.seamless_provider import SeamlessMemoryProvider
         import inspect
+
+        from src.memory.hippocampal.store import HippocampalStore
+        from src.memory.orchestrator import MemoryOrchestrator
+        from src.memory.seamless_provider import SeamlessMemoryProvider
+        from src.memory.short_term import ShortTermMemory
+        from src.memory.working.chunker import RuleBasedChunker, SemanticChunker
+        from src.memory.working.manager import WorkingMemoryManager
 
         # Check all key methods have optional timestamp parameter
         methods_to_check = [
@@ -136,12 +140,12 @@ class TestTimestampBackwardCompatibility:
             params = sig.parameters
 
             # timestamp should exist and be optional
-            assert (
-                "timestamp" in params
-            ), f"{cls.__name__}.{method_name} missing timestamp parameter"
-            assert (
-                params["timestamp"].default is not inspect.Parameter.empty
-            ), f"{cls.__name__}.{method_name} timestamp should be optional"
+            assert "timestamp" in params, (
+                f"{cls.__name__}.{method_name} missing timestamp parameter"
+            )
+            assert params["timestamp"].default is not inspect.Parameter.empty, (
+                f"{cls.__name__}.{method_name} timestamp should be optional"
+            )
 
 
 class TestTimestampTemporalFidelity:
@@ -153,7 +157,7 @@ class TestTimestampTemporalFidelity:
         from src.memory.working.chunker import RuleBasedChunker
 
         # Use a historical timestamp (e.g., from Locomo benchmark)
-        historical_ts = datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+        historical_ts = datetime(2023, 6, 15, 14, 30, 0, tzinfo=UTC)
 
         chunker = RuleBasedChunker()
         chunks = chunker.chunk(text="I prefer dark mode.", timestamp=historical_ts)
@@ -165,8 +169,8 @@ class TestTimestampTemporalFidelity:
 
     def test_different_timestamps_for_different_events(self):
         """Different events can have different timestamps."""
-        ts1 = datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
-        ts2 = datetime(2023, 6, 1, 15, 30, 0, tzinfo=timezone.utc)
+        ts1 = datetime(2023, 1, 1, 10, 0, 0, tzinfo=UTC)
+        ts2 = datetime(2023, 6, 1, 15, 30, 0, tzinfo=UTC)
 
         chunk1 = SemanticChunk(
             id="chunk-1", text="Event 1", chunk_type=ChunkType.STATEMENT, timestamp=ts1

@@ -174,8 +174,9 @@ class TestMemoryItem:
 
     def test_memory_item_structure(self):
         """MemoryItem has expected fields."""
-        from src.api.schemas import MemoryItem
         from datetime import datetime
+
+        from src.api.schemas import MemoryItem
 
         item = MemoryItem(
             id="123e4567-e89b-12d3-a456-426614174000",

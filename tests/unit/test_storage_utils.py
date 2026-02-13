@@ -1,6 +1,6 @@
 """Unit tests for storage utilities."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from src.storage.utils import naive_utc
 
@@ -17,7 +17,7 @@ class TestNaiveUtc:
         assert naive_utc(dt).tzinfo is None
 
     def test_aware_utc_converted_to_naive_utc(self):
-        dt = datetime(2025, 2, 10, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2025, 2, 10, 12, 0, 0, tzinfo=UTC)
         result = naive_utc(dt)
         assert result.tzinfo is None
         assert result.year == 2025

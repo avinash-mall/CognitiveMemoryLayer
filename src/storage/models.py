@@ -1,13 +1,12 @@
 """SQLAlchemy models for PostgreSQL (event log and memory records)."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import DeclarativeBase
-
-from pgvector.sqlalchemy import Vector
 
 from ..core.config import get_settings
 
@@ -40,7 +39,7 @@ class EventLogModel(Base):
 
     created_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
         index=True,
     )
 
@@ -75,7 +74,7 @@ class MemoryRecordModel(Base):
     meta = Column("metadata", JSON, default=dict)  # DB column "metadata"
 
     timestamp = Column(DateTime, nullable=False, index=True)
-    written_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    written_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     valid_from = Column(DateTime, nullable=True)
     valid_to = Column(DateTime, nullable=True)
 
@@ -126,12 +125,12 @@ class SemanticFactModel(Base):
     created_at = Column(
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
     )
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
     )
     version = Column(Integer, default=1)
     supersedes_id = Column(UUID(as_uuid=True), nullable=True)
@@ -160,7 +159,7 @@ class DashboardJobModel(Base):
     started_at = Column(
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
     )
     completed_at = Column(DateTime, nullable=True)
 

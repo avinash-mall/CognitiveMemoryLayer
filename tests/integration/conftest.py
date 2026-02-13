@@ -9,7 +9,7 @@ Otherwise the root conftest's pg_engine/db_session are used.
 from __future__ import annotations
 
 import os
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 
@@ -31,9 +31,7 @@ def _use_env_postgres() -> bool:
     """
     if os.environ.get("USE_ENV_DB"):
         return True
-    if os.environ.get("DATABASE__POSTGRES_URL"):
-        return True
-    return False
+    return bool(os.environ.get("DATABASE__POSTGRES_URL"))
 
 
 if HAS_TESTCONTAINERS and not _use_env_postgres():
