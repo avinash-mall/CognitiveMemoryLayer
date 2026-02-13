@@ -1,7 +1,7 @@
 """Abstract storage interfaces for memory and graph backends."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from ..core.schemas import MemoryRecord, MemoryRecordCreate
@@ -16,7 +16,7 @@ class MemoryStoreBase(ABC):
         ...
 
     @abstractmethod
-    async def get_by_id(self, record_id: UUID) -> Optional[MemoryRecord]:
+    async def get_by_id(self, record_id: UUID) -> MemoryRecord | None:
         """Get a single record by ID."""
         ...
 
@@ -25,8 +25,8 @@ class MemoryStoreBase(ABC):
         self,
         tenant_id: str,
         key: str,
-        context_filter: Optional[List[str]] = None,
-    ) -> Optional[MemoryRecord]:
+        context_filter: list[str] | None = None,
+    ) -> MemoryRecord | None:
         """Get a record by its unique key (for facts/preferences). Holistic: tenant-only."""
         ...
 
@@ -39,9 +39,9 @@ class MemoryStoreBase(ABC):
     async def update(
         self,
         record_id: UUID,
-        patch: Dict[str, Any],
+        patch: dict[str, Any],
         increment_version: bool = True,
-    ) -> Optional[MemoryRecord]:
+    ) -> MemoryRecord | None:
         """Partial update with optimistic locking."""
         ...
 
@@ -49,12 +49,12 @@ class MemoryStoreBase(ABC):
     async def vector_search(
         self,
         tenant_id: str,
-        embedding: List[float],
+        embedding: list[float],
         top_k: int = 10,
-        context_filter: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        context_filter: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
         min_similarity: float = 0.0,
-    ) -> List[MemoryRecord]:
+    ) -> list[MemoryRecord]:
         """Search by vector similarity. Holistic: tenant-only, optional context_tags filter."""
         ...
 
@@ -62,11 +62,11 @@ class MemoryStoreBase(ABC):
     async def scan(
         self,
         tenant_id: str,
-        filters: Optional[Dict[str, Any]] = None,
-        order_by: Optional[str] = None,
+        filters: dict[str, Any] | None = None,
+        order_by: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[MemoryRecord]:
+    ) -> list[MemoryRecord]:
         """Scan records with filters. Holistic: tenant-only."""
         ...
 
@@ -74,7 +74,7 @@ class MemoryStoreBase(ABC):
     async def count(
         self,
         tenant_id: str,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
     ) -> int:
         """Count records matching filters. Holistic: tenant-only."""
         ...
@@ -83,7 +83,7 @@ class MemoryStoreBase(ABC):
     async def delete_by_filter(
         self,
         tenant_id: str,
-        filters: Dict[str, Any],
+        filters: dict[str, Any],
     ) -> int:
         """Delete records matching filters. Holistic: tenant-only. Returns count of deleted records."""
         ...
@@ -99,8 +99,8 @@ class GraphStoreBase(ABC):
         scope_id: str,
         entity: str,
         entity_type: str,
-        properties: Optional[Dict[str, Any]] = None,
-        namespace: Optional[str] = None,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> str:
         """Create or update a node, return node ID."""
         ...
@@ -113,8 +113,8 @@ class GraphStoreBase(ABC):
         subject: str,
         predicate: str,
         object: str,
-        properties: Optional[Dict[str, Any]] = None,
-        namespace: Optional[str] = None,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> str:
         """Create or update an edge."""
         ...
@@ -126,7 +126,7 @@ class GraphStoreBase(ABC):
         scope_id: str,
         entity: str,
         max_depth: int = 2,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get neighboring nodes up to max_depth."""
         ...
 
@@ -135,9 +135,9 @@ class GraphStoreBase(ABC):
         self,
         tenant_id: str,
         scope_id: str,
-        seed_entities: List[str],
+        seed_entities: list[str],
         top_k: int = 20,
         damping: float = 0.85,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Run PPR from seed entities."""
         ...

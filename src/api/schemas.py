@@ -1,7 +1,7 @@
 """API request/response schemas. Holistic: no scopes, tenant-only."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -13,22 +13,22 @@ class WriteMemoryRequest(BaseModel):
     """Request to store a memory. Holistic: tenant-only."""
 
     content: str
-    context_tags: Optional[List[str]] = None
-    session_id: Optional[str] = None
-    memory_type: Optional[MemoryType] = None
-    namespace: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    turn_id: Optional[str] = None
-    agent_id: Optional[str] = None
-    timestamp: Optional[datetime] = None  # Optional event timestamp (defaults to now)
+    context_tags: list[str] | None = None
+    session_id: str | None = None
+    memory_type: MemoryType | None = None
+    namespace: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    turn_id: str | None = None
+    agent_id: str | None = None
+    timestamp: datetime | None = None  # Optional event timestamp (defaults to now)
 
 
 class CreateSessionRequest(BaseModel):
     """Request to create a new memory session."""
 
-    name: Optional[str] = None
-    ttl_hours: Optional[int] = 24
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    name: str | None = None
+    ttl_hours: int | None = 24
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateSessionResponse(BaseModel):
@@ -36,19 +36,19 @@ class CreateSessionResponse(BaseModel):
 
     session_id: str
     created_at: datetime
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class WriteMemoryResponse(BaseModel):
     """Response from write operation."""
 
     success: bool
-    memory_id: Optional[UUID] = None
+    memory_id: UUID | None = None
     chunks_created: int = 0
     message: str = ""
     # Eval mode (when X-Eval-Mode: true): outcome and reason from write gate
-    eval_outcome: Optional[Literal["stored", "skipped"]] = None
-    eval_reason: Optional[str] = None
+    eval_outcome: Literal["stored", "skipped"] | None = None
+    eval_reason: str | None = None
 
 
 class ReadMemoryRequest(BaseModel):
@@ -56,10 +56,10 @@ class ReadMemoryRequest(BaseModel):
 
     query: str
     max_results: int = Field(default=10, le=50)
-    context_filter: Optional[List[str]] = None
-    memory_types: Optional[List[MemoryType]] = None
-    since: Optional[datetime] = None
-    until: Optional[datetime] = None
+    context_filter: list[str] | None = None
+    memory_types: list[MemoryType] | None = None
+    since: datetime | None = None
+    until: datetime | None = None
     format: Literal["packet", "list", "llm_context"] = "packet"
 
 
@@ -72,16 +72,16 @@ class MemoryItem(BaseModel):
     confidence: float
     relevance: float
     timestamp: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SessionContextResponse(BaseModel):
     """Full session context for LLM injection."""
 
     session_id: str
-    messages: List[MemoryItem] = Field(default_factory=list)
-    tool_results: List[MemoryItem] = Field(default_factory=list)
-    scratch_pad: List[MemoryItem] = Field(default_factory=list)
+    messages: list[MemoryItem] = Field(default_factory=list)
+    tool_results: list[MemoryItem] = Field(default_factory=list)
+    scratch_pad: list[MemoryItem] = Field(default_factory=list)
     context_string: str = ""
 
 
@@ -89,11 +89,11 @@ class ReadMemoryResponse(BaseModel):
     """Response from read operation."""
 
     query: str
-    memories: List[MemoryItem]
-    facts: List[MemoryItem] = Field(default_factory=list)
-    preferences: List[MemoryItem] = Field(default_factory=list)
-    episodes: List[MemoryItem] = Field(default_factory=list)
-    llm_context: Optional[str] = None
+    memories: list[MemoryItem]
+    facts: list[MemoryItem] = Field(default_factory=list)
+    preferences: list[MemoryItem] = Field(default_factory=list)
+    episodes: list[MemoryItem] = Field(default_factory=list)
+    llm_context: str | None = None
     total_count: int
     elapsed_ms: float
 
@@ -102,10 +102,10 @@ class ProcessTurnRequest(BaseModel):
     """Request to process a conversation turn with seamless memory (auto-retrieve + optional auto-store)."""
 
     user_message: str
-    assistant_response: Optional[str] = None
-    session_id: Optional[str] = None
+    assistant_response: str | None = None
+    session_id: str | None = None
     max_context_tokens: int = 1500
-    timestamp: Optional[datetime] = None  # Optional event timestamp for the turn (defaults to now)
+    timestamp: datetime | None = None  # Optional event timestamp for the turn (defaults to now)
 
 
 class ProcessTurnResponse(BaseModel):
@@ -121,11 +121,11 @@ class UpdateMemoryRequest(BaseModel):
     """Request to update a memory. Holistic: tenant-only."""
 
     memory_id: UUID
-    text: Optional[str] = None
-    confidence: Optional[float] = None
-    importance: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
-    feedback: Optional[str] = None  # "correct", "incorrect", "outdated"
+    text: str | None = None
+    confidence: float | None = None
+    importance: float | None = None
+    metadata: dict[str, Any] | None = None
+    feedback: str | None = None  # "correct", "incorrect", "outdated"
 
 
 class UpdateMemoryResponse(BaseModel):
@@ -140,9 +140,9 @@ class UpdateMemoryResponse(BaseModel):
 class ForgetRequest(BaseModel):
     """Request to forget memories. Holistic: tenant-only."""
 
-    memory_ids: Optional[List[UUID]] = None
-    query: Optional[str] = None
-    before: Optional[datetime] = None
+    memory_ids: list[UUID] | None = None
+    query: str | None = None
+    before: datetime | None = None
     action: Literal["delete", "archive", "silence"] = "delete"
 
 
@@ -161,11 +161,11 @@ class MemoryStats(BaseModel):
     active_memories: int
     silent_memories: int
     archived_memories: int
-    by_type: Dict[str, int]
+    by_type: dict[str, int]
     avg_confidence: float
     avg_importance: float
-    oldest_memory: Optional[datetime] = None
-    newest_memory: Optional[datetime] = None
+    oldest_memory: datetime | None = None
+    newest_memory: datetime | None = None
     estimated_size_mb: float
 
 
@@ -182,23 +182,23 @@ class DashboardOverview(BaseModel):
     archived_memories: int = 0
     deleted_memories: int = 0
     labile_memories: int = 0
-    by_type: Dict[str, int] = Field(default_factory=dict)
-    by_status: Dict[str, int] = Field(default_factory=dict)
+    by_type: dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
     avg_confidence: float = 0.0
     avg_importance: float = 0.0
     avg_access_count: float = 0.0
     avg_decay_rate: float = 0.0
-    oldest_memory: Optional[datetime] = None
-    newest_memory: Optional[datetime] = None
+    oldest_memory: datetime | None = None
+    newest_memory: datetime | None = None
     estimated_size_mb: float = 0.0
     total_semantic_facts: int = 0
     current_semantic_facts: int = 0
-    facts_by_category: Dict[str, int] = Field(default_factory=dict)
+    facts_by_category: dict[str, int] = Field(default_factory=dict)
     avg_fact_confidence: float = 0.0
     avg_evidence_count: float = 0.0
     total_events: int = 0
-    events_by_type: Dict[str, int] = Field(default_factory=dict)
-    events_by_operation: Dict[str, int] = Field(default_factory=dict)
+    events_by_type: dict[str, int] = Field(default_factory=dict)
+    events_by_operation: dict[str, int] = Field(default_factory=dict)
 
 
 class DashboardMemoryListItem(BaseModel):
@@ -206,27 +206,27 @@ class DashboardMemoryListItem(BaseModel):
 
     id: UUID
     tenant_id: str
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     type: str
     status: str
     text: str
-    key: Optional[str] = None
-    namespace: Optional[str] = None
-    context_tags: List[str] = Field(default_factory=list)
+    key: str | None = None
+    namespace: str | None = None
+    context_tags: list[str] = Field(default_factory=list)
     confidence: float = 0.5
     importance: float = 0.5
     access_count: int = 0
     decay_rate: float = 0.01
     labile: bool = False
     version: int = 1
-    timestamp: Optional[datetime] = None
-    written_at: Optional[datetime] = None
+    timestamp: datetime | None = None
+    written_at: datetime | None = None
 
 
 class DashboardMemoryListResponse(BaseModel):
     """Paginated memory list response."""
 
-    items: List[DashboardMemoryListItem]
+    items: list[DashboardMemoryListItem]
     total: int
     page: int
     per_page: int
@@ -238,32 +238,32 @@ class DashboardMemoryDetail(BaseModel):
 
     id: UUID
     tenant_id: str
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     type: str
     status: str
     text: str
-    key: Optional[str] = None
-    namespace: Optional[str] = None
-    context_tags: List[str] = Field(default_factory=list)
-    source_session_id: Optional[str] = None
+    key: str | None = None
+    namespace: str | None = None
+    context_tags: list[str] = Field(default_factory=list)
+    source_session_id: str | None = None
     entities: Any = None
     relations: Any = None
     metadata: Any = None
     confidence: float = 0.5
     importance: float = 0.5
     access_count: int = 0
-    last_accessed_at: Optional[datetime] = None
+    last_accessed_at: datetime | None = None
     decay_rate: float = 0.01
     labile: bool = False
     provenance: Any = None
     version: int = 1
-    supersedes_id: Optional[UUID] = None
-    content_hash: Optional[str] = None
-    timestamp: Optional[datetime] = None
-    written_at: Optional[datetime] = None
-    valid_from: Optional[datetime] = None
-    valid_to: Optional[datetime] = None
-    related_events: List[Dict[str, Any]] = Field(default_factory=list)
+    supersedes_id: UUID | None = None
+    content_hash: str | None = None
+    timestamp: datetime | None = None
+    written_at: datetime | None = None
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    related_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class DashboardEventItem(BaseModel):
@@ -272,19 +272,19 @@ class DashboardEventItem(BaseModel):
     id: UUID
     tenant_id: str
     scope_id: str
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     event_type: str
-    operation: Optional[str] = None
+    operation: str | None = None
     payload: Any = None
-    memory_ids: List[UUID] = Field(default_factory=list)
-    parent_event_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
+    memory_ids: list[UUID] = Field(default_factory=list)
+    parent_event_id: UUID | None = None
+    created_at: datetime | None = None
 
 
 class DashboardEventListResponse(BaseModel):
     """Paginated event list response."""
 
-    items: List[DashboardEventItem]
+    items: list[DashboardEventItem]
     total: int
     page: int
     per_page: int
@@ -301,7 +301,7 @@ class TimelinePoint(BaseModel):
 class DashboardTimelineResponse(BaseModel):
     """Timeline data for charts."""
 
-    points: List[TimelinePoint]
+    points: list[TimelinePoint]
     total: int
 
 
@@ -310,15 +310,15 @@ class ComponentStatus(BaseModel):
 
     name: str
     status: str  # "ok", "error", "degraded", "unknown"
-    latency_ms: Optional[float] = None
-    details: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
+    latency_ms: float | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
 
 
 class DashboardComponentsResponse(BaseModel):
     """Component health report."""
 
-    components: List[ComponentStatus]
+    components: list[ComponentStatus]
 
 
 class TenantInfo(BaseModel):
@@ -329,28 +329,28 @@ class TenantInfo(BaseModel):
     active_memory_count: int = 0
     fact_count: int = 0
     event_count: int = 0
-    last_memory_at: Optional[datetime] = None
-    last_event_at: Optional[datetime] = None
+    last_memory_at: datetime | None = None
+    last_event_at: datetime | None = None
 
 
 class DashboardTenantsResponse(BaseModel):
     """List of tenants."""
 
-    tenants: List[TenantInfo]
+    tenants: list[TenantInfo]
 
 
 class DashboardConsolidateRequest(BaseModel):
     """Request to trigger consolidation."""
 
     tenant_id: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
 
 
 class DashboardForgetRequest(BaseModel):
     """Request to trigger forgetting."""
 
     tenant_id: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
     dry_run: bool = True
     max_memories: int = 5000
 
@@ -362,18 +362,18 @@ class SessionInfo(BaseModel):
     """Session info from Redis + DB."""
 
     session_id: str
-    tenant_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    tenant_id: str | None = None
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
     ttl_seconds: int = -1
     memory_count: int = 0
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DashboardSessionsResponse(BaseModel):
     """Sessions list."""
 
-    sessions: List[SessionInfo]
+    sessions: list[SessionInfo]
     total_active: int = 0
     total_memories_with_session: int = 0
 
@@ -395,7 +395,7 @@ class RateLimitEntry(BaseModel):
 class DashboardRateLimitsResponse(BaseModel):
     """Rate limit entries."""
 
-    entries: List[RateLimitEntry]
+    entries: list[RateLimitEntry]
     configured_rpm: int = 60
 
 
@@ -409,7 +409,7 @@ class HourlyRequestCount(BaseModel):
 class RequestStatsResponse(BaseModel):
     """Request stats over time."""
 
-    points: List[HourlyRequestCount]
+    points: list[HourlyRequestCount]
     total_last_24h: int = 0
 
 
@@ -422,7 +422,7 @@ class GraphNodeInfo(BaseModel):
     id: str
     entity: str
     entity_type: str
-    properties: Dict[str, Any] = Field(default_factory=dict)
+    properties: dict[str, Any] = Field(default_factory=dict)
 
 
 class GraphEdgeInfo(BaseModel):
@@ -432,7 +432,7 @@ class GraphEdgeInfo(BaseModel):
     target: str
     predicate: str
     confidence: float = 0.0
-    properties: Dict[str, Any] = Field(default_factory=dict)
+    properties: dict[str, Any] = Field(default_factory=dict)
 
 
 class GraphStatsResponse(BaseModel):
@@ -440,16 +440,16 @@ class GraphStatsResponse(BaseModel):
 
     total_nodes: int = 0
     total_edges: int = 0
-    entity_types: Dict[str, int] = Field(default_factory=dict)
-    tenants_with_graph: List[str] = Field(default_factory=list)
+    entity_types: dict[str, int] = Field(default_factory=dict)
+    tenants_with_graph: list[str] = Field(default_factory=list)
 
 
 class GraphExploreResponse(BaseModel):
     """Graph exploration result."""
 
-    nodes: List[GraphNodeInfo] = Field(default_factory=list)
-    edges: List[GraphEdgeInfo] = Field(default_factory=list)
-    center_entity: Optional[str] = None
+    nodes: list[GraphNodeInfo] = Field(default_factory=list)
+    edges: list[GraphEdgeInfo] = Field(default_factory=list)
+    center_entity: str | None = None
 
 
 class GraphSearchResult(BaseModel):
@@ -464,7 +464,7 @@ class GraphSearchResult(BaseModel):
 class GraphSearchResponse(BaseModel):
     """Graph search results."""
 
-    results: List[GraphSearchResult] = Field(default_factory=list)
+    results: list[GraphSearchResult] = Field(default_factory=list)
 
 
 # ---- Config Schemas ----
@@ -486,19 +486,19 @@ class ConfigSection(BaseModel):
     """A group of config settings."""
 
     name: str
-    items: List[ConfigItem] = Field(default_factory=list)
+    items: list[ConfigItem] = Field(default_factory=list)
 
 
 class DashboardConfigResponse(BaseModel):
     """Full config snapshot."""
 
-    sections: List[ConfigSection] = Field(default_factory=list)
+    sections: list[ConfigSection] = Field(default_factory=list)
 
 
 class ConfigUpdateRequest(BaseModel):
     """Request to update config settings."""
 
-    updates: Dict[str, Any] = Field(default_factory=dict)
+    updates: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---- Labile / Reconsolidation Schemas ----
@@ -517,7 +517,7 @@ class TenantLabileInfo(BaseModel):
 class DashboardLabileResponse(BaseModel):
     """Labile state overview."""
 
-    tenants: List[TenantLabileInfo] = Field(default_factory=list)
+    tenants: list[TenantLabileInfo] = Field(default_factory=list)
     total_db_labile: int = 0
     total_redis_scopes: int = 0
     total_redis_sessions: int = 0
@@ -533,8 +533,8 @@ class DashboardRetrievalRequest(BaseModel):
     tenant_id: str
     query: str
     max_results: int = Field(default=10, le=50)
-    context_filter: Optional[List[str]] = None
-    memory_types: Optional[List[str]] = None
+    context_filter: list[str] | None = None
+    memory_types: list[str] | None = None
     format: Literal["packet", "list", "llm_context"] = "list"
 
 
@@ -547,16 +547,16 @@ class RetrievalResultItem(BaseModel):
     confidence: float
     relevance_score: float
     retrieval_source: str = ""
-    timestamp: Optional[datetime] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DashboardRetrievalResponse(BaseModel):
     """Retrieval test results."""
 
     query: str
-    results: List[RetrievalResultItem] = Field(default_factory=list)
-    llm_context: Optional[str] = None
+    results: list[RetrievalResultItem] = Field(default_factory=list)
+    llm_context: str | None = None
     total_count: int = 0
     elapsed_ms: float = 0.0
 
@@ -570,20 +570,20 @@ class DashboardJobItem(BaseModel):
     id: UUID
     job_type: str
     tenant_id: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
     dry_run: bool = False
     status: str
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
 
 
 class DashboardJobsResponse(BaseModel):
     """Paginated job list."""
 
-    items: List[DashboardJobItem]
+    items: list[DashboardJobItem]
     total: int
 
 
@@ -593,5 +593,5 @@ class DashboardJobsResponse(BaseModel):
 class BulkActionRequest(BaseModel):
     """Request for bulk memory actions."""
 
-    memory_ids: List[UUID]
+    memory_ids: list[UUID]
     action: Literal["archive", "silence", "delete"]

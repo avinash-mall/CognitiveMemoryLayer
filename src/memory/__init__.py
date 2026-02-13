@@ -6,8 +6,8 @@ from .orchestrator import MemoryOrchestrator
 from .short_term import ShortTermMemory
 
 __all__ = [
-    "MemoryOrchestrator",
-    "ShortTermMemory",
     "HippocampalStore",
+    "MemoryOrchestrator",
     "NeocorticalStore",
+    "ShortTermMemory",
 ]

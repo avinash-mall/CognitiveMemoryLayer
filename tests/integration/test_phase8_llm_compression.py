@@ -32,7 +32,7 @@ async def _ensure_llm_reachable(llm_client):
     """Ensure default LLM is reachable; skip test if rate-limited, connection error, or other API failure."""
     try:
         await llm_client.complete("Hi", max_tokens=5)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         _skip_if_llm_unavailable(f"LLM unavailable or rate-limited: {type(e).__name__}: {e}")
 
 

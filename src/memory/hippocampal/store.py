@@ -1,9 +1,9 @@
 """Hippocampal store: episodic memory with write gate, embedding, and vector store."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from ...core.enums import MemoryStatus, MemorySource, MemoryType
+from ...core.enums import MemorySource, MemoryStatus, MemoryType
 from ...core.schemas import (
     EntityMention,
     MemoryRecord,
@@ -35,10 +35,10 @@ class HippocampalStore:
         self,
         vector_store: MemoryStoreBase,
         embedding_client: EmbeddingClient,
-        entity_extractor: Optional[EntityExtractor] = None,
-        relation_extractor: Optional[RelationExtractor] = None,
-        write_gate: Optional[WriteGate] = None,
-        redactor: Optional[PIIRedactor] = None,
+        entity_extractor: EntityExtractor | None = None,
+        relation_extractor: RelationExtractor | None = None,
+        write_gate: WriteGate | None = None,
+        redactor: PIIRedactor | None = None,
     ) -> None:
         self.store = vector_store
         self.embeddings = embedding_client
@@ -51,15 +51,15 @@ class HippocampalStore:
         self,
         tenant_id: str,
         chunk: SemanticChunk,
-        context_tags: Optional[List[str]] = None,
-        source_session_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        existing_memories: Optional[List[Dict[str, Any]]] = None,
-        namespace: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-        request_metadata: Optional[Dict[str, Any]] = None,
-        memory_type_override: Optional[MemoryType] = None,
-    ) -> tuple[Optional[MemoryRecord], WriteGateResult]:
+        context_tags: list[str] | None = None,
+        source_session_id: str | None = None,
+        agent_id: str | None = None,
+        existing_memories: list[dict[str, Any]] | None = None,
+        namespace: str | None = None,
+        timestamp: datetime | None = None,
+        request_metadata: dict[str, Any] | None = None,
+        memory_type_override: MemoryType | None = None,
+    ) -> tuple[MemoryRecord | None, WriteGateResult]:
         gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_memories)
         if gate_result.decision == WriteDecision.SKIP:
             return (None, gate_result)
@@ -71,7 +71,7 @@ class HippocampalStore:
 
         embedding_result = await self.embeddings.embed(text)
 
-        entities: List[EntityMention] = []
+        entities: list[EntityMention] = []
         if self.entity_extractor:
             entities = await self.entity_extractor.extract(text)
         elif chunk.entities:
@@ -79,7 +79,7 @@ class HippocampalStore:
                 EntityMention(text=e, normalized=e, entity_type="CONCEPT") for e in chunk.entities
             ]
 
-        relations: List[Relation] = []
+        relations: list[Relation] = []
         if self.relation_extractor:
             entity_texts = [e.normalized for e in entities]
             relations = await self.relation_extractor.extract(text, entities=entity_texts)
@@ -91,7 +91,7 @@ class HippocampalStore:
         key = self._generate_key(chunk, memory_type)
 
         # Merge request-level metadata with system metadata; request metadata wins on conflict
-        system_metadata: Dict[str, Any] = {
+        system_metadata: dict[str, Any] = {
             "chunk_type": chunk.chunk_type.value,
             "source_turn_id": chunk.source_turn_id,
             "source_role": chunk.source_role,
@@ -129,14 +129,14 @@ class HippocampalStore:
     async def encode_batch(
         self,
         tenant_id: str,
-        chunks: List[SemanticChunk],
-        context_tags: Optional[List[str]] = None,
-        source_session_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        namespace: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-        request_metadata: Optional[Dict[str, Any]] = None,
-        memory_type_override: Optional[MemoryType] = None,
+        chunks: list[SemanticChunk],
+        context_tags: list[str] | None = None,
+        source_session_id: str | None = None,
+        agent_id: str | None = None,
+        namespace: str | None = None,
+        timestamp: datetime | None = None,
+        request_metadata: dict[str, Any] | None = None,
+        memory_type_override: MemoryType | None = None,
         return_gate_results: bool = False,
     ):
         existing = await self.store.scan(
@@ -146,8 +146,8 @@ class HippocampalStore:
             order_by="-timestamp",
         )
         existing_dicts = [{"text": m.text} for m in existing]
-        results: List[MemoryRecord] = []
-        gate_results: List[dict] = [] if return_gate_results else []
+        results: list[MemoryRecord] = []
+        gate_results: list[dict] = [] if return_gate_results else []
         for chunk in chunks:
             record, gate_result = await self.encode_chunk(
                 tenant_id,
@@ -175,9 +175,9 @@ class HippocampalStore:
         tenant_id: str,
         query: str,
         top_k: int = 10,
-        context_filter: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> List[MemoryRecord]:
+        context_filter: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> list[MemoryRecord]:
         query_embedding = await self.embeddings.embed(query)
         results = await self.store.vector_search(
             tenant_id,
@@ -187,7 +187,7 @@ class HippocampalStore:
             filters=filters,
         )
         # Batch update access tracking: atomic increment to avoid lost update (BUG-02)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for record in results:
             record.access_count += 1
             record.last_accessed_at = now
@@ -216,9 +216,9 @@ class HippocampalStore:
         self,
         tenant_id: str,
         limit: int = 20,
-        memory_types: Optional[List[MemoryType]] = None,
-    ) -> List[MemoryRecord]:
-        filters: Dict[str, Any] = {"status": MemoryStatus.ACTIVE.value}
+        memory_types: list[MemoryType] | None = None,
+    ) -> list[MemoryRecord]:
+        filters: dict[str, Any] = {"status": MemoryStatus.ACTIVE.value}
         if memory_types:
             filters["type"] = [t.value for t in memory_types]
         return await self.store.scan(
@@ -228,7 +228,7 @@ class HippocampalStore:
             limit=limit,
         )
 
-    def _generate_key(self, chunk: SemanticChunk, memory_type: MemoryType) -> Optional[str]:
+    def _generate_key(self, chunk: SemanticChunk, memory_type: MemoryType) -> str | None:
         if memory_type not in (
             MemoryType.PREFERENCE,
             MemoryType.SEMANTIC_FACT,

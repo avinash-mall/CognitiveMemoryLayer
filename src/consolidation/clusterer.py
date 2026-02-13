@@ -1,16 +1,15 @@
 """Semantic clustering of episodes (pure Python, no sklearn)."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from ..core.schemas import MemoryRecord
 
 
-def _cosine_sim(a: List[float], b: List[float]) -> float:
+def _cosine_sim(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two vectors."""
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
     if norm_a == 0 or norm_b == 0:
@@ -18,7 +17,7 @@ def _cosine_sim(a: List[float], b: List[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _centroid(embeddings: List[List[float]]) -> List[float]:
+def _centroid(embeddings: list[list[float]]) -> list[float]:
     """Average of vectors."""
     if not embeddings:
         return []
@@ -31,10 +30,10 @@ class EpisodeCluster:
     """A cluster of related episodes. BUG-11: use default_factory for mutable default."""
 
     cluster_id: int
-    episodes: List[MemoryRecord]
-    centroid: Optional[List[float]] = None
+    episodes: list[MemoryRecord]
+    centroid: list[float] | None = None
 
-    common_entities: List[str] = field(default_factory=list)
+    common_entities: list[str] = field(default_factory=list)
     dominant_type: str = "unknown"
     avg_confidence: float = 0.0
 
@@ -52,7 +51,7 @@ class SemanticClusterer:
         self.max_clusters = max_clusters
         self.similarity_threshold = similarity_threshold
 
-    def cluster(self, episodes: List[MemoryRecord]) -> List[EpisodeCluster]:
+    def cluster(self, episodes: list[MemoryRecord]) -> list[EpisodeCluster]:
         """Cluster episodes by semantic similarity."""
         if not episodes:
             return []
@@ -83,7 +82,7 @@ class SemanticClusterer:
             ]
 
         # Greedy: assign each episode to nearest cluster by centroid similarity
-        clusters: List[EpisodeCluster] = []
+        clusters: list[EpisodeCluster] = []
         for i, ep in enumerate(valid):
             emb = ep.embedding
             if not emb:
@@ -152,8 +151,8 @@ class SemanticClusterer:
             c.dominant_type = self._dominant_type(c.episodes)
         return clusters
 
-    def _common_entities(self, episodes: List[MemoryRecord]) -> List[str]:
-        entity_counts: Dict[str, int] = {}
+    def _common_entities(self, episodes: list[MemoryRecord]) -> list[str]:
+        entity_counts: dict[str, int] = {}
         for ep in episodes:
             for ent in ep.entities:
                 key = getattr(ent, "normalized", str(ent))
@@ -161,16 +160,16 @@ class SemanticClusterer:
         threshold = len(episodes) * 0.5
         return [e for e, count in entity_counts.items() if count >= threshold]
 
-    def _dominant_type(self, episodes: List[MemoryRecord]) -> str:
-        type_counts: Dict[str, int] = {}
+    def _dominant_type(self, episodes: list[MemoryRecord]) -> str:
+        type_counts: dict[str, int] = {}
         for ep in episodes:
             t = ep.type.value if hasattr(ep.type, "value") else str(ep.type)
             type_counts[t] = type_counts.get(t, 0) + 1
         return max(type_counts, key=type_counts.get) if type_counts else "unknown"
 
     def _find_nearest(
-        self, episode: MemoryRecord, clusters: List[EpisodeCluster]
-    ) -> Optional[EpisodeCluster]:
+        self, episode: MemoryRecord, clusters: list[EpisodeCluster]
+    ) -> EpisodeCluster | None:
         if not episode.embedding or not clusters:
             return clusters[0] if clusters else None
         best = None

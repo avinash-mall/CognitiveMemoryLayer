@@ -1,8 +1,7 @@
 """Reranker for retrieved memories."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from datetime import UTC, datetime
 
 from ..core.schemas import RetrievedMemory
 
@@ -22,20 +21,20 @@ class RerankerConfig:
 class MemoryReranker:
     """Reranks retrieved memories by relevance, recency, confidence, and diversity."""
 
-    def __init__(self, config: Optional[RerankerConfig] = None):
+    def __init__(self, config: RerankerConfig | None = None):
         self.config = config or RerankerConfig()
 
     def rerank(
         self,
-        memories: List[RetrievedMemory],
+        memories: list[RetrievedMemory],
         query: str,
-        max_results: Optional[int] = None,
-    ) -> List[RetrievedMemory]:
+        max_results: int | None = None,
+    ) -> list[RetrievedMemory]:
         """Rerank memories by combined score and diversity."""
         if not memories:
             return []
         max_results = max_results or self.config.max_results
-        scored: List[Tuple[float, RetrievedMemory]] = []
+        scored: list[tuple[float, RetrievedMemory]] = []
         for mem in memories:
             score = self._calculate_score(mem, memories)
             scored.append((score, mem))
@@ -46,14 +45,14 @@ class MemoryReranker:
     def _calculate_score(
         self,
         memory: RetrievedMemory,
-        all_memories: List[RetrievedMemory],
+        all_memories: list[RetrievedMemory],
     ) -> float:
         """Calculate combined score for a memory."""
         relevance = memory.relevance_score
         ts = memory.record.timestamp
         if isinstance(ts, datetime):
-            now = datetime.now(timezone.utc)
-            tz_ts = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+            now = datetime.now(UTC)
+            tz_ts = ts if ts.tzinfo else ts.replace(tzinfo=UTC)
             age_days = (now - tz_ts).days
         else:
             age_days = 0
@@ -82,13 +81,13 @@ class MemoryReranker:
 
     def _apply_diversity(
         self,
-        scored: List[Tuple[float, RetrievedMemory]],
+        scored: list[tuple[float, RetrievedMemory]],
         max_results: int,
-    ) -> List[Tuple[float, RetrievedMemory]]:
+    ) -> list[tuple[float, RetrievedMemory]]:
         """Apply MMR-style diversity selection."""
         if len(scored) <= max_results:
             return scored
-        selected: List[Tuple[float, RetrievedMemory]] = []
+        selected: list[tuple[float, RetrievedMemory]] = []
         candidates = list(scored)
         while len(selected) < max_results and candidates:
             if not selected:

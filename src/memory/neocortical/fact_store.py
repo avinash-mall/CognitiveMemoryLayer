@@ -1,8 +1,9 @@
 """Semantic fact store with versioning and schema alignment."""
 
+import contextlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import String, and_, cast, select, update
@@ -19,7 +20,7 @@ class SemanticFactStore:
     Handles versioning, temporal validity, and schema alignment.
     """
 
-    def __init__(self, session_factory: Any, schemas: Optional[Dict[str, FactSchema]] = None):
+    def __init__(self, session_factory: Any, schemas: dict[str, FactSchema] | None = None):
         self.session_factory = session_factory
         self.schemas = schemas or DEFAULT_FACT_SCHEMAS
 
@@ -29,9 +30,9 @@ class SemanticFactStore:
         key: str,
         value: Any,
         confidence: float = 0.8,
-        evidence_ids: Optional[List[str]] = None,
-        valid_from: Optional[datetime] = None,
-        context_tags: Optional[List[str]] = None,
+        evidence_ids: list[str] | None = None,
+        valid_from: datetime | None = None,
+        context_tags: list[str] | None = None,
     ) -> SemanticFact:
         """Insert or update a semantic fact. Holistic: tenant-only."""
         async with self.session_factory() as session:
@@ -61,7 +62,7 @@ class SemanticFactStore:
         tenant_id: str,
         key: str,
         include_historical: bool = False,
-    ) -> Optional[SemanticFact]:
+    ) -> SemanticFact | None:
         """Get a fact by key. Holistic: tenant-only."""
         async with self.session_factory() as session:
             q = select(SemanticFactModel).where(
@@ -82,7 +83,7 @@ class SemanticFactStore:
         tenant_id: str,
         category: FactCategory,
         current_only: bool = True,
-    ) -> List[SemanticFact]:
+    ) -> list[SemanticFact]:
         """Get all facts in a category. Holistic: tenant-only."""
         async with self.session_factory() as session:
             q = select(SemanticFactModel).where(
@@ -97,9 +98,9 @@ class SemanticFactStore:
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]
 
-    async def get_tenant_profile(self, tenant_id: str) -> Dict[str, Any]:
+    async def get_tenant_profile(self, tenant_id: str) -> dict[str, Any]:
         """Get complete profile as structured dict by category. Holistic: tenant-only."""
-        profile: Dict[str, Any] = {}
+        profile: dict[str, Any] = {}
         for category in FactCategory:
             facts = await self.get_facts_by_category(tenant_id, category)
             if facts:
@@ -111,7 +112,7 @@ class SemanticFactStore:
         tenant_id: str,
         query: str,
         limit: int = 20,
-    ) -> List[SemanticFact]:
+    ) -> list[SemanticFact]:
         """Search facts by text (key, subject, value). Holistic: tenant-only."""
         async with self.session_factory() as session:
             q = (
@@ -142,7 +143,7 @@ class SemanticFactStore:
     ) -> bool:
         """Mark a fact as no longer current. Holistic: tenant-only."""
         async with self.session_factory() as session:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             stmt = (
                 update(SemanticFactModel)
                 .where(
@@ -163,7 +164,7 @@ class SemanticFactStore:
         session: AsyncSession,
         tenant_id: str,
         key: str,
-    ) -> Optional[SemanticFactModel]:
+    ) -> SemanticFactModel | None:
         """Get existing current fact as the ORM model (avoids double-fetch, LOW-10)."""
         q = select(SemanticFactModel).where(
             and_(
@@ -181,9 +182,9 @@ class SemanticFactStore:
         existing_model: SemanticFactModel,
         new_value: Any,
         confidence: float,
-        evidence_ids: Optional[List[str]],
-        schema: Optional[FactSchema],
-        valid_from: Optional[datetime],
+        evidence_ids: list[str] | None,
+        schema: FactSchema | None,
+        valid_from: datetime | None,
     ) -> SemanticFact:
         """Update existing fact (reinforce or new version).
 
@@ -196,14 +197,14 @@ class SemanticFactStore:
             model.confidence = min(1.0, model.confidence + 0.1)
             model.evidence_count += 1
             model.evidence_ids = list(model.evidence_ids or []) + (evidence_ids or [])
-            model.updated_at = naive_utc(datetime.now(timezone.utc))
+            model.updated_at = naive_utc(datetime.now(UTC))
             await session.commit()
             await session.refresh(model)
             return self._model_to_fact(model)
         else:
             # Always supersede old fact when value changes (at most one current per key)
             model.is_current = False
-            model.valid_to = naive_utc(valid_from or datetime.now(timezone.utc))
+            model.valid_to = naive_utc(valid_from or datetime.now(UTC))
             await session.flush()
             value_type = "str" if new_value is None else type(new_value).__name__.lower()
             new_fact = SemanticFact(
@@ -219,7 +220,7 @@ class SemanticFactStore:
                 confidence=confidence,
                 evidence_count=1,
                 evidence_ids=evidence_ids or [],
-                valid_from=naive_utc(valid_from or datetime.now(timezone.utc)),
+                valid_from=naive_utc(valid_from or datetime.now(UTC)),
                 is_current=True,
                 version=existing.version + 1,
                 supersedes_id=existing.id,
@@ -236,9 +237,9 @@ class SemanticFactStore:
         predicate: str,
         value: Any,
         confidence: float,
-        evidence_ids: Optional[List[str]],
-        valid_from: Optional[datetime],
-        context_tags: List[str],
+        evidence_ids: list[str] | None,
+        valid_from: datetime | None,
+        context_tags: list[str],
     ) -> SemanticFact:
         """Create new fact."""
         value_type = "str" if value is None else type(value).__name__.lower()
@@ -255,7 +256,7 @@ class SemanticFactStore:
             confidence=confidence,
             evidence_count=1,
             evidence_ids=evidence_ids or [],
-            valid_from=naive_utc(valid_from or datetime.now(timezone.utc)),
+            valid_from=naive_utc(valid_from or datetime.now(UTC)),
             is_current=True,
             version=1,
         )
@@ -305,7 +306,7 @@ class SemanticFactStore:
             predicate = key
         return category, predicate
 
-    def _get_schema(self, key: str) -> Optional[FactSchema]:
+    def _get_schema(self, key: str) -> FactSchema | None:
         """Get schema for a key."""
         if key in self.schemas:
             return self.schemas[key]
@@ -320,10 +321,8 @@ class SemanticFactStore:
         """Convert ORM model to SemanticFact."""
         val = model.value
         if isinstance(val, str) and val.strip().startswith(("{", "[")):
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 val = json.loads(val)
-            except json.JSONDecodeError:
-                pass
         context_tags = getattr(model, "context_tags", None) or []
         return SemanticFact(
             id=str(model.id),

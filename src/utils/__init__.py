@@ -5,8 +5,8 @@ from .llm import LLMClient, get_llm_client
 
 __all__ = [
     "EmbeddingClient",
+    "LLMClient",
     "OpenAIEmbeddings",
     "get_embedding_client",
-    "LLMClient",
     "get_llm_client",
 ]

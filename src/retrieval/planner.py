@@ -1,14 +1,14 @@
 """Retrieval planning from query analysis."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+from typing import Any
 
 from .query_types import QueryAnalysis, QueryIntent
 
 
-class RetrievalSource(str, Enum):
+class RetrievalSource(StrEnum):
     """Source for a retrieval step."""
 
     FACTS = "facts"
@@ -23,11 +23,11 @@ class RetrievalStep:
 
     source: RetrievalSource
     priority: int = 0
-    key: Optional[str] = None
-    query: Optional[str] = None
-    seeds: List[str] = field(default_factory=list)
-    memory_types: List[str] = field(default_factory=list)
-    time_filter: Optional[Dict[str, Any]] = None
+    key: str | None = None
+    query: str | None = None
+    seeds: list[str] = field(default_factory=list)
+    memory_types: list[str] = field(default_factory=list)
+    time_filter: dict[str, Any] | None = None
     min_confidence: float = 0.0
     top_k: int = 10
     timeout_ms: int = 100
@@ -40,10 +40,10 @@ class RetrievalPlan:
 
     query: str
     analysis: QueryAnalysis
-    steps: List[RetrievalStep]
+    steps: list[RetrievalStep]
     total_timeout_ms: int = 500
     max_results: int = 20
-    parallel_steps: List[List[int]] = field(default_factory=list)
+    parallel_steps: list[list[int]] = field(default_factory=list)
 
 
 class RetrievalPlanner:
@@ -51,8 +51,8 @@ class RetrievalPlanner:
 
     def plan(self, analysis: QueryAnalysis) -> RetrievalPlan:
         """Generate a retrieval plan for the analyzed query."""
-        steps: List[RetrievalStep] = []
-        parallel_groups: List[List[int]] = []
+        steps: list[RetrievalStep] = []
+        parallel_groups: list[list[int]] = []
 
         if analysis.intent in (
             QueryIntent.PREFERENCE_LOOKUP,
@@ -168,11 +168,11 @@ class RetrievalPlanner:
             timeout_ms=50,
         )
 
-    def _build_time_filter(self, analysis: QueryAnalysis) -> Optional[Dict[str, Any]]:
+    def _build_time_filter(self, analysis: QueryAnalysis) -> dict[str, Any] | None:
         """Build time filter from analysis."""
         if not analysis.time_reference:
             return None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ref = (analysis.time_reference or "").lower()
         if "today" in ref:
             return {"since": now.replace(hour=0, minute=0, second=0, microsecond=0)}
@@ -190,6 +190,6 @@ class RetrievalPlanner:
             return {"since": now - timedelta(days=3)}
         return None
 
-    def _calculate_timeout(self, steps: List[RetrievalStep]) -> int:
+    def _calculate_timeout(self, steps: list[RetrievalStep]) -> int:
         """Calculate total timeout based on steps."""
         return sum(s.timeout_ms for s in steps) // 2 + 100

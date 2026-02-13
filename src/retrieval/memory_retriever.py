@@ -1,7 +1,6 @@
 """Main memory retriever facade."""
 
 from datetime import datetime
-from typing import List, Optional
 
 from ..core.schemas import MemoryPacket
 from ..memory.hippocampal.store import HippocampalStore
@@ -21,8 +20,8 @@ class MemoryRetriever:
         self,
         hippocampal: HippocampalStore,
         neocortical: NeocorticalStore,
-        llm_client: Optional[LLMClient] = None,
-        cache: Optional[object] = None,
+        llm_client: LLMClient | None = None,
+        cache: object | None = None,
     ):
         self.classifier = QueryClassifier(llm_client)
         self.planner = RetrievalPlanner()
@@ -35,12 +34,12 @@ class MemoryRetriever:
         tenant_id: str,
         query: str,
         max_results: int = 20,
-        context_filter: Optional[List[str]] = None,
-        recent_context: Optional[str] = None,
+        context_filter: list[str] | None = None,
+        recent_context: str | None = None,
         return_packet: bool = True,
-        memory_types: Optional[List[str]] = None,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        memory_types: list[str] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories for a query. Holistic: tenant-only."""
         analysis = await self.classifier.classify(query, recent_context=recent_context)
@@ -71,8 +70,8 @@ class MemoryRetriever:
         query: str,
         max_tokens: int = 2000,
         format: str = "markdown",
-        context_filter: Optional[List[str]] = None,
-        recent_context: Optional[str] = None,
+        context_filter: list[str] | None = None,
+        recent_context: str | None = None,
     ) -> str:
         """Retrieve and format memories for LLM context. Holistic: tenant-only."""
         packet = await self.retrieve(

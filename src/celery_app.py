@@ -2,7 +2,7 @@
 
 import asyncio
 import threading
-from typing import Any, Dict
+from typing import Any
 
 from celery import Celery
 
@@ -97,14 +97,14 @@ def run_forgetting_task(
     user_id: str,
     dry_run: bool = False,
     max_memories: int = 5000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Celery task: run active forgetting for a tenant/user.
     Call from API or Beat; runs in worker process with async bridge.
     Uses persistent event loop to enable connection pool reuse.
     """
 
-    async def _run() -> Dict[str, Any]:
+    async def _run() -> dict[str, Any]:
         # Create DB manager inside async context to ensure connections
         # are bound to the correct event loop (MED-14)
         from .forgetting.worker import ForgettingWorker

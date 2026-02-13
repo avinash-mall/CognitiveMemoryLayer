@@ -2,7 +2,6 @@
 
 import hmac
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Security
 from fastapi.security import APIKeyHeader
@@ -17,7 +16,7 @@ class AuthContext:
     """Authentication context for a request."""
 
     tenant_id: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
     api_key: str = ""
     can_read: bool = True
     can_write: bool = True
@@ -49,9 +48,9 @@ def _build_api_keys() -> dict:
 
 
 async def get_auth_context(
-    api_key: Optional[str] = Security(api_key_header),
-    x_tenant_id: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None),
+    api_key: str | None = Security(api_key_header),
+    x_tenant_id: str | None = Header(None),
+    x_user_id: str | None = Header(None),
 ) -> AuthContext:
     """Dependency to get auth context from request.
 

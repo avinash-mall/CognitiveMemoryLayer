@@ -3,7 +3,8 @@
 import re
 from functools import lru_cache
 
-from pydantic import BaseModel as PydanticBaseModel, Field
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 

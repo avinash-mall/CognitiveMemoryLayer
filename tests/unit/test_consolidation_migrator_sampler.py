@@ -1,9 +1,8 @@
 """Unit tests for consolidation migrator and episode sampler."""
 
-from datetime import datetime, timezone
-from uuid import uuid4
-
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -30,7 +29,7 @@ def _make_memory_record(
         confidence=confidence,
         importance=importance,
         access_count=access_count,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         provenance=Provenance(source=MemorySource.USER_EXPLICIT),
     )
 

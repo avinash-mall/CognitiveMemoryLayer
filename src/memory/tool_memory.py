@@ -1,8 +1,8 @@
 """Tool result storage for agentic workflows."""
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from ..core.enums import MemorySource, MemoryType
@@ -25,12 +25,12 @@ class ToolMemory:
         tenant_id: str,
         session_id: str,
         tool_name: str,
-        input_params: Dict[str, Any],
+        input_params: dict[str, Any],
         output: Any,
     ) -> UUID:
         """Store a tool execution result. Returns the memory record id."""
         text = json.dumps({"tool": tool_name, "input": input_params, "output": output})
-        meta: Dict[str, Any] = {
+        meta: dict[str, Any] = {
             "tool_name": tool_name,
             "input_params": input_params,
         }
@@ -40,7 +40,7 @@ class ToolMemory:
             source_session_id=session_id,
             type=MemoryType.TOOL_RESULT,
             text=text,
-            key=f"tool_result:{session_id}:{tool_name}:{datetime.now(timezone.utc).isoformat()}",
+            key=f"tool_result:{session_id}:{tool_name}:{datetime.now(UTC).isoformat()}",
             embedding=None,
             metadata=meta,
             provenance=Provenance(source=MemorySource.TOOL_RESULT, tool_refs=[tool_name]),
@@ -52,11 +52,11 @@ class ToolMemory:
         self,
         tenant_id: str,
         session_id: str,
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve tool results for the session, optionally filtered by tool_name."""
-        filters: Dict[str, Any] = {
+        filters: dict[str, Any] = {
             "status": "active",
             "type": MemoryType.TOOL_RESULT.value,
             "source_session_id": session_id,
@@ -67,7 +67,7 @@ class ToolMemory:
             order_by="-timestamp",
             limit=limit,
         )
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for r in records:
             meta = r.metadata or {}
             if tool_name and meta.get("tool_name") != tool_name:

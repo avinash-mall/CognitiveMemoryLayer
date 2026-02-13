@@ -1,7 +1,7 @@
 """Unit tests for memory modules: ConversationMemory, ScratchPad, ToolMemory, KnowledgeBase."""
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -15,8 +15,8 @@ class MockMemoryStore:
     """In-memory mock store for testing memory modules."""
 
     def __init__(self) -> None:
-        self.records: Dict[str, MemoryRecord] = {}
-        self.keys: Dict[str, MemoryRecord] = {}
+        self.records: dict[str, MemoryRecord] = {}
+        self.keys: dict[str, MemoryRecord] = {}
 
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
         mem_id = uuid4()
@@ -33,7 +33,7 @@ class MockMemoryStore:
             metadata=record.metadata,
             confidence=record.confidence,
             importance=record.importance,
-            timestamp=record.timestamp or datetime.now(timezone.utc),
+            timestamp=record.timestamp or datetime.now(UTC),
             provenance=record.provenance,
         )
         self.records[str(mem_id)] = mem_record
@@ -41,22 +41,22 @@ class MockMemoryStore:
             self.keys[record.key] = mem_record
         return mem_record
 
-    async def get_by_id(self, record_id) -> Optional[MemoryRecord]:
+    async def get_by_id(self, record_id) -> MemoryRecord | None:
         return self.records.get(str(record_id))
 
     async def get_by_key(
-        self, tenant_id: str, key: str, context_filter: Optional[List[str]] = None
-    ) -> Optional[MemoryRecord]:
+        self, tenant_id: str, key: str, context_filter: list[str] | None = None
+    ) -> MemoryRecord | None:
         return self.keys.get(key)
 
     async def scan(
         self,
         tenant_id: str,
-        filters: Optional[Dict[str, Any]] = None,
-        order_by: Optional[str] = None,
+        filters: dict[str, Any] | None = None,
+        order_by: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[MemoryRecord]:
+    ) -> list[MemoryRecord]:
         results = list(self.records.values())
         filters = filters or {}
         if "type" in filters:
@@ -76,8 +76,8 @@ class MockMemoryStore:
         self.records.pop(str(record_id), None)
 
     async def update(
-        self, record_id, patch: Dict[str, Any], increment_version: bool = True
-    ) -> Optional[MemoryRecord]:
+        self, record_id, patch: dict[str, Any], increment_version: bool = True
+    ) -> MemoryRecord | None:
         rec = self.records.get(str(record_id))
         if rec:
             for k, v in patch.items():
@@ -110,7 +110,7 @@ class TestConversationMemory:
         )
         assert msg_id is not None
         assert len(store.records) == 1
-        record = list(store.records.values())[0]
+        record = next(iter(store.records.values()))
         assert record.type == MemoryType.MESSAGE
         assert record.text == "Hello, world!"
         assert record.source_session_id == "s1"
@@ -125,7 +125,7 @@ class TestConversationMemory:
             role="assistant",
             content="Hi there!",
         )
-        record = list(store.records.values())[0]
+        record = next(iter(store.records.values()))
         assert (record.metadata or {}).get("role") == "assistant"
         assert record.provenance.source == MemorySource.AGENT_INFERRED
 
@@ -140,7 +140,7 @@ class TestConversationMemory:
             content="Let me check.",
             tool_calls=tool_calls,
         )
-        record = list(store.records.values())[0]
+        record = next(iter(store.records.values()))
         assert (record.metadata or {}).get("tool_calls") == tool_calls
 
     @pytest.mark.asyncio
@@ -295,7 +295,7 @@ class TestToolMemory:
             input_params={"expression": "2+2"},
             output=4,
         )
-        record = list(store.records.values())[0]
+        record = next(iter(store.records.values()))
         assert record.type == MemoryType.TOOL_RESULT
         meta = record.metadata or {}
         assert meta.get("tool_name") == "calculator"
@@ -361,7 +361,7 @@ class TestKnowledgeBase:
             source="census",
             confidence=0.95,
         )
-        record = list(store.records.values())[0]
+        record = next(iter(store.records.values()))
         assert record.type == MemoryType.KNOWLEDGE
         assert record.namespace == "geo"
         meta = record.metadata or {}

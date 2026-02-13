@@ -1,16 +1,16 @@
 """Unit tests for Phase 7: consolidation (triggers, clusterer, sampler scoring)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
+from src.consolidation.clusterer import SemanticClusterer
 from src.consolidation.triggers import (
     ConsolidationScheduler,
     TriggerCondition,
     TriggerType,
 )
-from src.consolidation.clusterer import SemanticClusterer
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import EntityMention, MemoryRecord, Provenance
 
@@ -32,7 +32,7 @@ def _make_record(
         importance=importance,
         access_count=access_count,
         provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         embedding=embedding,
         entities=[],
     )

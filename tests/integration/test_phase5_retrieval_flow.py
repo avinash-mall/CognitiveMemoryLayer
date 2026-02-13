@@ -5,14 +5,14 @@ from uuid import uuid4
 import pytest
 
 from src.core.config import get_settings
+from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.store import HippocampalStore
 from src.memory.hippocampal.write_gate import WriteGate
-from src.memory.hippocampal.redactor import PIIRedactor
-from src.memory.neocortical.store import NeocorticalStore
 from src.memory.neocortical.fact_store import SemanticFactStore
+from src.memory.neocortical.store import NeocorticalStore
+from src.retrieval.memory_retriever import MemoryRetriever
 from src.storage.postgres import PostgresMemoryStore
 from src.utils.embeddings import MockEmbeddingClient
-from src.retrieval.memory_retriever import MemoryRetriever
 
 
 class _MockGraph:
@@ -54,9 +54,9 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
 
     assert packet.query == "cuisine"
     all_mems = packet.all_memories
-    assert (
-        len(all_mems) >= 1
-    ), "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
+    assert len(all_mems) >= 1, (
+        "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
+    )
     texts = [m.record.text for m in all_mems]
     assert any("Italian" in t or "cuisine" in t.lower() for t in texts)
 

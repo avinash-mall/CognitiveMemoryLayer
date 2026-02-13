@@ -7,9 +7,9 @@ from src.memory.sensory.buffer import (
     SensoryBufferConfig,
 )
 from src.memory.sensory.manager import SensoryBufferManager
+from src.memory.short_term import ShortTermMemory, ShortTermMemoryConfig
 from src.memory.working.chunker import RuleBasedChunker
 from src.memory.working.models import ChunkType, SemanticChunk, WorkingMemoryState
-from src.memory.short_term import ShortTermMemory, ShortTermMemoryConfig
 
 
 class TestSensoryBuffer:

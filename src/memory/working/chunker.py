@@ -3,12 +3,10 @@
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
-from typing import List, Optional
-
-from .models import ChunkType, SemanticChunk
+from datetime import UTC, datetime
 
 from ...utils.llm import LLMClient
+from .models import ChunkType, SemanticChunk
 
 CHUNKING_PROMPT = """Analyze the following text and extract semantically meaningful chunks.
 
@@ -86,11 +84,11 @@ class SemanticChunker:
     async def chunk(
         self,
         text: str,
-        context_chunks: Optional[List[SemanticChunk]] = None,
-        turn_id: Optional[str] = None,
-        role: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-    ) -> List[SemanticChunk]:
+        context_chunks: list[SemanticChunk] | None = None,
+        turn_id: str | None = None,
+        role: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> list[SemanticChunk]:
         """
         Break text into semantic chunks.
 
@@ -118,7 +116,7 @@ class SemanticChunker:
             context=context_str or "None",
         )
 
-        chunk_timestamp = timestamp or datetime.now(timezone.utc)
+        chunk_timestamp = timestamp or datetime.now(UTC)
 
         try:
             response = await self.llm.complete(
@@ -209,16 +207,16 @@ class RuleBasedChunker:
     def chunk(
         self,
         text: str,
-        turn_id: Optional[str] = None,
-        role: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-    ) -> List[SemanticChunk]:
+        turn_id: str | None = None,
+        role: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> list[SemanticChunk]:
         """Rule-based chunking by sentences and markers."""
         # Keep trailing punctuation so we can detect questions
         sentences = re.findall(r"[^.!?]*[.!?]?", text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
-        chunk_timestamp = timestamp or datetime.now(timezone.utc)
+        chunk_timestamp = timestamp or datetime.now(UTC)
 
         chunks = []
         for i, sentence in enumerate(sentences):

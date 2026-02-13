@@ -3,14 +3,14 @@
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 from neo4j import AsyncGraphDatabase
 from neo4j.exceptions import ClientError as Neo4jClientError
 
-from .base import GraphStoreBase
 from ..core.config import get_settings
+from .base import GraphStoreBase
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class GraphNode:
     id: str
     entity: str
     entity_type: str
-    properties: Dict[str, Any]
+    properties: dict[str, Any]
     tenant_id: str
     scope_id: str
     created_at: datetime
@@ -37,7 +37,7 @@ class GraphEdge:
     source_id: str
     target_id: str
     predicate: str
-    properties: Dict[str, Any]
+    properties: dict[str, Any]
     confidence: float
     created_at: datetime
 
@@ -77,7 +77,7 @@ class Neo4jGraphStore(GraphStoreBase):
     Graph data is partitioned by tenant_id and scope_id.
     """
 
-    def __init__(self, driver: Optional[Any] = None):
+    def __init__(self, driver: Any | None = None):
         if driver is not None:
             self.driver = driver
         else:
@@ -96,14 +96,14 @@ class Neo4jGraphStore(GraphStoreBase):
         scope_id: str,
         entity: str,
         entity_type: str,
-        properties: Optional[Dict[str, Any]] = None,
-        namespace: Optional[str] = None,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> str:
         """Create or update a node. Uses MERGE to avoid duplicates."""
         properties = properties or {}
         if namespace is not None:
             properties["namespace"] = namespace
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         query = """
         MERGE (n:Entity {
@@ -142,8 +142,8 @@ class Neo4jGraphStore(GraphStoreBase):
         subject: str,
         predicate: str,
         object: str,
-        properties: Optional[Dict[str, Any]] = None,
-        namespace: Optional[str] = None,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
     ) -> str:
         """Create or update an edge between two nodes. Creates nodes if they don't exist."""
         target = object  # Avoid shadowing built-in 'object'
@@ -152,7 +152,7 @@ class Neo4jGraphStore(GraphStoreBase):
             properties["namespace"] = namespace
         rel_type = _sanitize_rel_type(predicate)
         confidence = properties.get("confidence", 0.8)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         query = f"""
         MERGE (s:Entity {{
@@ -203,7 +203,7 @@ class Neo4jGraphStore(GraphStoreBase):
         scope_id: str,
         entity: str,
         max_depth: int = 2,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get neighboring nodes up to max_depth hops."""
         max_depth = _validate_max_depth(max_depth)
         fallback_query = f"""
@@ -260,10 +260,10 @@ class Neo4jGraphStore(GraphStoreBase):
         self,
         tenant_id: str,
         scope_id: str,
-        seed_entities: List[str],
+        seed_entities: list[str],
         top_k: int = 20,
         damping: float = 0.85,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Run Personalized PageRank from seed entities. Falls back to multi-hop if GDS unavailable."""
         fallback_query = """
         MATCH (seed:Entity)
@@ -344,7 +344,7 @@ class Neo4jGraphStore(GraphStoreBase):
         tenant_id: str,
         scope_id: str,
         entity: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get all facts (relations) about an entity."""
         query = """
         MATCH (e:Entity {
@@ -376,15 +376,15 @@ class Neo4jGraphStore(GraphStoreBase):
         self,
         tenant_id: str,
         scope_id: str,
-        subject: Optional[str] = None,
-        predicate: Optional[str] = None,
-        object: Optional[str] = None,
+        subject: str | None = None,
+        predicate: str | None = None,
+        object: str | None = None,
         limit: int = 50,
-    ) -> List[Tuple[str, str, str, Dict]]:
+    ) -> list[tuple[str, str, str, dict]]:
         """Search for triples matching a pattern. None values are wildcards."""
         target = object  # Avoid shadowing built-in 'object'
         conditions = ["s.tenant_id = $tenant_id", "s.scope_id = $scope_id"]
-        params: Dict[str, Any] = {"tenant_id": tenant_id, "scope_id": scope_id, "limit": limit}
+        params: dict[str, Any] = {"tenant_id": tenant_id, "scope_id": scope_id, "limit": limit}
 
         if subject:
             conditions.append("s.entity = $subject")

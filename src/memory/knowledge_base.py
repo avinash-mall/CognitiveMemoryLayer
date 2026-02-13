@@ -1,7 +1,7 @@
 """General-purpose knowledge storage (not user-specific)."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance
@@ -17,7 +17,7 @@ class Fact:
     subject: str
     predicate: str
     object: str
-    source: Optional[str]
+    source: str | None
     confidence: float
     text: str
 
@@ -32,7 +32,7 @@ class KnowledgeBase:
     def __init__(
         self,
         store: MemoryStoreBase,
-        embedding_client: Optional[EmbeddingClient] = None,
+        embedding_client: EmbeddingClient | None = None,
     ) -> None:
         self.store = store
         self.embeddings = embedding_client
@@ -44,13 +44,13 @@ class KnowledgeBase:
         subject: str,
         predicate: str,
         object: str,
-        source: Optional[str] = None,
+        source: str | None = None,
         confidence: float = 0.8,
     ) -> Any:
         """Store a general fact in the given namespace. Returns record id."""
         text = f"{subject} {predicate} {object}"
         key = f"kb:{namespace}:{subject}:{predicate}"
-        meta: Dict[str, Any] = {"subject": subject, "predicate": predicate, "object": object}
+        meta: dict[str, Any] = {"subject": subject, "predicate": predicate, "object": object}
         if source:
             meta["source"] = source
         record = MemoryRecordCreate(
@@ -78,7 +78,7 @@ class KnowledgeBase:
         namespace: str,
         query: str,
         max_results: int = 10,
-    ) -> List[Fact]:
+    ) -> list[Fact]:
         """Query the knowledge base by semantic similarity (requires embedding_client). Holistic: filter by context_tags."""
         ns_tag = f"namespace:{namespace}"
         if not self.embeddings:

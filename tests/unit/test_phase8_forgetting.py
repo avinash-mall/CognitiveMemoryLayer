@@ -1,6 +1,6 @@
 """Unit tests for Phase 8: active forgetting (scorer, policy, interference)."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -8,13 +8,13 @@ import pytest
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance
 from src.forgetting.actions import ForgettingAction, ForgettingPolicyEngine
+from src.forgetting.interference import InterferenceDetector
 from src.forgetting.scorer import (
     RelevanceScore,
     RelevanceScorer,
     RelevanceWeights,
     ScorerConfig,
 )
-from src.forgetting.interference import InterferenceDetector
 
 
 def _make_record(
@@ -25,7 +25,7 @@ def _make_record(
     memory_type: MemoryType = MemoryType.EPISODIC_EVENT,
     days_ago: float = 0,
 ) -> MemoryRecord:
-    ts = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    ts = datetime.now(UTC) - timedelta(days=days_ago)
     return MemoryRecord(
         id=uuid4(),
         tenant_id="t",

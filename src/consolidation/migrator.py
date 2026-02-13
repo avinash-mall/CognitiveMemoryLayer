@@ -1,14 +1,13 @@
 """Migration of consolidated gists to semantic store."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 from uuid import UUID
 
-from .schema_aligner import AlignmentResult
 from ..core.enums import MemoryStatus
 from ..memory.neocortical.store import NeocorticalStore
 from ..storage.postgres import PostgresMemoryStore
+from .schema_aligner import AlignmentResult
 
 
 @dataclass
@@ -19,7 +18,7 @@ class MigrationResult:
     facts_created: int
     facts_updated: int
     episodes_marked: int
-    errors: List[str]
+    errors: list[str]
 
 
 class ConsolidationMigrator:
@@ -37,7 +36,7 @@ class ConsolidationMigrator:
         self,
         tenant_id: str,
         user_id: str,
-        alignments: List[AlignmentResult],
+        alignments: list[AlignmentResult],
         mark_episodes_consolidated: bool = True,
         compress_episodes: bool = False,
     ) -> MigrationResult:
@@ -113,11 +112,11 @@ class ConsolidationMigrator:
 
     async def _mark_episodes_consolidated(
         self,
-        episode_ids: List[str],
+        episode_ids: list[str],
         compress: bool = False,
     ) -> int:
         marked = 0
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         for ep_id in episode_ids:
             try:
                 ep_uuid = UUID(ep_id)

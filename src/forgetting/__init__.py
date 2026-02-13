@@ -4,6 +4,6 @@ from .worker import ForgettingReport, ForgettingScheduler, ForgettingWorker
 
 __all__ = [
     "ForgettingReport",
-    "ForgettingWorker",
     "ForgettingScheduler",
+    "ForgettingWorker",
 ]

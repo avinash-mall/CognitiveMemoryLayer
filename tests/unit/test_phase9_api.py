@@ -2,15 +2,15 @@
 
 from fastapi.testclient import TestClient
 
+from src.api.app import app
 from src.api.auth import (
     AuthContext,
     _build_api_keys,
     get_auth_context,
 )
-from src.api.app import app
 from src.api.schemas import (
-    WriteMemoryRequest,
     ReadMemoryRequest,
+    WriteMemoryRequest,
 )
 
 

@@ -1,7 +1,7 @@
 """Ephemeral working memory (scratch pad) for multi-step reasoning."""
 
 import json
-from typing import Any, List, Optional
+from typing import Any
 
 from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecordCreate, Provenance
@@ -50,7 +50,7 @@ class ScratchPad:
         tenant_id: str,
         session_id: str,
         key: str,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """Retrieve a scratch value by key."""
         record = await self.store.get_by_key(
             tenant_id=tenant_id,
@@ -73,9 +73,9 @@ class ScratchPad:
         """Append to a list in scratch (creates list if key missing)."""
         existing = await self.get(tenant_id, session_id, key)
         if existing is None:
-            new_list: List[Any] = [value]
+            new_list: list[Any] = [value]
         elif isinstance(existing, list):
-            new_list = existing + [value]
+            new_list = [*existing, value]
         else:
             new_list = [existing, value]
         await self.set(tenant_id, session_id, key, new_list)

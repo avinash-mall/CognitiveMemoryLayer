@@ -2,13 +2,13 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from ..utils.llm import LLMClient
 from .sensory.buffer import SensoryBufferConfig
 from .sensory.manager import SensoryBufferManager
 from .working.manager import WorkingMemoryManager
 from .working.models import SemanticChunk
-from ..utils.llm import LLMClient
 
 
 @dataclass
@@ -31,8 +31,8 @@ class ShortTermMemory:
 
     def __init__(
         self,
-        config: Optional[ShortTermMemoryConfig] = None,
-        llm_client: Optional[LLMClient] = None,
+        config: ShortTermMemoryConfig | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self.config = config or ShortTermMemoryConfig()
         sensory_config = SensoryBufferConfig(
@@ -51,10 +51,10 @@ class ShortTermMemory:
         tenant_id: str,
         scope_id: str,
         text: str,
-        turn_id: Optional[str] = None,
+        turn_id: str | None = None,
         role: str = "user",
-        timestamp: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        timestamp: datetime | None = None,
+    ) -> dict[str, Any]:
         """
         Ingest a new conversation turn.
 
@@ -83,7 +83,7 @@ class ShortTermMemory:
         scope_id: str,
         include_sensory: bool = True,
         max_working_chunks: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get immediate context for the current conversation."""
         result = {
             "working_memory": await self.working.get_current_context(
@@ -100,7 +100,7 @@ class ShortTermMemory:
         self,
         tenant_id: str,
         scope_id: str,
-    ) -> List[SemanticChunk]:
+    ) -> list[SemanticChunk]:
         """Get all chunks that should be encoded into long-term memory."""
         return await self.working.get_chunks_for_encoding(
             tenant_id,

@@ -2,7 +2,6 @@
 
 import json
 import re
-from typing import List, Optional
 
 from ..core.schemas import Relation
 from ..utils.llm import LLMClient
@@ -53,8 +52,8 @@ class RelationExtractor:
     async def extract(
         self,
         text: str,
-        entities: Optional[List[str]] = None,
-    ) -> List[Relation]:
+        entities: list[str] | None = None,
+    ) -> list[Relation]:
         prompt = RELATION_EXTRACTION_PROMPT.format(text=text)
         if entities:
             prompt += f"\n\nKnown entities: {', '.join(entities)}"
