@@ -1,5 +1,7 @@
 # Phase 10: Observability, Benchmarking & Production Hardening
 
+**Intrinsic Phase I-10** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+
 ## Overview
 
 Phase 10 transforms the intrinsic memory system from a research prototype into a production-ready system. This phase adds comprehensive observability (logging, metrics, tracing), establishes performance benchmarks comparing intrinsic memory against RAG baselines, implements safety guardrails, and hardens the system for real-world deployment.
