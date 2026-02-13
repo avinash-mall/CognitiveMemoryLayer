@@ -8,6 +8,13 @@ from typing import Any, cast
 
 import httpx
 
+# HTTP/2 requires httpx[http2] (h2). Use HTTP/2 only when available.
+try:
+    import h2  # noqa: F401
+    _http2_available = True
+except ImportError:
+    _http2_available = False
+
 from cml._version import __version__
 from cml.config import CMLConfig
 from cml.exceptions import (
@@ -135,7 +142,7 @@ class HTTPTransport:
                 timeout=self._config.timeout,
                 verify=self._config.verify_ssl,
                 headers=self._build_headers(),
-                http2=True,
+                http2=_http2_available,
                 limits=httpx.Limits(
                     max_connections=100,
                     max_keepalive_connections=20,
@@ -244,7 +251,7 @@ class AsyncHTTPTransport:
                 timeout=self._config.timeout,
                 verify=self._config.verify_ssl,
                 headers=self._build_headers(),
-                http2=True,
+                http2=_http2_available,
                 limits=httpx.Limits(
                     max_connections=100,
                     max_keepalive_connections=20,

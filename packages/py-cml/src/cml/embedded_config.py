@@ -33,12 +33,22 @@ class EmbeddedDatabaseConfig(BaseModel):
     redis_url: str | None = Field(default=None, description="Redis URL")
 
 
+def _env_int(key: str, default: int = 0) -> int:
+    raw = (os.environ.get(key) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 class EmbeddedEmbeddingConfig(BaseModel):
-    """Embedding configuration for embedded mode. Set EMBEDDING__MODEL, EMBEDDING__BASE_URL in .env."""
+    """Embedding configuration for embedded mode. Set EMBEDDING__MODEL, EMBEDDING__BASE_URL, EMBEDDING__DIMENSIONS in .env."""
 
     provider: Literal["openai", "local", "openai_compatible", "vllm"] = Field(default="local")
     model: str = Field(default="", description="Set EMBEDDING__MODEL in .env")
-    dimensions: int = Field(default=384)
+    dimensions: int = Field(default=384, description="Set EMBEDDING__DIMENSIONS in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 
@@ -51,6 +61,9 @@ class EmbeddedEmbeddingConfig(BaseModel):
             data = {**data, "model": _env("EMBEDDING__MODEL")}
         if data.get("base_url") is None and _env("EMBEDDING__BASE_URL"):
             data = {**data, "base_url": _env("EMBEDDING__BASE_URL")}
+        dims = _env_int("EMBEDDING__DIMENSIONS")
+        if dims > 0:
+            data = {**data, "dimensions": dims}
         return data
 
 

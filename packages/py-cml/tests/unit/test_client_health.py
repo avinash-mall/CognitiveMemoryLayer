@@ -8,10 +8,9 @@ from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer, HealthResponse
 from cml.config import CMLConfig
 
 
-def test_sync_health_returns_health_response() -> None:
+def test_sync_health_returns_health_response(cml_config: CMLConfig) -> None:
     """Sync client health() returns HealthResponse from transport."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
-    client = CognitiveMemoryLayer(config=config)
+    client = CognitiveMemoryLayer(config=cml_config)
     client._transport.request = MagicMock(  # type: ignore[method-assign]
         return_value={"status": "healthy", "version": "1.0.0", "components": {}}
     )
@@ -22,10 +21,9 @@ def test_sync_health_returns_health_response() -> None:
     client._transport.request.assert_called_once_with("GET", "/health")
 
 
-def test_sync_context_manager_closes_transport() -> None:
+def test_sync_context_manager_closes_transport(cml_config: CMLConfig) -> None:
     """Sync client context manager closes transport on exit."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
-    client = CognitiveMemoryLayer(config=config)
+    client = CognitiveMemoryLayer(config=cml_config)
     client._transport.close = MagicMock()  # type: ignore[method-assign]
     with client:
         pass
@@ -33,10 +31,9 @@ def test_sync_context_manager_closes_transport() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_health_returns_health_response() -> None:
+async def test_async_health_returns_health_response(cml_config: CMLConfig) -> None:
     """Async client health() returns HealthResponse from transport."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
-    client = AsyncCognitiveMemoryLayer(config=config)
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
     client._transport.request = AsyncMock(  # type: ignore[method-assign]
         return_value={"status": "ok", "components": {}}
     )
@@ -47,10 +44,9 @@ async def test_async_health_returns_health_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_context_manager_closes_transport() -> None:
+async def test_async_context_manager_closes_transport(cml_config: CMLConfig) -> None:
     """Async client context manager closes transport on exit."""
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
-    client = AsyncCognitiveMemoryLayer(config=config)
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
     client._transport.close = AsyncMock()  # type: ignore[method-assign]
     async with client:
         pass

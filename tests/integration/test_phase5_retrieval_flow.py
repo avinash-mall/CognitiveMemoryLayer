@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.config import get_settings
 from src.memory.hippocampal.store import HippocampalStore
 from src.memory.hippocampal.write_gate import WriteGate
 from src.memory.hippocampal.redactor import PIIRedactor
@@ -31,7 +32,7 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=1536),
+        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -65,7 +66,7 @@ async def test_retrieve_for_llm_returns_string(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=1536),
+        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),

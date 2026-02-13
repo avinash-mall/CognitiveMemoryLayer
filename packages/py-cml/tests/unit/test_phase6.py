@@ -57,10 +57,10 @@ def test_configure_logging_sets_level_and_handler() -> None:
 # ---- read_safe ----
 
 
-def test_read_safe_returns_empty_on_connection_error() -> None:
+def test_read_safe_returns_empty_on_connection_error(cml_config: CMLConfig) -> None:
     from cml.exceptions import ConnectionError
 
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client.read = MagicMock(side_effect=ConnectionError("Failed to connect"))  # type: ignore[method-assign]
     result = client.read_safe("query")
@@ -71,10 +71,10 @@ def test_read_safe_returns_empty_on_connection_error() -> None:
     assert result.elapsed_ms == 0.0
 
 
-def test_read_safe_returns_empty_on_timeout() -> None:
+def test_read_safe_returns_empty_on_timeout(cml_config: CMLConfig) -> None:
     from cml.exceptions import TimeoutError
 
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client.read = MagicMock(side_effect=TimeoutError("Timed out"))  # type: ignore[method-assign]
     result = client.read_safe("q")
@@ -162,8 +162,8 @@ def test_cml_json_encoder_uuid_datetime() -> None:
 # ---- Session context manager ----
 
 
-def test_session_context_manager_injects_session_id() -> None:
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000")
+def test_session_context_manager_injects_session_id(cml_config: CMLConfig) -> None:
+    config = cml_config
     client = CognitiveMemoryLayer(config=config)
     client.create_session = MagicMock(  # type: ignore[method-assign]
         return_value=MagicMock(session_id="sess-123")
@@ -196,10 +196,14 @@ def test_deprecated_emits_warning() -> None:
 # ---- Thread safety: set_tenant with lock ----
 
 
-def test_set_tenant_thread_safe() -> None:
+def test_set_tenant_thread_safe(cml_config: CMLConfig) -> None:
     import threading
 
-    config = CMLConfig(api_key="sk-test", base_url="http://localhost:8000", tenant_id="t0")
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t0",
+    )
     client = CognitiveMemoryLayer(config=config)
     client._transport.close = MagicMock()  # type: ignore[method-assign]
     results: list[str] = []
@@ -222,11 +226,13 @@ def test_set_tenant_thread_safe() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_client_raises_when_used_in_different_loop() -> None:
+async def test_async_client_raises_when_used_in_different_loop(cml_config: CMLConfig) -> None:
     import queue
     import threading
 
     result: queue.Queue = queue.Queue()
+    api_key = cml_config.api_key
+    base_url = cml_config.base_url
 
     def create_in_thread() -> None:
         loop = asyncio.new_event_loop()
@@ -234,8 +240,8 @@ async def test_async_client_raises_when_used_in_different_loop() -> None:
 
         async def create_client() -> AsyncCognitiveMemoryLayer:
             return AsyncCognitiveMemoryLayer(
-                api_key="sk-test",
-                base_url="http://localhost:8000",
+                api_key=api_key,
+                base_url=base_url,
             )
 
         client = loop.run_until_complete(create_client())

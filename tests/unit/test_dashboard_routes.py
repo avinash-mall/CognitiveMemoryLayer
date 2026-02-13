@@ -1,5 +1,6 @@
 """Unit tests for dashboard API routes (auth and response shape with mocked DB)."""
 
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,17 +12,26 @@ from src.api.dashboard_routes import _get_db
 from src.core.config import get_settings
 
 
+def _env_auth():
+    """Read auth from .env (with fallback so tests run)."""
+    api_key = os.environ.get("AUTH__API_KEY") or "test-key"
+    admin_key = os.environ.get("AUTH__ADMIN_API_KEY") or api_key
+    tenant = os.environ.get("AUTH__DEFAULT_TENANT_ID", "default")
+    return api_key, admin_key, tenant
+
+
 @pytest.fixture
 def admin_headers(monkeypatch):
-    """Set up auth environment and return headers for admin API key."""
-    monkeypatch.setenv("AUTH__API_KEY", "test-key-123")
-    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
-    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "test-tenant")
+    """Set up auth environment from .env and return headers for admin API key."""
+    api_key, admin_key, tenant = _env_auth()
+    monkeypatch.setenv("AUTH__API_KEY", api_key)
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", admin_key)
+    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
     try:
         yield {
-            "X-API-Key": "admin-key-456",
-            "X-Tenant-ID": "test-tenant",
+            "X-API-Key": admin_key,
+            "X-Tenant-ID": tenant,
         }
     finally:
         get_settings.cache_clear()
@@ -29,15 +39,16 @@ def admin_headers(monkeypatch):
 
 @pytest.fixture
 def user_headers(monkeypatch):
-    """Set up auth environment and return headers for non-admin API key."""
-    monkeypatch.setenv("AUTH__API_KEY", "test-key-123")
-    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
-    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "test-tenant")
+    """Set up auth environment from .env and return headers for non-admin API key."""
+    api_key, admin_key, tenant = _env_auth()
+    monkeypatch.setenv("AUTH__API_KEY", api_key)
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", admin_key)
+    monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
     try:
         yield {
-            "X-API-Key": "test-key-123",
-            "X-Tenant-ID": "test-tenant",
+            "X-API-Key": api_key,
+            "X-Tenant-ID": tenant,
         }
     finally:
         get_settings.cache_clear()

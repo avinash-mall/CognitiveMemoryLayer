@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes yet._
+### Added
+
+- **Optional embedding/LLM in tests** — Embedded lite-mode tests `test_write_and_read` and `test_persistent_storage` now skip (instead of fail) when the embedding model is unavailable. Skip is triggered on `ImportError`, `OSError`, or `RuntimeError`, or when any other exception message contains "model", "embed", or "rate" (e.g. sentence-transformers load failure, API or rate-limit errors). See repo `tests/README.md` § Optional LLM/embedding tests.
+
+### Changed
+
+- **Embedded config from .env** — `EmbeddedEmbeddingConfig` now reads `EMBEDDING__DIMENSIONS` from the environment when set; default remains 384. Enables alignment with server embedding dimension when using the same `.env`. See [configuration](docs/configuration.md).
+
+### Documentation
+
+- **configuration.md** — Embedded configuration table documents that `dimensions` can be set via `EMBEDDING__DIMENSIONS` in `.env` (default 384).
 
 ## [1.1.0] - 2026-02-12
 

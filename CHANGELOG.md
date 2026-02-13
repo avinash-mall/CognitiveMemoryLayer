@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Optional LLM/embedding tests** — Integration tests that depend on a real LLM or embedding model now skip (instead of fail) when the service is unavailable. Server: `tests/integration/test_phase8_llm_compression.py` — `llm_client` fixture skips when no LLM is configured; `_ensure_llm_reachable()` skips on any exception (e.g. rate limit 429, connection error); both tests are marked `@pytest.mark.requires_llm`. py-cml: embedded lite-mode write/read tests in `packages/py-cml/tests/embedded/test_lite_mode.py` skip on `ImportError`/`OSError`/`RuntimeError` or when the exception message indicates model/embed/rate-limit issues. See `tests/README.md` § Optional LLM/embedding tests.
+
+### Changed
+
+- **Tests and config from .env** — All test and Docker configuration (including `EMBEDDING__DIMENSIONS`) is read from the project root `.env`. Removed the `EMBEDDING__DIMENSIONS` override from `docker/docker-compose.yml` for the `app` service so both `app` and `api` use `.env` and migrations/tests share the same vector dimension. Server test fixtures (`mock_embeddings` in `tests/conftest.py`, `test_phase5_retrieval_flow.py`) use `get_settings().embedding.dimensions` instead of hardcoded values.
+- **Pytest** — Marker `requires_llm` added in `pyproject.toml` under `[tool.pytest.ini_options]` for integration tests that need a reachable LLM; run with `pytest -m requires_llm` to execute only those tests when the LLM is available.
+
+### Documentation
+
+- **tests/README.md** — Expanded Configuration with “Environment and .env” (Auth, Database, Embedding vars), embedding dimensions and Docker note, py-cml tests (host), and “Optional LLM/embedding tests (skip when unavailable)”.
+- **.env.example** — Clarified `EMBEDDING__DIMENSIONS` (server, migrations, and tests read from .env; Docker does not override). Added `EMBEDDING__DIMENSIONS` to the embedded section. Updated Part F (development & testing) to state that server and py-cml tests read all variables from this file.
+- **README.md** — Run Tests section now states that tests read config (including `EMBEDDING__DIMENSIONS`) from `.env` and points to `tests/README.md`.
+- **ProjectPlan/UsageDocumentation.md** — `EMBEDDING__DIMENSIONS` description updated to note that server and tests read from `.env` and Docker app/api use `.env` without override.
+- **evaluation/README.md** — Noted that server and tests read `EMBEDDING__DIMENSIONS` from `.env` and Docker `app`/`api` do not override it.
+- **packages/py-cml/CONTRIBUTING.md** — Integration/E2E section: tests load config from repo root `.env`, copy `.env.example` to `.env`, and optional LLM/embedding tests skip when the service is unavailable.
+
+### Added (dashboard and features)
+
 - **Dashboard expansion** — Major enhancement of the admin dashboard with 6 new pages and multiple new features:
   - **Tenants page** — Lists all tenants with memory/fact/event counts, active memory counts, last activity timestamps, and quick-link buttons to filter Overview/Memories/Events by tenant.
   - **Sessions page** — Shows active sessions from Redis (with TTL badges and metadata) and memory counts per `source_session_id` from the database. Click a session to filter Memory Explorer.
