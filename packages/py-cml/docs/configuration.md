@@ -79,7 +79,7 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 |------|--------|
 | **storage_mode** | `lite` (default), `standard`, `full` — only `lite` is implemented (SQLite + local embeddings) |
 | **database** | `EmbeddedDatabaseConfig`: `database_url` (default SQLite), optional Neo4j/Redis |
-| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING__MODEL` in .env), `dimensions`, `api_key`, `base_url` |
+| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING__MODEL` in .env), `dimensions` (set `EMBEDDING__DIMENSIONS` in .env; default 384), `api_key`, `base_url` |
 | **llm** | `EmbeddedLLMConfig`: `provider`, `model` (set `LLM__MODEL` in .env), `api_key`, `base_url` |
 | **auto_consolidate** / **auto_forget** | Optional background tasks (default `False`) |
 

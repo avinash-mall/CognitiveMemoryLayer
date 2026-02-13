@@ -19,6 +19,8 @@ def _embedded_available() -> bool:
 
 @pytest.fixture
 def embedded_skip():
-    """Skip test if embedded not available."""
+    """Raise if embedded not available (no skip; test runs and fails)."""
     if not _embedded_available():
-        pytest.skip("Embedded mode not installed (pip install cognitive-memory-layer[embedded])")
+        raise ImportError(
+            "Embedded mode not installed (pip install cognitive-memory-layer[embedded])"
+        )

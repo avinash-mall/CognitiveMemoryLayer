@@ -100,8 +100,30 @@ USE_ENV_DB=1 DATABASE__POSTGRES_URL=... pytest tests/integration/test_dashboard_
 
 ## Configuration
 
-- Pytest config: `pyproject.toml` under `[tool.pytest.ini_options]` (e.g. `testpaths = ["tests"]`, `asyncio_mode = "auto"`).
-- Auth for tests: set `AUTH__API_KEY`, `AUTH__ADMIN_API_KEY`, and `AUTH__DEFAULT_TENANT_ID` in the environment (or via `monkeypatch` in fixtures); dashboard endpoints require the admin key.
+- **Pytest config:** `pyproject.toml` under `[tool.pytest.ini_options]` (e.g. `testpaths = ["tests"]`, `asyncio_mode = "auto"`).
+
+### Environment and `.env`
+
+Tests read **all** configuration from the project root **`.env`** (loaded via `conftest.py`). There are no hardcoded fallbacks for URLs, API keys, or embedding dimensions.
+
+| Purpose | Variables (set in `.env`) |
+|--------|---------------------------|
+| **Auth** | `AUTH__API_KEY`, `AUTH__ADMIN_API_KEY` (use `test-key` for local/dev; dashboard tests need admin key) |
+| **Database** | `DATABASE__POSTGRES_URL`, `DATABASE__NEO4J_URL`, `DATABASE__REDIS_URL` (for integration tests) |
+| **Embedding** | `EMBEDDING__DIMENSIONS`, `EMBEDDING__PROVIDER`, `EMBEDDING__MODEL`, etc. |
+
+- **Embedding dimensions:** The DB vector column is created from `EMBEDDING__DIMENSIONS` at migration time. Server and tests must use the **same** value (from `.env`). If you see "expected N dimensions, not M", ensure `.env` has the correct `EMBEDDING__DIMENSIONS` and run `docker compose -f docker/docker-compose.yml down -v` before re-running migrations and tests.
+- **Docker:** The `app` and `api` services use `env_file: ../.env` and do **not** override `EMBEDDING__DIMENSIONS`, so migrations and tests in Docker use the same dimensions as in `.env`.
+
+### py-cml tests (host)
+
+- **Integration/e2e:** Require the CML API to be running; use the same `AUTH__API_KEY` (e.g. `test-key`) in `.env` as the server. Tests load repo root `.env` (e.g. `CML_BASE_URL`, `CML_API_KEY` or `AUTH__API_KEY`).
+- **Embedded tests:** Require `pip install -e ".[embedded]"` in `packages/py-cml` so `aiosqlite` and embedded dependencies are available. Embedded config reads `EMBEDDING__DIMENSIONS` (and other `EMBEDDING__*` / `LLM__*` vars) from `.env` when not set in code.
+
+### Optional LLM/embedding tests (skip when unavailable)
+
+- **Server:** `tests/integration/test_phase8_llm_compression.py` uses the configured LLM for compression. These tests **skip** (instead of fail) when the LLM is not configured, unreachable, or rate-limited (e.g. 429). Marker: `@pytest.mark.requires_llm`. Run only these when a reachable LLM is available: `pytest -m requires_llm tests/integration/test_phase8_llm_compression.py -v`.
+- **py-cml embedded:** `packages/py-cml/tests/embedded/test_lite_mode.py` write/read tests **skip** when the embedding model is unavailable (e.g. sentence-transformers load failure, API/rate-limit errors).
 
 ## CI
 

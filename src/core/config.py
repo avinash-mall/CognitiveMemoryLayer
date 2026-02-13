@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     model_config = {
         "env_file": ".env",
         "env_nested_delimiter": "__",
+        "extra": "ignore",  # allow .env to contain CML_* and other vars for tests/examples
     }
 
 

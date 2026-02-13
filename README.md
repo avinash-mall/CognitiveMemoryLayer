@@ -841,6 +841,8 @@ See [UsageDocumentation.md — Dashboard](./ProjectPlan/UsageDocumentation.md#da
 
 ### Run Tests
 
+Tests read all configuration (including `EMBEDDING__DIMENSIONS`) from the project root **`.env`**; copy `.env.example` to `.env` and set values as needed. See [tests/README.md](tests/README.md) for details.
+
 ```bash
 # Build and run project tests (297 total: unit, integration, e2e; exclude integration for no DB: pytest tests -v --ignore=tests/integration)
 docker compose -f docker/docker-compose.yml build app

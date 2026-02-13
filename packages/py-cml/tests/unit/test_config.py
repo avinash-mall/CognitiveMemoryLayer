@@ -23,8 +23,11 @@ def test_config_direct_params() -> None:
     assert config.retry_delay == 2.0
 
 
-def test_config_defaults() -> None:
+def test_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     """CMLConfig has correct defaults; base_url has no hardcoded default (set CML_BASE_URL in .env)."""
+    # Clear env so we see true defaults (not values from .env)
+    for key in ("CML_BASE_URL", "MEMORY_API_URL", "CML_API_KEY", "AUTH__API_KEY"):
+        monkeypatch.delenv(key, raising=False)
     config = CMLConfig()
     assert config.base_url == ""  # from env when set; no hardcoded default
     assert config.tenant_id == "default"
