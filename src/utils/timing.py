@@ -2,7 +2,6 @@
 
 import time
 from contextlib import contextmanager
-from typing import Optional
 
 from .logging_config import get_logger
 
@@ -10,7 +9,7 @@ logger = get_logger(__name__)
 
 
 @contextmanager
-def timed(operation: str, warn_ms: Optional[float] = None):
+def timed(operation: str, warn_ms: float | None = None):
     """Context manager that logs elapsed time for an operation.
 
     Args:

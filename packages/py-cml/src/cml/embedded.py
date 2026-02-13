@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from cml.embedded_config import EmbeddedConfig
@@ -182,7 +182,7 @@ class EmbeddedCognitiveMemoryLayer:
             if s.llm.base_url:
                 self._config.llm.base_url = s.llm.base_url
                 self._config.llm.model = s.llm.model
-                self._config.llm.provider = s.llm.provider
+                self._config.llm.provider = cast(Any, s.llm.provider)
         except Exception:
             pass
 

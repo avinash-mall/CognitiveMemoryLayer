@@ -3,8 +3,7 @@
 import asyncio
 import hashlib
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Tuple
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import Request
@@ -64,7 +63,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             redis_client = getattr(db, "redis", None) if db else None
             if redis_client is None:
                 return
-            hour_key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+            hour_key = datetime.now(UTC).strftime("%Y-%m-%d-%H")
             rkey = f"{_REQUEST_COUNT_PREFIX}{hour_key}"
             pipe = redis_client.pipeline()
             pipe.incr(rkey)
@@ -80,7 +79,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        self._buckets: Dict[str, Tuple[int, datetime]] = {}
+        self._buckets: dict[str, tuple[int, datetime]] = {}
         self._lock = asyncio.Lock()
         self._redis_warning_logged = False
 
@@ -136,7 +135,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def _check_rate_limit_in_memory(self, key: str) -> bool:
         async with self._lock:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if len(self._buckets) > 10000:
                 cutoff = now - timedelta(minutes=2)
                 self._buckets = {k: v for k, v in self._buckets.items() if v[1] > cutoff}

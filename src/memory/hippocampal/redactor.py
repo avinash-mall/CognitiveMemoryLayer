@@ -1,16 +1,14 @@
 """PII redaction before storage."""
 
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
-
 import re
+from dataclasses import dataclass
 
 
 @dataclass
 class RedactionResult:
     original_text: str
     redacted_text: str
-    redactions: List[Tuple[str, str, int, int]]  # (type, original, start, end)
+    redactions: list[tuple[str, str, int, int]]  # (type, original, start, end)
     has_redactions: bool
 
 
@@ -25,7 +23,7 @@ class PIIRedactor:
         "IP_ADDRESS": r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
     }
 
-    def __init__(self, additional_patterns: Optional[dict] = None) -> None:
+    def __init__(self, additional_patterns: dict | None = None) -> None:
         self.patterns = {**self.PATTERNS}
         if additional_patterns:
             self.patterns.update(additional_patterns)
@@ -34,7 +32,7 @@ class PIIRedactor:
         }
 
     def redact(self, text: str) -> RedactionResult:
-        matches: List[Tuple[int, int, str, str]] = []  # start, end, pii_type, original
+        matches: list[tuple[int, int, str, str]] = []  # start, end, pii_type, original
         for pii_type, pattern in self._compiled.items():
             for match in pattern.finditer(text):
                 matches.append((match.start(), match.end(), pii_type, match.group()))
@@ -42,9 +40,9 @@ class PIIRedactor:
         # Merge overlapping ranges to avoid garbled output (LOW-11)
         if matches:
             matches.sort(key=lambda x: (x[0], -x[1]))
-            merged: List[Tuple[int, int, str, str]] = [matches[0]]
+            merged: list[tuple[int, int, str, str]] = [matches[0]]
             for start, end, pii_type, original in matches[1:]:
-                prev_start, prev_end, prev_type, prev_orig = merged[-1]
+                prev_start, prev_end, prev_type, _prev_orig = merged[-1]
                 if start <= prev_end:
                     # Overlapping; extend the previous range
                     if end > prev_end:
@@ -56,7 +54,7 @@ class PIIRedactor:
         # Sort by start descending so we can replace without offset issues
         matches.sort(key=lambda x: x[0], reverse=True)
         redacted = text
-        redactions: List[Tuple[str, str, int, int]] = []
+        redactions: list[tuple[str, str, int, int]] = []
         for start, end, pii_type, original in matches:
             redactions.append((pii_type, original, start, end))
             redacted = redacted[:start] + f"[{pii_type}_REDACTED]" + redacted[end:]

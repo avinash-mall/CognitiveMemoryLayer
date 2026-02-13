@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from src.memory.neocortical.store import NeocorticalStore
 from src.memory.neocortical.fact_store import SemanticFactStore
+from src.memory.neocortical.store import NeocorticalStore
 
 
 class _MockGraphStore:

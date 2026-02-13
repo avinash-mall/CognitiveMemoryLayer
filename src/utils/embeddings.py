@@ -1,10 +1,9 @@
 """Embedding service for memory content."""
 
+import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional
-
-import hashlib
+from typing import Any
 
 from ..core.config import get_settings
 
@@ -16,7 +15,7 @@ except ImportError:
 
 @dataclass
 class EmbeddingResult:
-    embedding: List[float]
+    embedding: list[float]
     model: str
     dimensions: int
     tokens_used: int
@@ -33,7 +32,7 @@ class EmbeddingClient(ABC):
     async def embed(self, text: str) -> EmbeddingResult: ...
 
     @abstractmethod
-    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]: ...
+    async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]: ...
 
 
 class OpenAIEmbeddings(EmbeddingClient):
@@ -46,10 +45,10 @@ class OpenAIEmbeddings(EmbeddingClient):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        dimensions: Optional[int] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        dimensions: int | None = None,
+        base_url: str | None = None,
         pass_dimensions: bool = True,
     ) -> None:
         import os
@@ -83,7 +82,7 @@ class OpenAIEmbeddings(EmbeddingClient):
             tokens_used=response.usage.total_tokens,
         )
 
-    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
+    async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
         kwargs: dict = dict(model=self.model, input=texts)
         if self._pass_dimensions:
             kwargs["dimensions"] = self._dimensions
@@ -103,7 +102,7 @@ class OpenAIEmbeddings(EmbeddingClient):
 class LocalEmbeddings(EmbeddingClient):
     """Local sentence-transformers embeddings (optional dependency)."""
 
-    def __init__(self, model_name: Optional[str] = None) -> None:
+    def __init__(self, model_name: str | None = None) -> None:
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -130,7 +129,7 @@ class LocalEmbeddings(EmbeddingClient):
             tokens_used=len(text.split()),
         )
 
-    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
+    async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
         import asyncio
 
         loop = asyncio.get_running_loop()
@@ -142,14 +141,14 @@ class LocalEmbeddings(EmbeddingClient):
                 dimensions=self._dimensions,
                 tokens_used=len(t.split()),
             )
-            for emb, t in zip(embeddings, texts)
+            for emb, t in zip(embeddings, texts, strict=False)
         ]
 
 
 class MockEmbeddingClient(EmbeddingClient):
     """Deterministic mock for tests; no API calls."""
 
-    def __init__(self, dimensions: Optional[int] = None) -> None:
+    def __init__(self, dimensions: int | None = None) -> None:
         self._dimensions = (
             dimensions if dimensions is not None else get_settings().embedding.dimensions
         )
@@ -178,7 +177,7 @@ class MockEmbeddingClient(EmbeddingClient):
             tokens_used=len(text.split()),
         )
 
-    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
+    async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
         return [await self.embed(t) for t in texts]
 
 
@@ -226,12 +225,12 @@ class CachedEmbeddings(EmbeddingClient):
         )
         return result
 
-    async def embed_batch(self, texts: List[str]) -> List[EmbeddingResult]:
+    async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
         import json
 
-        results: List[tuple] = []
-        uncached_texts: List[str] = []
-        uncached_indices: List[int] = []
+        results: list[tuple] = []
+        uncached_texts: list[str] = []
+        uncached_indices: list[int] = []
         for i, text in enumerate(texts):
             cache_key = self._cache_key(text)
             cached = await self.redis.get(cache_key)
@@ -242,7 +241,7 @@ class CachedEmbeddings(EmbeddingClient):
                 uncached_indices.append(i)
         if uncached_texts:
             computed = await self.client.embed_batch(uncached_texts)
-            for idx, result in zip(uncached_indices, computed):
+            for idx, result in zip(uncached_indices, computed, strict=False):
                 results.append((idx, result))
                 cache_key = self._cache_key(texts[idx])
                 await self.redis.setex(

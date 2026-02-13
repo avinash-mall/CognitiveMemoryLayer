@@ -1,12 +1,12 @@
 """Semantic fact and schema definitions for neocortical store."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 
-class FactCategory(str, Enum):
+class FactCategory(StrEnum):
     """Category of semantic fact."""
 
     IDENTITY = "identity"
@@ -32,10 +32,10 @@ class FactSchema:
     required: bool = False
     multi_valued: bool = False
     temporal: bool = False
-    validators: List[str] = field(default_factory=list)
+    validators: list[str] = field(default_factory=list)
     display_name: str = ""
     description: str = ""
-    examples: List[str] = field(default_factory=list)
+    examples: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -50,20 +50,20 @@ class SemanticFact:
     predicate: str
     value: Any
     value_type: str
-    context_tags: List[str] = field(default_factory=list)
+    context_tags: list[str] = field(default_factory=list)
     confidence: float = 0.8
     evidence_count: int = 1
-    evidence_ids: List[str] = field(default_factory=list)
-    valid_from: Optional[datetime] = None
-    valid_to: Optional[datetime] = None
+    evidence_ids: list[str] = field(default_factory=list)
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
     is_current: bool = True
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     version: int = 1
-    supersedes_id: Optional[str] = None
+    supersedes_id: str | None = None
 
 
-DEFAULT_FACT_SCHEMAS: Dict[str, FactSchema] = {
+DEFAULT_FACT_SCHEMAS: dict[str, FactSchema] = {
     "user:identity:name": FactSchema(
         category=FactCategory.IDENTITY,
         key_pattern="user:identity:name",

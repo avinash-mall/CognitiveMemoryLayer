@@ -1,13 +1,11 @@
 """Execution of forgetting operations on the memory store."""
 
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 from ..core.enums import MemorySource, MemoryStatus
 from ..core.schemas import MemoryRecord, MemoryRecordCreate, Provenance
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.llm import LLMClient
-
 from .actions import ForgettingAction, ForgettingOperation, ForgettingResult
 from .compression import summarize_for_compression
 
@@ -18,8 +16,8 @@ class ForgettingExecutor:
     def __init__(
         self,
         store: PostgresMemoryStore,
-        archive_store: Optional[PostgresMemoryStore] = None,
-        compression_llm_client: Optional[LLMClient] = None,
+        archive_store: PostgresMemoryStore | None = None,
+        compression_llm_client: LLMClient | None = None,
         compression_max_chars: int = 100,
     ) -> None:
         self.store = store
@@ -29,7 +27,7 @@ class ForgettingExecutor:
 
     async def execute(
         self,
-        operations: List[ForgettingOperation],
+        operations: list[ForgettingOperation],
         dry_run: bool = False,
     ) -> ForgettingResult:
         """Execute forgetting operations. If dry_run, only count, no writes."""
@@ -61,7 +59,7 @@ class ForgettingExecutor:
 
         return result
 
-    async def _execute_operation(self, op: ForgettingOperation) -> tuple[bool, Optional[str]]:
+    async def _execute_operation(self, op: ForgettingOperation) -> tuple[bool, str | None]:
         """Execute a single operation. Returns (success, skip_reason)."""
         if op.action == ForgettingAction.DECAY:
             ok = await self._execute_decay(op)
@@ -88,7 +86,7 @@ class ForgettingExecutor:
             return False
         merged_meta = {
             **(record.metadata or {}),
-            "last_decay": datetime.now(timezone.utc).isoformat(),
+            "last_decay": datetime.now(UTC).isoformat(),
         }
         patch = {"confidence": op.new_confidence, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch, increment_version=False)
@@ -101,7 +99,7 @@ class ForgettingExecutor:
             return False
         merged_meta = {
             **(record.metadata or {}),
-            "silenced_at": datetime.now(timezone.utc).isoformat(),
+            "silenced_at": datetime.now(UTC).isoformat(),
         }
         patch = {"status": MemoryStatus.SILENT.value, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch)
@@ -125,7 +123,7 @@ class ForgettingExecutor:
             if len(record.text) > self.compression_max_chars:
                 compressed = record.text[: self.compression_max_chars - 3] + "..."
         meta = dict(record.metadata)
-        meta["compressed_at"] = datetime.now(timezone.utc).isoformat()
+        meta["compressed_at"] = datetime.now(UTC).isoformat()
         meta["original_length"] = len(record.text)
         patch = {
             "text": compressed,
@@ -171,7 +169,7 @@ class ForgettingExecutor:
         record = await self.store.get_by_id(op.memory_id)
         if not record:
             return False
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         merged_meta = {**(record.metadata or {}), "archived_at": now_iso}
 
         if not self.archive_store:
@@ -193,7 +191,7 @@ class ForgettingExecutor:
         await self.store.delete(op.memory_id, hard=True)
         return True
 
-    async def _execute_delete(self, op: ForgettingOperation) -> tuple[bool, Optional[str]]:
+    async def _execute_delete(self, op: ForgettingOperation) -> tuple[bool, str | None]:
         """Soft-delete memory from store; skip if other memories reference it."""
         ref_count = await self.store.count_references_to(op.memory_id)
         if ref_count > 0:

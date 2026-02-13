@@ -11,6 +11,7 @@ import httpx
 # HTTP/2 requires httpx[http2] (h2). Use HTTP/2 only when available.
 try:
     import h2  # noqa: F401
+
     _http2_available = True
 except ImportError:
     _http2_available = False

@@ -352,9 +352,7 @@ def test_session_scope_turn_injects_session_id(cml_config: CMLConfig) -> None:
 
 
 def test_openai_helper_chat_flow(cml_config: CMLConfig) -> None:
-    memory = CognitiveMemoryLayer(
-        config=cml_config
-    )
+    memory = CognitiveMemoryLayer(config=cml_config)
     # First call: get_context() -> read(); second call: turn() to store exchange
     memory._transport.request = MagicMock(  # type: ignore[method-assign]
         side_effect=[

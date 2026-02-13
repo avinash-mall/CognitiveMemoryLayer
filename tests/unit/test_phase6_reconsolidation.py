@@ -1,23 +1,23 @@
 """Unit tests for Phase 6: reconsolidation (labile tracker, conflict detector, belief revision)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance
-from src.reconsolidation.labile_tracker import (
-    LabileStateTracker,
+from src.reconsolidation.belief_revision import (
+    BeliefRevisionEngine,
+    RevisionStrategy,
 )
 from src.reconsolidation.conflict_detector import (
     ConflictDetector,
     ConflictResult,
     ConflictType,
 )
-from src.reconsolidation.belief_revision import (
-    BeliefRevisionEngine,
-    RevisionStrategy,
+from src.reconsolidation.labile_tracker import (
+    LabileStateTracker,
 )
 
 
@@ -32,7 +32,7 @@ def _make_memory(text: str, key: str | None = None) -> MemoryRecord:
         confidence=0.8,
         importance=0.5,
         provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 

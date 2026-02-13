@@ -1,8 +1,8 @@
 """Database connection manager for PostgreSQL, Neo4j, and Redis."""
 
 import threading
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import redis.asyncio as redis
 from neo4j import AsyncGraphDatabase

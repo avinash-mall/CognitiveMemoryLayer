@@ -1,7 +1,6 @@
 """Memory packet builder for LLM consumption."""
 
 import json
-from typing import List
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryPacket, RetrievedMemory
@@ -12,7 +11,7 @@ class MemoryPacketBuilder:
 
     def build(
         self,
-        memories: List[RetrievedMemory],
+        memories: list[RetrievedMemory],
         query: str,
         include_provenance: bool = True,
     ) -> MemoryPacket:
@@ -40,9 +39,9 @@ class MemoryPacketBuilder:
                 )
         return packet
 
-    def _detect_conflicts(self, packet: MemoryPacket) -> List[str]:
+    def _detect_conflicts(self, packet: MemoryPacket) -> list[str]:
         """Detect potential conflicts in retrieved memories."""
-        conflicts: List[str] = []
+        conflicts: list[str] = []
         preference_values: dict = {}
         for pref in packet.preferences:
             key = getattr(pref.record, "key", None)

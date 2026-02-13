@@ -2,8 +2,8 @@
 
 import hashlib
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, delete, func, or_, select, text, update
@@ -59,7 +59,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             if existing_record:
                 # Update existing record
                 existing_record.access_count += 1
-                existing_record.last_accessed_at = _naive_utc(datetime.now(timezone.utc))
+                existing_record.last_accessed_at = _naive_utc(datetime.now(UTC))
                 existing_record.confidence = max(existing_record.confidence, record.confidence)
 
                 # If we found it by key but content changed, update content & hash
@@ -78,8 +78,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                 await session.refresh(existing_record)
                 return self._to_schema(existing_record)
 
-            ts = _naive_utc(record.timestamp or datetime.now(timezone.utc))
-            now_naive = _naive_utc(datetime.now(timezone.utc))
+            ts = _naive_utc(record.timestamp or datetime.now(UTC))
+            now_naive = _naive_utc(datetime.now(UTC))
             model = MemoryRecordModel(
                 tenant_id=record.tenant_id,
                 agent_id=record.agent_id,
@@ -105,7 +105,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             await session.refresh(model)
             return self._to_schema(model)
 
-    async def get_by_id(self, record_id: UUID) -> Optional[MemoryRecord]:
+    async def get_by_id(self, record_id: UUID) -> MemoryRecord | None:
         async with self.session_factory() as session:
             r = await session.execute(
                 select(MemoryRecordModel).where(MemoryRecordModel.id == record_id)
@@ -117,8 +117,8 @@ class PostgresMemoryStore(MemoryStoreBase):
         self,
         tenant_id: str,
         key: str,
-        context_filter: Optional[List[str]] = None,
-    ) -> Optional[MemoryRecord]:
+        context_filter: list[str] | None = None,
+    ) -> MemoryRecord | None:
         async with self.session_factory() as session:
             q = select(MemoryRecordModel).where(
                 and_(
@@ -151,9 +151,9 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def update(
         self,
         record_id: UUID,
-        patch: Dict[str, Any],
+        patch: dict[str, Any],
         increment_version: bool = True,
-    ) -> Optional[MemoryRecord]:
+    ) -> MemoryRecord | None:
         async with self.session_factory() as session:
             r = await session.execute(
                 select(MemoryRecordModel).where(MemoryRecordModel.id == record_id)
@@ -192,12 +192,12 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def vector_search(
         self,
         tenant_id: str,
-        embedding: List[float],
+        embedding: list[float],
         top_k: int = 10,
-        context_filter: Optional[List[str]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        context_filter: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
         min_similarity: float = 0.0,
-    ) -> List[MemoryRecord]:
+    ) -> list[MemoryRecord]:
         async with self.session_factory() as session:
             base = and_(
                 MemoryRecordModel.tenant_id == tenant_id,
@@ -245,11 +245,11 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def scan(
         self,
         tenant_id: str,
-        filters: Optional[Dict[str, Any]] = None,
-        order_by: Optional[str] = None,
+        filters: dict[str, Any] | None = None,
+        order_by: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[MemoryRecord]:
+    ) -> list[MemoryRecord]:
         async with self.session_factory() as session:
             q = select(MemoryRecordModel).where(MemoryRecordModel.tenant_id == tenant_id)
             if filters and "context_tags" in filters:
@@ -281,7 +281,7 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def count(
         self,
         tenant_id: str,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
     ) -> int:
         async with self.session_factory() as session:
             q = select(func.count(MemoryRecordModel.id)).where(
@@ -313,7 +313,7 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def delete_by_filter(
         self,
         tenant_id: str,
-        filters: Dict[str, Any],
+        filters: dict[str, Any],
     ) -> int:
         """Delete records matching filters. Used for efficient ScratchPad clearing (BUG-07)."""
         async with self.session_factory() as session:
@@ -361,12 +361,12 @@ class PostgresMemoryStore(MemoryStoreBase):
             return r.scalar() or 0
 
     async def increment_access_counts(
-        self, record_ids: List[UUID], last_accessed_at: Optional[datetime] = None
+        self, record_ids: list[UUID], last_accessed_at: datetime | None = None
     ) -> None:
         """Atomic increment of access_count for given records (BUG-02: avoid lost update)."""
         if not record_ids:
             return
-        now = _naive_utc(last_accessed_at or datetime.now(timezone.utc))
+        now = _naive_utc(last_accessed_at or datetime.now(UTC))
         async with self.session_factory() as session:
             await session.execute(
                 update(MemoryRecordModel)
@@ -382,7 +382,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         content = f"{tenant_id}:{text.lower().strip()}"
         return hashlib.sha256(content.encode()).hexdigest()
 
-    def _to_schema(self, model: Optional[MemoryRecordModel]) -> Optional[MemoryRecord]:
+    def _to_schema(self, model: MemoryRecordModel | None) -> MemoryRecord | None:
         if model is None:
             return None
         try:

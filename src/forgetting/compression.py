@@ -1,7 +1,5 @@
 """LLM-based compression (summarization) for active forgetting."""
 
-from typing import Optional
-
 from ..utils.llm import LLMClient
 
 # System prompt for one-sentence gist extraction (fits small models / short summary)
@@ -14,7 +12,7 @@ COMPRESSION_SYSTEM = (
 async def summarize_for_compression(
     text: str,
     max_chars: int = 100,
-    llm_client: Optional[LLMClient] = None,
+    llm_client: LLMClient | None = None,
 ) -> str:
     """
     Produce a compressed (summarized) version of text for forgetting.

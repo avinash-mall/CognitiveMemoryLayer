@@ -5,7 +5,6 @@ Makes memory recall unconscious, like human association.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 
 from ..core.schemas import MemoryPacket, RetrievedMemory
 
@@ -20,7 +19,7 @@ class SeamlessTurnResult:
     """Result of processing a conversation turn with seamless memory."""
 
     memory_context: str  # Formatted string for LLM injection
-    injected_memories: List[RetrievedMemory]
+    injected_memories: list[RetrievedMemory]
     stored_count: int
     reconsolidation_applied: bool
 
@@ -47,10 +46,10 @@ class SeamlessMemoryProvider:
         self,
         tenant_id: str,
         user_message: str,
-        assistant_response: Optional[str] = None,
-        session_id: Optional[str] = None,
-        turn_id: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        assistant_response: str | None = None,
+        session_id: str | None = None,
+        turn_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> SeamlessTurnResult:
         """
         Process a conversation turn:
@@ -106,7 +105,7 @@ class SeamlessMemoryProvider:
         self,
         tenant_id: str,
         message: str,
-    ) -> tuple[str, List[RetrievedMemory]]:
+    ) -> tuple[str, list[RetrievedMemory]]:
         """Retrieve and format memories for injection."""
         packet = await self.orchestrator.read(
             tenant_id=tenant_id,
@@ -121,7 +120,7 @@ class SeamlessMemoryProvider:
     def _format_for_injection(
         self,
         packet: MemoryPacket,
-        memories: List[RetrievedMemory],
+        memories: list[RetrievedMemory],
     ) -> str:
         """Build a context string from filtered memories (respects max_context_tokens)."""
         max_chars = self.max_context_tokens * 4  # rough: 4 chars per token
@@ -163,10 +162,10 @@ class SeamlessMemoryProvider:
         tenant_id: str,
         user_message: str,
         assistant_response: str,
-        session_id: Optional[str],
-        turn_id: Optional[str],
+        session_id: str | None,
+        turn_id: str | None,
         retrieved_memories: list,
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ) -> dict:
         """Store assistant response and run reconsolidation."""
 

@@ -1,16 +1,15 @@
 """Forgetting worker and scheduler."""
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..core.enums import MemoryStatus
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.llm import LLMClient
-
 from .actions import (
     ForgettingAction,
     ForgettingOperation,
@@ -46,9 +45,9 @@ class ForgettingWorker:
     def __init__(
         self,
         store: PostgresMemoryStore,
-        scorer_config: Optional[ScorerConfig] = None,
-        archive_store: Optional[PostgresMemoryStore] = None,
-        compression_llm_client: Optional[LLMClient] = None,
+        scorer_config: ScorerConfig | None = None,
+        archive_store: PostgresMemoryStore | None = None,
+        compression_llm_client: LLMClient | None = None,
         compression_max_chars: int = 100,
     ) -> None:
         self.store = store
@@ -72,7 +71,7 @@ class ForgettingWorker:
         dry_run: bool = False,
     ) -> ForgettingReport:
         """Run forgetting process for a user."""
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         memories = await self.store.scan(
             tenant_id,
             filters={"status": MemoryStatus.ACTIVE.value},
@@ -84,7 +83,7 @@ class ForgettingWorker:
                 tenant_id=tenant_id,
                 user_id=user_id,
                 started_at=started,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
                 memories_scanned=0,
                 memories_scored=0,
                 result=ForgettingResult(0, 0),
@@ -99,7 +98,7 @@ class ForgettingWorker:
         operations.extend(dup_operations)
 
         result = await self.executor.execute(operations, dry_run=dry_run)
-        completed = datetime.now(timezone.utc)
+        completed = datetime.now(UTC)
 
         return ForgettingReport(
             tenant_id=tenant_id,
@@ -118,10 +117,10 @@ class ForgettingWorker:
         self,
         tenant_id: str,
         user_id: str,
-        memories: List,
-    ) -> Dict[str, int]:
+        memories: list,
+    ) -> dict[str, int]:
         """Count how many other memories reference each memory."""
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for mem in memories:
             mem_id = str(mem.id)
             counts[mem_id] = 0
@@ -137,10 +136,10 @@ class ForgettingWorker:
 
     def _plan_duplicate_resolution(
         self,
-        duplicates: List[InterferenceResult],
-    ) -> List[ForgettingOperation]:
+        duplicates: list[InterferenceResult],
+    ) -> list[ForgettingOperation]:
         """Plan operations to resolve duplicates (keep one, delete other)."""
-        operations: List[ForgettingOperation] = []
+        operations: list[ForgettingOperation] = []
         resolved_ids: set[str] = set()
 
         for dup in duplicates:
@@ -174,8 +173,8 @@ class ForgettingScheduler:
         self.worker = worker
         self.interval = timedelta(hours=interval_hours)
         self._running = False
-        self._task: Optional[asyncio.Task] = None
-        self._user_last_run: Dict[str, datetime] = {}
+        self._task: asyncio.Task | None = None
+        self._user_last_run: dict[str, datetime] = {}
 
     async def start(self) -> None:
         """Start the scheduler."""
@@ -187,20 +186,18 @@ class ForgettingScheduler:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
     async def schedule_user(
         self,
         tenant_id: str,
         user_id: str,
         force: bool = False,
-    ) -> Optional[ForgettingReport]:
+    ) -> ForgettingReport | None:
         """Schedule forgetting for a user; returns report if run."""
         key = f"{tenant_id}:{user_id}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         last_run = self._user_last_run.get(key)
         if force or not last_run or (now - last_run) >= self.interval:
             report = await self.worker.run_forgetting(tenant_id, user_id)
@@ -211,7 +208,7 @@ class ForgettingScheduler:
     async def _scheduler_loop(self) -> None:
         """Background scheduler loop. DES-09: check first then sleep so first run is immediate."""
         while self._running:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for key, last_run in list(self._user_last_run.items()):
                 if (now - last_run) >= self.interval:
                     try:

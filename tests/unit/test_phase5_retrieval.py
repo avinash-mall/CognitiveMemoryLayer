@@ -1,16 +1,16 @@
 """Unit tests for Phase 5: retrieval (classifier, planner, reranker, packet builder)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecord, Provenance, RetrievedMemory
-from src.retrieval.query_types import QueryAnalysis, QueryIntent
 from src.retrieval.classifier import QueryClassifier
-from src.retrieval.planner import RetrievalPlanner, RetrievalSource
-from src.retrieval.reranker import MemoryReranker
 from src.retrieval.packet_builder import MemoryPacketBuilder
+from src.retrieval.planner import RetrievalPlanner, RetrievalSource
+from src.retrieval.query_types import QueryAnalysis, QueryIntent
+from src.retrieval.reranker import MemoryReranker
 
 
 class TestQueryClassifier:
@@ -76,7 +76,7 @@ class TestMemoryReranker:
                 type=MemoryType.EPISODIC_EVENT,
                 text=text,
                 provenance=Provenance(source=MemorySource.AGENT_INFERRED),
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 confidence=confidence,
             ),
             relevance_score=relevance,
@@ -109,7 +109,7 @@ class TestMemoryPacketBuilder:
                 type=mem_type,
                 text=text,
                 provenance=Provenance(source=MemorySource.AGENT_INFERRED),
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 confidence=0.8,
             ),
             relevance_score=0.8,

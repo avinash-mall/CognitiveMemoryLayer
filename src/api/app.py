@@ -1,8 +1,8 @@
 """FastAPI application factory and entry point."""
 
 import pathlib
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,10 +11,10 @@ from fastapi.staticfiles import StaticFiles
 
 from ..core.config import get_settings, validate_embedding_dimensions
 from ..storage.connection import DatabaseManager
-from .middleware import RateLimitMiddleware, RequestLoggingMiddleware
-from .routes import router
 from .admin_routes import admin_router
 from .dashboard_routes import dashboard_router
+from .middleware import RateLimitMiddleware, RequestLoggingMiddleware
+from .routes import router
 
 # Resolve dashboard static files directory
 _DASHBOARD_DIR = pathlib.Path(__file__).resolve().parent.parent / "dashboard" / "static"

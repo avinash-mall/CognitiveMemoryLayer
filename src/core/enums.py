@@ -1,9 +1,9 @@
 """Core enums for memory types, status, and operations."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class MemoryContext(str, Enum):
+class MemoryContext(StrEnum):
     """Context tags for memory retrieval (non-exclusive, can have multiple)."""
 
     PERSONAL = "personal"  # About the user
@@ -13,7 +13,7 @@ class MemoryContext(str, Enum):
     PROCEDURAL = "procedural"  # How-to knowledge
 
 
-class MemoryType(str, Enum):
+class MemoryType(StrEnum):
     """Type of memory record."""
 
     # Existing
@@ -36,7 +36,7 @@ class MemoryType(str, Enum):
     PLAN = "plan"  # Agent plans/goals
 
 
-class MemoryStatus(str, Enum):
+class MemoryStatus(StrEnum):
     """Lifecycle status of a memory."""
 
     ACTIVE = "active"
@@ -46,7 +46,7 @@ class MemoryStatus(str, Enum):
     DELETED = "deleted"
 
 
-class MemorySource(str, Enum):
+class MemorySource(StrEnum):
     """Provenance source of a memory."""
 
     USER_EXPLICIT = "user_explicit"  # User directly stated
@@ -57,7 +57,7 @@ class MemorySource(str, Enum):
     RECONSOLIDATION = "reconsolidation"  # Updated after retrieval
 
 
-class OperationType(str, Enum):
+class OperationType(StrEnum):
     """Type of operation in event log."""
 
     ADD = "add"

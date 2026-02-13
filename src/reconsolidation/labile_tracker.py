@@ -1,12 +1,12 @@
 """Labile state tracking for memories after retrieval."""
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +45,15 @@ class LabileSession:
     scope_id: str
     turn_id: str
 
-    memories: Dict[UUID, LabileMemory] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    memories: dict[UUID, LabileMemory] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Context from retrieval
     query: str = ""
-    retrieved_texts: List[str] = field(default_factory=list)
+    retrieved_texts: list[str] = field(default_factory=list)
 
 
-def _serialize_memory(m: LabileMemory) -> Dict[str, Any]:
+def _serialize_memory(m: LabileMemory) -> dict[str, Any]:
     return {
         "memory_id": str(m.memory_id),
         "retrieved_at": m.retrieved_at.isoformat(),
@@ -64,7 +64,7 @@ def _serialize_memory(m: LabileMemory) -> Dict[str, Any]:
     }
 
 
-def _deserialize_memory(d: Dict[str, Any]) -> LabileMemory:
+def _deserialize_memory(d: dict[str, Any]) -> LabileMemory:
     return LabileMemory(
         memory_id=UUID(d["memory_id"]),
         retrieved_at=datetime.fromisoformat(d["retrieved_at"].replace("Z", "+00:00")),
@@ -75,7 +75,7 @@ def _deserialize_memory(d: Dict[str, Any]) -> LabileMemory:
     )
 
 
-def _serialize_session(s: LabileSession) -> Dict[str, Any]:
+def _serialize_session(s: LabileSession) -> dict[str, Any]:
     return {
         "tenant_id": s.tenant_id,
         "scope_id": s.scope_id,
@@ -87,13 +87,11 @@ def _serialize_session(s: LabileSession) -> Dict[str, Any]:
     }
 
 
-def _deserialize_session(d: Dict[str, Any]) -> LabileSession:
+def _deserialize_session(d: dict[str, Any]) -> LabileSession:
     memories = {UUID(k): _deserialize_memory(v) for k, v in (d.get("memories") or {}).items()}
     created = d.get("created_at")
     created_at = (
-        datetime.fromisoformat(created.replace("Z", "+00:00"))
-        if created
-        else datetime.now(timezone.utc)
+        datetime.fromisoformat(created.replace("Z", "+00:00")) if created else datetime.now(UTC)
     )
     return LabileSession(
         tenant_id=d["tenant_id"],
@@ -123,15 +121,15 @@ class LabileStateTracker:
         self,
         labile_duration_seconds: float = 300,  # 5 minutes
         max_sessions_per_scope: int = 10,
-        redis_client: Optional[Any] = None,
+        redis_client: Any | None = None,
     ):
         self.labile_duration = timedelta(seconds=labile_duration_seconds)
         self.max_sessions = max_sessions_per_scope
         self._redis = redis_client
 
         # In-memory state (used when redis_client is None)
-        self._sessions: Dict[str, LabileSession] = {}
-        self._scope_sessions: Dict[str, List[str]] = {}
+        self._sessions: dict[str, LabileSession] = {}
+        self._scope_sessions: dict[str, list[str]] = {}
         self._lock = asyncio.Lock()
 
     def _session_key(self, tenant_id: str, scope_id: str, turn_id: str) -> str:
@@ -151,16 +149,16 @@ class LabileStateTracker:
         tenant_id: str,
         scope_id: str,
         turn_id: str,
-        memory_ids: List[UUID],
+        memory_ids: list[UUID],
         query: str,
-        retrieved_texts: List[str],
-        relevance_scores: List[float],
-        confidences: List[float],
+        retrieved_texts: list[str],
+        relevance_scores: list[float],
+        confidences: list[float],
     ) -> LabileSession:
         """Mark memories as labile after retrieval."""
         session_key = self._session_key(tenant_id, scope_id, turn_id)
         scope_key = self._scope_key(tenant_id, scope_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires = now + self.labile_duration
 
         session = LabileSession(
@@ -170,7 +168,7 @@ class LabileStateTracker:
             query=query,
             retrieved_texts=retrieved_texts,
         )
-        for mid, score, conf in zip(memory_ids, relevance_scores, confidences):
+        for mid, score, conf in zip(memory_ids, relevance_scores, confidences, strict=False):
             session.memories[mid] = LabileMemory(
                 memory_id=mid,
                 retrieved_at=now,
@@ -223,15 +221,15 @@ class LabileStateTracker:
         self,
         tenant_id: str,
         scope_id: str,
-        turn_id: Optional[str] = None,
-    ) -> List[LabileMemory]:
+        turn_id: str | None = None,
+    ) -> list[LabileMemory]:
         """Get all currently labile memories for a scope."""
         if self._redis is not None:
             async with self._lock:
                 return await self._get_labile_memories_redis(tenant_id, scope_id, turn_id)
         async with self._lock:
             scope_key = self._scope_key(tenant_id, scope_id)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             labile = []
             session_keys = self._scope_sessions.get(scope_key, [])
             for sk in session_keys:
@@ -249,14 +247,14 @@ class LabileStateTracker:
         self,
         tenant_id: str,
         scope_id: str,
-        turn_id: Optional[str],
-    ) -> List[LabileMemory]:
+        turn_id: str | None,
+    ) -> list[LabileMemory]:
         scope_key = self._scope_key(tenant_id, scope_id)
         sk = self._redis_scope_key(scope_key)
         raw_list = await self._redis.lrange(sk, 0, -1)
         session_keys = [k.decode() if isinstance(k, bytes) else k for k in raw_list]
-        now = datetime.now(timezone.utc)
-        labile: List[LabileMemory] = []
+        now = datetime.now(UTC)
+        labile: list[LabileMemory] = []
         target_session = self._session_key(tenant_id, scope_id, turn_id) if turn_id else None
         for sess_key in session_keys:
             if target_session and sess_key != target_session:
@@ -280,7 +278,7 @@ class LabileStateTracker:
         tenant_id: str,
         scope_id: str,
         turn_id: str,
-    ) -> Optional[LabileSession]:
+    ) -> LabileSession | None:
         """Get a specific session."""
         session_key = self._session_key(tenant_id, scope_id, turn_id)
         if self._redis is not None:
@@ -303,7 +301,7 @@ class LabileStateTracker:
         tenant_id: str,
         scope_id: str,
         turn_id: str,
-        memory_ids: Optional[List[UUID]] = None,
+        memory_ids: list[UUID] | None = None,
     ) -> None:
         """Release memories from labile state. Called after reconsolidation is complete."""
         session_key = self._session_key(tenant_id, scope_id, turn_id)
@@ -332,7 +330,7 @@ class LabileStateTracker:
         self,
         session_key: str,
         scope_key: str,
-        memory_ids: Optional[List[UUID]],
+        memory_ids: list[UUID] | None,
     ) -> None:
         rk = self._redis_session_key(session_key)
         sk = self._redis_scope_key(scope_key)
@@ -363,7 +361,7 @@ class LabileStateTracker:
         sessions = self._scope_sessions.get(scope_key, [])
         if len(sessions) <= self.max_sessions:
             return
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         to_remove = []
         for sk in list(sessions):
             session = self._sessions.get(sk)
@@ -389,7 +387,7 @@ class LabileStateTracker:
         sk = self._redis_scope_key(scope_key)
         raw_list = await self._redis.lrange(sk, 0, -1)
         session_keys = [k.decode() if isinstance(k, bytes) else k for k in raw_list]
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         to_remove = []
         for sess_key in session_keys:
             rk = self._redis_session_key(sess_key)

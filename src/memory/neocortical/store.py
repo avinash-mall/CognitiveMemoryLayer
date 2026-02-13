@@ -1,6 +1,6 @@
 """Neocortical store: semantic memory facade (graph + fact store)."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...core.schemas import Relation
 from ...storage.neo4j import Neo4jGraphStore
@@ -23,8 +23,8 @@ class NeocorticalStore:
         key: str,
         value: Any,
         confidence: float = 0.8,
-        evidence_ids: Optional[List[str]] = None,
-        context_tags: Optional[List[str]] = None,
+        evidence_ids: list[str] | None = None,
+        context_tags: list[str] | None = None,
     ) -> SemanticFact:
         """Store a semantic fact; optionally sync to graph if relation-like. Holistic: tenant-only."""
         fact = await self.facts.upsert_fact(
@@ -38,7 +38,7 @@ class NeocorticalStore:
         self,
         tenant_id: str,
         relation: Relation,
-        evidence_ids: Optional[List[str]] = None,
+        evidence_ids: list[str] | None = None,
     ) -> str:
         """Store a relation in the knowledge graph. Holistic: tenant as partition."""
         edge_id = await self.graph.merge_edge(
@@ -57,9 +57,9 @@ class NeocorticalStore:
     async def store_relations_batch(
         self,
         tenant_id: str,
-        relations: List[Relation],
-        evidence_ids: Optional[List[str]] = None,
-    ) -> List[str]:
+        relations: list[Relation],
+        evidence_ids: list[str] | None = None,
+    ) -> list[str]:
         """Store multiple relations."""
         return [await self.store_relation(tenant_id, rel, evidence_ids) for rel in relations]
 
@@ -67,11 +67,11 @@ class NeocorticalStore:
         self,
         tenant_id: str,
         key: str,
-    ) -> Optional[SemanticFact]:
+    ) -> SemanticFact | None:
         """Get a fact by key. Holistic: tenant-only."""
         return await self.facts.get_fact(tenant_id, key)
 
-    async def get_tenant_profile(self, tenant_id: str) -> Dict[str, Any]:
+    async def get_tenant_profile(self, tenant_id: str) -> dict[str, Any]:
         """Get structured profile for tenant. Holistic: tenant-only."""
         return await self.facts.get_tenant_profile(tenant_id)
 
@@ -79,7 +79,7 @@ class NeocorticalStore:
         self,
         tenant_id: str,
         entity: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get all information about an entity (graph + facts). Holistic: tenant-only."""
         graph_facts = await self.graph.get_entity_facts(tenant_id, tenant_id, entity)
         fact_results = await self.facts.search_facts(tenant_id, entity, limit=20)
@@ -94,9 +94,9 @@ class NeocorticalStore:
     async def multi_hop_query(
         self,
         tenant_id: str,
-        seed_entities: List[str],
+        seed_entities: list[str],
         max_hops: int = 3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Multi-hop reasoning from seed entities via Personalized PageRank. Holistic: tenant-only."""
         related = await self.graph.personalized_pagerank(
             tenant_id, tenant_id, seed_entities=seed_entities, top_k=20
@@ -112,7 +112,7 @@ class NeocorticalStore:
         self,
         tenant_id: str,
         candidate_fact: str,
-    ) -> Optional[SemanticFact]:
+    ) -> SemanticFact | None:
         """Find if a candidate fact matches existing schema/knowledge. Holistic: tenant-only."""
         matches = await self.facts.search_facts(tenant_id, candidate_fact, limit=5)
         if matches:
@@ -126,7 +126,7 @@ class NeocorticalStore:
         tenant_id: str,
         query: str,
         limit: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Search semantic memory by text. Holistic: tenant-only."""
         facts = await self.facts.search_facts(tenant_id, query, limit)
         return [

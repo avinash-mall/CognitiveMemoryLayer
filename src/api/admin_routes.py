@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from .auth import AuthContext, require_admin_permission
 from ..memory.orchestrator import MemoryOrchestrator
+from .auth import AuthContext, require_admin_permission
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
