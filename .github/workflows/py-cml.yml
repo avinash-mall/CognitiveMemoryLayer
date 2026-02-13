@@ -4,14 +4,8 @@ on:
     branches: [main]
     tags:
       - "py-cml-v*"
-    paths:
-      - "packages/py-cml/**"
-      - ".github/workflows/py-cml.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "packages/py-cml/**"
-      - ".github/workflows/py-cml.yml"
   workflow_dispatch:
     inputs:
       version:
