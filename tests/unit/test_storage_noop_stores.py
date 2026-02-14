@@ -57,6 +57,15 @@ class TestNoOpGraphStore:
         )
         assert out == []
 
+    async def test_get_entity_facts_batch_returns_empty_dict(self):
+        store = NoOpGraphStore()
+        out = await store.get_entity_facts_batch(
+            tenant_id="t1",
+            scope_id="s1",
+            entity_names=["e1", "e2"],
+        )
+        assert out == {}
+
 
 class TestNoOpFactStore:
     """NoOpFactStore no-ops and returns empty/None or stub fact."""
@@ -98,3 +107,12 @@ class TestNoOpFactStore:
         store = NoOpFactStore()
         out = await store.search_facts(tenant_id="t1", query="test")
         assert out == []
+
+    async def test_search_facts_batch_returns_empty_dict(self):
+        store = NoOpFactStore()
+        out = await store.search_facts_batch(
+            tenant_id="t1",
+            entity_names=["Alice", "Bob"],
+            limit_per_entity=5,
+        )
+        assert out == {}

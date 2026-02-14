@@ -27,7 +27,7 @@ from ..storage.connection import DatabaseManager
 from ..storage.neo4j import Neo4jGraphStore
 from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
 from ..storage.postgres import PostgresMemoryStore
-from ..utils.embeddings import EmbeddingClient, get_embedding_client
+from ..utils.embeddings import CachedEmbeddings, EmbeddingClient, get_embedding_client
 from ..utils.llm import LLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -74,8 +74,20 @@ class MemoryOrchestrator:
     @classmethod
     async def create(cls, db_manager: DatabaseManager) -> "MemoryOrchestrator":
         """Factory method to create orchestrator with all dependencies."""
+        from ..core.config import get_settings
+
+        settings = get_settings()
         llm_client = get_llm_client()
-        embedding_client = get_embedding_client()
+        embedding_client: EmbeddingClient = get_embedding_client()
+
+        # Phase 2.3: wrap with Redis cache when available and enabled
+        redis_client = getattr(db_manager, "redis", None)
+        if redis_client and settings.features.cached_embeddings_enabled:
+            embedding_client = CachedEmbeddings(
+                client=embedding_client,
+                redis_client=redis_client,
+                ttl_seconds=86400,
+            )
 
         episodic_store = PostgresMemoryStore(db_manager.pg_session)
         graph_store = Neo4jGraphStore(db_manager.neo4j_driver)
@@ -273,6 +285,34 @@ class MemoryOrchestrator:
         if stored:
             await self._sync_to_graph(tenant_id, stored)
 
+        # Phase 1.3: Write-time fact extraction — populate semantic store immediately
+        from ..core.config import get_settings
+
+        settings = get_settings()
+        if settings.features.write_time_facts_enabled and chunks_for_encoding:
+            try:
+                from ..extraction.write_time_facts import WriteTimeFactExtractor
+
+                extractor = WriteTimeFactExtractor()
+                for chunk in chunks_for_encoding:
+                    extracted_facts = extractor.extract(chunk)
+                    for fact in extracted_facts:
+                        try:
+                            evidence = (
+                                [str(stored[0].id)] if stored else []
+                            )
+                            await self.neocortical.store_fact(
+                                tenant_id=tenant_id,
+                                key=fact.key,
+                                value=fact.value,
+                                confidence=fact.confidence,
+                                evidence_ids=evidence,
+                            )
+                        except Exception:
+                            pass  # Fire-and-forget; episodic is source of truth
+            except Exception:
+                logger.debug("write_time_facts_skipped", exc_info=True)
+
         if eval_mode:
             n_stored = len(stored)
             n_skipped = sum(1 for g in gate_results if g.get("decision") == "skip")
@@ -366,6 +406,7 @@ class MemoryOrchestrator:
         memory_types: list[str] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories. Holistic: tenant-only."""
         return await self.retriever.retrieve(
@@ -376,6 +417,7 @@ class MemoryOrchestrator:
             memory_types=memory_types,
             since=since,
             until=until,
+            user_timezone=user_timezone,
         )
 
     async def update(

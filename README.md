@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests"><img src="https://img.shields.io/badge/Tests-297-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="./tests"><img src="https://img.shields.io/badge/Tests-301-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
   <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version">
 </p>
 
@@ -207,8 +207,8 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| Sensory buffer | `SensoryBuffer` | `src/memory/sensory/buffer.py` |
-| Working memory limit | `WorkingMemoryManager` (max=10) | `src/memory/working/manager.py` |
+| Sensory buffer | `SensoryBuffer` (token-ID storage, batch decode) | `src/memory/sensory/buffer.py` |
+| Working memory limit | `WorkingMemoryManager` (max=10) + `BoundedStateMap` (LRU/TTL) | `src/memory/working/manager.py` |
 | Semantic chunking | `SemanticChunker` (LLM) | `working/chunker.py` |
 
 📖 **Reference**: Miller, G.A. (1956). "The Magical Number Seven, Plus or Minus Two"
@@ -357,8 +357,9 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| One-shot encoding | `HippocampalStore.encode_chunk()` (used via `encode_batch` from orchestrator) | `src/memory/hippocampal/store.py` |
-| Pattern separation | Content hash + unique embeddings | `PostgresMemoryStore` |
+| One-shot encoding | `HippocampalStore.encode_batch()` — 3-phase pipeline: gate+redact → batch embed → upsert | `src/memory/hippocampal/store.py` |
+| Pattern separation | Content-based stable keys (SHA256) + unique embeddings | `PostgresMemoryStore` |
+| Write-time facts | `WriteTimeFactExtractor` populates semantic store at write time | `src/extraction/write_time_facts.py` |
 | Contextual binding | Metadata: time, agent, turn | `MemoryRecord` schema |
 
 📖 **Reference**: HippoRAG (2024) - "Neurobiologically Inspired Long-Term Memory for LLMs"
@@ -495,7 +496,8 @@ flowchart TD
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
 | Ecphory | `MemoryRetriever.retrieve()` | `src/retrieval/memory_retriever.py` |
-| Hybrid search | `HybridRetriever` | `retrieval/retriever.py` |
+| Hybrid search | `HybridRetriever` (per-step timeouts, cross-group skip-if-found) | `retrieval/retriever.py` |
+| Temporal queries | Timezone-aware filters via `user_timezone` in query analysis | `src/retrieval/planner.py` |
 
 📖 **Reference**: Tulving, E. (1983). "Elements of Episodic Memory" - Encoding Specificity Principle
 
@@ -746,12 +748,30 @@ flowchart TD
 | Component | Technology | Rationale |
 | :--- | :--- | :--- |
 | 🌐 API | **FastAPI** | Async, OpenAPI docs |
-| 💾 Episodic Store | **PostgreSQL + pgvector** | ACID, vector search |
-| 🕸️ Semantic Store | **Neo4j** | Graph algorithms (PPR) |
-| ⚡ Cache | **Redis** | Working memory, rate limiting |
-| 📮 Queue | **Redis + Celery** | Background workers |
-| 🧮 Embeddings | **OpenAI / sentence-transformers** | Configurable dense vectors |
+| 💾 Episodic Store | **PostgreSQL + pgvector** | ACID, vector search (HNSW ef_search tuning) |
+| 🕸️ Semantic Store | **Neo4j** | Graph algorithms (PPR), batched entity lookups |
+| ⚡ Cache | **Redis** | Embedding cache (MGET/pipeline), async storage queue, rate limiting |
+| 📮 Queue | **Redis + Celery** | Background workers, optional async turn storage |
+| 🧮 Embeddings | **OpenAI / sentence-transformers** | Configurable; batched + cached when Redis available |
 | 🤖 LLM | **OpenAI / compatible** | Extraction, summarization |
+
+### Performance & reliability (deep-research implementation)
+
+The server includes optional improvements that can be toggled via **feature flags** (see [ProjectPlan/UsageDocumentation.md — Configuration Reference](ProjectPlan/UsageDocumentation.md#configuration-reference) and [.env.example](.env.example)):
+
+| Feature | Description | Default |
+| :--- | :--- | :--- |
+| **Stable keys** | SHA256-based fact/memory keys (no process-random `hash()`) | On |
+| **Write-time facts** | Populate semantic store at write time (preference/identity) so retrieval hits facts immediately | On |
+| **Batch embeddings** | Single `embed_batch()` call per turn instead of N per-chunk calls | On |
+| **Async storage** | Enqueue turn writes to Redis; process in background (reduces turn latency) | Off |
+| **Cached embeddings** | Redis cache for embeddings when Redis is configured | On |
+| **Retrieval timeouts** | Per-step and total timeouts so slow graph/vector steps don't block reads | On |
+| **DB dependency counts** | Forgetting uses one SQL aggregation instead of O(n²) Python loop | On |
+| **Bounded state** | Working/sensory state uses LRU+TTL maps to prevent unbounded growth | On |
+| **HNSW tuning** | Query-time `hnsw.ef_search` for pgvector recall/latency trade-off | On |
+
+Prometheus metrics include per-step retrieval duration and result counts (`cml_retrieval_step_*`). See [ProjectPlan/BaseCML/ImplementationPlan.md](ProjectPlan/BaseCML/ImplementationPlan.md) for full design and pseudo-code.
 
 ### Embedded mode (lite)
 
@@ -805,6 +825,7 @@ curl -X POST http://localhost:8000/api/v1/memory/read \
   -H "X-Tenant-ID: demo" \
   -d '{"query": "dietary preferences", "format": "llm_context"}'
 ```
+Optional request body field: `user_timezone` (e.g. `"America/New_York"`) for timezone-aware "today"/"yesterday" retrieval. See [UsageDocumentation](ProjectPlan/UsageDocumentation.md).
 
 ### 4. Seamless Turn (Chat Integration)
 
@@ -815,6 +836,7 @@ curl -X POST http://localhost:8000/api/v1/memory/turn \
   -H "X-Tenant-ID: demo" \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
+Optional body field: `user_timezone` (e.g. `"America/New_York"`) for timezone-aware retrieval in the turn. See [UsageDocumentation](ProjectPlan/UsageDocumentation.md).
 
 **From Python:** `pip install cognitive-memory-layer` — see [packages/py-cml](packages/py-cml/) and [packages/py-cml/docs](packages/py-cml/docs/).
 
@@ -870,7 +892,7 @@ docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade 
 | 9     | REST API & Integration            |            11 |
 | 10    | Testing & Deployment              |             6 |
 |       | **Total (phase breakdown)** | **138** |
-|       | **All tests (unit + integration + e2e)** | **297** |
+|       | **All tests (unit + integration + e2e)** | **301** |
 
 The SDK in `packages/py-cml` has its own test suite (168 tests: unit, integration, embedded, e2e). Run from `packages/py-cml`: `pytest tests/ -v`.
 
@@ -918,18 +940,18 @@ CognitiveMemoryLayer/
 │   ├── dashboard/               # 📊 Web dashboard (monitoring & management)
 │   │   └── static/              # HTML, CSS, JS SPA (overview, memories, events, management)
 │   ├── memory/
-│   │   ├── sensory/            # 👁️ Sensory buffer
-│   │   ├── working/             # 🧠 Working memory + chunker
-│   │   ├── hippocampal/         # 🔵 Episodic store (pgvector)
-│   │   ├── neocortical/         # 🟣 Semantic store (Neo4j)
+│   │   ├── sensory/            # 👁️ Sensory buffer (token-ID storage)
+│   │   ├── working/             # 🧠 Working memory + chunker (BoundedStateMap)
+│   │   ├── hippocampal/         # 🔵 Episodic store (pgvector, batch embed)
+│   │   ├── neocortical/         # 🟣 Semantic store (Neo4j, batched multi-hop)
 │   │   └── orchestrator.py     # 🎭 Main coordinator
-│   ├── retrieval/              # 🔍 Hybrid retrieval (semantic + graph)
-│   ├── consolidation/          # 😴 Sleep cycle workers
+│   ├── retrieval/              # 🔍 Hybrid retrieval (timeouts, skip-if-found)
+│   ├── consolidation/          # 😴 Sleep cycle workers (stable fact keys)
 │   ├── reconsolidation/        # 🔄 Belief revision
-│   ├── forgetting/             # 🗑️ Active forgetting
-│   ├── extraction/             # 📤 Entity/fact extraction
-│   ├── storage/                # 💾 Database adapters (Postgres, Neo4j, Redis)
-│   └── utils/                  # 🛠️ LLM, embeddings, metrics
+│   ├── forgetting/             # 🗑️ Active forgetting (DB-side dep counts)
+│   ├── extraction/             # 📤 Entity/fact + write-time fact extraction
+│   ├── storage/                # 💾 Postgres, Neo4j, Redis, async pipeline
+│   └── utils/                  # 🛠️ LLM, embeddings, metrics, bounded_state
 ├── 📂 packages/
 │   └── py-cml/                 # 🐍 Python SDK (pip install cognitive-memory-layer)
 ├── 📂 tests/                   # 297 tests: unit, integration, e2e

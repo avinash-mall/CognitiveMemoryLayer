@@ -108,7 +108,7 @@ Or use `CMLConfig` for validated, reusable config: `from cml import CMLConfig`.
 | **Client** | Sync and async HTTP clients for a running CML server; context managers |
 | **Embedded** | In-process engine (lite mode: SQLite + local embeddings); no server |
 
-**Memory API:** `write`, `read`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`
+**Memory API:** `write`, `read`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`. Optional `user_timezone` on `read()` and `turn()` for timezone-aware "today"/"yesterday" retrieval.
 
 **Server compatibility:** The CML server supports `delete_all` (admin API key), read filters (`memory_types`, `since`, `until`) and response formats (`packet`, `list`, `llm_context`), and persists write `metadata` and optional `memory_type`. Session context is scoped by `session_id` when provided.
 

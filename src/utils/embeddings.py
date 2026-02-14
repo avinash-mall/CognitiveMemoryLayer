@@ -226,38 +226,62 @@ class CachedEmbeddings(EmbeddingClient):
         return result
 
     async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
+        """Batch embed with Redis MGET/pipeline for efficient cache access."""
         import json
 
-        results: list[tuple] = []
+        cache_keys = [self._cache_key(t) for t in texts]
+
+        # Batch cache lookup (MGET instead of N×GET)
+        try:
+            cached_values = await self.redis.mget(*cache_keys)
+        except Exception:
+            # Fallback: no cache
+            cached_values = [None] * len(texts)
+
+        results: list[tuple[int, EmbeddingResult | None]] = []
         uncached_texts: list[str] = []
         uncached_indices: list[int] = []
-        for i, text in enumerate(texts):
-            cache_key = self._cache_key(text)
-            cached = await self.redis.get(cache_key)
+
+        for i, cached in enumerate(cached_values):
             if cached:
-                results.append((i, EmbeddingResult(**json.loads(cached))))
-            else:
-                uncached_texts.append(text)
-                uncached_indices.append(i)
+                try:
+                    results.append((i, EmbeddingResult(**json.loads(cached))))
+                    continue
+                except Exception:
+                    pass  # Corrupted cache entry
+            results.append((i, None))
+            uncached_texts.append(texts[i])
+            uncached_indices.append(i)
+
+        # Batch compute uncached
         if uncached_texts:
             computed = await self.client.embed_batch(uncached_texts)
-            for idx, result in zip(uncached_indices, computed, strict=False):
-                results.append((idx, result))
-                cache_key = self._cache_key(texts[idx])
-                await self.redis.setex(
-                    cache_key,
-                    self.ttl,
-                    json.dumps(
-                        {
-                            "embedding": result.embedding,
-                            "model": result.model,
-                            "dimensions": result.dimensions,
-                            "tokens_used": result.tokens_used,
-                        }
-                    ),
-                )
+
+            # Batch cache store (pipeline instead of N×SETEX)
+            try:
+                pipe = self.redis.pipeline()
+                for idx, result in zip(uncached_indices, computed, strict=False):
+                    results[idx] = (idx, result)
+                    pipe.setex(
+                        cache_keys[idx],
+                        self.ttl,
+                        json.dumps(
+                            {
+                                "embedding": result.embedding,
+                                "model": result.model,
+                                "dimensions": result.dimensions,
+                                "tokens_used": result.tokens_used,
+                            }
+                        ),
+                    )
+                await pipe.execute()
+            except Exception:
+                # Cache write failure — results are still valid
+                for idx, result in zip(uncached_indices, computed, strict=False):
+                    results[idx] = (idx, result)
+
         results.sort(key=lambda x: x[0])
-        return [r for _, r in results]
+        return [r for _, r in results if r is not None]
 
 
 def get_embedding_client() -> EmbeddingClient:

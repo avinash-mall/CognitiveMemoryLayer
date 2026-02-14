@@ -45,6 +45,44 @@ async def test_embedded_write_returns_write_response_when_initialized() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embedded_read_passes_filters_and_user_timezone() -> None:
+    """Embedded read() passes memory_types, since, until, and user_timezone to orchestrator.read()."""
+    from datetime import datetime, timezone
+
+    from cml.models.enums import MemoryType
+
+    config = EmbeddedConfig(tenant_id="t1")
+    client = EmbeddedCognitiveMemoryLayer(config=config)
+    client._orchestrator = MagicMock()
+    client._orchestrator.read = AsyncMock(
+        return_value=MagicMock(
+            all_memories=[],
+            facts=[],
+            preferences=[],
+            recent_episodes=[],
+        )
+    )
+    client._initialized = True
+    since = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    until = datetime(2025, 1, 2, tzinfo=timezone.utc)
+    await client.read(
+        "q",
+        memory_types=[MemoryType.PREFERENCE],
+        since=since,
+        until=until,
+        user_timezone="America/New_York",
+    )
+    client._orchestrator.read.assert_called_once()
+    call_kw = client._orchestrator.read.call_args[1]
+    assert call_kw["tenant_id"] == "t1"
+    assert call_kw["query"] == "q"
+    assert call_kw["memory_types"] == ["preference"]
+    assert call_kw["since"] == since
+    assert call_kw["until"] == until
+    assert call_kw["user_timezone"] == "America/New_York"
+
+
+@pytest.mark.asyncio
 async def test_embedded_ensure_initialized_raises() -> None:
     """write() raises if not initialized."""
     client = EmbeddedCognitiveMemoryLayer()

@@ -97,15 +97,46 @@ class NeocorticalStore:
         seed_entities: list[str],
         max_hops: int = 3,
     ) -> list[dict[str, Any]]:
-        """Multi-hop reasoning from seed entities via Personalized PageRank. Holistic: tenant-only."""
+        """Multi-hop reasoning from seed entities via Personalized PageRank.
+
+        Uses single-query batching to avoid the N+1 pattern:
+        one Cypher ``UNWIND`` call for all graph relations and one
+        SQL ``subject IN (...)`` call for all semantic facts.
+
+        Holistic: tenant-only.
+        """
         related = await self.graph.personalized_pagerank(
             tenant_id, tenant_id, seed_entities=seed_entities, top_k=20
         )
-        results = []
-        for item in related[:10]:
-            entity_info = await self.query_entity(tenant_id, item["entity"])
-            entity_info["relevance_score"] = item.get("score", 0)
-            results.append(entity_info)
+        entity_names = [item["entity"] for item in related[:10]]
+        if not entity_names:
+            return []
+
+        # Single Cypher query for all entities (replaces N individual calls)
+        graph_by_entity = await self.graph.get_entity_facts_batch(
+            tenant_id, tenant_id, entity_names
+        )
+
+        # Single SQL query for all entities (replaces N individual calls)
+        facts_by_entity = await self.facts.search_facts_batch(
+            tenant_id, entity_names, limit_per_entity=5
+        )
+
+        results: list[dict[str, Any]] = []
+        for name in entity_names:
+            score = next(
+                (item.get("score", 0) for item in related if item["entity"] == name),
+                0,
+            )
+            results.append({
+                "entity": name,
+                "relations": graph_by_entity.get(name, []),
+                "facts": [
+                    {"key": f.key, "value": f.value, "confidence": f.confidence}
+                    for f in facts_by_entity.get(name, [])
+                ],
+                "relevance_score": score,
+            })
         return results
 
     async def find_schema_match(

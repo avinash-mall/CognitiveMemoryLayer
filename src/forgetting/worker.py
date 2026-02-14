@@ -119,7 +119,22 @@ class ForgettingWorker:
         user_id: str,
         memories: list,
     ) -> dict[str, int]:
-        """Count how many other memories reference each memory."""
+        """Count how many other memories reference each memory.
+
+        Prefers a single DB aggregation query (O(1) round-trips) when
+        available, falling back to the O(n²) Python loop for stores that
+        don't support ``bulk_dependency_counts``.
+        """
+        memory_ids = [str(m.id) for m in memories]
+
+        # Phase 4.1: DB-side aggregation
+        if hasattr(self.store, "bulk_dependency_counts"):
+            try:
+                return await self.store.bulk_dependency_counts(tenant_id, memory_ids)
+            except Exception:
+                logger.warning("bulk_dependency_counts_fallback", exc_info=True)
+
+        # Fallback: O(n²) Python loop (original implementation)
         counts: dict[str, int] = {}
         for mem in memories:
             mem_id = str(mem.id)
@@ -129,7 +144,7 @@ class ForgettingWorker:
                     continue
                 if other.supersedes_id and str(other.supersedes_id) == mem_id:
                     counts[mem_id] += 1
-                refs = other.metadata.get("evidence_refs", [])
+                refs = (other.metadata or {}).get("evidence_refs", [])
                 if mem_id in refs:
                     counts[mem_id] += 1
         return counts

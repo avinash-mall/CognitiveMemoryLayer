@@ -39,6 +39,7 @@ class ReadRequest(BaseModel):
     response_format: Literal["packet", "list", "llm_context"] = Field(
         default="packet", alias="format"
     )
+    user_timezone: str | None = None  # IANA timezone (e.g. "America/New_York") for "today"/"yesterday"
 
 
 class TurnRequest(BaseModel):
@@ -49,6 +50,7 @@ class TurnRequest(BaseModel):
     session_id: str | None = None
     max_context_tokens: int = 1500
     timestamp: datetime | None = None
+    user_timezone: str | None = None  # IANA timezone for retrieval "today"/"yesterday"
 
 
 class UpdateRequest(BaseModel):
