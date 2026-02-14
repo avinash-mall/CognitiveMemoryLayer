@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime
 
+from ...utils.bounded_state import BoundedStateMap
 from ...utils.llm import LLMClient
 from .chunker import RuleBasedChunker, SemanticChunker
 from .models import SemanticChunk, WorkingMemoryState
@@ -16,6 +17,9 @@ class WorkingMemoryManager:
     1. Process sensory buffer into chunks
     2. Maintain limited-capacity working memory
     3. Decide what needs long-term encoding
+
+    Uses :class:`BoundedStateMap` with LRU eviction and TTL to prevent
+    unbounded memory growth in long-running servers.
     """
 
     def __init__(
@@ -23,8 +27,13 @@ class WorkingMemoryManager:
         llm_client: LLMClient | None = None,
         max_chunks_per_user: int = 10,
         use_fast_chunker: bool = False,
+        max_scopes: int = 1000,
+        scope_ttl_seconds: float = 1800.0,
     ) -> None:
-        self._states: dict[str, WorkingMemoryState] = {}
+        self._states: BoundedStateMap[WorkingMemoryState] = BoundedStateMap(
+            max_size=max_scopes,
+            ttl_seconds=scope_ttl_seconds,
+        )
         self._lock = asyncio.Lock()
         self.max_chunks = max_chunks_per_user
 
@@ -41,14 +50,14 @@ class WorkingMemoryManager:
     async def get_state(self, tenant_id: str, scope_id: str) -> WorkingMemoryState:
         """Get or create working memory state for scope."""
         key = self._get_key(tenant_id, scope_id)
-        async with self._lock:
-            if key not in self._states:
-                self._states[key] = WorkingMemoryState(
-                    tenant_id=tenant_id,
-                    user_id=scope_id,  # Internal model still uses user_id field name
-                    max_chunks=self.max_chunks,
-                )
-            return self._states[key]
+        return await self._states.get_or_create(
+            key,
+            factory=lambda: WorkingMemoryState(
+                tenant_id=tenant_id,
+                user_id=scope_id,
+                max_chunks=self.max_chunks,
+            ),
+        )
 
     async def process_input(
         self,
@@ -113,9 +122,7 @@ class WorkingMemoryManager:
     async def clear_user(self, tenant_id: str, scope_id: str) -> None:
         """Clear working memory for scope."""
         key = self._get_key(tenant_id, scope_id)
-        async with self._lock:
-            if key in self._states:
-                del self._states[key]
+        await self._states.delete(key)
 
     async def get_stats(self, tenant_id: str, scope_id: str) -> dict[str, object]:
         """Get working memory statistics."""

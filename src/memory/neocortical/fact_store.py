@@ -135,6 +135,54 @@ class SemanticFactStore:
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]
 
+    async def search_facts_batch(
+        self,
+        tenant_id: str,
+        entity_names: list[str],
+        limit_per_entity: int = 5,
+    ) -> dict[str, list[SemanticFact]]:
+        """Fetch facts for multiple entities in one query (exact subject match).
+
+        Uses ``subject IN (entity_names)`` instead of the ILIKE text search
+        that :meth:`search_facts` performs.  This is more precise and faster
+        for the multi-hop use case where we want facts *about* specific
+        PPR-ranked entities.
+
+        Returns a mapping ``entity_name -> list[SemanticFact]``, at most
+        *limit_per_entity* per entity, ordered by confidence descending.
+        Entities with no matching facts are absent from the dict.
+        """
+        if not entity_names:
+            return {}
+
+        async with self.session_factory() as session:
+            q = (
+                select(SemanticFactModel)
+                .where(
+                    and_(
+                        SemanticFactModel.tenant_id == tenant_id,
+                        SemanticFactModel.is_current.is_(True),
+                        SemanticFactModel.subject.in_(entity_names),
+                    )
+                )
+                .order_by(
+                    SemanticFactModel.confidence.desc(),
+                    SemanticFactModel.updated_at.desc(),
+                )
+                .limit(len(entity_names) * limit_per_entity)
+            )
+            result = await session.execute(q)
+            rows = result.scalars().all()
+
+        # Group by subject and cap per entity
+        grouped: dict[str, list[SemanticFact]] = {}
+        for row in rows:
+            fact = self._model_to_fact(row)
+            bucket = grouped.setdefault(fact.subject, [])
+            if len(bucket) < limit_per_entity:
+                bucket.append(fact)
+        return grouped
+
     async def invalidate_fact(
         self,
         tenant_id: str,

@@ -1,5 +1,6 @@
 """Migration of consolidated gists to semantic store."""
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -8,6 +9,19 @@ from ..core.enums import MemoryStatus
 from ..memory.neocortical.store import NeocorticalStore
 from ..storage.postgres import PostgresMemoryStore
 from .schema_aligner import AlignmentResult
+
+
+def _stable_fact_key(prefix: str, text: str) -> str:
+    """Generate a stable, deterministic key for a semantic fact.
+
+    Uses SHA256 (not Python ``hash()``) so the key is identical across
+    different Python processes, workers, deployments, and restarts.
+
+    Format: ``{prefix}:{sha256_hex[:16]}``
+    Collision probability: ~1 in 2^64 (negligible).
+    """
+    h = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}:{h}"
 
 
 @dataclass
@@ -101,7 +115,7 @@ class ConsolidationMigrator:
     ):
         gist = alignment.gist
         schema = alignment.suggested_schema or {}
-        key = schema.get("key") or gist.key or f"user:custom:{hash(gist.text) % 10000}"
+        key = schema.get("key") or gist.key or _stable_fact_key("user:custom", gist.text)
         await self.semantic.store_fact(
             tenant_id=tenant_id,
             key=key,

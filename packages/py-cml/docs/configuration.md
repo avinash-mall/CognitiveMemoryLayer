@@ -85,6 +85,10 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 
 **Lite mode** uses SQLite (in-memory or file via `db_path`) and local sentence-transformers embeddings. **Standard** and **full** modes require PostgreSQL, Neo4j, and Redis and are not yet implemented in the SDK.
 
+## Server-side feature flags and retrieval
+
+Server behavior (write-time facts, retrieval timeouts, cached embeddings, batch embeddings, etc.) is controlled by **server** environment variables (`FEATURES__*`, `RETRIEVAL__*`), not by the SDK. The SDK does not set these; they are configured where the CML server runs. For the full list and defaults, see the main project [UsageDocumentation — Configuration Reference](../../../ProjectPlan/UsageDocumentation.md#configuration-reference).
+
 ## Versioning
 
 The project follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH):

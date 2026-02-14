@@ -68,6 +68,35 @@ class AuthSettings(PydanticBaseModel):
     )
 
 
+class FeatureFlags(PydanticBaseModel):
+    """Feature flags for gradual rollout of improvements.
+
+    All flags default to *True* for new deployments.  Set to *False* to
+    revert individual features without a full rollback.
+    """
+
+    stable_keys_enabled: bool = Field(default=True, description="Phase 1.1-1.2: SHA256-based stable keys")
+    write_time_facts_enabled: bool = Field(default=True, description="Phase 1.3: populate semantic store at write time")
+    batch_embeddings_enabled: bool = Field(default=True, description="Phase 2.1: batch embed_batch() calls")
+    store_async: bool = Field(default=False, description="Phase 2.2: async storage pipeline (opt-in)")
+    cached_embeddings_enabled: bool = Field(default=True, description="Phase 2.3: Redis embedding cache")
+    retrieval_timeouts_enabled: bool = Field(default=True, description="Phase 3.1: per-step asyncio.wait_for")
+    skip_if_found_cross_group: bool = Field(default=True, description="Phase 3.2: cross-group skip on fact hit")
+    db_dependency_counts: bool = Field(default=True, description="Phase 4.1: DB-side aggregation for forgetting")
+    bounded_state_enabled: bool = Field(default=True, description="Phase 5.2: LRU+TTL state maps")
+    hnsw_ef_search_tuning: bool = Field(default=True, description="Phase 6.1: query-time HNSW tuning")
+
+
+class RetrievalSettings(PydanticBaseModel):
+    """Retrieval tuning knobs."""
+
+    default_step_timeout_ms: int = Field(default=500, description="Per-step timeout (ms)")
+    total_timeout_ms: int = Field(default=2000, description="Total retrieval budget (ms)")
+    graph_timeout_ms: int = Field(default=1000, description="Graph step timeout (ms)")
+    fact_timeout_ms: int = Field(default=200, description="Fact lookup timeout (ms)")
+    hnsw_ef_search: int = Field(default=64, description="pgvector HNSW ef_search override")
+
+
 class Settings(BaseSettings):
     """Application settings with nested configuration."""
 
@@ -81,6 +110,8 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    features: FeatureFlags = Field(default_factory=FeatureFlags)
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
 
     model_config = {
         "env_file": ".env",

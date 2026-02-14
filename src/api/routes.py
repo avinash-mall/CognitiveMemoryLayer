@@ -130,6 +130,7 @@ async def process_turn(
             assistant_response=body.assistant_response,
             session_id=body.session_id,
             timestamp=body.timestamp,
+            user_timezone=body.user_timezone,
         )
         return ProcessTurnResponse(
             memory_context=result.memory_context,
@@ -165,6 +166,7 @@ async def read_memory(
             memory_types=memory_type_values,
             since=body.since,
             until=body.until,
+            user_timezone=body.user_timezone,
         )
 
         elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
@@ -370,6 +372,7 @@ async def session_read(
             memory_types=memory_type_values,
             since=body.since,
             until=body.until,
+            user_timezone=body.user_timezone,
         )
         elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 

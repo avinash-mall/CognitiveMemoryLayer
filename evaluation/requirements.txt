@@ -1,5 +1,10 @@
-# Minimal deps for evaluation/scripts/eval_locomo.py.
-# LoCoMo task_eval scoring also needs: bert-score, nltk, regex, numpy
-# Install from locomo if needed: pip install -r locomo/requirements.txt (or just the scoring deps)
+# Minimal deps for evaluation scripts.
+# LoCoMo scoring: bert-score, nltk, regex, numpy; run: python -c "import nltk; nltk.download('punkt')"
+# Locomo-Plus judge: openai (or use Ollama via OPENAI_BASE_URL)
 requests>=2.28.0
 tqdm>=4.64.0
+bert-score>=0.3.13
+nltk>=3.8
+regex
+numpy
+openai>=1.0

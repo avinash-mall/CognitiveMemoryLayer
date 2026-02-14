@@ -1,5 +1,7 @@
 """Hippocampal store: episodic memory with write gate, embedding, and vector store."""
 
+import asyncio
+import hashlib
 from datetime import UTC, datetime
 from typing import Any
 
@@ -139,6 +141,12 @@ class HippocampalStore:
         memory_type_override: MemoryType | None = None,
         return_gate_results: bool = False,
     ):
+        """Encode chunks using a 3-phase batched pipeline.
+
+        Phase 1: Gate + redact all chunks (CPU only, no network calls).
+        Phase 2: Batch-embed surviving texts in ONE API call.
+        Phase 3: Extract entities/relations + upsert (bounded concurrency).
+        """
         existing = await self.store.scan(
             tenant_id,
             filters={"status": MemoryStatus.ACTIVE.value},
@@ -146,28 +154,110 @@ class HippocampalStore:
             order_by="-timestamp",
         )
         existing_dicts = [{"text": m.text} for m in existing]
-        results: list[MemoryRecord] = []
-        gate_results: list[dict] = [] if return_gate_results else []
+
+        # ---- Phase 1: Gate + Redact (no network calls) ----
+        surviving: list[tuple[SemanticChunk, WriteGateResult, str]] = []
+        gate_results_list: list[dict] = []
+
         for chunk in chunks:
-            record, gate_result = await self.encode_chunk(
-                tenant_id,
-                chunk,
-                context_tags=context_tags,
+            gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_dicts)
+            if return_gate_results:
+                gate_results_list.append(_gate_result_to_dict(gate_result))
+
+            if gate_result.decision == WriteDecision.SKIP:
+                continue
+
+            text = chunk.text
+            if gate_result.redaction_required:
+                redaction_result = self.redactor.redact(text)
+                text = redaction_result.redacted_text
+
+            surviving.append((chunk, gate_result, text))
+
+        if not surviving:
+            return ([], gate_results_list) if return_gate_results else []
+
+        # ---- Phase 2: Batch embed (ONE API call) ----
+        texts_to_embed = [text for _, _, text in surviving]
+        embedding_results = await self.embeddings.embed_batch(texts_to_embed)
+
+        # ---- Phase 3: Extract + Upsert (bounded concurrency) ----
+        results: list[MemoryRecord] = []
+        extractor_semaphore = asyncio.Semaphore(3)
+
+        async def _process_chunk(idx: int) -> MemoryRecord | None:
+            chunk, gate_result, text = surviving[idx]
+            embedding_result = embedding_results[idx]
+
+            entities: list[EntityMention] = []
+            async with extractor_semaphore:
+                if self.entity_extractor:
+                    entities = await self.entity_extractor.extract(text)
+                elif chunk.entities:
+                    entities = [
+                        EntityMention(text=e, normalized=e, entity_type="CONCEPT")
+                        for e in chunk.entities
+                    ]
+
+            relations: list[Relation] = []
+            if self.relation_extractor:
+                async with extractor_semaphore:
+                    entity_texts = [e.normalized for e in entities]
+                    relations = await self.relation_extractor.extract(text, entities=entity_texts)
+
+            memory_type = memory_type_override or (
+                gate_result.memory_types[0]
+                if gate_result.memory_types
+                else MemoryType.EPISODIC_EVENT
+            )
+            key = self._generate_key(chunk, memory_type)
+
+            system_metadata: dict[str, Any] = {
+                "chunk_type": chunk.chunk_type.value,
+                "source_turn_id": chunk.source_turn_id,
+                "source_role": chunk.source_role,
+            }
+            merged_metadata = {**system_metadata, **(request_metadata or {})}
+
+            record_create = MemoryRecordCreate(
+                tenant_id=tenant_id,
+                context_tags=context_tags or [],
                 source_session_id=source_session_id,
                 agent_id=agent_id,
-                existing_memories=existing_dicts,
                 namespace=namespace,
-                timestamp=timestamp,
-                request_metadata=request_metadata,
-                memory_type_override=memory_type_override,
+                type=memory_type,
+                text=text,
+                key=key,
+                embedding=embedding_result.embedding,
+                entities=entities,
+                relations=relations,
+                metadata=merged_metadata,
+                timestamp=timestamp or chunk.timestamp,
+                confidence=chunk.confidence,
+                importance=gate_result.importance,
+                provenance=Provenance(
+                    source=MemorySource.AGENT_INFERRED,
+                    evidence_refs=(
+                        [chunk.source_turn_id] if chunk.source_turn_id else []
+                    ),
+                    model_version=embedding_result.model,
+                ),
             )
-            if return_gate_results:
-                gate_results.append(_gate_result_to_dict(gate_result))
-            if record:
-                results.append(record)
-                existing_dicts.append({"text": record.text})
+            stored = await self.store.upsert(record_create)
+            return stored
+
+        tasks = [_process_chunk(i) for i in range(len(surviving))]
+        stored_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for res in stored_results:
+            if isinstance(res, Exception):
+                continue
+            if res is not None:
+                results.append(res)
+                existing_dicts.append({"text": res.text})
+
         if return_gate_results:
-            return results, gate_results
+            return results, gate_results_list
         return results
 
     async def search(
@@ -229,11 +319,24 @@ class HippocampalStore:
         )
 
     def _generate_key(self, chunk: SemanticChunk, memory_type: MemoryType) -> str | None:
+        """Generate a stable, unique key for deduplication.
+
+        Uses a content-based hash so that distinct facts sharing the same
+        first entity (e.g. "Italian food" vs "Italian music") receive
+        different keys and are never silently overwritten.
+        """
         if memory_type not in (
             MemoryType.PREFERENCE,
             MemoryType.SEMANTIC_FACT,
         ):
             return None
+
+        text_normalized = chunk.text.strip().lower()
+        content_hash = hashlib.sha256(text_normalized.encode()).hexdigest()[:16]
+
+        # Include first entity for human readability
+        entity_prefix = ""
         if chunk.entities:
-            return f"{memory_type.value}:{chunk.entities[0].lower()}"
-        return None
+            entity_prefix = chunk.entities[0].lower().replace(" ", "_") + ":"
+
+        return f"{memory_type.value}:{entity_prefix}{content_hash}"

@@ -131,6 +131,15 @@ class TestAPISchemas:
         assert req.max_results == 5
         assert req.format == "list"
 
+    def test_read_memory_request_accepts_user_timezone(self):
+        """ReadMemoryRequest accepts optional user_timezone for timezone-aware retrieval."""
+        from src.api.schemas import ReadMemoryRequest
+
+        req = ReadMemoryRequest(query="today?", user_timezone="America/New_York")
+        assert req.user_timezone == "America/New_York"
+        req_default = ReadMemoryRequest(query="test")
+        assert req_default.user_timezone is None
+
     def test_forget_request_defaults(self):
         """ForgetRequest has sensible defaults."""
         from src.api.schemas import ForgetRequest
@@ -159,6 +168,18 @@ class TestAPISchemas:
         )
         assert req.user_message == "Hello"
         assert req.assistant_response == "Hi there!"
+
+    def test_process_turn_request_accepts_user_timezone(self):
+        """ProcessTurnRequest accepts optional user_timezone for retrieval in the turn."""
+        from src.api.schemas import ProcessTurnRequest
+
+        req = ProcessTurnRequest(
+            user_message="Hi",
+            user_timezone="Europe/London",
+        )
+        assert req.user_timezone == "Europe/London"
+        req_default = ProcessTurnRequest(user_message="Hi")
+        assert req_default.user_timezone is None
 
     def test_create_session_request_defaults(self):
         """CreateSessionRequest has defaults."""

@@ -102,6 +102,29 @@ def test_read_request_model_dump_exclude_none() -> None:
     assert "memory_types" not in d or d["memory_types"] is None
     assert "since" not in d or d["since"] is None
     assert "until" not in d or d["until"] is None
+    assert "user_timezone" not in d or d["user_timezone"] is None
+
+
+def test_read_request_user_timezone_serialized() -> None:
+    """ReadRequest accepts user_timezone and includes it in payload when set."""
+    req = ReadRequest(query="today?", user_timezone="America/New_York")
+    d = req.model_dump(exclude_none=True, by_alias=True, mode="json")
+    assert d["query"] == "today?"
+    assert d["user_timezone"] == "America/New_York"
+    req_none = ReadRequest(query="test")
+    d_none = req_none.model_dump(exclude_none=True, by_alias=True, mode="json")
+    assert "user_timezone" not in d_none
+
+
+def test_turn_request_user_timezone_serialized() -> None:
+    """TurnRequest accepts user_timezone and includes it in payload when set."""
+    req = TurnRequest(user_message="Hi", user_timezone="Europe/London")
+    d = req.model_dump(exclude_none=True, mode="json")
+    assert d["user_message"] == "Hi"
+    assert d["user_timezone"] == "Europe/London"
+    req_none = TurnRequest(user_message="Hi")
+    d_none = req_none.model_dump(exclude_none=True, mode="json")
+    assert "user_timezone" not in d_none
 
 
 def test_write_response_parse() -> None:
