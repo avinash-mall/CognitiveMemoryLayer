@@ -11,13 +11,13 @@ from uuid import UUID
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
 
 from openai import OpenAI
 from cml import CognitiveMemoryLayer
-
 
 MEMORY_TOOLS = [
     {
@@ -31,7 +31,13 @@ MEMORY_TOOLS = [
                     "content": {"type": "string"},
                     "memory_type": {
                         "type": "string",
-                        "enum": ["episodic_event", "semantic_fact", "preference", "constraint", "hypothesis"],
+                        "enum": [
+                            "episodic_event",
+                            "semantic_fact",
+                            "preference",
+                            "constraint",
+                            "hypothesis",
+                        ],
                     },
                 },
                 "required": ["content"],
@@ -86,8 +92,14 @@ MEMORY_TOOLS = [
 class MemoryEnabledAssistant:
     def __init__(self, session_id: str, model: Optional[str] = None):
         self.session_id = session_id
-        self.model = (model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
-        base_url = (os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000").strip()
+        self.model = (
+            model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
+        ).strip()
+        base_url = (
+            os.environ.get("CML_BASE_URL")
+            or os.environ.get("MEMORY_API_URL")
+            or "http://localhost:8000"
+        ).strip()
         self.openai = OpenAI()
         self.memory = CognitiveMemoryLayer(
             api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
@@ -140,14 +152,23 @@ class MemoryEnabledAssistant:
             )
             msg = resp.choices[0].message
             if msg.tool_calls:
-                self.messages.append({
-                    "role": "assistant",
-                    "content": msg.content,
-                    "tool_calls": [
-                        {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                        for tc in msg.tool_calls
-                    ],
-                })
+                self.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    }
+                )
                 for tc in msg.tool_calls:
                     args = json.loads(tc.function.arguments)
                     print(f"  [Tool: {tc.function.name}] {args}")

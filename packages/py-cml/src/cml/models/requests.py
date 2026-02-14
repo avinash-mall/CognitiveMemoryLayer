@@ -39,7 +39,9 @@ class ReadRequest(BaseModel):
     response_format: Literal["packet", "list", "llm_context"] = Field(
         default="packet", alias="format"
     )
-    user_timezone: str | None = None  # IANA timezone (e.g. "America/New_York") for "today"/"yesterday"
+    user_timezone: str | None = (
+        None  # IANA timezone (e.g. "America/New_York") for "today"/"yesterday"
+    )
 
 
 class TurnRequest(BaseModel):

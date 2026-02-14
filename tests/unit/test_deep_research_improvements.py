@@ -130,47 +130,35 @@ class TestWriteTimeFactExtractor:
         self.extractor = WriteTimeFactExtractor()
 
     def test_extracts_preference_from_preference_chunk(self):
-        chunk = SemanticChunk(
-            id="1", text="I love Italian food", chunk_type=ChunkType.PREFERENCE
-        )
+        chunk = SemanticChunk(id="1", text="I love Italian food", chunk_type=ChunkType.PREFERENCE)
         facts = self.extractor.extract(chunk)
         assert len(facts) >= 1
         assert any("preference" in f.key for f in facts)
 
     def test_extracts_name_identity(self):
-        chunk = SemanticChunk(
-            id="2", text="My name is Alice", chunk_type=ChunkType.FACT
-        )
+        chunk = SemanticChunk(id="2", text="My name is Alice", chunk_type=ChunkType.FACT)
         facts = self.extractor.extract(chunk)
         assert any(f.key == "user:identity:name" for f in facts)
         assert any(f.value == "Alice" for f in facts)
 
     def test_extracts_location(self):
-        chunk = SemanticChunk(
-            id="3", text="I live in Paris", chunk_type=ChunkType.FACT
-        )
+        chunk = SemanticChunk(id="3", text="I live in Paris", chunk_type=ChunkType.FACT)
         facts = self.extractor.extract(chunk)
         assert any("location" in f.key for f in facts)
         assert any(f.value == "Paris" for f in facts)
 
     def test_ignores_non_fact_chunks(self):
-        chunk = SemanticChunk(
-            id="4", text="It rained today", chunk_type=ChunkType.EVENT
-        )
+        chunk = SemanticChunk(id="4", text="It rained today", chunk_type=ChunkType.EVENT)
         facts = self.extractor.extract(chunk)
         assert facts == []
 
     def test_ignores_statements(self):
-        chunk = SemanticChunk(
-            id="5", text="I love Italian food", chunk_type=ChunkType.STATEMENT
-        )
+        chunk = SemanticChunk(id="5", text="I love Italian food", chunk_type=ChunkType.STATEMENT)
         facts = self.extractor.extract(chunk)
         assert facts == []
 
     def test_confidence_below_consolidation_level(self):
-        chunk = SemanticChunk(
-            id="6", text="I love sushi", chunk_type=ChunkType.PREFERENCE
-        )
+        chunk = SemanticChunk(id="6", text="I love sushi", chunk_type=ChunkType.PREFERENCE)
         facts = self.extractor.extract(chunk)
         for f in facts:
             assert f.confidence < 0.8  # Write-time < consolidation
@@ -573,32 +561,34 @@ class TestNeo4jGetEntityFactsBatch:
 
         driver, mock_session = mock_driver
         mock_result = AsyncMock()
-        mock_result.data = AsyncMock(return_value=[
-            {
-                "entity_name": "Alice",
-                "predicate": "KNOWS",
-                "direction": "outgoing",
-                "related_entity": "Bob",
-                "related_type": "PERSON",
-                "relation_properties": {"confidence": 0.9},
-            },
-            {
-                "entity_name": "Alice",
-                "predicate": "WORKS_AT",
-                "direction": "outgoing",
-                "related_entity": "Acme",
-                "related_type": "ORG",
-                "relation_properties": {},
-            },
-            {
-                "entity_name": "Bob",
-                "predicate": "LIVES_IN",
-                "direction": "outgoing",
-                "related_entity": "Paris",
-                "related_type": "LOCATION",
-                "relation_properties": {},
-            },
-        ])
+        mock_result.data = AsyncMock(
+            return_value=[
+                {
+                    "entity_name": "Alice",
+                    "predicate": "KNOWS",
+                    "direction": "outgoing",
+                    "related_entity": "Bob",
+                    "related_type": "PERSON",
+                    "relation_properties": {"confidence": 0.9},
+                },
+                {
+                    "entity_name": "Alice",
+                    "predicate": "WORKS_AT",
+                    "direction": "outgoing",
+                    "related_entity": "Acme",
+                    "related_type": "ORG",
+                    "relation_properties": {},
+                },
+                {
+                    "entity_name": "Bob",
+                    "predicate": "LIVES_IN",
+                    "direction": "outgoing",
+                    "related_entity": "Paris",
+                    "related_type": "LOCATION",
+                    "relation_properties": {},
+                },
+            ]
+        )
         mock_session.run = AsyncMock(return_value=mock_result)
 
         store = Neo4jGraphStore(driver=driver)
@@ -621,16 +611,18 @@ class TestNeo4jGetEntityFactsBatch:
 
         driver, mock_session = mock_driver
         mock_result = AsyncMock()
-        mock_result.data = AsyncMock(return_value=[
-            {
-                "entity_name": "Alice",
-                "predicate": "KNOWS",
-                "direction": "outgoing",
-                "related_entity": "Bob",
-                "related_type": "PERSON",
-                "relation_properties": {},
-            },
-        ])
+        mock_result.data = AsyncMock(
+            return_value=[
+                {
+                    "entity_name": "Alice",
+                    "predicate": "KNOWS",
+                    "direction": "outgoing",
+                    "related_entity": "Bob",
+                    "related_type": "PERSON",
+                    "relation_properties": {},
+                },
+            ]
+        )
         mock_session.run = AsyncMock(return_value=mock_result)
 
         store = Neo4jGraphStore(driver=driver)
@@ -660,10 +652,16 @@ class TestSemanticFactStoreSearchFactsBatch:
 
         # Build mock ORM rows
         mock_rows = []
-        for i, (subj, conf) in enumerate([
-            ("Alice", 0.9), ("Alice", 0.8), ("Alice", 0.7),
-            ("Bob", 0.95), ("Bob", 0.85), ("Bob", 0.75),
-        ]):
+        for i, (subj, conf) in enumerate(
+            [
+                ("Alice", 0.9),
+                ("Alice", 0.8),
+                ("Alice", 0.7),
+                ("Bob", 0.95),
+                ("Bob", 0.85),
+                ("Bob", 0.75),
+            ]
+        ):
             row = MagicMock(spec=SemanticFactModel)
             row.id = uuid4()
             row.tenant_id = "t1"
@@ -707,7 +705,7 @@ class TestSemanticFactStoreSearchFactsBatch:
         assert "Alice" in result
         assert "Bob" in result
         assert len(result["Alice"]) == 2  # capped from 3 to 2
-        assert len(result["Bob"]) == 2    # capped from 3 to 2
+        assert len(result["Bob"]) == 2  # capped from 3 to 2
         # Highest confidence first (they arrive pre-sorted by the query)
         assert result["Alice"][0].confidence == 0.9
         assert result["Bob"][0].confidence == 0.95
@@ -724,32 +722,44 @@ class TestMultiHopQueryBatch:
         mock_facts = AsyncMock()
 
         # PPR returns two ranked entities
-        mock_graph.personalized_pagerank = AsyncMock(return_value=[
-            {"entity": "Alice", "score": 0.9},
-            {"entity": "Bob", "score": 0.7},
-        ])
+        mock_graph.personalized_pagerank = AsyncMock(
+            return_value=[
+                {"entity": "Alice", "score": 0.9},
+                {"entity": "Bob", "score": 0.7},
+            ]
+        )
 
         # Batch graph relations
-        mock_graph.get_entity_facts_batch = AsyncMock(return_value={
-            "Alice": [
-                {"predicate": "KNOWS", "direction": "outgoing",
-                 "related_entity": "Bob", "related_type": "PERSON",
-                 "relation_properties": {}},
-            ],
-        })
+        mock_graph.get_entity_facts_batch = AsyncMock(
+            return_value={
+                "Alice": [
+                    {
+                        "predicate": "KNOWS",
+                        "direction": "outgoing",
+                        "related_entity": "Bob",
+                        "related_type": "PERSON",
+                        "relation_properties": {},
+                    },
+                ],
+            }
+        )
 
         # Batch semantic facts
         alice_fact = _make_semantic_fact("Alice", key="user:identity:name", value="Alice Smith")
-        mock_facts.search_facts_batch = AsyncMock(return_value={
-            "Alice": [alice_fact],
-        })
+        mock_facts.search_facts_batch = AsyncMock(
+            return_value={
+                "Alice": [alice_fact],
+            }
+        )
 
         store = NeocorticalStore(graph_store=mock_graph, fact_store=mock_facts)
         results = await store.multi_hop_query("t1", seed_entities=["Alice"])
 
         # Verify batch APIs were called (not single-entity calls)
         mock_graph.get_entity_facts_batch.assert_awaited_once_with("t1", "t1", ["Alice", "Bob"])
-        mock_facts.search_facts_batch.assert_awaited_once_with("t1", ["Alice", "Bob"], limit_per_entity=5)
+        mock_facts.search_facts_batch.assert_awaited_once_with(
+            "t1", ["Alice", "Bob"], limit_per_entity=5
+        )
 
         # Verify result shape
         assert len(results) == 2

@@ -9,6 +9,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -52,7 +53,9 @@ class MemoryAgent:
 async def main():
     async with AsyncCognitiveMemoryLayer(
         api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
-        base_url=os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000",
+        base_url=os.environ.get("CML_BASE_URL")
+        or os.environ.get("MEMORY_API_URL")
+        or "http://localhost:8000",
     ) as memory:
         agent = MemoryAgent(memory, agent_id="agent-001")
 

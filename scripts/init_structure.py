@@ -1,4 +1,5 @@
 """Create project directory structure for Cognitive Memory Layer."""
+
 from pathlib import Path
 
 # Reflects actual project layout. Run from repo root to create missing dirs/files (touch).
