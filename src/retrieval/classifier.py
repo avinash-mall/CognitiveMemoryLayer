@@ -33,6 +33,17 @@ FAST_PATTERNS = {
         r"what('s| are) the steps",
         r"(procedure|process) for",
     ],
+    QueryIntent.CONSTRAINT_CHECK: [
+        r"should i",
+        r"can i",
+        r"is it ok (to|if)",
+        r"would it be (ok|fine|good|bad)",
+        r"what if i",
+        r"do you think i should",
+        r"recommend",
+        r"is (this|that|it) (consistent|aligned|compatible)",
+        r"would (this|that) (conflict|contradict|go against)",
+    ],
 }
 
 CLASSIFICATION_PROMPT = """Classify this query for a memory retrieval system.
@@ -71,6 +82,27 @@ class QueryClassifier:
             for intent, patterns in FAST_PATTERNS.items()
         }
 
+    # Patterns that indicate a decision/temptation/recommendation query
+    _DECISION_PATTERNS = [
+        re.compile(r"\bshould i\b", re.I),
+        re.compile(r"\bcan i\b", re.I),
+        re.compile(r"\bis it ok\b", re.I),
+        re.compile(r"\bwould it be\b", re.I),
+        re.compile(r"\bwhat if i\b", re.I),
+        re.compile(r"\brecommend\b", re.I),
+        re.compile(r"\bstart (watching|doing|eating|buying)\b", re.I),
+        re.compile(r"\btry (this|that|the)\b", re.I),
+        re.compile(r"\bgo (out|for|to)\b", re.I),
+    ]
+    # Patterns for constraint dimension classification
+    _CONSTRAINT_DIM_PATTERNS: dict[str, list[re.Pattern]] = {
+        "goal": [re.compile(r"\b(goal|objective|target|aim|ambition|milestone)\b", re.I)],
+        "value": [re.compile(r"\b(value|principle|ethic|belief|priority)\b", re.I)],
+        "state": [re.compile(r"\b(feel|mood|stress|anxious|tired|busy|sick)\b", re.I)],
+        "causal": [re.compile(r"\b(because|reason|consequence|result|cause)\b", re.I)],
+        "policy": [re.compile(r"\b(rule|policy|restriction|limit|boundary)\b", re.I)],
+    }
+
     async def classify(
         self,
         query: str,
@@ -84,16 +116,43 @@ class QueryClassifier:
             effective_query = f"{recent_context}\nUser now asks: {query}"
         fast_result = self._fast_classify(effective_query)
         if fast_result and fast_result.confidence > 0.8:
+            self._enrich_constraint_dimensions(fast_result)
             return fast_result
         if self.llm:
-            return await self._llm_classify(effective_query, recent_context=recent_context)
-        return fast_result or QueryAnalysis(
+            result = await self._llm_classify(effective_query, recent_context=recent_context)
+            self._enrich_constraint_dimensions(result)
+            return result
+        result = fast_result or QueryAnalysis(
             original_query=query,
             intent=QueryIntent.GENERAL_QUESTION,
             confidence=0.5,
             suggested_sources=["vector", "facts"],
             suggested_top_k=10,
         )
+        self._enrich_constraint_dimensions(result)
+        return result
+
+    def _enrich_constraint_dimensions(self, analysis: QueryAnalysis) -> None:
+        """Detect constraint dimensions and decision-query nature from the query text."""
+        q = analysis.original_query
+        # Check if this is a decision/temptation query
+        if any(p.search(q) for p in self._DECISION_PATTERNS):
+            analysis.is_decision_query = True
+        # Detect constraint dimensions
+        dims: list[str] = []
+        for dim, patterns in self._CONSTRAINT_DIM_PATTERNS.items():
+            if any(p.search(q) for p in patterns):
+                dims.append(dim)
+        analysis.constraint_dimensions = dims
+        # If decision query detected but no specific intent was CONSTRAINT_CHECK,
+        # and the intent is general/unknown, upgrade it
+        if analysis.is_decision_query and analysis.intent in (
+            QueryIntent.GENERAL_QUESTION,
+            QueryIntent.UNKNOWN,
+        ):
+            analysis.intent = QueryIntent.CONSTRAINT_CHECK
+            analysis.suggested_sources = self._get_sources_for_intent(QueryIntent.CONSTRAINT_CHECK)
+            analysis.suggested_top_k = self._get_top_k_for_intent(QueryIntent.CONSTRAINT_CHECK)
 
     def _is_vague(self, query: str) -> bool:
         """Heuristic: query is too short or lacks clear intent."""
@@ -194,7 +253,7 @@ class QueryClassifier:
             QueryIntent.MULTI_HOP: ["graph", "vector"],
             QueryIntent.TEMPORAL_QUERY: ["vector"],
             QueryIntent.PROCEDURAL: ["facts", "vector"],
-            QueryIntent.CONSTRAINT_CHECK: ["facts"],
+            QueryIntent.CONSTRAINT_CHECK: ["constraints", "facts", "vector"],
             QueryIntent.UNKNOWN: ["vector", "facts", "graph"],
         }
         return mapping.get(intent, ["vector"])

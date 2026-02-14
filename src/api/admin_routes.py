@@ -19,7 +19,7 @@ async def trigger_consolidation(
     auth: AuthContext = Depends(require_admin_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Manually trigger consolidation for a user."""
+    """Manually trigger episodic-to-semantic consolidation for a user. Samples episodes, clusters them, extracts gists, and migrates to semantic facts. Admin-only."""
     try:
         report = await orchestrator.consolidation.consolidate(
             tenant_id=auth.tenant_id,
@@ -43,7 +43,7 @@ async def trigger_forgetting(
     auth: AuthContext = Depends(require_admin_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Manually trigger forgetting for a user."""
+    """Manually trigger active forgetting for a user. Use dry_run=true to preview without applying. Admin-only."""
     try:
         report = await orchestrator.forgetting.run_forgetting(
             tenant_id=auth.tenant_id,

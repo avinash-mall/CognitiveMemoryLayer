@@ -44,10 +44,12 @@ def _env_int(key: str, default: int = 0) -> int:
 
 
 class EmbeddedEmbeddingConfig(BaseModel):
-    """Embedding configuration for embedded mode. Set EMBEDDING__MODEL, EMBEDDING__BASE_URL, EMBEDDING__DIMENSIONS in .env."""
+    """Embedding configuration for embedded mode. Read from .env: EMBEDDING__PROVIDER, EMBEDDING__MODEL, EMBEDDING__BASE_URL, EMBEDDING__DIMENSIONS."""
 
     provider: Literal["openai", "local", "openai_compatible", "vllm"] = Field(default="local")
-    model: str = Field(default="", description="Set EMBEDDING__MODEL in .env")
+    model: str = Field(
+        default="", description="Set EMBEDDING__MODEL or EMBEDDING__LOCAL_MODEL in .env"
+    )
     dimensions: int = Field(default=384, description="Set EMBEDDING__DIMENSIONS in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
@@ -57,8 +59,13 @@ class EmbeddedEmbeddingConfig(BaseModel):
     def from_env(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
+        prov = _env("EMBEDDING__PROVIDER")
+        if prov and prov in ("openai", "local", "openai_compatible", "vllm"):
+            data = {**data, "provider": prov}
         if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING__MODEL"):
             data = {**data, "model": _env("EMBEDDING__MODEL")}
+        if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING__LOCAL_MODEL"):
+            data = {**data, "model": _env("EMBEDDING__LOCAL_MODEL")}
         if data.get("base_url") is None and _env("EMBEDDING__BASE_URL"):
             data = {**data, "base_url": _env("EMBEDDING__BASE_URL")}
         dims = _env_int("EMBEDDING__DIMENSIONS")

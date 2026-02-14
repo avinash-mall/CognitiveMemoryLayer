@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Run full LoCoMo evaluation: tear down Docker + volumes, rebuild and start services,
-wait for API health, run eval_locomo_plus.py (unified LoCoMo + Locomo-Plus), then
-generate and print the performance table.
+Run full LoCoMo evaluation: optionally tear down and rebuild Docker, wait for API health,
+run eval_locomo_plus.py (unified LoCoMo + Locomo-Plus), then generate and display the
+performance table matching the paper format.
 
 Table columns: Method | single-hop | multi-hop | temporal | commonsense | adversarial | average | LoCoMo-Plus | Gap
 
 Run from project root:
   python evaluation/scripts/run_full_eval.py
+  python evaluation/scripts/run_full_eval.py --skip-docker    # API already running
+  python evaluation/scripts/run_full_eval.py --limit-samples 50  # Quick test
 
 Requires: OPENAI_API_KEY (for LLM-as-judge), OLLAMA_QA_MODEL (optional, default gpt-oss:20b).
 """
@@ -35,72 +37,125 @@ HEALTH_POLL_INTERVAL = 5
 HEALTH_TIMEOUT_SEC = 180
 
 
-def _run(cmd: list[str], step_name: str) -> None:
+def _banner(text: str, char: str = "=") -> None:
+    """Print a visible step banner."""
+    width = max(70, len(text) + 4)
+    print(flush=True)
+    print(char * width, flush=True)
+    print(f"  {text}", flush=True)
+    print(char * width, flush=True)
+
+
+def _run(cmd: list[str], step_name: str) -> bool:
+    """Run command, return True on success."""
     print(f"  Running: {' '.join(cmd)}", flush=True)
+    t0 = time.monotonic()
     result = subprocess.run(cmd, cwd=str(_ROOT))
+    elapsed = time.monotonic() - t0
     if result.returncode != 0:
-        print(f"FAILED: {step_name} (exit code {result.returncode})", file=sys.stderr)
-        sys.exit(result.returncode)
+        print(
+            f"  FAILED: {step_name} (exit code {result.returncode}, {elapsed:.1f}s)",
+            file=sys.stderr,
+        )
+        return False
+    print(f"  OK ({elapsed:.1f}s)", flush=True)
+    return True
 
 
 def main() -> None:
-    print("LoCoMo full evaluation pipeline (4 steps + table)", flush=True)
-    print("Project root:", _ROOT, flush=True)
+    import argparse
 
-    # Step 1
-    print("\n--- Step 1/4: Tearing down containers and volumes ---", flush=True)
-    _run(
-        ["docker", "compose", "-f", str(_COMPOSE_FILE), "down", "-v"],
-        "Step 1: docker compose down -v",
+    p = argparse.ArgumentParser(description="Run full LoCoMo evaluation pipeline")
+    p.add_argument(
+        "--skip-docker",
+        action="store_true",
+        help="Skip Docker tear-down/rebuild and API wait (API must already be running)",
     )
-
-    # Step 2
-    print("\n--- Step 2/4: Building and starting postgres, neo4j, redis, api ---", flush=True)
-    _run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            str(_COMPOSE_FILE),
-            "up",
-            "-d",
-            "--build",
-            "postgres",
-            "neo4j",
-            "redis",
-            "api",
-        ],
-        "Step 2: docker compose up",
+    p.add_argument(
+        "--limit-samples",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Run only first N samples (for quick testing)",
     )
+    args = p.parse_args()
 
-    # Step 3
-    print("\n--- Step 3/4: Waiting for CML API health ---", flush=True)
-    deadline = time.monotonic() + HEALTH_TIMEOUT_SEC
-    while time.monotonic() < deadline:
-        try:
-            import urllib.request
+    _banner("LoCoMo Full Evaluation Pipeline", "=")
+    print(f"  Project root: {_ROOT}", flush=True)
+    if args.skip_docker:
+        print("  Mode: skip-docker (API assumed running)", flush=True)
+    if args.limit_samples:
+        print(f"  Limit: {args.limit_samples} samples", flush=True)
+    print(flush=True)
 
-            req = urllib.request.Request(_HEALTH_URL, method="GET")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.status == 200:
-                    print("  API is healthy.", flush=True)
-                    break
-        except Exception as e:
-            print(f"  Waiting for API... ({e})", flush=True)
-            time.sleep(HEALTH_POLL_INTERVAL)
-    else:
-        print("FAILED: Step 3: API did not become healthy within timeout.", file=sys.stderr)
-        sys.exit(1)
+    ollama_model = os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b")
+    step_count = 5 if not args.skip_docker else 2  # Docker steps + eval + table
+    current_step = 0
 
-    # Step 4
-    print(
-        "\n--- Step 4/4: Running Locomo-Plus evaluation (ingestion, QA, LLM-as-judge) ---",
-        flush=True,
-    )
+    if not args.skip_docker:
+        # Step 1
+        current_step += 1
+        _banner(f"Step {current_step}/{step_count}: Tear down containers and volumes", "-")
+        if not _run(
+            ["docker", "compose", "-f", str(_COMPOSE_FILE), "down", "-v"],
+            "docker compose down -v",
+        ):
+            sys.exit(1)
+
+        # Step 2
+        current_step += 1
+        _banner(f"Step {current_step}/{step_count}: Build and start services", "-")
+        if not _run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                str(_COMPOSE_FILE),
+                "up",
+                "-d",
+                "--build",
+                "postgres",
+                "neo4j",
+                "redis",
+                "api",
+            ],
+            "docker compose up",
+        ):
+            sys.exit(1)
+
+        # Step 3
+        current_step += 1
+        _banner(f"Step {current_step}/{step_count}: Wait for CML API health", "-")
+        print(
+            f"  Polling {_HEALTH_URL} every {HEALTH_POLL_INTERVAL}s (timeout {HEALTH_TIMEOUT_SEC}s)",
+            flush=True,
+        )
+        t0 = time.monotonic()
+        deadline = t0 + HEALTH_TIMEOUT_SEC
+        while time.monotonic() < deadline:
+            try:
+                import urllib.request
+
+                req = urllib.request.Request(_HEALTH_URL, method="GET")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    if resp.status == 200:
+                        elapsed = time.monotonic() - t0
+                        print(f"  API healthy ({elapsed:.1f}s)", flush=True)
+                        break
+            except Exception as e:
+                elapsed = time.monotonic() - t0
+                print(f"  Waiting... {elapsed:.0f}s ({e})", flush=True)
+                time.sleep(HEALTH_POLL_INTERVAL)
+        else:
+            print("  FAILED: API did not become healthy within timeout.", file=sys.stderr)
+            sys.exit(1)
+
+    # Step 4: Run evaluation
+    current_step += 1
+    _banner(f"Step {current_step}/{step_count}: Locomo-Plus evaluation (ingest, QA, judge)", "-")
     _OUT_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(_LOCOMO_PLUS_ROOT)
-    ollama_model = os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b")
     cmd = [
         sys.executable,
         str(_EVAL_LOCOMO_PLUS),
@@ -111,21 +166,26 @@ def main() -> None:
         "--ollama-model",
         ollama_model,
     ]
+    if args.limit_samples:
+        cmd.extend(["--limit-samples", str(args.limit_samples)])
     print(f"  PYTHONPATH={env['PYTHONPATH']}", flush=True)
-    print(f"  Running: {' '.join(cmd)}", flush=True)
+    print(f"  OLLAMA_QA_MODEL={ollama_model}", flush=True)
+    t0 = time.monotonic()
     result = subprocess.run(cmd, cwd=str(_ROOT), env=env)
+    elapsed = time.monotonic() - t0
     if result.returncode != 0:
         print(
-            f"FAILED: Step 4: eval_locomo_plus.py (exit code {result.returncode})", file=sys.stderr
+            f"  FAILED: eval_locomo_plus.py (exit {result.returncode}, {elapsed:.1f}s)",
+            file=sys.stderr,
         )
         sys.exit(result.returncode)
+    print(f"  OK ({elapsed:.1f}s)", flush=True)
 
-    print("\n--- All steps completed successfully. ---", flush=True)
-    print(f"Outputs: {_OUT_DIR / 'locomo_plus_qa_cml_judge_summary.json'}", flush=True)
-
-    # Generate and print performance table
+    # Step 5: Generate and display performance table
+    current_step += 1
+    _banner(f"Step {current_step}/{step_count}: Performance table", "-")
+    method = f"CML+{ollama_model}"
     if _JUDGE_SUMMARY.exists():
-        method = f"CML+{ollama_model}"
         report_cmd = [
             sys.executable,
             str(_GENERATE_REPORT),
@@ -135,8 +195,20 @@ def main() -> None:
             method,
         ]
         subprocess.run(report_cmd, cwd=str(_ROOT))
+        print(f"\n  Outputs: {_OUT_DIR}", flush=True)
+        print(f"  - {_JUDGE_SUMMARY.name}", flush=True)
+        print("  - locomo_plus_qa_cml_predictions.json", flush=True)
+        print("  - locomo_plus_qa_cml_judged.json", flush=True)
     else:
-        print("  (No judge summary; skip table.)", flush=True)
+        print(
+            "  No judge summary found; evaluation may have failed before judge phase.",
+            file=sys.stderr,
+        )
+        print(f"  Expected: {_JUDGE_SUMMARY}", file=sys.stderr)
+        sys.exit(1)
+
+    _banner("Pipeline complete", "=")
+    print(flush=True)
 
 
 if __name__ == "__main__":

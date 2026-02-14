@@ -1,6 +1,8 @@
 # CognitiveMemoryLayer — Deep Research Implementation Plan
 
 > **Implementation status (Feb 2025):** All 6 phases are **implemented**. Feature flags and retrieval settings are in `src/core/config.py`; see [UsageDocumentation.md § Configuration Reference](../UsageDocumentation.md#configuration-reference) and [.env.example](../../.env.example). Unit tests: `tests/unit/test_deep_research_improvements.py` (38 tests). Summary: [CHANGELOG.md](../../CHANGELOG.md) — "Deep-research implementation (BaseCML plan)".
+>
+> **Cognitive Constraint Layer (Feb 2025):** A follow-on implementation based on the [deep-research-report](../../evaluation/deep-research-report.md) adds **Level-2 Cognitive Memory** for LoCoMo-Plus. Constraint extraction (`ConstraintExtractor`), constraint-aware retrieval (`CONSTRAINT_CHECK` intent, `RetrievalSource.CONSTRAINTS`), cognitive `FactCategory` values (GOAL, STATE, VALUE, CAUSAL, POLICY), supersession, and 90-day consolidation window. Feature flag: `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` (default true). See [CHANGELOG.md](../../CHANGELOG.md) — "Cognitive Constraint Layer".
 
 ## Table of Contents
 

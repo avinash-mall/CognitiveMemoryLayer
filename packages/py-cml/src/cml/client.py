@@ -168,7 +168,7 @@ class CognitiveMemoryLayer:
             user_timezone: Optional IANA timezone (e.g. "America/New_York") for "today"/"yesterday" filters.
 
         Returns:
-            ReadResponse with memories, facts, preferences, episodes, context.
+            ReadResponse with memories, facts, preferences, episodes, constraints, context.
         """
         body = ReadRequest(
             query=query,

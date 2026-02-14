@@ -91,6 +91,21 @@ memory.write(
 
 When `timestamp` is omitted, memories automatically use the current time. This feature is useful for benchmark evaluations, data migration, and testing temporal reasoning. See [Examples](examples.md) for more details.
 
+### Cognitive Constraints
+
+When the CML server has `FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true` (default), it automatically extracts **cognitive constraints** — goals, values, policies, states, and causal rules — from stored text. At read time, decision-style queries (e.g. "should I", "can I", "is it ok") trigger constraint-first retrieval.
+
+The `ReadResponse` includes a `constraints` field with these extracted constraints:
+
+```python
+result = memory.read("Should I order the seafood pasta?")
+for c in result.constraints:
+    print(f"  Constraint: {c.text} (confidence: {c.confidence:.2f})")
+# e.g. "Constraint: User is allergic to shellfish (confidence: 0.90)"
+```
+
+See [API Reference — Models](api-reference.md#models) for the `ReadResponse.constraints` field, and [Configuration — Server-side feature flags](configuration.md#server-side-feature-flags-and-retrieval) for the server flag.
+
 ## Next Steps
 
 - [API Reference](api-reference.md) — All operations and types

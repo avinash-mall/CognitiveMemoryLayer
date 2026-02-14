@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+# Load repo-root .env first so all tests read EMBEDDING__*, LLM__*, etc. (no HuggingFace default).
+try:
+    from dotenv import load_dotenv
+
+    _repo_root = Path(__file__).resolve().parents[4]
+    load_dotenv(_repo_root / ".env")
+except ImportError:
+    pass
 
 # Optional: skip entire embedded dir if embedded extras not installed.
 # Actual engine (src.memory.orchestrator) may still be missing; tests skip on first use.

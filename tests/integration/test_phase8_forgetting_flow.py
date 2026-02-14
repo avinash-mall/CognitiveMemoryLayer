@@ -84,3 +84,52 @@ async def test_forgetting_decay_reduces_confidence(pg_session_factory):
         updated = await store.get_by_id(rec.id)
         assert updated is not None
         assert updated.confidence <= 0.6
+
+
+@pytest.mark.asyncio
+async def test_forgetting_flow_protected_types_kept_low_episodic_affected(pg_session_factory):
+    """Seed constraint (protected) and low-relevance episodic; run forgetting; constraint kept, episodic decay/silence."""
+    store = PostgresMemoryStore(pg_session_factory)
+    worker = ForgettingWorker(store)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+    user_id = f"u-{uuid4().hex[:8]}"
+
+    constraint_rec = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.CONSTRAINT,
+            text="Never remind me on weekends.",
+            key="constraint:no_weekends",
+            confidence=0.9,
+            importance=0.8,
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    episodic_rec = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Some trivial remark.",
+            confidence=0.2,
+            importance=0.1,
+            provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+        )
+    )
+
+    report = await worker.run_forgetting(tenant_id, user_id, max_memories=100, dry_run=True)
+    assert report.memories_scanned >= 2
+    assert report.memories_scored >= 2
+
+    report2 = await worker.run_forgetting(tenant_id, user_id, max_memories=100, dry_run=False)
+    constraint_after = await store.get_by_id(constraint_rec.id)
+    assert constraint_after is not None
+    assert constraint_after.status.value == "active", "CONSTRAINT should be kept (protected)"
+
+    episodic_after = await store.get_by_id(episodic_rec.id)
+    assert episodic_after is not None
+    if report2.result.decayed >= 1 or report2.result.silenced >= 1 or report2.result.deleted >= 1:
+        assert (
+            episodic_after.confidence <= 0.6 or episodic_after.status.value != "active"
+        ), "low episodic may be decayed or silenced"

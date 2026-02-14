@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Constraints in ReadResponse** — `ReadResponse` now includes a `constraints` field (`list[MemoryItem]`, default empty). When the CML server returns cognitive constraints (goals, values, policies, states, causal rules) from the retrieval pipeline, they appear here alongside `facts`, `preferences`, and `episodes`. Requires a CML server with constraint extraction enabled (`FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true`).
 - **user_timezone for read and turn** — Optional `user_timezone` parameter on `read()`, `read_safe()`, and `turn()` (sync, async, and embedded clients). When provided (e.g. `"America/New_York"`), the server uses it for timezone-aware "today"/"yesterday" filters in retrieval. Requires a CML server that accepts `user_timezone` on the read and turn APIs.
 - **Optional embedding/LLM in tests** — Embedded lite-mode tests `test_write_and_read` and `test_persistent_storage` now skip (instead of fail) when the embedding model is unavailable. Skip is triggered on `ImportError`, `OSError`, or `RuntimeError`, or when any other exception message contains "model", "embed", or "rate" (e.g. sentence-transformers load failure, API or rate-limit errors). See repo `tests/README.md` § Optional LLM/embedding tests.
 

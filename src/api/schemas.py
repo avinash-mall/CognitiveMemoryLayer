@@ -96,6 +96,7 @@ class ReadMemoryResponse(BaseModel):
     facts: list[MemoryItem] = Field(default_factory=list)
     preferences: list[MemoryItem] = Field(default_factory=list)
     episodes: list[MemoryItem] = Field(default_factory=list)
+    constraints: list[MemoryItem] = Field(default_factory=list)
     llm_context: str | None = None
     total_count: int
     elapsed_ms: float

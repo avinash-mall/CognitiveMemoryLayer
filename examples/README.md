@@ -31,19 +31,17 @@ Working examples for the Cognitive Memory Layer with LLMs and as a standalone se
 
 | File | Description |
 |------|-------------|
-| `quickstart.py` | Minimal intro: write, read, get_context, stats (30 seconds) |
+| `quickstart.py` | Minimal intro: write, read, get_context, stats |
 | `basic_usage.py` | Full CRUD: write, read, update, forget, stats |
-| `chat_with_memory.py` | Simple chatbot using py-cml `turn()` + OpenAI |
-| `chatbot_with_memory.py` | Full-featured chatbot with !remember, !forget, !stats, auto-extraction |
+| `chat_with_memory.py` | Simple chatbot: py-cml `turn()` for context + OpenAI |
 | `openai_tool_calling.py` | OpenAI function calling: memory_write, memory_read, memory_update, memory_forget |
-| `anthropic_tool_calling.py` | Anthropic Claude tool use with memory tools |
+| `anthropic_tool_calling.py` | Anthropic Claude tool use with same memory tools |
 | `langchain_integration.py` | LangChain `BaseMemory` backed by py-cml |
 | `async_example.py` | Async usage: concurrent writes, batch_read, pipeline |
 | `embedded_mode.py` | Serverless: py-cml embedded with SQLite (no API) |
 | `agent_integration.py` | Agent pattern: observe, plan, reflect using memory |
-| `standalone_demo.py` | **No py-cml**: raw httpx example with all API features (write, read, update, forget, stats, process_turn, create_session) |
-| `ollama_chat_test.py` | Non-interactive E2E test with local Ollama models |
-| `ollama_chatbot_app.py` | Streamlit app with Ollama + memory |
+| `standalone_demo.py` | **No py-cml**: raw httpx demo of all API endpoints |
+| `openclaw_skill/` | [OpenClaw](https://openclaw.ai/) skill: persistent structured memory (SKILL.md + setup) |
 
 ### Quick Start
 
@@ -57,10 +55,12 @@ python examples/quickstart.py
 python examples/chat_with_memory.py
 ```
 
-### Full Chatbot (commands: !remember, !forget, !stats)
+### Tool-calling chat (OpenAI or Anthropic)
 
 ```bash
-python examples/chatbot_with_memory.py
+python examples/openai_tool_calling.py
+# or
+python examples/anthropic_tool_calling.py
 ```
 
 ### Async Usage
@@ -89,26 +89,25 @@ The API is **holistic**: tenant from API key, no explicit scopes. Use `session_i
 ```python
 from cml import CognitiveMemoryLayer
 
-memory = CognitiveMemoryLayer(
+with CognitiveMemoryLayer(
     api_key=os.environ.get("AUTH__API_KEY"),
     base_url="http://localhost:8000",
-)
+) as memory:
+    # Write
+    memory.write("User prefers vegetarian food", session_id="sess-1", memory_type="preference")
 
-# Write
-memory.write("User prefers vegetarian food", session_id="sess-1", memory_type="preference")
+    # Read
+    result = memory.read("dietary preferences", response_format="llm_context")
+    print(result.context)
 
-# Read
-result = memory.read("dietary preferences", response_format="llm_context")
-print(result.context)
+    # Seamless turn (auto-retrieve + auto-store)
+    turn = memory.turn(user_message="What do I like?", session_id="sess-1")
+    print(turn.memory_context)  # Inject into LLM prompt
 
-# Seamless turn (auto-retrieve + auto-store)
-turn = memory.turn(user_message="What do I like?", session_id="sess-1")
-print(turn.memory_context)  # Inject into LLM prompt
-
-# Update, forget, stats
-memory.update(memory_id=uuid, feedback="correct")
-memory.forget(query="old address", action="archive")
-stats = memory.stats()
+    # Update, forget, stats
+    memory.update(memory_id=uuid, feedback="correct")
+    memory.forget(query="old address", action="archive")
+    stats = memory.stats()
 ```
 
 ## Memory Types

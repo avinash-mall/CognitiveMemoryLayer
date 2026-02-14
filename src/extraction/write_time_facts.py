@@ -109,7 +109,7 @@ _WRITE_TIME_CONFIDENCE_BASE: float = 0.6
 class WriteTimeFactExtractor:
     """Extract structured facts from chunks at write-time.
 
-    Only processes chunks classified as preference or fact types.
+    Processes preference, fact, and constraint chunk types.
     Uses purely rule-based pattern matching — no LLM calls.
     """
 
@@ -123,6 +123,7 @@ class WriteTimeFactExtractor:
         fact_bearing_types = {
             ChunkType.PREFERENCE,
             ChunkType.FACT,
+            ChunkType.CONSTRAINT,
         }
         if chunk.chunk_type not in fact_bearing_types:
             return []

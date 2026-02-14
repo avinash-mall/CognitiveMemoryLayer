@@ -15,10 +15,10 @@ Prerequisites:
     3. Set AUTH__API_KEY in environment
 """
 
-import os
-import httpx
 import json
-from datetime import datetime
+import os
+
+import httpx
 
 # API Configuration (set AUTH__API_KEY in environment)
 BASE_URL = "http://localhost:8000/api/v1"
@@ -39,7 +39,7 @@ def print_response(response: httpx.Response, label: str = "Response"):
     try:
         data = response.json()
         print(json.dumps(data, indent=2, default=str))
-    except:
+    except Exception:
         print(response.text)
     print()
 
@@ -221,7 +221,7 @@ def demo_memory_stats():
 
     if response.status_code == 200:
         stats = response.json()
-        print(f"Memory Statistics:")
+        print("Memory Statistics:")
         print(f"  Total memories:  {stats.get('total_memories', 0)}")
         print(f"  Active memories: {stats.get('active_memories', 0)}")
         print(f"  Avg confidence:  {stats.get('avg_confidence', 0):.0%}")

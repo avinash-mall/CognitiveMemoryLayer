@@ -4,11 +4,8 @@ Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 """
 
 import os
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-sys.path.insert(0, os.path.dirname(__file__))
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -17,12 +14,12 @@ try:
 except ImportError:
     pass
 
-from langchain_core.memory import BaseMemory
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_openai import ChatOpenAI
 from langchain.chains import ConversationChain
+from langchain_core.memory import BaseMemory
+from langchain_core.messages import AIMessage
 from langchain_core.prompts import PromptTemplate
-from pydantic import ConfigDict, Field
+from langchain_openai import ChatOpenAI
+from pydantic import ConfigDict
 
 from cml import CognitiveMemoryLayer
 
@@ -33,7 +30,7 @@ class CognitiveMemory(BaseMemory):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     session_id: str = "default"
-    memory_client: Optional[CognitiveMemoryLayer] = None
+    memory_client: CognitiveMemoryLayer | None = None
     api_url: str = ""
     api_key: str = ""
     auto_store: bool = True
@@ -59,10 +56,10 @@ class CognitiveMemory(BaseMemory):
             self.memory_client = CognitiveMemoryLayer(api_key=key, base_url=base_url)
 
     @property
-    def memory_variables(self) -> List[str]:
+    def memory_variables(self) -> list[str]:
         return [self.memory_key]
 
-    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def load_memory_variables(self, inputs: dict[str, Any]) -> dict[str, Any]:
         query = inputs.get(self.input_key, "")
         if not query:
             return {self.memory_key: "" if not self.return_messages else []}
@@ -70,7 +67,7 @@ class CognitiveMemory(BaseMemory):
             r = self.memory_client.read(
                 query, max_results=self.max_retrieval_results, response_format=self.retrieval_format
             )
-            ctx = r.context or r.llm_context or ""
+            ctx = r.context
             if self.return_messages:
                 return {self.memory_key: [AIMessage(content=f"[Memory]\n{ctx}")] if ctx else []}
             return {self.memory_key: ctx}
@@ -78,7 +75,7 @@ class CognitiveMemory(BaseMemory):
             print(f"Warning: Could not load memories: {e}")
             return {self.memory_key: "" if not self.return_messages else []}
 
-    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
+    def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
         if not self.auto_store:
             return
         try:
@@ -123,9 +120,9 @@ Assistant:""",
 
 def create_memory_chain(
     session_id: str = "default",
-    llm_model: Optional[str] = None,
-    memory_api_url: Optional[str] = None,
-    memory_api_key: Optional[str] = None,
+    llm_model: str | None = None,
+    memory_api_url: str | None = None,
+    memory_api_key: str | None = None,
 ) -> ConversationChain:
     base_url = (
         memory_api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""

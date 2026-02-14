@@ -144,6 +144,7 @@ class WriteGate:
         score = chunk.salience
         type_boosts = {
             ChunkType.PREFERENCE: 0.3,
+            ChunkType.CONSTRAINT: 0.3,
             ChunkType.FACT: 0.2,
             ChunkType.INSTRUCTION: 0.1,
             ChunkType.EVENT: 0.1,
@@ -154,6 +155,23 @@ class WriteGate:
             score += 0.2
         if any(m in text_lower for m in ["my name", "i am", "i live", "i work"]):
             score += 0.15
+        # Constraint cue phrases boost
+        constraint_cues = [
+            "i'm trying to",
+            "i don't want",
+            "it's important that",
+            "my goal is",
+            "i value",
+            "i believe",
+            "i must",
+            "i should",
+            "i'm preparing for",
+            "i'm focused on",
+            "in order to",
+            "because of",
+        ]
+        if any(cue in text_lower for cue in constraint_cues):
+            score += 0.2
         if chunk.entities:
             score += 0.1 * min(len(chunk.entities), 3)
         return min(score, 1.0)
@@ -187,6 +205,7 @@ class WriteGate:
     def _determine_memory_types(self, chunk: SemanticChunk) -> list[MemoryType]:
         mapping = {
             ChunkType.PREFERENCE: [MemoryType.PREFERENCE],
+            ChunkType.CONSTRAINT: [MemoryType.CONSTRAINT],
             ChunkType.FACT: [MemoryType.SEMANTIC_FACT, MemoryType.EPISODIC_EVENT],
             ChunkType.EVENT: [MemoryType.EPISODIC_EVENT],
             ChunkType.STATEMENT: [MemoryType.EPISODIC_EVENT],

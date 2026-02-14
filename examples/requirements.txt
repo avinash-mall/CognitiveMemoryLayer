@@ -20,6 +20,3 @@ anthropic>=0.18.0
 langchain>=0.3.0,<0.4.0
 langchain-core>=0.3.0,<0.4.0
 langchain-openai>=0.3.0,<0.4.0
-
-# Streamlit chatbot (ollama_chatbot_app.py)
-streamlit>=1.28.0

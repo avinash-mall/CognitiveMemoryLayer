@@ -91,7 +91,7 @@ def create_app() -> FastAPI:
 
         @app.get("/dashboard/{rest_of_path:path}")
         async def dashboard_spa(rest_of_path: str = ""):
-            """Serve the dashboard SPA index.html for all dashboard routes."""
+            """Serves the dashboard SPA (index.html) for client-side routing. All dashboard routes (e.g. /dashboard/#graph) are handled by this catch-all."""
             index = _DASHBOARD_DIR / "index.html"
             if index.is_file():
                 return FileResponse(str(index))

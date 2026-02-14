@@ -50,7 +50,7 @@ def load_unified_samples(data_file: str):
     path = Path(data_file)
     if not path.exists():
         raise FileNotFoundError(f"Unified input file not found: {data_file}")
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, list):
         raise ValueError("Unified input JSON must be a list of samples.")
@@ -75,18 +75,19 @@ def _load_env_local_sh():
     env_local = Path(__file__).resolve().parent.parent / "scripts" / "env.local.sh"
     if not env_local.is_file():
         return
-    for line in open(env_local, "r", encoding="utf-8"):
-        line = line.strip()
-        if not line or line.startswith("#") or not line.startswith("export "):
-            continue
-        rest = line[7:].strip()
-        if "=" not in rest:
-            continue
-        key, _, val = rest.partition("=")
-        key = key.strip()
-        val = val.strip().strip('"').strip("'").strip()
-        if key in ("OPENAI_API_KEY", "OPENAI_BASE_URL") and val and not os.environ.get(key):
-            os.environ[key] = val
+    with open(env_local, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or not line.startswith("export "):
+                continue
+            rest = line[7:].strip()
+            if "=" not in rest:
+                continue
+            key, _, val = rest.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'").strip()
+            if key in ("OPENAI_API_KEY", "OPENAI_BASE_URL") and val and not os.environ.get(key):
+                os.environ[key] = val
 
 
 def _get_openai_client():

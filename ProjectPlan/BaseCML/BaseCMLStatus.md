@@ -64,7 +64,7 @@ A production-ready, neuro-inspired memory system for LLMs that replicates human 
 | `preference` | User preferences (changeable) | Time-sliced on change | "User prefers vegetarian food" |
 | `task_state` | Current task progress | High churn, latest wins | "Step 3 of 5 complete" |
 | `procedure` | How to do something | Stable, reusable | "To book a flight: 1) search, 2) compare..." |
-| `constraint` | Rules/policies | Never auto-forget | "Never share user's email" |
+| `constraint` | Rules/policies/cognitive constraints (goals, values, states, causal, policies) | Never auto-forget; 90-day consolidation window | "Never share user's email", "I'm trying to eat healthier", "We should save for the trip" |
 | `hypothesis` | Uncertain beliefs | Requires confirmation | "User might be interested in cooking" |
 | `conversation` | Chat message/turn | Session-based | "Multi-turn dialogue" |
 | `message` | Single message | Session-based | "Individual chat message" |

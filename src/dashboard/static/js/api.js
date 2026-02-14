@@ -185,10 +185,16 @@ export function getGraphStats() {
     return request('GET', '/graph/stats');
 }
 
-export function getGraphExplore(tenantId, entity, scopeId = 'default', depth = 2) {
-    return request('GET', '/graph/explore', {
-        params: { tenant_id: tenantId, entity, scope_id: scopeId, depth },
-    });
+export function getGraphOverview(tenantId, scopeId = null) {
+    const params = { tenant_id: tenantId };
+    if (scopeId) params.scope_id = scopeId;
+    return request('GET', '/graph/overview', { params });
+}
+
+export function getGraphExplore(tenantId, entity, scopeId = null, depth = 2) {
+    const params = { tenant_id: tenantId, entity, depth };
+    if (scopeId) params.scope_id = scopeId;
+    return request('GET', '/graph/explore', { params });
 }
 
 export function getGraphSearch(query, tenantId, limit = 25) {

@@ -17,9 +17,19 @@ except ImportError:
 from cml import AsyncCognitiveMemoryLayer
 
 
+def _memory_config():
+    base_url = (
+        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+    ).strip() or "http://localhost:8000"
+    return {
+        "api_key": os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        "base_url": base_url,
+    }
+
+
 async def demo_basic():
     """Basic async: write, read, batch_read."""
-    async with AsyncCognitiveMemoryLayer() as memory:
+    async with AsyncCognitiveMemoryLayer(**_memory_config()) as memory:
         await asyncio.gather(
             memory.write("User likes hiking in the mountains"),
             memory.write("User prefers morning workouts"),
@@ -44,7 +54,7 @@ async def demo_concurrent():
         ("User works as a software developer", "semantic_fact"),
         ("User prefers dark mode interfaces", "preference"),
     ]
-    async with AsyncCognitiveMemoryLayer() as memory:
+    async with AsyncCognitiveMemoryLayer(**_memory_config()) as memory:
         tasks = [
             memory.write(content, session_id=session_id, memory_type=mtype)
             for content, mtype in items
@@ -55,13 +65,13 @@ async def demo_concurrent():
         read_results = await asyncio.gather(
             *[memory.read(q, response_format="packet") for q in queries]
         )
-        for q, r in zip(queries, read_results):
+        for q, r in zip(queries, read_results, strict=False):
             print(f"  '{q}': {r.total_count} memories")
 
 
 async def demo_pipeline():
     """Processing pipeline with per-session writes and reads."""
-    async with AsyncCognitiveMemoryLayer() as memory:
+    async with AsyncCognitiveMemoryLayer(**_memory_config()) as memory:
         sessions = ["session-1", "session-2"]
 
         async def process(sid: str):
