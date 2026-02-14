@@ -58,8 +58,17 @@ def main() -> None:
     print("\n--- Step 2/4: Building and starting postgres, neo4j, redis, api ---", flush=True)
     _run(
         [
-            "docker", "compose", "-f", str(_COMPOSE_FILE),
-            "up", "-d", "--build", "postgres", "neo4j", "redis", "api",
+            "docker",
+            "compose",
+            "-f",
+            str(_COMPOSE_FILE),
+            "up",
+            "-d",
+            "--build",
+            "postgres",
+            "neo4j",
+            "redis",
+            "api",
         ],
         "Step 2: docker compose up",
     )
@@ -70,6 +79,7 @@ def main() -> None:
     while time.monotonic() < deadline:
         try:
             import urllib.request
+
             req = urllib.request.Request(_HEALTH_URL, method="GET")
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status == 200:
@@ -83,7 +93,10 @@ def main() -> None:
         sys.exit(1)
 
     # Step 4
-    print("\n--- Step 4/4: Running Locomo-Plus evaluation (ingestion, QA, LLM-as-judge) ---", flush=True)
+    print(
+        "\n--- Step 4/4: Running Locomo-Plus evaluation (ingestion, QA, LLM-as-judge) ---",
+        flush=True,
+    )
     _OUT_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(_LOCOMO_PLUS_ROOT)
@@ -91,15 +104,20 @@ def main() -> None:
     cmd = [
         sys.executable,
         str(_EVAL_LOCOMO_PLUS),
-        "--unified-file", str(_UNIFIED_FILE),
-        "--out-dir", str(_OUT_DIR),
-        "--ollama-model", ollama_model,
+        "--unified-file",
+        str(_UNIFIED_FILE),
+        "--out-dir",
+        str(_OUT_DIR),
+        "--ollama-model",
+        ollama_model,
     ]
     print(f"  PYTHONPATH={env['PYTHONPATH']}", flush=True)
     print(f"  Running: {' '.join(cmd)}", flush=True)
     result = subprocess.run(cmd, cwd=str(_ROOT), env=env)
     if result.returncode != 0:
-        print(f"FAILED: Step 4: eval_locomo_plus.py (exit code {result.returncode})", file=sys.stderr)
+        print(
+            f"FAILED: Step 4: eval_locomo_plus.py (exit code {result.returncode})", file=sys.stderr
+        )
         sys.exit(result.returncode)
 
     print("\n--- All steps completed successfully. ---", flush=True)
@@ -111,8 +129,10 @@ def main() -> None:
         report_cmd = [
             sys.executable,
             str(_GENERATE_REPORT),
-            "--summary", str(_JUDGE_SUMMARY),
-            "--method", method,
+            "--summary",
+            str(_JUDGE_SUMMARY),
+            "--method",
+            method,
         ]
         subprocess.run(report_cmd, cwd=str(_ROOT))
     else:

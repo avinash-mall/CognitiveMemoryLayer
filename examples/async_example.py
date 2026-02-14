@@ -9,6 +9,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -51,9 +52,9 @@ async def demo_concurrent():
         results = await asyncio.gather(*tasks)
         print(f"Stored {sum(1 for r in results if r.success)}/{len(items)} memories")
         queries = ["user preferences", "user job"]
-        read_results = await asyncio.gather(*[
-            memory.read(q, response_format="packet") for q in queries
-        ])
+        read_results = await asyncio.gather(
+            *[memory.read(q, response_format="packet") for q in queries]
+        )
         for q, r in zip(queries, read_results):
             print(f"  '{q}': {r.total_count} memories")
 
@@ -91,7 +92,9 @@ async def main():
         print("Done.")
     except Exception as e:
         if "Connect" in str(type(e).__name__) or "Connection" in str(e):
-            print("\n✗ Could not connect. Start API: docker compose -f docker/docker-compose.yml up api")
+            print(
+                "\n✗ Could not connect. Start API: docker compose -f docker/docker-compose.yml up api"
+            )
         else:
             raise
 

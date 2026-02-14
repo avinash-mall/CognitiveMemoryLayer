@@ -298,9 +298,7 @@ class MemoryOrchestrator:
                     extracted_facts = extractor.extract(chunk)
                     for fact in extracted_facts:
                         try:
-                            evidence = (
-                                [str(stored[0].id)] if stored else []
-                            )
+                            evidence = [str(stored[0].id)] if stored else []
                             await self.neocortical.store_fact(
                                 tenant_id=tenant_id,
                                 key=fact.key,

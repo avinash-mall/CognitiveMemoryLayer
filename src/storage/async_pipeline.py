@@ -88,8 +88,7 @@ class AsyncStoragePipeline:
             turn_id=turn_id,
             timestamp=timestamp.isoformat() if timestamp else None,
             context_tags_user=context_tags_user or ["conversation", "user_input"],
-            context_tags_assistant=context_tags_assistant
-            or ["conversation", "assistant_response"],
+            context_tags_assistant=context_tags_assistant or ["conversation", "assistant_response"],
             idempotency_key=content_hash,
         )
 

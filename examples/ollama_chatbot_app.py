@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -19,7 +20,6 @@ except ImportError:
 import streamlit as st
 from openai import OpenAI
 from cml import CognitiveMemoryLayer
-
 
 OLLAMA_BASE = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
 OLLAMA_MODEL = (os.environ.get("LLM__MODEL") or "").strip()
@@ -36,7 +36,10 @@ MEMORY_TOOLS = [
                 "type": "object",
                 "properties": {
                     "content": {"type": "string"},
-                    "memory_type": {"type": "string", "enum": ["semantic_fact", "preference", "constraint", "episodic_event"]},
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["semantic_fact", "preference", "constraint", "episodic_event"],
+                    },
                 },
                 "required": ["content"],
             },
@@ -47,7 +50,11 @@ MEMORY_TOOLS = [
         "function": {
             "name": "memory_read",
             "description": "Retrieve relevant memories.",
-            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
         },
     },
 ]
@@ -97,7 +104,9 @@ def execute_tool(name: str, args: dict, memory: CognitiveMemoryLayer) -> str:
     if name == "memory_read":
         r = memory.read(args["query"], response_format="llm_context")
         text = r.context or "No relevant memories found."
-        append_activity("read", {"query": args["query"], "total_count": r.total_count, "snippet": text[:500]})
+        append_activity(
+            "read", {"query": args["query"], "total_count": r.total_count, "snippet": text[:500]}
+        )
         return text
     return json.dumps({"error": f"Unknown: {name}"})
 
@@ -105,7 +114,10 @@ def execute_tool(name: str, args: dict, memory: CognitiveMemoryLayer) -> str:
 def chat_turn(user_message: str) -> str:
     memory = get_memory()
     openai_client = get_openai()
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_message}]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
     for _ in range(8):
         resp = openai_client.chat.completions.create(
             model=OLLAMA_MODEL,
@@ -115,11 +127,23 @@ def chat_turn(user_message: str) -> str:
         )
         msg = resp.choices[0].message
         if msg.tool_calls:
-            messages.append({
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": [{"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}} for tc in msg.tool_calls],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                }
+            )
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
                 result = execute_tool(tc.function.name, args, memory)

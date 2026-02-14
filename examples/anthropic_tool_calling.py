@@ -11,13 +11,13 @@ from uuid import UUID
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
 
 from anthropic import Anthropic
 from cml import CognitiveMemoryLayer
-
 
 MEMORY_TOOLS = [
     {
@@ -27,7 +27,16 @@ MEMORY_TOOLS = [
             "type": "object",
             "properties": {
                 "content": {"type": "string"},
-                "memory_type": {"type": "string", "enum": ["episodic_event", "semantic_fact", "preference", "constraint", "hypothesis"]},
+                "memory_type": {
+                    "type": "string",
+                    "enum": [
+                        "episodic_event",
+                        "semantic_fact",
+                        "preference",
+                        "constraint",
+                        "hypothesis",
+                    ],
+                },
             },
             "required": ["content"],
         },
@@ -72,14 +81,20 @@ class ClaudeMemoryAssistant:
     def __init__(self, session_id: str, model: str = "claude-sonnet-4-20250514"):
         self.session_id = session_id
         self.model = model
-        base_url = (os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000").strip()
+        base_url = (
+            os.environ.get("CML_BASE_URL")
+            or os.environ.get("MEMORY_API_URL")
+            or "http://localhost:8000"
+        ).strip()
         self.anthropic = Anthropic()
         self.memory = CognitiveMemoryLayer(
             api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
             base_url=base_url,
         )
         self.messages: List[Dict[str, Any]] = []
-        self.system = "You are a helpful assistant with long-term memory. Use memory tools as needed."
+        self.system = (
+            "You are a helpful assistant with long-term memory. Use memory tools as needed."
+        )
 
     def _execute_tool(self, name: str, args: dict) -> str:
         try:
@@ -121,7 +136,9 @@ class ClaudeMemoryAssistant:
                     if block.type == "tool_use":
                         print(f"  [Tool: {block.name}] {block.input}")
                         result = self._execute_tool(block.name, block.input)
-                        tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
+                        tool_results.append(
+                            {"type": "tool_result", "tool_use_id": block.id, "content": result}
+                        )
                 self.messages.append({"role": "user", "content": tool_results})
             else:
                 text = "".join(getattr(b, "text", "") for b in resp.content if hasattr(b, "text"))

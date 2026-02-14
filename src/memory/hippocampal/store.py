@@ -237,9 +237,7 @@ class HippocampalStore:
                 importance=gate_result.importance,
                 provenance=Provenance(
                     source=MemorySource.AGENT_INFERRED,
-                    evidence_refs=(
-                        [chunk.source_turn_id] if chunk.source_turn_id else []
-                    ),
+                    evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
                     model_version=embedding_result.model,
                 ),
             )

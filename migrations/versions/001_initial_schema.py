@@ -8,6 +8,7 @@ Revises:
 Create Date: 2026-02-06
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
@@ -135,14 +136,12 @@ def upgrade() -> None:
 
     # Vector index for similarity search (only if pgvector is available)
     if Vector is not None:
-        op.execute(
-            """
+        op.execute("""
             CREATE INDEX ix_memory_embedding_hnsw
             ON memory_records
             USING hnsw (embedding vector_cosine_ops)
             WITH (m = 16, ef_construction = 64)
-            """
-        )
+            """)
 
     # -------------------------------------------------------------------------
     # semantic_facts table (holistic tenant-based, with context_tags)
