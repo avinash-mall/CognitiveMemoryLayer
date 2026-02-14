@@ -103,6 +103,9 @@ class FeatureFlags(PydanticBaseModel):
     hnsw_ef_search_tuning: bool = Field(
         default=True, description="Phase 6.1: query-time HNSW tuning"
     )
+    constraint_extraction_enabled: bool = Field(
+        default=True, description="Cognitive: extract and store latent constraints at write time"
+    )
 
 
 class RetrievalSettings(PydanticBaseModel):

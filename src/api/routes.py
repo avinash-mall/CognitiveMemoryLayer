@@ -70,7 +70,7 @@ async def write_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Store new information in memory. Holistic: tenant-only. Set X-Eval-Mode: true for eval outcome/reason."""
+    """Store new information in memory. Accepts content, optional context tags, session ID, and memory type. Use X-Eval-Mode: true header for evaluation outcome/reason. Tenant-scoped via X-Tenant-ID."""
     eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
@@ -112,12 +112,7 @@ async def process_turn(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """
-    Process a conversation turn with seamless memory:
-    - Auto-retrieves relevant context for the user message
-    - Auto-stores salient information (user message and optional assistant response)
-    - Returns formatted memory context for LLM injection
-    """
+    """Process a conversation turn with seamless memory: auto-retrieves relevant context for the user message, optionally auto-stores it, and returns formatted memory context for LLM injection."""
     try:
         provider = SeamlessMemoryProvider(
             orchestrator,
@@ -149,7 +144,7 @@ async def read_memory(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Retrieve relevant memories for a query. Holistic: tenant-only."""
+    """Retrieve memories relevant to a query. Supports filtering by context tags, memory types, and date range. Returns facts, preferences, episodes, and optional llm_context format."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(UTC)
     try:
@@ -178,10 +173,12 @@ async def read_memory(
             facts = []
             preferences = []
             episodes = []
+            constraints = []
         else:
             facts = [_to_memory_item(m) for m in packet.facts]
             preferences = [_to_memory_item(m) for m in packet.preferences]
             episodes = [_to_memory_item(m) for m in packet.recent_episodes]
+            constraints = [_to_memory_item(m) for m in packet.constraints]
 
         llm_context = None
         if body.format == "llm_context":
@@ -196,6 +193,7 @@ async def read_memory(
             facts=facts,
             preferences=preferences,
             episodes=episodes,
+            constraints=constraints,
             llm_context=llm_context,
             total_count=len(all_memories),
             elapsed_ms=elapsed_ms,
@@ -211,7 +209,7 @@ async def update_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Update an existing memory. Supports feedback for reconsolidation. Holistic: tenant-only."""
+    """Update an existing memory: change text, confidence, importance, or metadata. Supports feedback for reconsolidation."""
     try:
         result = await orchestrator.update(
             tenant_id=auth.tenant_id,
@@ -241,7 +239,7 @@ async def forget_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Forget (delete/archive/silence) memories. Holistic: tenant-only."""
+    """Forget (delete, archive, or silence) memories. Can target specific memory IDs or match by query and date."""
     try:
         result = await orchestrator.forget(
             tenant_id=auth.tenant_id,
@@ -265,7 +263,7 @@ async def get_memory_stats(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Get memory statistics for tenant. Holistic: tenant-only."""
+    """Get memory statistics for the current tenant: total counts, breakdown by type, and storage estimates."""
     try:
         stats = await orchestrator.get_stats(tenant_id=auth.tenant_id)
         return MemoryStats(**stats)
@@ -283,7 +281,7 @@ async def create_session(
     body: CreateSessionRequest,
     auth: AuthContext = Depends(require_write_permission),
 ):
-    """Create a new memory session. Returns session_id for subsequent calls. Persisted in Redis."""
+    """Create a new memory session. Returns a session_id for use in subsequent write/read calls. Sessions are persisted in Redis with configurable TTL."""
     session_id = str(uuid4())
     now = datetime.now(UTC)
     ttl_hours = body.ttl_hours if body.ttl_hours is not None else 24
@@ -317,7 +315,7 @@ async def session_write(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Write to memory with session_id for origin tracking. Set X-Eval-Mode: true for eval outcome/reason."""
+    """Write to memory scoped to a session. Same as /memory/write but with session_id in the path. Use X-Eval-Mode for evaluation."""
     eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
@@ -355,7 +353,7 @@ async def session_read(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Read from memory. Holistic: tenant-only (session_id kept for API compatibility)."""
+    """Read from memory (session_id kept for API compatibility; access remains tenant-wide). Same query options as /memory/read."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(UTC)
     try:
@@ -415,7 +413,7 @@ async def session_context(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Get full session context for LLM injection."""
+    """Get full session context for LLM injection: messages, tool results, scratch pad, and a preformatted context string."""
     try:
         ctx = await orchestrator.get_session_context(
             tenant_id=auth.tenant_id,
@@ -450,7 +448,7 @@ async def delete_all_memories(
     auth: AuthContext = Depends(require_admin_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Delete all memories for the authenticated tenant. Admin-only (GDPR)."""
+    """Delete all memories for the authenticated tenant. Admin-only. Use for GDPR data erasure."""
     try:
         affected = await orchestrator.delete_all(tenant_id=auth.tenant_id)
         return {"affected_count": affected}
@@ -461,5 +459,5 @@ async def delete_all_memories(
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Liveness/readiness check. Returns status and timestamp. No authentication required."""
     return {"status": "healthy", "timestamp": datetime.now(UTC).isoformat()}

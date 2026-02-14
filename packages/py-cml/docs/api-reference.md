@@ -117,11 +117,12 @@ Same API as async client. Use `async with EmbeddedCognitiveMemoryLayer()` or pas
 
 ## Models
 
-- **MemoryType** — EPISODIC_EVENT, SEMANTIC_FACT, PREFERENCE, CONVERSATION, MESSAGE, etc.
+- **MemoryType** — EPISODIC_EVENT, SEMANTIC_FACT, PREFERENCE, CONSTRAINT, CONVERSATION, MESSAGE, etc.
 - **MemoryStatus** — ACTIVE, SILENT, COMPRESSED, ARCHIVED, DELETED
 - **MemoryItem** — id, text, type, confidence, relevance, timestamp, metadata
 - **WriteResponse** — success, memory_id, chunks_created, message; when eval_mode was used, optional eval_outcome ("stored"|"skipped") and eval_reason.
-- **ReadResponse, TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in cml.models.
+- **ReadResponse** — context, memories; when format is "packet": categorized into `facts`, `preferences`, `episodes`, and `constraints` (list of `MemoryItem`, default empty). The `constraints` field contains cognitive constraints (goals, values, policies, states, causal rules) extracted and stored by the server when `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` is true.
+- **TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in cml.models.
 
 ## Exceptions
 

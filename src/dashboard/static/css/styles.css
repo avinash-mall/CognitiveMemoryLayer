@@ -7,6 +7,7 @@
 :root, [data-theme="dark"] {
     --bg-primary: #0f1117;
     --bg-secondary: #161926;
+    --bg-tertiary: #12151f;
     --bg-card: #1c2033;
     --bg-card-hover: #232840;
     --bg-input: #1c2033;
@@ -62,6 +63,7 @@
 [data-theme="light"] {
     --bg-primary: #f5f6fa;
     --bg-secondary: #ffffff;
+    --bg-tertiary: #eef0f5;
     --bg-card: #ffffff;
     --bg-card-hover: #f0f1f5;
     --bg-input: #f0f1f5;
@@ -994,12 +996,20 @@ tr.event-expanded .event-payload { display: block; }
 /* --- Graph Container --- */
 .graph-container {
     width: 100%;
-    height: 500px;
+    height: 560px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg-tertiary);
     position: relative;
     overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+.graph-empty-state {
+    color: var(--text-secondary);
+    text-align: center;
+    max-width: 420px;
+    margin: 0 auto;
+    line-height: 1.6;
 }
 .graph-controls {
     display: flex;

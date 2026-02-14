@@ -14,14 +14,27 @@ def _skip_if_embedding_unavailable(exc: BaseException) -> None:
     pytest.skip(f"Embedding/LLM unavailable: {type(exc).__name__}: {exc}")
 
 
+def _is_embedding_unavailable(exc: BaseException) -> bool:
+    """True if exception indicates embedding/model/LLM unavailable."""
+    msg = str(exc).lower()
+    return (
+        "repo id" in msg or "model" in msg or "embed" in msg or "rate" in msg or "connection" in msg
+    )
+
+
 @pytest.mark.embedded
 @pytest.mark.asyncio
 async def test_zero_config_init():
     """Zero-config init: async with EmbeddedCognitiveMemoryLayer() as m works."""
     from cml.embedded import EmbeddedCognitiveMemoryLayer
 
-    async with EmbeddedCognitiveMemoryLayer() as m:
-        assert m is not None
+    try:
+        async with EmbeddedCognitiveMemoryLayer() as m:
+            assert m is not None
+    except Exception as e:
+        if _is_embedding_unavailable(e):
+            _skip_if_embedding_unavailable(e)
+        raise
 
 
 @pytest.mark.embedded
@@ -38,7 +51,7 @@ async def test_write_and_read():
     except (ImportError, OSError, RuntimeError) as e:
         _skip_if_embedding_unavailable(e)
     except Exception as e:
-        if "model" in str(e).lower() or "embed" in str(e).lower() or "rate" in str(e).lower():
+        if _is_embedding_unavailable(e):
             _skip_if_embedding_unavailable(e)
         raise
 
@@ -59,6 +72,6 @@ async def test_persistent_storage(tmp_path):
     except (ImportError, OSError, RuntimeError) as e:
         _skip_if_embedding_unavailable(e)
     except Exception as e:
-        if "model" in str(e).lower() or "embed" in str(e).lower() or "rate" in str(e).lower():
+        if _is_embedding_unavailable(e):
             _skip_if_embedding_unavailable(e)
         raise

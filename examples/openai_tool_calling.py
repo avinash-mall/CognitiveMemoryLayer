@@ -6,7 +6,6 @@ Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 import json
 import os
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 try:
@@ -17,6 +16,7 @@ except ImportError:
     pass
 
 from openai import OpenAI
+
 from cml import CognitiveMemoryLayer
 
 MEMORY_TOOLS = [
@@ -90,16 +90,14 @@ MEMORY_TOOLS = [
 
 
 class MemoryEnabledAssistant:
-    def __init__(self, session_id: str, model: Optional[str] = None):
+    def __init__(self, session_id: str, model: str | None = None):
         self.session_id = session_id
         self.model = (
             model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
         ).strip()
         base_url = (
-            os.environ.get("CML_BASE_URL")
-            or os.environ.get("MEMORY_API_URL")
-            or "http://localhost:8000"
-        ).strip()
+            os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+        ).strip() or "http://localhost:8000"
         self.openai = OpenAI()
         self.memory = CognitiveMemoryLayer(
             api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
@@ -206,7 +204,7 @@ def main():
     except KeyboardInterrupt:
         print("\nGoodbye!")
     finally:
-        assistant.close()
+        assistant.memory.close()
 
 
 if __name__ == "__main__":

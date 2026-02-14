@@ -37,3 +37,6 @@ class QueryAnalysis:
     suggested_top_k: int = 10
     metadata: dict[str, Any] = field(default_factory=dict)
     user_timezone: str | None = None  # IANA timezone (e.g. "America/New_York")
+    # Cognitive constraint dimensions detected in the query
+    constraint_dimensions: list[str] = field(default_factory=list)  # e.g. ["goal", "value"]
+    is_decision_query: bool = False  # True if query implies a decision/temptation/recommendation

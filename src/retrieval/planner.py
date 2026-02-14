@@ -15,6 +15,7 @@ class RetrievalSource(StrEnum):
     VECTOR = "vector"
     GRAPH = "graph"
     CACHE = "cache"
+    CONSTRAINTS = "constraints"
 
 
 @dataclass
@@ -111,6 +112,41 @@ class RetrievalPlanner:
                 )
             )
             parallel_groups = [[0]]
+
+        elif (
+            analysis.intent == QueryIntent.CONSTRAINT_CHECK
+            or analysis.is_decision_query
+            or analysis.constraint_dimensions
+        ):
+            # Constraints-first retrieval: prioritise active constraints
+            steps.append(
+                RetrievalStep(
+                    source=RetrievalSource.CONSTRAINTS,
+                    query=analysis.original_query,
+                    memory_types=["constraint"],
+                    min_confidence=0.0,
+                    top_k=10,
+                    priority=0,
+                    timeout_ms=200,
+                )
+            )
+            steps.append(
+                RetrievalStep(
+                    source=RetrievalSource.VECTOR,
+                    query=analysis.original_query,
+                    top_k=analysis.suggested_top_k,
+                    priority=1,
+                )
+            )
+            steps.append(
+                RetrievalStep(
+                    source=RetrievalSource.FACTS,
+                    query=analysis.original_query,
+                    top_k=5,
+                    priority=1,
+                )
+            )
+            parallel_groups = [[0, 1, 2]]
 
         else:
             steps.append(

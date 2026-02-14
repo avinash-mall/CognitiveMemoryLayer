@@ -109,6 +109,9 @@ class LocalEmbeddings(EmbeddingClient):
             raise ImportError("sentence-transformers is required for LocalEmbeddings")
         settings = get_settings()
         name = model_name or settings.embedding.local_model
+        # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
+        if ":" in name:
+            name = name.split(":")[0]
         self.model = SentenceTransformer(name)
         self.model_name = name
         self._dimensions = self.model.get_sentence_embedding_dimension()
@@ -256,6 +259,11 @@ class CachedEmbeddings(EmbeddingClient):
         # Batch compute uncached
         if uncached_texts:
             computed = await self.client.embed_batch(uncached_texts)
+            if len(computed) != len(uncached_texts):
+                raise ValueError(
+                    f"embed_batch returned {len(computed)} results for {len(uncached_texts)} inputs; "
+                    "counts must match"
+                )
 
             # Batch cache store (pipeline instead of NxSETEX)
             try:

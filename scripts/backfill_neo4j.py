@@ -23,8 +23,8 @@ if _repo_root not in sys.path:
 from sqlalchemy import func, select  # noqa: E402
 
 from src.core.schemas import EntityMention, Relation  # noqa: E402
-from src.memory.neocortical.store import NeocorticalStore  # noqa: E402
 from src.memory.neocortical.fact_store import SemanticFactStore  # noqa: E402
+from src.memory.neocortical.store import NeocorticalStore  # noqa: E402
 from src.storage.connection import DatabaseManager  # noqa: E402
 from src.storage.models import MemoryRecordModel  # noqa: E402
 from src.storage.neo4j import Neo4jGraphStore  # noqa: E402

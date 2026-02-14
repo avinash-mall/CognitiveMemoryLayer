@@ -1,9 +1,11 @@
 """Hippocampal store: episodic memory with write gate, embedding, and vector store."""
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ...core.enums import MemorySource, MemoryStatus, MemoryType
 from ...core.schemas import (
@@ -20,6 +22,9 @@ from ...utils.embeddings import EmbeddingClient
 from ..working.models import SemanticChunk
 from .redactor import PIIRedactor
 from .write_gate import WriteDecision, WriteGate, WriteGateResult
+
+if TYPE_CHECKING:
+    from ...extraction.constraint_extractor import ConstraintExtractor
 
 
 def _gate_result_to_dict(g: WriteGateResult) -> dict:
@@ -41,13 +46,17 @@ class HippocampalStore:
         relation_extractor: RelationExtractor | None = None,
         write_gate: WriteGate | None = None,
         redactor: PIIRedactor | None = None,
+        constraint_extractor: ConstraintExtractor | None = None,
     ) -> None:
+        from ...extraction.constraint_extractor import ConstraintExtractor as _ConstraintExtractor
+
         self.store = vector_store
         self.embeddings = embedding_client
         self.entity_extractor = entity_extractor
         self.relation_extractor = relation_extractor
         self.write_gate = write_gate or WriteGate()
         self.redactor = redactor or PIIRedactor()
+        self.constraint_extractor = constraint_extractor or _ConstraintExtractor()
 
     async def encode_chunk(
         self,
@@ -90,6 +99,19 @@ class HippocampalStore:
         memory_type = memory_type_override or (
             gate_result.memory_types[0] if gate_result.memory_types else MemoryType.EPISODIC_EVENT
         )
+
+        # Constraint extraction: attach structured constraints to metadata
+        extracted_constraints = self.constraint_extractor.extract(chunk)
+        constraint_dicts = [c.to_dict() for c in extracted_constraints]
+
+        # If high-confidence constraint extracted, override memory type
+        if (
+            not memory_type_override
+            and extracted_constraints
+            and any(c.confidence >= 0.7 for c in extracted_constraints)
+        ):
+            memory_type = MemoryType.CONSTRAINT
+
         key = self._generate_key(chunk, memory_type)
 
         # Merge request-level metadata with system metadata; request metadata wins on conflict
@@ -98,6 +120,8 @@ class HippocampalStore:
             "source_turn_id": chunk.source_turn_id,
             "source_role": chunk.source_role,
         }
+        if constraint_dicts:
+            system_metadata["constraints"] = constraint_dicts
         if request_metadata:
             merged_metadata = {**system_metadata, **request_metadata}
         else:
@@ -210,6 +234,19 @@ class HippocampalStore:
                 if gate_result.memory_types
                 else MemoryType.EPISODIC_EVENT
             )
+
+            # Constraint extraction: attach structured constraints to metadata
+            extracted_constraints = self.constraint_extractor.extract(chunk)
+            constraint_dicts = [c.to_dict() for c in extracted_constraints]
+
+            # If high-confidence constraint extracted, override memory type
+            if (
+                not memory_type_override
+                and extracted_constraints
+                and any(c.confidence >= 0.7 for c in extracted_constraints)
+            ):
+                memory_type = MemoryType.CONSTRAINT
+
             key = self._generate_key(chunk, memory_type)
 
             system_metadata: dict[str, Any] = {
@@ -217,6 +254,8 @@ class HippocampalStore:
                 "source_turn_id": chunk.source_turn_id,
                 "source_role": chunk.source_role,
             }
+            if constraint_dicts:
+                system_metadata["constraints"] = constraint_dicts
             merged_metadata = {**system_metadata, **(request_metadata or {})}
 
             record_create = MemoryRecordCreate(
@@ -326,6 +365,7 @@ class HippocampalStore:
         if memory_type not in (
             MemoryType.PREFERENCE,
             MemoryType.SEMANTIC_FACT,
+            MemoryType.CONSTRAINT,
         ):
             return None
 

@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -52,7 +52,7 @@ def verify_celery():
     if missing:
         print(f"\n⚠️ Missing Expected Tasks: {missing}")
     else:
-        print(f"\n✅ All expected tasks registered.")
+        print("\n✅ All expected tasks registered.")
 
 
 if __name__ == "__main__":

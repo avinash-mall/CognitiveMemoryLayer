@@ -170,8 +170,10 @@ class SemanticClusterer:
     def _find_nearest(
         self, episode: MemoryRecord, clusters: list[EpisodeCluster]
     ) -> EpisodeCluster | None:
-        if not episode.embedding or not clusters:
-            return clusters[0] if clusters else None
+        if not clusters:
+            return None
+        if not episode.embedding:
+            return None  # Cannot compute similarity without embedding; caller handles explicitly
         best = None
         best_sim = -1.0
         for c in clusters:

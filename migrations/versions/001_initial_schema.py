@@ -1,7 +1,7 @@
-"""Initial schema: event_log, memory_records, and semantic_facts with pgvector.
+"""Initial schema: event_log, memory_records, semantic_facts, and dashboard_jobs with pgvector.
 
 This is a consolidated migration combining all schema evolution into a single
-initial migration for new project deployments.
+initial migration for new project deployments (includes dashboard job history table).
 
 Revision ID: 001
 Revises:
@@ -9,8 +9,8 @@ Create Date: 2026-02-06
 
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 
 # pgvector for embedding column and HNSW index
@@ -189,8 +189,32 @@ def upgrade() -> None:
         USING GIN (context_tags)
     """)
 
+    # -------------------------------------------------------------------------
+    # dashboard_jobs table (consolidation/forgetting job history)
+    # -------------------------------------------------------------------------
+    op.create_table(
+        "dashboard_jobs",
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("job_type", sa.String(30), nullable=False),
+        sa.Column("tenant_id", sa.String(100), nullable=False),
+        sa.Column("user_id", sa.String(100), nullable=True),
+        sa.Column("dry_run", sa.Boolean(), server_default="false"),
+        sa.Column("status", sa.String(20), nullable=False, server_default="running"),
+        sa.Column("result", JSON, nullable=True),
+        sa.Column("error", sa.Text(), nullable=True),
+        sa.Column("started_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        sa.Column("completed_at", sa.DateTime(), nullable=True),
+    )
+    op.create_index("ix_dashboard_jobs_tenant_type", "dashboard_jobs", ["tenant_id", "job_type"])
+    op.create_index("ix_dashboard_jobs_status", "dashboard_jobs", ["status"])
+
 
 def downgrade() -> None:
+    # Drop dashboard_jobs
+    op.drop_index("ix_dashboard_jobs_status", table_name="dashboard_jobs")
+    op.drop_index("ix_dashboard_jobs_tenant_type", table_name="dashboard_jobs")
+    op.drop_table("dashboard_jobs")
+
     # Drop semantic_facts
     op.drop_index("ix_semantic_facts_context_tags_gin", table_name="semantic_facts", if_exists=True)
     op.drop_index("ix_semantic_facts_tenant_category", table_name="semantic_facts")
