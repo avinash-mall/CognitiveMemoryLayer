@@ -62,6 +62,11 @@ class TestSchemas:
         )
         assert req.max_results == 10
         assert req.format == "packet"
+        assert req.user_timezone is None
+
+    def test_read_memory_request_user_timezone(self):
+        req = ReadMemoryRequest(query="today?", user_timezone="America/New_York")
+        assert req.user_timezone == "America/New_York"
 
 
 class TestAuthContextPermissions:

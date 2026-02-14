@@ -372,6 +372,61 @@ class Neo4jGraphStore(GraphStoreBase):
             records = await result.data()
             return list(records) if records else []
 
+    async def get_entity_facts_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        entity_names: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Get relations for multiple entities in one Cypher round-trip.
+
+        Uses ``UNWIND`` to match all requested entities in a single query,
+        then groups the results by entity name in Python.
+
+        Returns a mapping ``entity_name -> list[relation_dict]`` where each
+        relation dict has the same shape as :meth:`get_entity_facts` output
+        (``predicate``, ``direction``, ``related_entity``, ``related_type``,
+        ``relation_properties``).  Entities with no relations are absent
+        from the dict; callers should use ``.get(name, [])``.
+        """
+        if not entity_names:
+            return {}
+
+        query = """
+        UNWIND $entity_names AS entity_name
+        MATCH (e:Entity {
+            tenant_id: $tenant_id,
+            scope_id: $scope_id,
+            entity: entity_name
+        })-[r]-(other:Entity)
+        RETURN entity_name,
+               type(r) AS predicate,
+               CASE
+                   WHEN startNode(r) = e THEN 'outgoing'
+                   ELSE 'incoming'
+               END AS direction,
+               other.entity AS related_entity,
+               other.entity_type AS related_type,
+               properties(r) AS relation_properties
+        """
+
+        async with self.driver.session() as session:
+            result = await session.run(
+                query,
+                tenant_id=tenant_id,
+                scope_id=scope_id,
+                entity_names=entity_names,
+            )
+            records = await result.data()
+
+        # Group records by entity_name
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for record in records or []:
+            name = record.pop("entity_name", None)
+            if name is not None:
+                grouped.setdefault(name, []).append(record)
+        return grouped
+
     async def search_by_pattern(
         self,
         tenant_id: str,

@@ -56,8 +56,18 @@ class TestSeamlessMemoryProvider:
         """Create a mock orchestrator."""
         orch = MagicMock()
 
-        # Mock read to return a memory packet
-        async def mock_read(tenant_id, query, max_results=10, context_filter=None):
+        # Mock read to return a memory packet (accept user_timezone and other kwargs)
+        async def mock_read(
+            tenant_id,
+            query,
+            max_results=10,
+            context_filter=None,
+            memory_types=None,
+            since=None,
+            until=None,
+            user_timezone=None,
+            **kwargs,
+        ):
             return MemoryPacket(
                 query=query,
                 facts=[_make_retrieved_memory("User likes coffee", 0.85)],

@@ -289,15 +289,25 @@ class EmbeddedCognitiveMemoryLayer:
         since: datetime | None = None,
         until: datetime | None = None,
         format: str = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
         """Retrieve memories by query."""
         self._ensure_initialized()
         t0 = time.perf_counter()
+        memory_type_values = (
+            [mt.value if hasattr(mt, "value") else str(mt) for mt in memory_types]
+            if memory_types
+            else None
+        )
         packet = await self._orchestrator.read(
             tenant_id=self._config.tenant_id,
             query=query,
             max_results=max_results,
             context_filter=context_filter,
+            memory_types=memory_type_values,
+            since=since,
+            until=until,
+            user_timezone=user_timezone,
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000
         return _packet_to_read_response(query, packet, elapsed_ms)
@@ -310,6 +320,7 @@ class EmbeddedCognitiveMemoryLayer:
         session_id: str | None = None,
         max_context_tokens: int = 1500,
         timestamp: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
@@ -327,6 +338,7 @@ class EmbeddedCognitiveMemoryLayer:
             assistant_response=assistant_response,
             session_id=session_id,
             timestamp=timestamp,
+            user_timezone=user_timezone,
         )
         return TurnResponse(
             memory_context=result.memory_context,

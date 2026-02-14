@@ -1,6 +1,7 @@
 """Hybrid retriever executing plans across memory sources."""
 
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -13,6 +14,8 @@ from ..memory.neocortical.store import NeocorticalStore
 from ..utils.logging_config import get_logger
 from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -27,7 +30,11 @@ class RetrievalResult:
 
 
 class HybridRetriever:
-    """Executes retrieval plans across multiple memory sources."""
+    """Executes retrieval plans across multiple memory sources.
+
+    Enforces per-step and total retrieval timeouts so that slow sources
+    (e.g. Neo4j GDS) don't dominate tail latency.
+    """
 
     def __init__(
         self,
@@ -45,22 +52,90 @@ class HybridRetriever:
         plan: RetrievalPlan,
         context_filter: list[str] | None = None,
     ) -> list[RetrievedMemory]:
-        """Execute a retrieval plan and return results. Holistic: tenant-only."""
+        """Execute a retrieval plan with enforced timeouts. Holistic: tenant-only."""
+        from ..core.config import get_settings
+
+        settings = get_settings()
+        timeouts_enabled = settings.features.retrieval_timeouts_enabled
+        cross_skip = settings.features.skip_if_found_cross_group
+
         all_results: list[dict[str, Any]] = []
+        plan_start = time.perf_counter()
+        plan_budget = plan.total_timeout_ms / 1000.0
+        skip_remaining = False
+
         for group_indices in plan.parallel_steps:
+            if skip_remaining:
+                break
+
+            # Check remaining plan budget
+            if timeouts_enabled:
+                elapsed = time.perf_counter() - plan_start
+                remaining = plan_budget - elapsed
+                if remaining <= 0:
+                    logger.info("retrieval_plan_budget_exceeded", extra={"elapsed_ms": elapsed * 1000})
+                    break
+            else:
+                remaining = None  # No cap
+
             group_steps = [plan.steps[i] for i in group_indices if i < len(plan.steps)]
-            group_results = await asyncio.gather(
-                *[self._execute_step(tenant_id, step, context_filter) for step in group_steps],
-                return_exceptions=True,
-            )
+
+            # Execute group in parallel with per-step timeouts
+            if timeouts_enabled:
+                coros = [
+                    self._execute_step_with_timeout(tenant_id, step, context_filter)
+                    for step in group_steps
+                ]
+                try:
+                    group_results = await asyncio.wait_for(
+                        asyncio.gather(*coros, return_exceptions=True),
+                        timeout=remaining,
+                    )
+                except asyncio.TimeoutError:
+                    logger.info("retrieval_group_timeout", extra={"group": group_indices})
+                    break
+            else:
+                group_results = await asyncio.gather(
+                    *[self._execute_step(tenant_id, step, context_filter) for step in group_steps],
+                    return_exceptions=True,
+                )
+
             for step, result in zip(group_steps, group_results, strict=False):
                 if isinstance(result, Exception):
                     continue
                 if result.success and result.items:
                     all_results.extend(result.items)
-                    if step.skip_if_found and result.items:
-                        break
+                    # Phase 3.2: cross-group skip
+                    if step.skip_if_found and result.items and cross_skip:
+                        skip_remaining = True
+
         return self._to_retrieved_memories(all_results, plan.analysis)
+
+    async def _execute_step_with_timeout(
+        self,
+        tenant_id: str,
+        step: RetrievalStep,
+        context_filter: list[str] | None = None,
+    ) -> RetrievalResult:
+        """Execute a step wrapped in its own timeout."""
+        timeout_s = step.timeout_ms / 1000.0
+        try:
+            return await asyncio.wait_for(
+                self._execute_step(tenant_id, step, context_filter),
+                timeout=timeout_s,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "retrieval_step_timeout",
+                extra={"source": step.source.value, "timeout_ms": step.timeout_ms},
+            )
+            return RetrievalResult(
+                source=step.source,
+                items=[],
+                elapsed_ms=float(step.timeout_ms),
+                success=False,
+                error=f"Timeout after {step.timeout_ms}ms",
+            )
 
     async def _execute_step(
         self,
@@ -69,7 +144,7 @@ class HybridRetriever:
         context_filter: list[str] | None = None,
     ) -> RetrievalResult:
         """Execute a single retrieval step. Holistic: tenant-only."""
-        start = datetime.now(UTC)
+        start = time.perf_counter()
         try:
             if step.source == RetrievalSource.FACTS:
                 items = await self._retrieve_facts(tenant_id, step)
@@ -81,22 +156,40 @@ class HybridRetriever:
                 items = await self._retrieve_cache(tenant_id, step)
             else:
                 items = []
-            elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
+            elapsed_ms = (time.perf_counter() - start) * 1000
+
+            # Phase 6.2: emit step metrics
+            self._record_step_metrics(step.source, elapsed_ms, len(items))
+
             return RetrievalResult(
                 source=step.source,
                 items=items,
-                elapsed_ms=elapsed,
+                elapsed_ms=elapsed_ms,
                 success=True,
             )
         except Exception as e:
-            elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
+            elapsed_ms = (time.perf_counter() - start) * 1000
             return RetrievalResult(
                 source=step.source,
                 items=[],
-                elapsed_ms=elapsed,
+                elapsed_ms=elapsed_ms,
                 success=False,
                 error=str(e),
             )
+
+    @staticmethod
+    def _record_step_metrics(source: RetrievalSource, elapsed_ms: float, count: int) -> None:
+        """Emit Prometheus metrics for a retrieval step (best-effort)."""
+        try:
+            from ..utils.metrics import (
+                RETRIEVAL_STEP_DURATION,
+                RETRIEVAL_STEP_RESULT_COUNT,
+            )
+
+            RETRIEVAL_STEP_DURATION.labels(source=source.value).observe(elapsed_ms)
+            RETRIEVAL_STEP_RESULT_COUNT.labels(source=source.value).observe(count)
+        except Exception:
+            pass  # Metrics are optional
 
     async def _retrieve_facts(
         self,

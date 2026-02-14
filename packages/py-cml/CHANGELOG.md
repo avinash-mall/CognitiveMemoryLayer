@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **user_timezone for read and turn** — Optional `user_timezone` parameter on `read()`, `read_safe()`, and `turn()` (sync, async, and embedded clients). When provided (e.g. `"America/New_York"`), the server uses it for timezone-aware "today"/"yesterday" filters in retrieval. Requires a CML server that accepts `user_timezone` on the read and turn APIs.
 - **Optional embedding/LLM in tests** — Embedded lite-mode tests `test_write_and_read` and `test_persistent_storage` now skip (instead of fail) when the embedding model is unavailable. Skip is triggered on `ImportError`, `OSError`, or `RuntimeError`, or when any other exception message contains "model", "embed", or "rate" (e.g. sentence-transformers load failure, API or rate-limit errors). See repo `tests/README.md` § Optional LLM/embedding tests.
+
+### Fixed
+
+- **Embedded read() filter passthrough** — `EmbeddedCognitiveMemoryLayer.read()` now passes `memory_types`, `since`, and `until` to the orchestrator (previously accepted but ignored).
 
 ### Changed
 
@@ -17,7 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **configuration.md** — Embedded configuration table documents that `dimensions` can be set via `EMBEDDING__DIMENSIONS` in `.env` (default 384).
+- **configuration.md** — Embedded configuration table documents that `dimensions` can be set via `EMBEDDING__DIMENSIONS` in `.env` (default 384). Added "Server-side feature flags and retrieval" subsection with link to main project Configuration Reference for `FEATURES__*` and `RETRIEVAL__*`.
+- **api-reference.md** — Documented `user_timezone` on `read()` and `turn()` (optional IANA timezone for "today"/"yesterday" retrieval).
+- **examples.md** — Mentioned `read(..., user_timezone=...)` and `turn(..., user_timezone=...)` for timezone-aware queries.
+- **README.md** — Added one line about optional `user_timezone` on read/turn in the Memory API features table.
 
 ## [1.1.0] - 2026-02-12
 

@@ -2,7 +2,7 @@
 
 Runnable scripts live in the repository [examples/](../../../examples/) directory; this page describes SDK usage patterns.
 
-The `examples/` directory contains runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`. For benchmark scripts, use `write(..., eval_mode=True)` to get `eval_outcome` and `eval_reason` in the response; see [API Reference — Eval mode](api-reference.md#eval-mode-write-gate).
+The `examples/` directory contains runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`. For timezone-aware "today"/"yesterday" retrieval, use `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")` when the server supports it. For benchmark scripts, use `write(..., eval_mode=True)` to get `eval_outcome` and `eval_reason` in the response; see [API Reference — Eval mode](api-reference.md#eval-mode-write-gate).
 
 ## Quickstart
 

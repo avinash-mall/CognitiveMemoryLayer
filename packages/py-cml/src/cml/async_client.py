@@ -169,6 +169,7 @@ class AsyncCognitiveMemoryLayer:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
         """Retrieve memories by query.
 
@@ -180,6 +181,7 @@ class AsyncCognitiveMemoryLayer:
             since: Optional start of time range.
             until: Optional end of time range.
             response_format: "packet", "list", or "llm_context".
+            user_timezone: Optional IANA timezone (e.g. "America/New_York") for "today"/"yesterday" filters.
 
         Returns:
             ReadResponse with memories, facts, preferences, episodes, context.
@@ -193,6 +195,7 @@ class AsyncCognitiveMemoryLayer:
             since=since,
             until=until,
             format=response_format,  # alias for response_format in ReadRequest
+            user_timezone=user_timezone,
         ).model_dump(exclude_none=True, by_alias=True, mode="json")
         data = await self._transport.request("POST", "/memory/read", json=body)
         return ReadResponse(**data)
@@ -207,6 +210,7 @@ class AsyncCognitiveMemoryLayer:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
         """Read with graceful degradation — returns empty result on connection/timeout failure."""
         self._ensure_same_loop()
@@ -219,6 +223,7 @@ class AsyncCognitiveMemoryLayer:
                 since=since,
                 until=until,
                 response_format=response_format,
+                user_timezone=user_timezone,
             )
         except ConnectionError:
             logger.warning("CML server unreachable, returning empty context", exc_info=False)
@@ -245,6 +250,7 @@ class AsyncCognitiveMemoryLayer:
         session_id: str | None = None,
         max_context_tokens: int = 1500,
         timestamp: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> TurnResponse:
         """Process a conversational turn (retrieve + store in one call).
 
@@ -254,6 +260,7 @@ class AsyncCognitiveMemoryLayer:
             session_id: Optional session id.
             max_context_tokens: Max tokens for retrieved context.
             timestamp: Optional event timestamp (defaults to now).
+            user_timezone: Optional IANA timezone for retrieval "today"/"yesterday" (e.g. "America/New_York").
 
         Returns:
             TurnResponse with memory_context, counts, reconsolidation flag.
@@ -265,6 +272,7 @@ class AsyncCognitiveMemoryLayer:
             session_id=session_id,
             max_context_tokens=max_context_tokens,
             timestamp=timestamp,
+            user_timezone=user_timezone,
         ).model_dump(exclude_none=True, mode="json")
         data = await self._transport.request("POST", "/memory/turn", json=body)
         return TurnResponse(**data)

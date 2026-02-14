@@ -64,6 +64,38 @@ def test_sync_read_returns_read_response(cml_config: CMLConfig) -> None:
     assert call[1]["json"]["query"] == "prefs"
 
 
+def test_sync_read_passes_user_timezone_when_provided(cml_config: CMLConfig) -> None:
+    """Sync client read() includes user_timezone in request body when provided."""
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "query": "today?",
+            "memories": [],
+            "total_count": 0,
+            "elapsed_ms": 1.0,
+        }
+    )
+    client.read("today?", user_timezone="America/New_York")
+    call = client._transport.request.call_args
+    assert call[1]["json"]["user_timezone"] == "America/New_York"
+
+
+def test_sync_turn_passes_user_timezone_when_provided(cml_config: CMLConfig) -> None:
+    """Sync client turn() includes user_timezone in request body when provided."""
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "memory_context": "",
+            "memories_retrieved": 0,
+            "memories_stored": 0,
+            "reconsolidation_applied": False,
+        }
+    )
+    client.turn("Hi", user_timezone="Europe/London")
+    call = client._transport.request.call_args
+    assert call[1]["json"]["user_timezone"] == "Europe/London"
+
+
 def test_sync_forget_raises_without_selector(cml_config: CMLConfig) -> None:
     """Sync client forget() raises ValueError when no memory_ids, query, or before."""
     config = cml_config

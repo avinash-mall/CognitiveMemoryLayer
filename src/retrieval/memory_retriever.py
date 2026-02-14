@@ -40,9 +40,12 @@ class MemoryRetriever:
         memory_types: list[str] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories for a query. Holistic: tenant-only."""
         analysis = await self.classifier.classify(query, recent_context=recent_context)
+        if user_timezone is not None:
+            analysis.user_timezone = user_timezone
         plan = self.planner.plan(analysis)
 
         # Inject API-level filters into every retrieval step
