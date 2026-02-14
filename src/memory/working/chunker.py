@@ -12,12 +12,13 @@ CHUNKING_PROMPT = """Analyze the following text and extract semantically meaning
 
 For each chunk, identify:
 1. The core statement or fact
-2. The type (statement, preference, question, instruction, fact, event, opinion)
+2. The type (statement, preference, question, instruction, fact, event, opinion, constraint)
 3. Key entities mentioned
 4. Importance score (0.0-1.0) based on:
    - Explicit user preferences (high)
    - Personal information (high)
    - Task-relevant details (medium-high)
+   - Constraints: goals, values, policies, states, causal reasons (high)
    - General conversation (low)
 
 Text to analyze:
@@ -30,7 +31,7 @@ Return a JSON array of chunks:
 [
   {{
     "text": "extracted chunk text",
-    "type": "preference|statement|fact|event|question|instruction|opinion",
+    "type": "preference|statement|fact|event|question|instruction|opinion|constraint",
     "entities": ["entity1", "entity2"],
     "key_phrases": ["phrase1"],
     "salience": 0.8,
@@ -42,7 +43,48 @@ Rules:
 - Each chunk should be a single coherent idea
 - Preserve the user's wording for preferences and facts
 - Don't create chunks for filler/acknowledgments
-- Combine related short statements if they form one idea"""
+- Combine related short statements if they form one idea
+- Use type "constraint" for goals, values, policies, commitments, causal reasoning, or states that should govern future behavior"""
+
+
+_CONSTRAINT_CUE_PHRASES = [
+    "i'm trying to",
+    "i don't want",
+    "it's important that",
+    "i need to avoid",
+    "i'm anxious about",
+    "i'm preparing for",
+    "i must",
+    "i should",
+    "i can't",
+    "i won't",
+    "my goal is",
+    "i'm focused on",
+    "i'm committed to",
+    "i value",
+    "i believe",
+    "because of",
+    "in order to",
+    "i never",
+    "i always",
+    "i'm working toward",
+    "i care about",
+    "so that",
+    "that's why",
+    "i'm dealing with",
+]
+
+
+def _compute_salience_boost_for_constraints(text: str) -> float:
+    """Boost salience for constraint cues (goals, values, policies, causal). Cap at 0.4."""
+    lower = text.lower()
+    boost = 0.0
+    matches = sum(1 for phrase in _CONSTRAINT_CUE_PHRASES if phrase in lower)
+    if matches >= 2:
+        boost = 0.4
+    elif matches == 1:
+        boost = 0.3
+    return min(boost, 0.4)
 
 
 def _compute_salience_boost_for_sentiment(text: str) -> float:
@@ -138,7 +180,12 @@ class SemanticChunker:
                     ctype = ChunkType.STATEMENT
                 raw_text = cd.get("text", "")
                 base_salience = float(cd.get("salience", 0.5))
-                salience = min(1.0, base_salience + _compute_salience_boost_for_sentiment(raw_text))
+                salience = min(
+                    1.0,
+                    base_salience
+                    + _compute_salience_boost_for_sentiment(raw_text)
+                    + _compute_salience_boost_for_constraints(raw_text),
+                )
                 chunks.append(
                     SemanticChunk(
                         id=chunk_id,
@@ -156,7 +203,11 @@ class SemanticChunker:
             return chunks
 
         except (json.JSONDecodeError, KeyError, TypeError):
-            salience = 0.5 + _compute_salience_boost_for_sentiment(text)
+            salience = (
+                0.5
+                + _compute_salience_boost_for_sentiment(text)
+                + _compute_salience_boost_for_constraints(text)
+            )
             return [
                 SemanticChunk(
                     id=self._generate_chunk_id(text, 0),
@@ -203,6 +254,29 @@ class RuleBasedChunker:
         "i need",
         "help me",
     ]
+    CONSTRAINT_MARKERS = [
+        "i'm trying to",
+        "i don't want",
+        "it's important that",
+        "i need to avoid",
+        "i'm anxious about",
+        "i'm preparing for",
+        "i must",
+        "i should",
+        "i can't",
+        "i won't",
+        "my goal is",
+        "i'm focused on",
+        "i'm committed to",
+        "i value",
+        "i believe",
+        "because of",
+        "in order to",
+        "i never",
+        "i always",
+        "i'm working toward",
+        "i care about",
+    ]
 
     def chunk(
         self,
@@ -224,7 +298,10 @@ class RuleBasedChunker:
             chunk_type = ChunkType.STATEMENT
             salience = 0.3
 
-            if any(m in lower for m in self.PREFERENCE_MARKERS):
+            if any(m in lower for m in self.CONSTRAINT_MARKERS):
+                chunk_type = ChunkType.CONSTRAINT
+                salience = 0.85
+            elif any(m in lower for m in self.PREFERENCE_MARKERS):
                 chunk_type = ChunkType.PREFERENCE
                 salience = 0.8
             elif any(m in lower for m in self.FACT_MARKERS):
@@ -237,7 +314,12 @@ class RuleBasedChunker:
                 chunk_type = ChunkType.QUESTION
                 salience = 0.4
 
-            salience = min(1.0, salience + _compute_salience_boost_for_sentiment(sentence))
+            salience = min(
+                1.0,
+                salience
+                + _compute_salience_boost_for_sentiment(sentence)
+                + _compute_salience_boost_for_constraints(sentence),
+            )
 
             chunk_id = f"rule_{hashlib.sha256(sentence.encode()).hexdigest()[:8]}_{i}"
             chunks.append(

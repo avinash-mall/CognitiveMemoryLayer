@@ -6,7 +6,7 @@ Set AUTH__API_KEY, CML_BASE_URL, ANTHROPIC_API_KEY in .env.
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 try:
@@ -17,6 +17,7 @@ except ImportError:
     pass
 
 from anthropic import Anthropic
+
 from cml import CognitiveMemoryLayer
 
 MEMORY_TOOLS = [
@@ -82,16 +83,14 @@ class ClaudeMemoryAssistant:
         self.session_id = session_id
         self.model = model
         base_url = (
-            os.environ.get("CML_BASE_URL")
-            or os.environ.get("MEMORY_API_URL")
-            or "http://localhost:8000"
-        ).strip()
+            os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+        ).strip() or "http://localhost:8000"
         self.anthropic = Anthropic()
         self.memory = CognitiveMemoryLayer(
             api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
             base_url=base_url,
         )
-        self.messages: List[Dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
         self.system = (
             "You are a helpful assistant with long-term memory. Use memory tools as needed."
         )

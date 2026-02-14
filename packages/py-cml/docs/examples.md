@@ -102,3 +102,33 @@ This feature is particularly useful for:
 - **Benchmark evaluations** (e.g., Locomo) that replay historical conversations with correct temporal ordering
 - **Data migration** when importing historical records from other systems
 - **Testing** temporal reasoning and memory consolidation over time
+
+## Cognitive Constraints
+
+When the CML server has `FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true` (default), the system automatically detects goals, values, policies, states, and causal rules from stored memories. Decision-style queries surface these constraints in `ReadResponse.constraints`:
+
+```python
+from cml import CognitiveMemoryLayer
+
+with CognitiveMemoryLayer(api_key="...", base_url="...") as memory:
+    # Store memories containing latent constraints
+    memory.write("I'm trying to eat healthier this year.")
+    memory.write("We should save money for the trip to Japan.")
+    memory.write("I'm allergic to shellfish.")
+
+    # Decision query triggers constraint retrieval
+    result = memory.read("Should I order the lobster for dinner?")
+    print(f"Constraints found: {len(result.constraints)}")
+    for c in result.constraints:
+        print(f"  [{c.type}] {c.text} (confidence: {c.confidence:.2f})")
+    # e.g.:
+    #   [constraint] User is allergic to shellfish (confidence: 0.90)
+    #   [constraint] Trying to eat healthier (confidence: 0.75)
+
+    # Non-decision queries still return constraints if relevant
+    result = memory.read("What are my dietary restrictions?")
+    for c in result.constraints:
+        print(f"  {c.text}")
+```
+
+The constraint extraction runs at **write time** and stores structured `ConstraintObject` data in both episodic (vector) and semantic (fact) stores. At **read time**, queries classified as `CONSTRAINT_CHECK` (e.g. "should I", "can I", "is it ok", "recommend") trigger a highest-priority retrieval step that fetches constraints first.

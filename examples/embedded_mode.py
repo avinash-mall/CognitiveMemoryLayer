@@ -4,6 +4,7 @@ Uses aiosqlite (in-memory or file-based). No HTTP or CML API required.
 """
 
 import asyncio
+
 from cml import EmbeddedCognitiveMemoryLayer
 
 

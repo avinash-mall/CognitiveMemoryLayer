@@ -57,7 +57,7 @@ def _evidence_to_text(conversation: dict, evidence_list: list) -> str:
                 turn = turns[turn_idx - 1]
                 speaker = turn.get("speaker", "Unknown")
                 text = turn.get("text", "")
-                lines.append(f"{speaker}：{text}")
+                lines.append(f"{speaker}: {text}")
             else:
                 lines.append(f"[{evid}] [Missing turn]")
         except Exception:
@@ -68,11 +68,7 @@ def _evidence_to_text(conversation: dict, evidence_list: list) -> str:
 def _build_conversation_context(conversation: dict) -> str:
     """Single conversation as DATE + CONVERSATION lines."""
     sessions = sorted(
-        [
-            k
-            for k in conversation.keys()
-            if k.startswith("session_") and not k.endswith("_date_time")
-        ],
+        [k for k in conversation if k.startswith("session_") and not k.endswith("_date_time")],
         key=lambda x: int(x.split("_")[-1]),
     )
     context = ""
@@ -103,7 +99,7 @@ CATEGORY_SIXTH = "Cognitive"
 
 def _process_locomo(locomo_path: str) -> list:
     """Locomo: input_prompt = conversation (no insertion) + question."""
-    with open(locomo_path, "r", encoding="utf-8") as f:
+    with open(locomo_path, encoding="utf-8") as f:
         raw = json.load(f)
     out = []
     for item in raw:
@@ -138,7 +134,7 @@ def _cue_dialogue_to_evidence(cue_dialogue: str, locomo_item: dict) -> str:
     speaker_a = conv.get("speaker_a", "A")
     speaker_b = conv.get("speaker_b", "B")
     turns = map_speaker(parse_ab_dialogue(cue_dialogue or ""), speaker_a, speaker_b)
-    return "\n".join(f"{t['speaker']}：{t['text'].strip()}" for t in turns if t.get("text"))
+    return "\n".join(f"{t['speaker']}: {t['text'].strip()}" for t in turns if t.get("text"))
 
 
 def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> str:
@@ -157,9 +153,9 @@ def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> str:
 
 def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_size=None) -> list:
     """Cognitive (sixth): stitching via build_conv.build_context; no answer."""
-    with open(locomo_plus_path, "r", encoding="utf-8") as f:
+    with open(locomo_plus_path, encoding="utf-8") as f:
         plus_list = json.load(f)
-    with open(locomo_path, "r", encoding="utf-8") as f:
+    with open(locomo_path, encoding="utf-8") as f:
         locomo_list = json.load(f)
     if plus_sample_size is not None:
         plus_list = plus_list[:plus_sample_size]

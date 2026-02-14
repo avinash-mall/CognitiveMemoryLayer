@@ -307,9 +307,54 @@ class MemoryOrchestrator:
                                 evidence_ids=evidence,
                             )
                         except Exception:
-                            pass  # Fire-and-forget; episodic is source of truth
+                            logger.warning(
+                                "write_time_fact_store_failed",
+                                extra={"tenant_id": tenant_id, "fact_key": fact.key},
+                                exc_info=True,
+                            )
             except Exception:
-                logger.debug("write_time_facts_skipped", exc_info=True)
+                logger.warning("write_time_facts_skipped", exc_info=True)
+
+        # Cognitive: Write-time constraint extraction — store constraints as semantic facts
+        if settings.features.constraint_extraction_enabled and chunks_for_encoding:
+            try:
+                from ..extraction.constraint_extractor import ConstraintExtractor
+
+                constraint_extractor = ConstraintExtractor()
+                constraints_stored = 0
+                for chunk in chunks_for_encoding:
+                    extracted_constraints = constraint_extractor.extract(chunk)
+                    for constraint in extracted_constraints:
+                        try:
+                            evidence = [str(stored[0].id)] if stored else []
+                            fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                            await self.neocortical.store_fact(
+                                tenant_id=tenant_id,
+                                key=fact_key,
+                                value=constraint.description,
+                                confidence=constraint.confidence,
+                                evidence_ids=evidence,
+                            )
+                            constraints_stored += 1
+                        except Exception:
+                            logger.warning(
+                                "constraint_fact_store_failed",
+                                extra={
+                                    "tenant_id": tenant_id,
+                                    "constraint_type": constraint.constraint_type,
+                                },
+                                exc_info=True,
+                            )
+                if constraints_stored > 0:
+                    logger.info(
+                        "constraints_extracted",
+                        extra={
+                            "tenant_id": tenant_id,
+                            "count": constraints_stored,
+                        },
+                    )
+            except Exception:
+                logger.warning("constraint_extraction_skipped", exc_info=True)
 
         if eval_mode:
             n_stored = len(stored)

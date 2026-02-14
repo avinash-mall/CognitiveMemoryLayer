@@ -34,6 +34,15 @@ class SchemaAligner:
         self.fact_store = fact_store
         self.threshold = rapid_integration_threshold
 
+    # Cognitive gist types that map to FactCategory constraint schemas
+    _COGNITIVE_TYPE_MAP = {
+        "goal": "goal",
+        "value": "value",
+        "state": "state",
+        "causal": "causal",
+        "policy": "policy",
+    }
+
     async def align(
         self,
         tenant_id: str,
@@ -51,6 +60,29 @@ class SchemaAligner:
                     can_integrate_rapidly=True,
                     integration_key=gist.key,
                 )
+
+        # Cognitive constraint types: generate keys like user:goal:{scope}
+        if gist.gist_type in self._COGNITIVE_TYPE_MAP:
+            scope = gist.predicate or "general"
+            key = f"user:{gist.gist_type}:{scope}"
+            existing = await self.fact_store.get_fact(tenant_id, key)
+            if existing:
+                return AlignmentResult(
+                    gist=gist,
+                    matched_schema=key,
+                    schema_similarity=0.85,
+                    can_integrate_rapidly=True,
+                    integration_key=key,
+                )
+            # No existing fact, but we can still integrate rapidly with a new key
+            return AlignmentResult(
+                gist=gist,
+                matched_schema=None,
+                schema_similarity=0.0,
+                can_integrate_rapidly=True,
+                integration_key=key,
+                suggested_schema=self._suggest_schema(gist),
+            )
 
         if gist.gist_type == "preference" and gist.predicate:
             key = f"user:preference:{gist.predicate}"
@@ -107,12 +139,17 @@ class SchemaAligner:
         return intersection / union if union > 0 else 0.0
 
     def _suggest_schema(self, gist: ExtractedGist) -> dict[str, Any]:
-        if gist.gist_type == "preference":
-            category = FactCategory.PREFERENCE
-        elif gist.gist_type == "fact":
-            category = FactCategory.ATTRIBUTE
-        else:
-            category = FactCategory.CUSTOM
+        # Map gist types to FactCategory
+        type_to_category = {
+            "preference": FactCategory.PREFERENCE,
+            "fact": FactCategory.ATTRIBUTE,
+            "goal": FactCategory.GOAL,
+            "value": FactCategory.VALUE,
+            "state": FactCategory.STATE,
+            "causal": FactCategory.CAUSAL,
+            "policy": FactCategory.POLICY,
+        }
+        category = type_to_category.get(gist.gist_type, FactCategory.CUSTOM)
         key = gist.key or f"user:{category.value}:{gist.predicate or 'unknown'}"
         return {
             "category": category.value,

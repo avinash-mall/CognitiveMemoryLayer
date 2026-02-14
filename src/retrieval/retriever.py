@@ -154,6 +154,8 @@ class HybridRetriever:
                 items = await self._retrieve_vector(tenant_id, step, context_filter)
             elif step.source == RetrievalSource.GRAPH:
                 items = await self._retrieve_graph(tenant_id, step)
+            elif step.source == RetrievalSource.CONSTRAINTS:
+                items = await self._retrieve_constraints(tenant_id, step, context_filter)
             elif step.source == RetrievalSource.CACHE:
                 items = await self._retrieve_cache(tenant_id, step)
             else:
@@ -290,6 +292,83 @@ class HybridRetriever:
             }
             for r in results
         ]
+
+    async def _retrieve_constraints(
+        self,
+        tenant_id: str,
+        step: RetrievalStep,
+        context_filter: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Retrieve active constraints via vector search + semantic fact lookup.
+
+        Two-pronged approach:
+        1. Vector search filtered to MemoryType.CONSTRAINT (episodic constraint records).
+        2. Semantic fact lookup for cognitive categories (goal, value, state, causal, policy).
+        """
+        results: list[dict[str, Any]] = []
+
+        # 1. Vector search for episodic constraint records
+        constraint_filters: dict[str, Any] = {
+            "type": [MemoryType.CONSTRAINT.value],
+            "status": "active",
+        }
+        try:
+            records = await self.hippocampal.search(
+                tenant_id,
+                query=step.query or "",
+                top_k=step.top_k,
+                context_filter=context_filter,
+                filters=constraint_filters,
+            )
+            for r in records:
+                results.append(
+                    {
+                        "type": MemoryType.CONSTRAINT.value,
+                        "source": "constraints",
+                        "text": r.text,
+                        "confidence": r.confidence,
+                        "relevance": r.metadata.get("_similarity", 0.7),
+                        "timestamp": r.timestamp,
+                        "record": r,
+                    }
+                )
+        except Exception:
+            logger.warning("constraint_vector_search_failed", exc_info=True)
+
+        # 2. Semantic fact lookup for cognitive constraint categories
+        from ..memory.neocortical.schemas import FactCategory
+
+        cognitive_categories = [
+            FactCategory.GOAL,
+            FactCategory.VALUE,
+            FactCategory.STATE,
+            FactCategory.CAUSAL,
+            FactCategory.POLICY,
+        ]
+        try:
+            for category in cognitive_categories:
+                facts = await self.neocortical.facts.get_facts_by_category(
+                    tenant_id, category, current_only=True
+                )
+                for fact in facts:
+                    fact_text = f"[{category.value.title()}] {fact.value}"
+                    if fact_text not in {r["text"] for r in results}:
+                        results.append(
+                            {
+                                "type": MemoryType.CONSTRAINT.value,
+                                "source": "constraints",
+                                "key": fact.key,
+                                "text": fact_text,
+                                "value": fact.value,
+                                "confidence": fact.confidence,
+                                "relevance": 0.75,
+                                "record": fact,
+                            }
+                        )
+        except Exception:
+            logger.warning("constraint_fact_search_failed", exc_info=True)
+
+        return results[: step.top_k]
 
     async def _retrieve_cache(
         self,

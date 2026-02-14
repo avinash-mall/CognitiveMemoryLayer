@@ -67,3 +67,14 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     assert len(result.operations_applied) >= 1
     success_ops = [o for o in result.operations_applied if o.get("success")]
     assert len(success_ops) >= 1
+
+    # Assert store reflects revision: updated record or new record contains correction
+    updated = await store.get_by_id(created.id)
+    if updated and "tea" in (updated.text or "").lower():
+        pass
+    else:
+        scan = await store.scan(tenant_id, filters={"status": "active"}, limit=10)
+        texts = [r.text for r in scan if r.text]
+        assert any(
+            "tea" in t.lower() for t in texts
+        ), "store should contain corrected preference (tea) after reconsolidation"

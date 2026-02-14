@@ -17,8 +17,16 @@ COMMON THEMES: {themes}
 Extract:
 1. The main fact or pattern these memories represent
 2. The confidence level (how consistent/certain the info is)
-3. The type: "fact" (definite info), "preference" (user likes/dislikes),
-   "pattern" (behavioral tendency), or "summary" (general synopsis)
+3. The type: one of:
+   - "fact" (definite info)
+   - "preference" (user likes/dislikes)
+   - "pattern" (behavioral tendency)
+   - "summary" (general synopsis)
+   - "goal" (something the user is working toward or trying to achieve)
+   - "value" (something the user considers important or prioritizes)
+   - "state" (a current condition or situation the user is in)
+   - "causal" (a reason or explanation for user behavior)
+   - "policy" (a personal rule the user follows, e.g. "I never...", "I always...")
 4. A structured representation if possible (subject, predicate, value)
 
 Return JSON:
@@ -36,7 +44,8 @@ Rules:
 - Combine information across memories to get the core meaning
 - Don't include episodic details (times, specific conversations)
 - Focus on durable, generalizable information
-- Higher confidence if multiple memories support the same conclusion"""
+- Higher confidence if multiple memories support the same conclusion
+- Use "goal"/"value"/"state"/"causal"/"policy" types when memories express constraints, commitments, or conditions that should govern future behavior"""
 
 
 @dataclass
@@ -44,7 +53,7 @@ class ExtractedGist:
     """Extracted semantic gist from a cluster."""
 
     text: str
-    gist_type: str  # "fact", "preference", "pattern", "summary"
+    gist_type: str  # "fact", "preference", "pattern", "summary", "goal", "value", "state", "causal", "policy"
     confidence: float
     supporting_episode_ids: list[str]
 

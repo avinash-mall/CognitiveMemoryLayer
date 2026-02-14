@@ -10,7 +10,8 @@ This is particularly useful for:
 - Testing temporal reasoning and memory consolidation over time
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from cml import CognitiveMemoryLayer
 
 
@@ -26,7 +27,7 @@ def main():
     print("\n1. Storing historical memories with specific timestamps...")
 
     # Simulate a conversation from 6 months ago
-    six_months_ago = datetime.now(timezone.utc) - timedelta(days=180)
+    six_months_ago = datetime.now(UTC) - timedelta(days=180)
 
     memory.write(
         "User mentioned they prefer dark mode for all applications",
@@ -37,7 +38,7 @@ def main():
     print(f"   ✓ Stored memory from {six_months_ago.date()}")
 
     # Simulate another memory from 3 months ago
-    three_months_ago = datetime.now(timezone.utc) - timedelta(days=90)
+    three_months_ago = datetime.now(UTC) - timedelta(days=90)
 
     memory.write(
         "User switched to light mode because of eye strain",
@@ -50,7 +51,7 @@ def main():
     # Example 2: Process historical conversation turns
     print("\n2. Processing historical conversation turns...")
 
-    one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    one_month_ago = datetime.now(UTC) - timedelta(days=30)
 
     result = memory.turn(
         user_message="What's my preferred theme setting?",
@@ -86,7 +87,7 @@ def main():
     print("   Simulating historical conversation replay...")
 
     # Simulate a multi-turn conversation from a specific date
-    session_date = datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+    session_date = datetime(2023, 6, 15, 14, 30, 0, tzinfo=UTC)
 
     conversation_turns = [
         ("Hello, I'm new here", "Welcome! How can I help you today?"),

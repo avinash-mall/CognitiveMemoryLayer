@@ -16,6 +16,7 @@ class ChunkType(StrEnum):
     FACT = "fact"
     EVENT = "event"
     OPINION = "opinion"
+    CONSTRAINT = "constraint"
 
 
 @dataclass

@@ -87,7 +87,15 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 
 ## Server-side feature flags and retrieval
 
-Server behavior (write-time facts, retrieval timeouts, cached embeddings, batch embeddings, etc.) is controlled by **server** environment variables (`FEATURES__*`, `RETRIEVAL__*`), not by the SDK. The SDK does not set these; they are configured where the CML server runs. For the full list and defaults, see the main project [UsageDocumentation — Configuration Reference](../../../ProjectPlan/UsageDocumentation.md#configuration-reference).
+Server behavior (write-time facts, retrieval timeouts, cached embeddings, batch embeddings, constraint extraction, etc.) is controlled by **server** environment variables (`FEATURES__*`, `RETRIEVAL__*`), not by the SDK. The SDK does not set these; they are configured where the CML server runs. For the full list and defaults, see the main project [UsageDocumentation — Configuration Reference](../../../ProjectPlan/UsageDocumentation.md#configuration-reference).
+
+Key server-side flags that affect SDK responses:
+
+| Server Variable | Default | Effect on SDK |
+|----------------|---------|---------------|
+| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `true` | When enabled, the server extracts cognitive constraints (goals, values, policies, states, causal rules) at write time. `ReadResponse.constraints` will contain constraint memories when a decision-style query triggers constraint retrieval. |
+| `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populates `ReadResponse.facts` with rule-based facts at write time (preference, identity, location). |
+| `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | `true` | Per-step and total retrieval timeouts; may affect result count if a step times out. |
 
 ## Versioning
 

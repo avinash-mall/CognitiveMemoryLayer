@@ -58,7 +58,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "alembic upgrade head && pytest tests -v --tb=short"
+    command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests/unit -v --tb=short"
 
   # API server (Phase 9). Run: docker compose up api (after building)
   # Uses ../.env for AUTH__API_KEY, LLM__PROVIDER, EMBEDDING__* (e.g. Ollama).

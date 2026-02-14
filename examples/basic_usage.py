@@ -31,11 +31,14 @@ def main():
     base_url = (
         os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
     ).strip() or "http://localhost:8000"
-    memory = CognitiveMemoryLayer(
+    with CognitiveMemoryLayer(
         api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
         base_url=base_url,
-    )
-    session_id = "example-session-001"
+    ) as memory:
+        _run_basic_usage(memory, "example-session-001")
+
+
+def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
 
     print("=" * 60)
     print("Cognitive Memory Layer - Basic Usage Example")
@@ -84,15 +87,15 @@ def main():
     print("\n2. RETRIEVING MEMORIES")
     print("-" * 40)
     result = memory.read("What programming languages does the user like?")
-    print(f"\nQuery: 'What programming languages does the user like?'")
+    print("\nQuery: 'What programming languages does the user like?'")
     print(f"Found {result.total_count} relevant memories ({result.elapsed_ms:.1f}ms)")
     for mem in result.memories[:3]:
-        print(f"  - [{mem.type}] {mem.text[:60]}... (confidence: {mem.confidence:.0%}")
+        print(f"  - [{mem.type}] {mem.text[:60]}... (confidence: {mem.confidence:.0%})")
     result = memory.read(
         "Tell me about the user",
         response_format="llm_context",
     )
-    print(f"\nQuery: 'Tell me about the user' (LLM context format)")
+    print("\nQuery: 'Tell me about the user' (LLM context format)")
     print("LLM Context:")
     print("-" * 40)
     ctx = result.context or result.llm_context
@@ -102,7 +105,7 @@ def main():
         "dietary restrictions",
         memory_types=["constraint", "preference"],
     )
-    print(f"\nQuery: 'dietary restrictions' (constraints & preferences only)")
+    print("\nQuery: 'dietary restrictions' (constraints & preferences only)")
     print(f"Found {result.total_count} memories")
     for mem in result.memories:
         print(f"  - [{mem.type}] {mem.text}")
@@ -135,7 +138,6 @@ def main():
     print("\n" + "=" * 60)
     print("Example completed successfully!")
     print("=" * 60)
-    memory.close()
 
 
 if __name__ == "__main__":

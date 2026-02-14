@@ -24,7 +24,8 @@
 The Cognitive Memory Layer is a neuro-inspired memory system designed for LLMs and AI agents. It provides persistent, intelligent memory that goes beyond simple context windows by:
 
 - **Storing** information with automatic importance filtering (Write Gate)
-- **Retrieving** relevant memories using hybrid search (semantic + graph)
+- **Extracting** cognitive constraints (goals, values, policies, states, causal rules) at write time
+- **Retrieving** relevant memories using hybrid search (semantic + graph + constraints)
 - **Updating** memories with belief revision and reconsolidation
 - **Forgetting** irrelevant information through intelligent decay and compression
 - **Consolidating** episodic memories into semantic facts during "sleep cycles"
@@ -471,24 +472,27 @@ Retrieve relevant memories. Holistic: tenant from auth. The server applies memor
   "facts": [...],
   "preferences": [...],
   "episodes": [...],
+  "constraints": [...],
   "llm_context": null,
   "total_count": 5,
   "elapsed_ms": 45.2
 }
 ```
 
+The `constraints` field contains cognitive constraints (goals, values, policies, states, causal rules) when `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` is true. Each item is a `MemoryItem` with `type: "constraint"`.
+
 **Response (format: "llm_context"):**
 ```json
 {
   "query": "user dietary preferences",
   "memories": [...],
-  "llm_context": "# Retrieved Memory Context\n\n## Constraints (Must Follow)\n- **User is allergic to peanuts**\n\n## Known Facts\n- User is vegetarian [95%]\n\n## User Preferences\n- Prefers organic produce\n",
+  "llm_context": "# Retrieved Memory Context\n\n## Active Constraints (Must Follow)\n- **User is allergic to peanuts** (from turn_3)\n- **Trying to eat healthier** (from turn_7)\n\n## Known Facts\n- User is vegetarian [95%]\n\n## User Preferences\n- Prefers organic produce\n",
   "total_count": 3,
   "elapsed_ms": 52.1
 }
 ```
 
-**Response (format: "list"):** When format is `"list"`, the response contains a single flat list in `memories`; `facts`, `preferences`, and `episodes` are empty (no server-side categorization).
+**Response (format: "list"):** When format is `"list"`, the response contains a single flat list in `memories`; `facts`, `preferences`, `episodes`, and `constraints` are empty (no server-side categorization).
 
 ---
 
@@ -795,7 +799,9 @@ Memory access is **holistic per tenant**: there are no scopes or partitions. All
 **Use `constraint` when:**
 - Information that MUST be respected
 - Safety-critical or compliance-related
-- Example: "User is allergic to shellfish", "Never share user's email"
+- Cognitive constraints: goals, values, policies, states, causal rules
+- Example: "User is allergic to shellfish", "Never share user's email", "We should save money for the trip", "I'm trying to eat healthier"
+- When `FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true`, constraints are also **automatically extracted** from text at write time by the `ConstraintExtractor` (goal/value/state/causal/policy patterns). They are stored both as episodic records with `MemoryType.CONSTRAINT` and as semantic facts with cognitive `FactCategory` values.
 
 **Use `hypothesis` when:**
 - You're inferring something not explicitly stated
@@ -860,15 +866,18 @@ Returns categorized memories with full metadata:
   "facts": [...],
   "preferences": [...],
   "episodes": [...],
+  "constraints": [...],
   "llm_context": null,
   "total_count": 10,
   "elapsed_ms": 45.0
 }
 ```
 
+The `constraints` field contains cognitive constraints (goals, values, policies, states, causal rules) extracted at write time when `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` is true. Each item is a `MemoryItem` with `type: "constraint"`. When no constraints are found, the list is empty.
+
 ### Format: list
 
-When `format` is `"list"`, the response contains a single flat list in `memories`; `facts`, `preferences`, and `episodes` are empty (no server-side categorization).
+When `format` is `"list"`, the response contains a single flat list in `memories`; `facts`, `preferences`, `episodes`, and `constraints` are empty (no server-side categorization).
 
 ### Format: llm_context
 
@@ -1256,6 +1265,7 @@ All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
 | `FEATURES__DB_DEPENDENCY_COUNTS` | `true` | Forgetting uses one SQL query for dependency counts instead of O(n²) Python loop. |
 | `FEATURES__BOUNDED_STATE_ENABLED` | `true` | Working/sensory in-memory state uses LRU+TTL (BoundedStateMap) to prevent unbounded growth. |
 | `FEATURES__HNSW_EF_SEARCH_TUNING` | `true` | Set pgvector `hnsw.ef_search` at query time for recall/latency trade-off. |
+| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `true` | Extract cognitive constraints (goals, values, policies, states, causal rules) at write time. Constraints are stored as `MemoryType.CONSTRAINT` and as cognitive `FactCategory` facts. At read time, decision-style queries trigger constraint-first retrieval. See the [deep-research report](../evaluation/deep-research-report.md). |
 
 #### Retrieval Settings
 

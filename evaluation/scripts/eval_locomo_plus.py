@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import requests
@@ -40,14 +41,35 @@ Answer with exact words from the context whenever possible.
 
 Question: {} Short answer:"""
 
-COGNITIVE_PROMPT = """Your task: This is a memory-aware dialogue setting.
-You are continuing or reflecting on a prior conversation.
-Show that you are aware of the relevant memory or context from the evidence when you respond.
-Your answer should naturally connect to or acknowledge that context.
+COGNITIVE_PROMPT = """Based on the above context, continue the conversation naturally.
+Respond to the following as you would in a real dialogue.
 
-Trigger/query: {}
+{}
 
 Respond (short):"""
+
+
+_DATE_FORMATS = [
+    "%B %d, %Y",  # "January 15, 2024"
+    "%b %d, %Y",  # "Jan 15, 2024"
+    "%Y-%m-%d",  # "2024-01-15"
+    "%m/%d/%Y",  # "01/15/2024"
+    "%d %B %Y",  # "15 January 2024"
+    "%B %d %Y",  # "January 15 2024" (no comma)
+]
+
+
+def _parse_date_str(date_str: str | None) -> datetime | None:
+    """Best-effort parse of a LoCoMo-Plus DATE string into a UTC datetime."""
+    if not date_str:
+        return None
+    cleaned = date_str.strip().rstrip(".")
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(cleaned, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
 
 
 def _ensure_locomo_plus_path() -> None:
@@ -82,6 +104,7 @@ def parse_args() -> argparse.Namespace:
         "--score-only", action="store_true", help="Run only Phase C (judge) on existing predictions"
     )
     p.add_argument("--judge-model", type=str, default="gpt-4o-mini", help="Model for LLM-as-judge")
+    p.add_argument("--verbose", action="store_true", help="Emit per-sample retrieval diagnostics")
     return p.parse_args()
 
 
@@ -125,14 +148,17 @@ def _cml_write(
     session_id: str,
     metadata: dict,
     turn_id: str,
+    timestamp: str | None = None,
 ) -> None:
     url = f"{base_url.rstrip('/')}/api/v1/memory/write"
-    payload = {
+    payload: dict = {
         "content": content,
         "session_id": session_id,
         "metadata": metadata,
         "turn_id": turn_id,
     }
+    if timestamp is not None:
+        payload["timestamp"] = timestamp
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id, "X-Eval-Mode": "true"}
     for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
         resp = requests.post(url, json=payload, headers=headers, timeout=60)
@@ -147,7 +173,15 @@ def _cml_write(
     raise requests.exceptions.HTTPError("429 Too Many Requests", response=resp)
 
 
-def _cml_read(base_url: str, api_key: str, tenant_id: str, query: str, max_results: int) -> str:
+def _cml_read(
+    base_url: str,
+    api_key: str,
+    tenant_id: str,
+    query: str,
+    max_results: int,
+    return_full: bool = False,
+) -> str | tuple[str, dict]:
+    """Read memories from CML. If *return_full*, also return the raw JSON response."""
     url = f"{base_url.rstrip('/')}/api/v1/memory/read"
     payload = {"query": query, "format": "llm_context", "max_results": max_results}
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id}
@@ -160,7 +194,11 @@ def _cml_read(base_url: str, api_key: str, tenant_id: str, query: str, max_resul
             time.sleep(wait)
             continue
         resp.raise_for_status()
-        return (resp.json().get("llm_context") or "").strip()
+        data = resp.json()
+        llm_context = (data.get("llm_context") or "").strip()
+        if return_full:
+            return llm_context, data
+        return llm_context
     raise requests.exceptions.HTTPError("429 Too Many Requests", response=resp)
 
 
@@ -217,21 +255,52 @@ def phase_a_ingestion(
     cml_api_key: str,
     limit: int | None,
 ) -> None:
-    for i, sample in enumerate(tqdm(samples[:limit] if limit else samples, desc="Ingestion")):
+    samples_to_ingest = samples[:limit] if limit else samples
+    print(f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples into CML...", flush=True)
+    for i, sample in enumerate(tqdm(samples_to_ingest, desc="Ingestion", unit="sample")):
         tenant_id = f"lp-{i}"
         input_prompt = sample.get("input_prompt", "")
         turns = _parse_input_prompt_into_turns(input_prompt)
-        for j, (session_id, content, _date) in enumerate(turns):
+        for j, (session_id, content, date_str) in enumerate(turns):
+            # Extract speaker from "Speaker: text" format
+            speaker = content.split(":")[0].strip() if ":" in content else "unknown"
+            parsed_ts = _parse_date_str(date_str)
+            ts_iso = parsed_ts.isoformat() if parsed_ts else None
+            metadata = {
+                "locomo_plus_idx": i,
+                "turn_idx": j,
+                "speaker": speaker,
+                "date_str": date_str or "",
+                "session_idx": int(session_id.split("_")[-1]) if "_" in session_id else 1,
+            }
             _cml_write(
                 cml_url,
                 cml_api_key,
                 tenant_id,
                 content,
                 session_id,
-                {"locomo_plus_idx": i, "turn_idx": j},
+                metadata,
                 f"turn_{j}",
+                timestamp=ts_iso,
             )
             time.sleep(INGESTION_DELAY_SEC)
+
+
+def _count_memory_types(raw_response: dict) -> dict[str, int]:
+    """Count memories by type from CML read response for diagnostics."""
+    counts: dict[str, int] = {}
+    # ReadMemoryResponse has category lists at the top level
+    for category_key in ("constraints", "facts", "preferences", "episodes"):
+        items = raw_response.get(category_key) or []
+        if items:
+            counts[category_key] = len(items)
+    # Also count from flat memories list for type breakdown
+    memories = raw_response.get("memories") or []
+    if memories and not counts:
+        for mem in memories:
+            mtype = mem.get("type", "unknown") if isinstance(mem, dict) else "unknown"
+            counts[mtype] = counts.get(mtype, 0) + 1
+    return counts
 
 
 def phase_b_qa(
@@ -242,10 +311,13 @@ def phase_b_qa(
     ollama_model: str,
     max_results: int,
     limit: int | None,
+    verbose: bool = False,
 ) -> list[dict]:
     _ollama_available(ollama_url, ollama_model)
+    samples_qa = samples[:limit] if limit else samples
+    print(f"\n[Phase B] Running QA on {len(samples_qa)} samples ({ollama_model})...", flush=True)
     records: list[dict] = []
-    for i, sample in enumerate(tqdm(samples[:limit] if limit else samples, desc="QA")):
+    for i, sample in enumerate(tqdm(samples_qa, desc="QA", unit="sample")):
         tenant_id = f"lp-{i}"
         trigger = (sample.get("trigger") or "").strip()
         category = sample.get("category", "")
@@ -253,7 +325,19 @@ def phase_b_qa(
             question_input = trigger or "Context dialogue (cue awareness)"
         else:
             question_input = trigger
-        llm_context = _cml_read(cml_url, cml_api_key, tenant_id, trigger, max_results)
+        read_result = _cml_read(
+            cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+        )
+        if verbose:
+            llm_context, raw_response = read_result
+            type_counts = _count_memory_types(raw_response)
+            tqdm.write(
+                f"  [{category}] sample={i} "
+                f"types={type_counts} "
+                f"context_len={len(llm_context)}"
+            )
+        else:
+            llm_context = read_result
         if QA_READ_DELAY_SEC > 0:
             time.sleep(QA_READ_DELAY_SEC)
 
@@ -290,6 +374,11 @@ def phase_c_judge(records: list[dict], out_dir: Path, judge_model: str) -> None:
     _ensure_locomo_plus_path()
     from task_eval.llm_as_judge import run_judge
 
+    print(
+        f"\n[Phase C] LLM-as-judge scoring {len(records)} predictions ({judge_model})...",
+        flush=True,
+    )
+
     class Args:
         input_file = ""
         out_file = str(out_dir / "locomo_plus_qa_cml_judged.json")
@@ -305,8 +394,8 @@ def phase_c_judge(records: list[dict], out_dir: Path, judge_model: str) -> None:
     args = Args()
     args.input_file = str(pred_file)
     run_judge(args)
-    print(f"Judged output: {args.out_file}")
-    print(f"Summary: {args.summary_file}")
+    print(f"  Judged output: {args.out_file}", flush=True)
+    print(f"  Summary: {args.summary_file}", flush=True)
 
 
 def main() -> None:
@@ -327,8 +416,12 @@ def main() -> None:
     from task_eval.utils import load_unified_samples
 
     samples = load_unified_samples(args.unified_file)
+    total = len(samples)
     if args.limit_samples:
         samples = samples[: args.limit_samples]
+        print(f"Loaded {len(samples)} samples (limit; total available: {total})", flush=True)
+    else:
+        print(f"Loaded {len(samples)} samples", flush=True)
 
     if not args.skip_ingestion:
         phase_a_ingestion(samples, args.cml_url, args.cml_api_key, args.limit_samples)
@@ -341,6 +434,7 @@ def main() -> None:
         args.ollama_model,
         args.max_results,
         args.limit_samples,
+        verbose=args.verbose,
     )
 
     phase_c_judge(records, out_dir, args.judge_model)

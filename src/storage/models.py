@@ -60,7 +60,7 @@ class MemoryRecordModel(Base):
     tenant_id = Column(String(100), nullable=False, index=True)
     agent_id = Column(String(100), nullable=True)
 
-    context_tags = Column(ARRAY(String), default=[], nullable=False)
+    context_tags = Column(ARRAY(String), default=list, nullable=False)
     source_session_id = Column(String(100), nullable=True)
     namespace = Column(String(100), nullable=True, index=True)
 

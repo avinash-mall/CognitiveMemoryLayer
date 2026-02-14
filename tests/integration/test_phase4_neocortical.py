@@ -68,6 +68,34 @@ async def test_neocortical_text_search(pg_session_factory):
         assert results[0]["type"] == "fact"
 
 
+@pytest.mark.asyncio
+async def test_neocortical_store_fact_get_fact_text_search_flow(pg_session_factory):
+    """Flow: store_fact -> get_fact and text_search; assert key, value, confidence."""
+    fact_store = SemanticFactStore(pg_session_factory)
+    graph_store = _MockGraphStore()
+    store = NeocorticalStore(graph_store=graph_store, fact_store=fact_store)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    key = "user:preference:cuisine"
+    value = "Italian"
+    confidence = 0.92
+    await store.store_fact(tenant_id, key, value, confidence=confidence)
+
+    got = await store.get_fact(tenant_id, key)
+    assert got is not None
+    assert got.key == key
+    assert got.value == value
+    assert got.confidence == confidence
+
+    search_results = await store.text_search(tenant_id, "cuisine", limit=5)
+    assert isinstance(search_results, list)
+    found = next((r for r in search_results if r.get("key") == key), None)
+    assert found is not None
+    assert found["value"] == value
+    assert found["confidence"] == confidence
+    assert found["type"] == "fact"
+
+
 # ---------------------------------------------------------------------------
 # Graph relation sync tests (validates the code path used by orchestrator)
 # ---------------------------------------------------------------------------
