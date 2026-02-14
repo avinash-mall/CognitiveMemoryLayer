@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -49,7 +50,10 @@ class CognitiveMemory(BaseMemory):
         super().__init__(**kwargs)
         if self.memory_client is None:
             base_url = (
-                self.api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000"
+                self.api_url
+                or os.environ.get("CML_BASE_URL")
+                or os.environ.get("MEMORY_API_URL")
+                or "http://localhost:8000"
             ).strip()
             key = self.api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
             self.memory_client = CognitiveMemoryLayer(api_key=key, base_url=base_url)
@@ -123,9 +127,13 @@ def create_memory_chain(
     memory_api_url: Optional[str] = None,
     memory_api_key: Optional[str] = None,
 ) -> ConversationChain:
-    base_url = (memory_api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "").strip() or "http://localhost:8000"
+    base_url = (
+        memory_api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+    ).strip() or "http://localhost:8000"
     key = memory_api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
-    model = (llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+    model = (
+        llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
+    ).strip()
     if not model:
         raise ValueError("Set OPENAI_MODEL or LLM__MODEL")
     memory = CognitiveMemory(

@@ -18,6 +18,7 @@ if sys.stderr.encoding != "utf-8":
 sys.path.insert(0, os.path.dirname(__file__))
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -25,8 +26,9 @@ except ImportError:
 from openai import OpenAI
 from cml import CognitiveMemoryLayer
 
-
-OLLAMA_BASE_URL = (os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
+OLLAMA_BASE_URL = (
+    os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or ""
+).strip()
 OLLAMA_MODEL = (os.environ.get("LLM__MODEL") or "").strip()
 MEMORY_BASE = (os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "").strip()
 MEMORY_KEY = os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY") or ""
@@ -41,7 +43,10 @@ MEMORY_TOOLS = [
                 "type": "object",
                 "properties": {
                     "content": {"type": "string"},
-                    "memory_type": {"type": "string", "enum": ["semantic_fact", "preference", "constraint", "episodic_event"]},
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["semantic_fact", "preference", "constraint", "episodic_event"],
+                    },
                 },
                 "required": ["content"],
             },
@@ -52,7 +57,11 @@ MEMORY_TOOLS = [
         "function": {
             "name": "memory_read",
             "description": "Retrieve relevant memories.",
-            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
         },
     },
 ]
@@ -101,14 +110,23 @@ class OllamaMemoryAssistant:
             )
             msg = resp.choices[0].message
             if msg.tool_calls:
-                self.messages.append({
-                    "role": "assistant",
-                    "content": msg.content,
-                    "tool_calls": [
-                        {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                        for tc in msg.tool_calls
-                    ],
-                })
+                self.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in msg.tool_calls
+                        ],
+                    }
+                )
                 for tc in msg.tool_calls:
                     args = json.loads(tc.function.arguments)
                     print(f"    [tool] {tc.function.name}({args})")

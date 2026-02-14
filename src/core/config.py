@@ -75,16 +75,34 @@ class FeatureFlags(PydanticBaseModel):
     revert individual features without a full rollback.
     """
 
-    stable_keys_enabled: bool = Field(default=True, description="Phase 1.1-1.2: SHA256-based stable keys")
-    write_time_facts_enabled: bool = Field(default=True, description="Phase 1.3: populate semantic store at write time")
-    batch_embeddings_enabled: bool = Field(default=True, description="Phase 2.1: batch embed_batch() calls")
-    store_async: bool = Field(default=False, description="Phase 2.2: async storage pipeline (opt-in)")
-    cached_embeddings_enabled: bool = Field(default=True, description="Phase 2.3: Redis embedding cache")
-    retrieval_timeouts_enabled: bool = Field(default=True, description="Phase 3.1: per-step asyncio.wait_for")
-    skip_if_found_cross_group: bool = Field(default=True, description="Phase 3.2: cross-group skip on fact hit")
-    db_dependency_counts: bool = Field(default=True, description="Phase 4.1: DB-side aggregation for forgetting")
+    stable_keys_enabled: bool = Field(
+        default=True, description="Phase 1.1-1.2: SHA256-based stable keys"
+    )
+    write_time_facts_enabled: bool = Field(
+        default=True, description="Phase 1.3: populate semantic store at write time"
+    )
+    batch_embeddings_enabled: bool = Field(
+        default=True, description="Phase 2.1: batch embed_batch() calls"
+    )
+    store_async: bool = Field(
+        default=False, description="Phase 2.2: async storage pipeline (opt-in)"
+    )
+    cached_embeddings_enabled: bool = Field(
+        default=True, description="Phase 2.3: Redis embedding cache"
+    )
+    retrieval_timeouts_enabled: bool = Field(
+        default=True, description="Phase 3.1: per-step asyncio.wait_for"
+    )
+    skip_if_found_cross_group: bool = Field(
+        default=True, description="Phase 3.2: cross-group skip on fact hit"
+    )
+    db_dependency_counts: bool = Field(
+        default=True, description="Phase 4.1: DB-side aggregation for forgetting"
+    )
     bounded_state_enabled: bool = Field(default=True, description="Phase 5.2: LRU+TTL state maps")
-    hnsw_ef_search_tuning: bool = Field(default=True, description="Phase 6.1: query-time HNSW tuning")
+    hnsw_ef_search_tuning: bool = Field(
+        default=True, description="Phase 6.1: query-time HNSW tuning"
+    )
 
 
 class RetrievalSettings(PydanticBaseModel):

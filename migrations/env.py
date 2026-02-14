@@ -1,4 +1,5 @@
 """Alembic environment for async migrations."""
+
 import asyncio
 import sys
 from pathlib import Path
@@ -21,14 +22,13 @@ config = context.config
 
 # Set SQLAlchemy URL from application settings (ROOT-MIG-01: do not leave invalid URL)
 import logging
+
 _log = logging.getLogger(__name__)
 try:
     from src.core.config import ensure_asyncpg_url, get_settings
 
     settings = get_settings()
-    config.set_main_option(
-        "sqlalchemy.url", ensure_asyncpg_url(settings.database.postgres_url)
-    )
+    config.set_main_option("sqlalchemy.url", ensure_asyncpg_url(settings.database.postgres_url))
 except Exception as e:
     _log.warning(
         "Could not load database URL from settings: %s. Set DATABASE__POSTGRES_URL or fix config.",

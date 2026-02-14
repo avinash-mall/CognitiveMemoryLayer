@@ -206,9 +206,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 settings = get_settings()
                 if settings.features.hnsw_ef_search_tuning:
                     ef_search = max(settings.retrieval.hnsw_ef_search, top_k)
-                    await session.execute(
-                        text(f"SET LOCAL hnsw.ef_search = {ef_search}")
-                    )
+                    await session.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
             except Exception:
                 pass  # Non-critical; use pgvector default
 

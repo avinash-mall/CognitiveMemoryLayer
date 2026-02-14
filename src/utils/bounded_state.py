@@ -85,9 +85,7 @@ class BoundedStateMap(Generic[T]):
         """Remove all expired entries.  Returns count removed."""
         now = time.time()
         async with self._lock:
-            to_remove = [
-                k for k, (_, ts) in self._data.items() if now - ts > self._ttl
-            ]
+            to_remove = [k for k, (_, ts) in self._data.items() if now - ts > self._ttl]
             for k in to_remove:
                 del self._data[k]
             return len(to_remove)
