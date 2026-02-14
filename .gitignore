@@ -61,8 +61,8 @@ htmlcov/
 # uv
 .uv/
 
-# Evaluation (Locomo-Plus: clone from https://github.com/xjtuleeyf/Locomo-Plus; outputs, logs)
-evaluation/locomo_plus/
+# Evaluation (outputs, logs; large generated file)
+evaluation/locomo_plus/data/unified_input_samples_v2.json
 evaluation/outputs/
 evaluation/**/*.log
 
