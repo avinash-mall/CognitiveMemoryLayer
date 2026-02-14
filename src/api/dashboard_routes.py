@@ -105,7 +105,7 @@ async def dashboard_overview(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Comprehensive dashboard overview with KPIs and breakdowns."""
+    """Comprehensive dashboard overview: total memories, semantic facts, event counts, storage estimates, and breakdowns by type and status. Optionally filter by tenant."""
     try:
         async with db.pg_session() as session:
             mem_filter: list = []
@@ -278,7 +278,7 @@ async def dashboard_memories(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Paginated memory list with filtering and sorting."""
+    """Paginated list of memories with filtering by tenant, type, status, and full-text search. Supports sorting and bulk actions."""
     try:
         async with db.pg_session() as session:
             filters: list = []
@@ -356,7 +356,7 @@ async def dashboard_memory_detail(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Full detail for a single memory record."""
+    """Full detail for a single memory record: text, type, confidence, metadata, related semantic facts, and event history."""
     try:
         async with db.pg_session() as session:
             q = select(MemoryRecordModel).where(MemoryRecordModel.id == memory_id)
@@ -428,7 +428,7 @@ async def dashboard_bulk_action(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Apply an action to multiple memories at once."""
+    """Apply an action (e.g. forget, archive) to multiple memories at once. Admin-only."""
     try:
         async with db.pg_session() as session:
             if body.action == "delete":
@@ -470,7 +470,7 @@ async def dashboard_events(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Paginated event log."""
+    """Paginated event log (writes, reads, consolidations, etc.). Filter by tenant, event type, or operation."""
     try:
         async with db.pg_session() as session:
             filters: list = []
@@ -534,7 +534,7 @@ async def dashboard_timeline(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Memory creation timeline aggregated by day."""
+    """Memory creation timeline aggregated by day for charts. Default 30 days, optional tenant filter."""
     try:
         async with db.pg_session() as session:
             cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
@@ -571,7 +571,7 @@ async def dashboard_components(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Health check for all system components."""
+    """Health status of all system components: PostgreSQL, Redis, Neo4j, embedding service. Includes latency and connection state."""
     components: list[ComponentStatus] = []
 
     # PostgreSQL
@@ -670,7 +670,7 @@ async def dashboard_tenants(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """List all known tenants with summary counts, active counts, and last activity."""
+    """List all tenants with memory counts, active session counts, and last activity. Used for tenant selector in dashboard."""
     try:
         async with db.pg_session() as session:
             # Memory counts + active counts + last memory time per tenant
@@ -734,7 +734,7 @@ async def dashboard_sessions(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """List active sessions from Redis + memory counts per source_session_id from DB."""
+    """List active sessions from Redis with memory counts per source_session_id. Optionally filter by tenant."""
     try:
         sessions_list: list[SessionInfo] = []
         redis_sessions: dict[str, SessionInfo] = {}
@@ -825,7 +825,7 @@ async def dashboard_ratelimits(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Show current rate-limit usage per key from Redis."""
+    """Current rate-limit usage per API key from Redis. Shows remaining requests and reset time."""
     settings = get_settings()
     rpm = settings.auth.rate_limit_requests_per_minute
     entries: list[RateLimitEntry] = []
@@ -876,7 +876,7 @@ async def dashboard_request_stats(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Hourly request counts from Redis counters."""
+    """Hourly request counts from Redis counters. Default last 24 hours. For usage charts."""
     points: list[HourlyRequestCount] = []
     total = 0
 
@@ -904,7 +904,7 @@ async def dashboard_graph_stats(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Graph statistics from Neo4j."""
+    """Knowledge graph statistics from Neo4j: total nodes, edges, entity type distribution, and tenants with graph data."""
     if not db.neo4j_driver:
         return GraphStatsResponse()
     try:
@@ -936,18 +936,125 @@ async def dashboard_graph_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@dashboard_router.get("/graph/overview", response_model=GraphExploreResponse)
+async def dashboard_graph_overview(
+    tenant_id: str = Query(..., description="Tenant ID"),
+    scope_id: str | None = Query(None, description="Scope ID (defaults to tenant_id)"),
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """Sample subgraph for a tenant: finds the highest-degree entity and returns its 2-hop neighborhood. Used to auto-load the graph on page visit."""
+    if not db.neo4j_driver:
+        return GraphExploreResponse()
+    scope_id = scope_id or tenant_id
+    try:
+        async with db.neo4j_session() as session:
+            # Find entity with most relationships in this tenant
+            r0 = await session.run(
+                """
+                MATCH (n:Entity {tenant_id: $tenant_id, scope_id: $scope_id})
+                WITH n, size((n)--()) AS deg
+                ORDER BY deg DESC
+                LIMIT 1
+                RETURN n.entity AS entity
+                """,
+                tenant_id=tenant_id,
+                scope_id=scope_id,
+            )
+            rec0 = await r0.single()
+            if not rec0 or not rec0["entity"]:
+                return GraphExploreResponse()
+
+            entity = rec0["entity"]
+            depth = 2
+
+            # Same neighborhood query as explore
+            query = f"""
+            MATCH path = (start:Entity {{
+                tenant_id: $tenant_id, scope_id: $scope_id, entity: $entity
+            }})-[*1..{min(depth, 5)}]-(neighbor:Entity)
+            WHERE neighbor.tenant_id = $tenant_id AND neighbor.scope_id = $scope_id
+            UNWIND relationships(path) AS rel
+            WITH DISTINCT neighbor, rel, startNode(rel) AS sn, endNode(rel) AS en
+            RETURN
+                collect(DISTINCT {{
+                    entity: neighbor.entity,
+                    entity_type: neighbor.entity_type,
+                    properties: properties(neighbor)
+                }}) AS neighbors,
+                collect(DISTINCT {{
+                    source: sn.entity,
+                    target: en.entity,
+                    predicate: type(rel),
+                    confidence: coalesce(rel.confidence, 0),
+                    properties: properties(rel)
+                }}) AS rels
+            """
+            result = await session.run(query, tenant_id=tenant_id, scope_id=scope_id, entity=entity)
+            record = await result.single()
+
+            nodes: list[GraphNodeInfo] = [
+                GraphNodeInfo(id=entity, entity=entity, entity_type="center")
+            ]
+            edges: list[GraphEdgeInfo] = []
+            seen_nodes = {entity}
+
+            if record:
+                for n in record["neighbors"] or []:
+                    ent = n.get("entity", "")
+                    if ent and ent not in seen_nodes:
+                        seen_nodes.add(ent)
+                        props = dict(n.get("properties") or {})
+                        props.pop("tenant_id", None)
+                        props.pop("scope_id", None)
+                        nodes.append(
+                            GraphNodeInfo(
+                                id=ent,
+                                entity=ent,
+                                entity_type=n.get("entity_type", "unknown"),
+                                properties=props,
+                            )
+                        )
+                seen_edges = set()
+                for r in record["rels"] or []:
+                    src = r.get("source", "")
+                    tgt = r.get("target", "")
+                    pred = r.get("predicate", "RELATED_TO")
+                    edge_key = f"{src}-{pred}-{tgt}"
+                    if edge_key not in seen_edges:
+                        seen_edges.add(edge_key)
+                        props = dict(r.get("properties") or {})
+                        props.pop("created_at", None)
+                        props.pop("updated_at", None)
+                        edges.append(
+                            GraphEdgeInfo(
+                                source=src,
+                                target=tgt,
+                                predicate=pred,
+                                confidence=float(r.get("confidence", 0)),
+                                properties=props,
+                            )
+                        )
+
+        return GraphExploreResponse(nodes=nodes, edges=edges, center_entity=entity)
+    except Exception as e:
+        logger.error("dashboard_graph_overview_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @dashboard_router.get("/graph/explore", response_model=GraphExploreResponse)
 async def dashboard_graph_explore(
     tenant_id: str = Query(..., description="Tenant ID"),
     entity: str = Query(..., description="Center entity name"),
-    scope_id: str = Query("default", description="Scope ID"),
+    scope_id: str | None = Query(None, description="Scope ID (defaults to tenant_id)"),
     depth: int = Query(2, ge=1, le=5),
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Explore neighborhood of an entity in the knowledge graph."""
+    """Explore the neighborhood of a specific entity in the knowledge graph. Specify tenant, entity name, scope, and depth (1-5). Returns nodes and edges for visualization."""
     if not db.neo4j_driver:
         return GraphExploreResponse(center_entity=entity)
+    scope_id = scope_id or tenant_id
     try:
         async with db.neo4j_session() as session:
             # Get nodes + edges in one query
@@ -1032,7 +1139,7 @@ async def dashboard_graph_search(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Search entities by name pattern in Neo4j."""
+    """Search entities in the knowledge graph by name pattern (case-insensitive contains). Returns matching entities with type and tenant."""
     if not db.neo4j_driver:
         return GraphSearchResponse()
     try:
@@ -1081,7 +1188,7 @@ async def dashboard_config(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Read-only config snapshot with secrets masked."""
+    """Read-only configuration snapshot. Secrets are masked. Includes app, embedding, LLM, and storage settings."""
     settings = get_settings()
 
     # Load overrides from Redis
@@ -1294,7 +1401,7 @@ async def dashboard_config_update(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Update editable config settings (stored in Redis, non-persistent across env)."""
+    """Update editable config settings at runtime. Stored in Redis (non-persistent across restarts). Only non-secret, non-connection fields."""
     if not db.redis:
         raise HTTPException(
             status_code=503, detail="Redis not available; cannot store config overrides"
@@ -1328,7 +1435,7 @@ async def dashboard_labile(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Labile state overview: DB labile counts + Redis scope/session counts."""
+    """Labile (short-term) memory overview: DB labile counts, Redis scope and session counts. Optionally filter by tenant."""
     try:
         # DB labile counts
         async with db.pg_session() as session:
@@ -1413,7 +1520,7 @@ async def dashboard_retrieval(
     request: Request,
     auth: AuthContext = Depends(require_admin_permission),
 ):
-    """Test memory retrieval - same as POST /memory/read but via dashboard auth."""
+    """Test memory retrieval: same as POST /memory/read but uses dashboard admin auth. For debugging and validation."""
     try:
         orchestrator = request.app.state.orchestrator
         start = datetime.now(UTC)
@@ -1476,7 +1583,7 @@ async def dashboard_jobs(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """List recent consolidation/forgetting job history."""
+    """List recent consolidation and forgetting job history. Filter by tenant or job type."""
     try:
         async with db.pg_session() as session:
             filters: list = []
@@ -1532,7 +1639,7 @@ async def dashboard_consolidate(
     request: Request,
     auth: AuthContext = Depends(require_admin_permission),
 ):
-    """Trigger memory consolidation for a tenant (with job tracking)."""
+    """Trigger memory consolidation for a tenant. Creates a tracked job. Admin-only."""
     db: DatabaseManager = request.app.state.db
     user_id = body.user_id or body.tenant_id
     job_id = uuid_mod.uuid4()
@@ -1618,7 +1725,7 @@ async def dashboard_forget(
     request: Request,
     auth: AuthContext = Depends(require_admin_permission),
 ):
-    """Trigger active forgetting for a tenant (with job tracking)."""
+    """Trigger active forgetting for a tenant. Creates a tracked job. Admin-only."""
     db: DatabaseManager = request.app.state.db
     user_id = body.user_id or body.tenant_id
     job_id = uuid_mod.uuid4()
@@ -1716,7 +1823,7 @@ def _project_root() -> Path:
 async def dashboard_database_reset(
     auth: AuthContext = Depends(require_admin_permission),
 ):
-    """Drop all tables and re-run migrations (SEC-06: uses Alembic API, no subprocess)."""
+    """Drop all tables and re-run Alembic migrations. Destructive. Admin-only."""
     root = _project_root()
     alembic_ini = root / "alembic.ini"
     if not alembic_ini.is_file():
@@ -1747,7 +1854,7 @@ async def dashboard_export_memories(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Export memories as JSON for download."""
+    """Export memories as JSON for download. Optionally filter by tenant. Returns a streaming response."""
     try:
         async with db.pg_session() as session:
             q = select(MemoryRecordModel).order_by(MemoryRecordModel.timestamp.desc()).limit(10000)

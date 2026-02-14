@@ -14,65 +14,62 @@ except ImportError:
     pass
 
 from openai import OpenAI
+
 from cml import CognitiveMemoryLayer
 
 
 def chat_with_memory():
-    base_url = (os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "").strip()
+    base_url = (
+        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+    ).strip() or "http://localhost:8000"
     model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
-    if not base_url or not model:
-        raise SystemExit("Set CML_BASE_URL and OPENAI_MODEL (or LLM__MODEL) in .env")
-    memory = CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
-        base_url=base_url,
-    )
+    if not model:
+        raise SystemExit("Set OPENAI_MODEL (or LLM__MODEL) in .env")
     openai_client = OpenAI()
-
     session_id = "chat-demo-001"
     print("Chat with Memory (type 'quit' to exit)\n")
 
-    while True:
-        user_input = input("You: ").strip()
-        if user_input.lower() == "quit":
-            break
+    with CognitiveMemoryLayer(
+        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        base_url=base_url,
+    ) as memory:
+        while True:
+            user_input = input("You: ").strip()
+            if user_input.lower() == "quit":
+                break
 
-        # Get memory context
-        turn = memory.turn(
-            user_message=user_input,
-            session_id=session_id,
-        )
+            # Retrieve memory context and store user message (one turn call)
+            turn = memory.turn(
+                user_message=user_input,
+                session_id=session_id,
+            )
 
-        # Build prompt with memory
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful assistant with persistent memory. "
-                    "Use the following memories to personalize your responses:\n\n"
-                    f"{turn.memory_context}"
-                ),
-            },
-            {"role": "user", "content": user_input},
-        ]
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful assistant with persistent memory. "
+                        "Use the following memories to personalize your responses:\n\n"
+                        f"{turn.memory_context}"
+                    ),
+                },
+                {"role": "user", "content": user_input},
+            ]
 
-        # Call OpenAI
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=messages,
-        )
-        assistant_msg = response.choices[0].message.content
+            response = openai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+            )
+            assistant_msg = response.choices[0].message.content
 
-        # Store the exchange
-        memory.turn(
-            user_message=user_input,
-            assistant_response=assistant_msg,
-            session_id=session_id,
-        )
+            memory.write(
+                assistant_msg,
+                session_id=session_id,
+                context_tags=["conversation", "assistant"],
+            )
 
-        print(f"Assistant: {assistant_msg}\n")
-        print(f"  [memories retrieved: {turn.memories_retrieved}]")
-
-    memory.close()
+            print(f"Assistant: {assistant_msg}\n")
+            print(f"  [memories retrieved: {turn.memories_retrieved}]")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
  * Interactive graph visualization using vis-network + Neo4j data.
  */
 
-import { getGraphStats, getGraphExplore, getGraphSearch, getTenants } from '../api.js';
+import { getGraphStats, getGraphOverview, getGraphExplore, getGraphSearch, getTenants } from '../api.js';
 import { formatNumber, escapeHtml } from '../utils/formatters.js';
 
 const container = () => document.getElementById('page-graph');
@@ -30,15 +30,50 @@ export async function renderGraph({ tenantId } = {}) {
         currentTenants = tenantsData.tenants || [];
         el.innerHTML = buildPage(stats, tenantId);
         attachListeners(el, tenantId);
+
+        const graphTenants = stats.tenants_with_graph || [];
+        const firstTenantId = graphTenants[0];
+        if (firstTenantId) {
+            const graphContainer = el.querySelector('#graph-container');
+            const tenantSelect = el.querySelector('#graph-tenant');
+            if (tenantSelect && Array.from(tenantSelect.options).some(o => o.value === firstTenantId)) {
+                tenantSelect.value = firstTenantId;
+                graphContainer.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading graph...</div>';
+                try {
+                    const data = await getGraphOverview(firstTenantId);
+                    if (data?.nodes?.length > 0) {
+                        graphContainer.innerHTML = '';
+                        renderNetwork(graphContainer, data, el);
+                    } else {
+                        graphContainer.innerHTML = `<div class="empty-state graph-empty-state" style="padding:60px">Select a tenant and type an entity name (e.g. a person, place, or concept) to explore connections. Tip: Results appear as you type.</div>`;
+                    }
+                } catch {
+                    graphContainer.innerHTML = `<div class="empty-state graph-empty-state" style="padding:60px">Select a tenant and type an entity name (e.g. a person, place, or concept) to explore connections. Tip: Results appear as you type.</div>`;
+                }
+            }
+        }
     } catch (err) {
         el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#9888;</div><p>Failed to load graph: ${err.message}</p></div>`;
     }
 }
 
 function buildPage(stats, tenantId) {
-    const tenantOptions = currentTenants.map(t =>
-        `<option value="${escapeHtml(t.tenant_id)}" ${t.tenant_id === tenantId ? 'selected' : ''}>${escapeHtml(t.tenant_id)}</option>`
+    const graphTenants = stats.tenants_with_graph || [];
+    const tenantIds = [...new Set([
+        ...currentTenants.map(t => t.tenant_id),
+        ...graphTenants,
+    ])];
+    const preferredTenant = tenantId && graphTenants.includes(tenantId)
+        ? tenantId
+        : graphTenants[0] || tenantIds[0] || '';
+    const tenantOptions = tenantIds.map(tid =>
+        `<option value="${escapeHtml(tid)}" ${tid === preferredTenant ? 'selected' : ''}>${escapeHtml(tid)}</option>`
     ).join('');
+
+    const hasGraphData = graphTenants.length > 0;
+    const emptyStateMsg = hasGraphData
+        ? 'Select a tenant and type an entity name (e.g. a person, place, or concept) to explore connections. Tip: Results appear as you type.'
+        : 'No graph data yet. Select a tenant and add memories to build the knowledge graph.';
 
     return `
         <div class="kpi-grid">
@@ -64,7 +99,7 @@ function buildPage(stats, tenantId) {
             <div id="graph-search-results" class="graph-search-results hidden"></div>
 
             <div id="graph-container" class="graph-container">
-                <div class="empty-state" style="padding:60px">Select a tenant and search for an entity to explore the knowledge graph</div>
+                <div class="empty-state graph-empty-state" style="padding:60px">${emptyStateMsg}</div>
             </div>
         </div>
 
@@ -137,7 +172,7 @@ function attachListeners(el, initialTenantId) {
         const entity = searchInput?.value?.trim();
         if (!tid || !entity) return;
         searchResults.classList.add('hidden');
-        doExplore(el, tid, entity, 'default');
+        doExplore(el, tid, entity, null);
     });
 }
 
@@ -160,6 +195,7 @@ async function doExplore(el, tenantId, entity, scopeId) {
 }
 
 function renderNetwork(containerEl, data, pageEl) {
+    const isCenter = (e) => e.entity === data.center_entity;
     const nodes = new vis.DataSet(data.nodes.map(n => ({
         id: n.entity,
         label: n.entity,
@@ -168,9 +204,18 @@ function renderNetwork(containerEl, data, pageEl) {
             border: colorForType(n.entity_type),
             highlight: { background: '#fff', border: colorForType(n.entity_type) },
         },
-        font: { color: '#fff', size: 12 },
-        shape: n.entity === data.center_entity ? 'diamond' : 'dot',
-        size: n.entity === data.center_entity ? 25 : 16,
+        font: {
+            color: '#fff',
+            size: isCenter(n) ? 14 : 12,
+            face: 'Inter, sans-serif',
+            background: 'rgba(0,0,0,0.5)',
+            strokeWidth: 2,
+            strokeColor: 'rgba(0,0,0,0.8)',
+        },
+        shape: isCenter(n) ? 'diamond' : 'dot',
+        size: isCenter(n) ? 28 : 20,
+        borderWidth: 2,
+        shadow: true,
         title: `${n.entity} (${n.entity_type})`,
         _data: n,
     })));
@@ -181,17 +226,30 @@ function renderNetwork(containerEl, data, pageEl) {
         to: e.target,
         label: e.predicate.replace(/_/g, ' ').toLowerCase(),
         arrows: 'to',
-        font: { size: 10, color: '#888', strokeWidth: 0 },
-        color: { color: '#555', highlight: '#6c8cff' },
-        width: 1.5,
+        font: {
+            size: 11,
+            color: 'var(--text-secondary)',
+            strokeWidth: 0,
+            background: 'rgba(0,0,0,0.4)',
+            align: 'middle',
+        },
+        color: { color: 'rgba(108, 140, 255, 0.6)', highlight: '#6c8cff' },
+        width: 2,
+        smooth: { type: 'cubicBezier', roundness: 0.5 },
         _data: e,
     })));
 
     const options = {
         layout: { improvedLayout: true },
-        physics: { solver: 'forceAtlas2Based', stabilization: { iterations: 100 } },
+        physics: {
+            solver: 'forceAtlas2Based',
+            forceAtlas2Based: {
+                springLength: 120,
+                springConstant: 0.05,
+            },
+            stabilization: { iterations: 200 },
+        },
         interaction: { hover: true, tooltipDelay: 200 },
-        edges: { smooth: { type: 'continuous' } },
     };
 
     if (network) { network.destroy(); }

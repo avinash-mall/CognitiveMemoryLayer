@@ -49,6 +49,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 existing_hash = await session.execute(
                     select(MemoryRecordModel).where(
                         and_(
+                            MemoryRecordModel.tenant_id == record.tenant_id,
                             MemoryRecordModel.content_hash == content_hash,
                             MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
                         )

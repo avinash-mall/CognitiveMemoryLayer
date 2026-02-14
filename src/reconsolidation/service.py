@@ -156,10 +156,10 @@ class ReconsolidationService:
             facts = await self.fact_extractor.extract(text)
             return [{"text": f.text, "type": getattr(f, "type", "semantic_fact")} for f in facts]
 
-        # BUG-13: split on . ! ? ; BUG-09: include assistant_response in fallback
+        # BUG-09: include assistant_response in fallback; split on . ! ? ;
         facts = []
         combined = f"{user_message} {assistant_response or ''}".strip()
-        for sentence in re.split(r"[.!?]+", combined):
+        for sentence in re.split(r"[.!?;]+", combined):
             sentence = sentence.strip()
             if not sentence:
                 continue

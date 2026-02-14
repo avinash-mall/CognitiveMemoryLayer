@@ -64,6 +64,10 @@ async def live_client(
     integration_config: CMLConfig,
 ) -> pytest.AsyncGenerator[AsyncCognitiveMemoryLayer, None]:
     """Async client against live server; teardown tries delete_all then close."""
+    if not _server_reachable(integration_config):
+        pytest.skip(
+            f"CML server not reachable at {integration_config.base_url} (start server and re-run)"
+        )
     client = AsyncCognitiveMemoryLayer(config=integration_config)
     yield client
     with contextlib.suppress(Exception):
@@ -76,6 +80,10 @@ def live_sync_client(
     integration_config: CMLConfig,
 ) -> pytest.Generator[CognitiveMemoryLayer, None, None]:
     """Sync client against live server; teardown tries delete_all then close."""
+    if not _server_reachable(integration_config):
+        pytest.skip(
+            f"CML server not reachable at {integration_config.base_url} (start server and re-run)"
+        )
     client = CognitiveMemoryLayer(config=integration_config)
     yield client
     with contextlib.suppress(Exception):

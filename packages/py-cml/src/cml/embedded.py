@@ -171,8 +171,12 @@ class EmbeddedCognitiveMemoryLayer:
         self._sqlite_store = SQLiteMemoryStore(db_path=path)
         await self._sqlite_store.initialize()
 
-        from src.utils.embeddings import LocalEmbeddings
+        from src.utils.embeddings import get_embedding_client
         from src.utils.llm import OpenAICompatibleClient
+
+        # Use embedding client from engine config (.env: EMBEDDING__PROVIDER, EMBEDDING__MODEL, etc.)
+        # so tests and embedded mode use .env, not a hardcoded HuggingFace model.
+        embedding_client = get_embedding_client()
 
         # When running in repo, use project LLM settings from env so tests use local Ollama etc.
         try:
@@ -185,8 +189,6 @@ class EmbeddedCognitiveMemoryLayer:
                 self._config.llm.provider = cast("Any", s.llm.provider)
         except Exception:
             pass
-
-        embedding_client = LocalEmbeddings(model_name=self._config.embedding.model)
         llm_client = OpenAICompatibleClient(
             model=self._config.llm.model,
             base_url=self._config.llm.base_url,

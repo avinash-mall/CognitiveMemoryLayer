@@ -3,7 +3,13 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
+
+# Recency weights by memory type stability
+_STABLE_TYPES = {MemoryType.CONSTRAINT}
+_STABLE_CONSTRAINT_TYPES = {"value", "policy", "identity"}
+_SEMI_STABLE_CONSTRAINT_TYPES = {"state", "goal"}
 
 
 @dataclass
@@ -42,6 +48,24 @@ class MemoryReranker:
         diverse = self._apply_diversity(scored, max_results)
         return [mem for _, mem in diverse]
 
+    def _get_recency_weight(self, memory: RetrievedMemory) -> float:
+        """Determine recency weight based on memory type stability.
+
+        Stable constraints (value/policy) should not be penalised for age.
+        """
+        if memory.record.type in _STABLE_TYPES:
+            # Check constraint sub-type from metadata
+            meta = memory.record.metadata or {}
+            constraints_meta = meta.get("constraints", [])
+            if constraints_meta and isinstance(constraints_meta, list):
+                ctype = constraints_meta[0].get("constraint_type", "")
+                if ctype in _STABLE_CONSTRAINT_TYPES:
+                    return 0.05
+                if ctype in _SEMI_STABLE_CONSTRAINT_TYPES:
+                    return 0.15
+            return 0.10  # Generic constraint: moderate stability
+        return self.config.recency_weight
+
     def _calculate_score(
         self,
         memory: RetrievedMemory,
@@ -58,11 +82,14 @@ class MemoryReranker:
             age_days = 0
         recency = 1.0 / (1.0 + age_days * 0.1)
         confidence = memory.record.confidence
+
         # Compute actual diversity: average dissimilarity to other memories (LOW-13)
+        # Cap pairwise comparisons to avoid O(n^2) on large result sets
+        diversity_cap = min(len(all_memories), 50)
         if len(all_memories) > 1:
             total_sim = 0.0
             count = 0
-            for other in all_memories:
+            for other in all_memories[:diversity_cap]:
                 if other is memory:
                     continue
                 total_sim += self._text_similarity(memory.record.text, other.record.text)
@@ -71,9 +98,11 @@ class MemoryReranker:
             diversity = 1.0 - avg_sim  # Higher diversity = less similar to others
         else:
             diversity = 1.0
+
+        recency_weight = self._get_recency_weight(memory)
         score = (
             self.config.relevance_weight * relevance
-            + self.config.recency_weight * recency
+            + recency_weight * recency
             + self.config.confidence_weight * confidence
             + self.config.diversity_weight * diversity
         )

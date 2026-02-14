@@ -1,9 +1,9 @@
 """Build stitched dialogue contexts for Locomo-Plus Cognitive category."""
 
+import copy
 import json
 import random
 import re
-import copy
 from datetime import datetime, timedelta
 
 _NUM_WORD = {
@@ -120,12 +120,11 @@ def build_context(plus_item, locomo_item):
         speaker_a,
         speaker_b,
     )
-    cue_anchor = None
     if cue_idx is not None:
-        cue_anchor = sessions[cue_idx][-1]
-    query_anchor = sessions[-1][-1]
+        sessions[cue_idx][-1]
+    sessions[-1][-1]
     events = []
-    for sess, t in zip(sessions, session_times):
+    for sess, t in zip(sessions, session_times, strict=False):
         events.append((t, sess))
     events.append((cue_time, cue_turns))
     events.append((query_time, query_turns))
@@ -150,9 +149,9 @@ if __name__ == "__main__":
     from pathlib import Path
 
     data_dir = Path(__file__).resolve().parent
-    with open(data_dir / "locomo_plus.json", "r", encoding="utf-8") as f:
+    with open(data_dir / "locomo_plus.json", encoding="utf-8") as f:
         locomo_plus = json.load(f)
-    with open(data_dir / "locomo10.json", "r", encoding="utf-8") as f:
+    with open(data_dir / "locomo10.json", encoding="utf-8") as f:
         locomo_raw = json.load(f)
     outputs = []
     for plus in locomo_plus:

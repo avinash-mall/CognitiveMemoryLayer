@@ -17,6 +17,12 @@ class FactCategory(StrEnum):
     TEMPORAL = "temporal"
     ATTRIBUTE = "attribute"
     CUSTOM = "custom"
+    # Cognitive constraint categories (LoCoMo-Plus)
+    GOAL = "goal"
+    STATE = "state"
+    VALUE = "value"
+    CAUSAL = "causal"
+    POLICY = "policy"
 
 
 @dataclass
@@ -97,5 +103,48 @@ DEFAULT_FACT_SCHEMAS: dict[str, FactSchema] = {
         display_name="Relationship",
         description="User's relationship with someone",
         examples=["spouse: Jane", "colleague: Bob"],
+    ),
+    # Cognitive constraint schemas (LoCoMo-Plus)
+    "user:goal:*": FactSchema(
+        category=FactCategory.GOAL,
+        key_pattern="user:goal:{scope}",
+        value_type="string",
+        temporal=True,
+        display_name="User Goal",
+        description="A goal the user is pursuing",
+        examples=["preparing for exam", "saving money for a house"],
+    ),
+    "user:value:*": FactSchema(
+        category=FactCategory.VALUE,
+        key_pattern="user:value:{scope}",
+        value_type="string",
+        display_name="User Value",
+        description="Something the user values or considers important",
+        examples=["family time", "healthy eating", "environmental sustainability"],
+    ),
+    "user:state:*": FactSchema(
+        category=FactCategory.STATE,
+        key_pattern="user:state:{scope}",
+        value_type="string",
+        temporal=True,
+        display_name="User State",
+        description="A current state or condition the user is experiencing",
+        examples=["stressed about work", "recovering from surgery"],
+    ),
+    "user:causal:*": FactSchema(
+        category=FactCategory.CAUSAL,
+        key_pattern="user:causal:{scope}",
+        value_type="string",
+        display_name="Causal Reasoning",
+        description="A causal explanation or reasoning provided by the user",
+        examples=["avoiding sugar because of diabetes", "studying hard to get scholarship"],
+    ),
+    "user:policy:*": FactSchema(
+        category=FactCategory.POLICY,
+        key_pattern="user:policy:{scope}",
+        value_type="string",
+        display_name="Personal Policy",
+        description="A personal rule or policy the user follows",
+        examples=["never eats after 8pm", "always exercises in the morning"],
     ),
 }

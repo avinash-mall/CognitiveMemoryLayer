@@ -76,13 +76,34 @@ class MemoryPacketBuilder:
             return self._format_json(packet, max_tokens)
         return packet.to_context_string(max_chars=max_tokens * 4)
 
+    @staticmethod
+    def _constraint_provenance(mem: RetrievedMemory) -> str:
+        """Extract compact provenance string from a constraint memory."""
+        meta = mem.record.metadata or {}
+        # Check for structured constraints in metadata
+        constraints_meta = meta.get("constraints", [])
+        if constraints_meta and isinstance(constraints_meta, list):
+            first = constraints_meta[0] if constraints_meta else {}
+            ctype = first.get("constraint_type", "")
+            prov = first.get("provenance", [])
+            prov_str = ", ".join(prov) if prov else ""
+            label = f"[{ctype.title()}]" if ctype else ""
+            src = f" (from {prov_str})" if prov_str else ""
+            return f"{label}{src}"
+        # Fallback: use source_turn_id from evidence refs
+        turn_id = meta.get("source_turn_id", "")
+        if turn_id:
+            return f"(from {turn_id})"
+        return ""
+
     def _format_markdown(self, packet: MemoryPacket, max_tokens: int) -> str:
         """Format as markdown."""
         lines = ["# Retrieved Memory Context\n"]
         if packet.constraints:
-            lines.append("## Constraints (Must Follow)")
-            for c in packet.constraints[:3]:
-                lines.append(f"- **{c.record.text}**")
+            lines.append("## Active Constraints (Must Follow)")
+            for c in packet.constraints[:6]:
+                prov = self._constraint_provenance(c)
+                lines.append(f"- **{c.record.text}** {prov}".rstrip())
             lines.append("")
         if packet.facts:
             lines.append("## Known Facts")
@@ -131,7 +152,14 @@ class MemoryPacketBuilder:
                 }
                 for e in packet.recent_episodes[:5]
             ],
-            "constraints": [c.record.text for c in packet.constraints],
+            "constraints": [
+                {
+                    "text": c.record.text,
+                    "confidence": c.record.confidence,
+                    "provenance": self._constraint_provenance(c),
+                }
+                for c in packet.constraints[:6]
+            ],
             "warnings": packet.warnings,
         }
         return json.dumps(data, indent=2)

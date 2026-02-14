@@ -35,6 +35,7 @@ COPY --from=dependencies /usr/local/bin /usr/local/bin
 COPY pyproject.toml README.md hatch_build.py ./
 COPY src ./src
 COPY tests ./tests
+COPY packages ./packages
 COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations/

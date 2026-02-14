@@ -129,7 +129,7 @@ def _print_summary(summary: dict) -> None:
 
 
 def run_judge(args):
-    with open(args.input_file, "r", encoding="utf-8") as f:
+    with open(args.input_file, encoding="utf-8") as f:
         records = json.load(f)
     out_path = Path(args.out_file)
     out_path.parent.mkdir(parents=True, exist_ok=True)

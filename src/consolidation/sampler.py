@@ -33,6 +33,10 @@ class EpisodeSampler:
         self.store = store
         self.config = config or SamplingConfig()
 
+    # Constraint types use a much longer time window to ensure stable
+    # constraints are always consolidated regardless of age (ISS-08).
+    CONSTRAINT_TIME_WINDOW_DAYS = 90
+
     async def sample(
         self,
         tenant_id: str,
@@ -43,6 +47,7 @@ class EpisodeSampler:
         """Sample episodes for consolidation."""
         max_eps = max_episodes or self.config.max_episodes
 
+        # Standard episode/preference/hypothesis sampling
         filters: dict = {
             "status": MemoryStatus.ACTIVE.value,
             "type": [
@@ -58,6 +63,19 @@ class EpisodeSampler:
             filters=filters,
             limit=max_eps * 3,
         )
+
+        # Also sample CONSTRAINT type with a longer time window (ISS-08)
+        constraint_filters: dict = {
+            "status": MemoryStatus.ACTIVE.value,
+            "type": [MemoryType.CONSTRAINT.value],
+            "since": datetime.now(UTC) - timedelta(days=self.CONSTRAINT_TIME_WINDOW_DAYS),
+        }
+        constraint_candidates = await self.store.scan(
+            tenant_id,
+            filters=constraint_filters,
+            limit=max_eps,
+        )
+        candidates.extend(constraint_candidates)
 
         if exclude_consolidated:
             candidates = [

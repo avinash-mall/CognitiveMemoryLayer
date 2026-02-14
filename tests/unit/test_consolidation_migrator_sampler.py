@@ -127,20 +127,23 @@ class TestEpisodeSampler:
             _make_memory_record("b", importance=0.7, access_count=2),
             _make_memory_record("c", importance=0.5),
         ]
-        mock_store.scan = AsyncMock(return_value=records)
+        # First call returns episodes, second call (constraints) returns empty
+        mock_store.scan = AsyncMock(side_effect=[records, []])
 
         sampler = EpisodeSampler(store=mock_store, config=SamplingConfig(max_episodes=200))
         result = await sampler.sample(tenant_id="t1", user_id="u1", max_episodes=2)
         assert len(result) == 2
         assert all(isinstance(r, MemoryRecord) for r in result)
-        mock_store.scan.assert_called_once()
+        # Now called twice: once for episodes, once for constraints
+        assert mock_store.scan.call_count == 2
 
     @pytest.mark.asyncio
     async def test_sample_respects_min_importance_and_confidence(self):
         mock_store = MagicMock()
         low = _make_memory_record("low", importance=0.1, confidence=0.1)
         high = _make_memory_record("high", importance=0.9, confidence=0.9)
-        mock_store.scan = AsyncMock(return_value=[low, high])
+        # First call returns episodes, second call (constraints) returns empty
+        mock_store.scan = AsyncMock(side_effect=[[low, high], []])
 
         config = SamplingConfig(min_importance=0.5, min_confidence=0.5)
         sampler = EpisodeSampler(store=mock_store, config=config)
@@ -154,7 +157,8 @@ class TestEpisodeSampler:
         consolidated = _make_memory_record("cons")
         consolidated.metadata = {"consolidated": True}
         active = _make_memory_record("active")
-        mock_store.scan = AsyncMock(return_value=[consolidated, active])
+        # First call returns episodes, second call (constraints) returns empty
+        mock_store.scan = AsyncMock(side_effect=[[consolidated, active], []])
 
         sampler = EpisodeSampler(store=mock_store)
         result = await sampler.sample(
