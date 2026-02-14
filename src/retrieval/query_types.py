@@ -36,3 +36,4 @@ class QueryAnalysis:
     suggested_sources: list[str] = field(default_factory=list)
     suggested_top_k: int = 10
     metadata: dict[str, Any] = field(default_factory=dict)
+    user_timezone: str | None = None  # IANA timezone (e.g. "America/New_York")

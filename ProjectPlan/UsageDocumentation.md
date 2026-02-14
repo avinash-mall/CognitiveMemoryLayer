@@ -413,7 +413,8 @@ Process a conversation turn: auto-retrieve relevant context and optionally auto-
   "assistant_response": "string (optional)",
   "session_id": "string (optional)",
   "max_context_tokens": 1500,
-  "timestamp": "ISO 8601 datetime (optional - event time, defaults to now)"
+  "timestamp": "ISO 8601 datetime (optional - event time, defaults to now)",
+  "user_timezone": "IANA timezone string (optional - e.g. America/New_York for retrieval today/yesterday)"
 }
 ```
 
@@ -431,7 +432,7 @@ Process a conversation turn: auto-retrieve relevant context and optionally auto-
 
 #### POST /memory/read
 
-Retrieve relevant memories. Holistic: tenant from auth. The server applies memory_types, since, and until to retrieval; format controls response shape (packet vs flat list vs llm_context).
+Retrieve relevant memories. Holistic: tenant from auth. The server applies memory_types, since, and until to retrieval; format controls response shape (packet vs flat list vs llm_context). Optional `user_timezone` (IANA, e.g. `America/New_York`) enables timezone-aware "today"/"yesterday" filters in the retrieval plan.
 
 **Request Headers:**
 - `X-API-Key: <api_key>` (required)
@@ -447,7 +448,8 @@ Retrieve relevant memories. Holistic: tenant from auth. The server applies memor
   "memory_types": ["semantic_fact", "preference"],
   "since": "2024-01-01T00:00:00Z",
   "until": "2024-12-31T23:59:59Z",
-  "format": "packet|list|llm_context"
+  "format": "packet|list|llm_context",
+  "user_timezone": "IANA timezone string (optional - e.g. America/New_York for today/yesterday filters)"
 }
 ```
 
@@ -1238,6 +1240,33 @@ All configuration uses nested environment variables with `__` delimiter.
 | `AUTH__DEFAULT_TENANT_ID` | `default` | Default tenant for authenticated requests (overridable via `X-Tenant-ID` only when using admin key). |
 | `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` | `60` | Rate limit per tenant; `0` = disable. Use higher value for bulk eval (e.g. `600`). |
 
+#### Feature Flags (optional performance & correctness)
+
+All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FEATURES__STABLE_KEYS_ENABLED` | `true` | Use SHA256-based stable keys for consolidation facts and hippocampal records (avoids process-random collisions). |
+| `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populate semantic store at write time with rule-based preference/identity/location/occupation facts. |
+| `FEATURES__BATCH_EMBEDDINGS_ENABLED` | `true` | Single `embed_batch()` per turn instead of per-chunk embedding calls. |
+| `FEATURES__STORE_ASYNC` | `false` | Enqueue turn writes to Redis and process in background (reduces turn latency; requires Redis). |
+| `FEATURES__CACHED_EMBEDDINGS_ENABLED` | `true` | Cache embeddings in Redis when Redis is configured. |
+| `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | `true` | Per-step and total retrieval timeouts (see Retrieval Settings). |
+| `FEATURES__SKIP_IF_FOUND_CROSS_GROUP` | `true` | When a step has `skip_if_found` and returns results, skip remaining steps in other groups. |
+| `FEATURES__DB_DEPENDENCY_COUNTS` | `true` | Forgetting uses one SQL query for dependency counts instead of O(n²) Python loop. |
+| `FEATURES__BOUNDED_STATE_ENABLED` | `true` | Working/sensory in-memory state uses LRU+TTL (BoundedStateMap) to prevent unbounded growth. |
+| `FEATURES__HNSW_EF_SEARCH_TUNING` | `true` | Set pgvector `hnsw.ef_search` at query time for recall/latency trade-off. |
+
+#### Retrieval Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RETRIEVAL__DEFAULT_STEP_TIMEOUT_MS` | `5000` | Per-step timeout in milliseconds (when retrieval timeouts enabled). |
+| `RETRIEVAL__TOTAL_TIMEOUT_MS` | `15000` | Total retrieval budget in milliseconds. |
+| `RETRIEVAL__HNSW_EF_SEARCH` | `40` | Base `hnsw.ef_search` for pgvector; when tuning is enabled, max( this, top_k ) is used per query. |
+
+Read requests can pass `user_timezone` (e.g. `America/New_York`) for timezone-aware "today"/"yesterday" filters in retrieval plans.
+
 ---
 
 ## Advanced Features
@@ -1297,6 +1326,10 @@ Available at `/metrics`:
 - `memory_reads_total` - Counter by tenant
 - `retrieval_latency_seconds` - Histogram of retrieval times
 - `memory_count` - Gauge of total memories
+- `cml_retrieval_step_duration_seconds` - Per-step retrieval duration (when retrieval timeouts enabled)
+- `cml_retrieval_step_result_count` - Results per step
+- `cml_retrieval_timeout_total` - Count of retrieval steps that hit timeout
+- `cml_fact_hit_rate_*` - Fact hit rate metrics (when applicable)
 
 ### GDPR Compliance
 

@@ -169,25 +169,44 @@ class RetrievalPlanner:
         )
 
     def _build_time_filter(self, analysis: QueryAnalysis) -> dict[str, Any] | None:
-        """Build time filter from analysis."""
+        """Build time filter from analysis.
+
+        When the analysis carries a ``user_timezone``, "today" and
+        "yesterday" are computed in the user's local time, then
+        converted to UTC for the database query.
+        """
         if not analysis.time_reference:
             return None
-        now = datetime.now(UTC)
+
+        # Resolve user-local "now"
+        tz = UTC
+        if analysis.user_timezone:
+            try:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(analysis.user_timezone)
+            except Exception:
+                tz = UTC
+        user_now = datetime.now(tz)
+
         ref = (analysis.time_reference or "").lower()
         if "today" in ref:
-            return {"since": now.replace(hour=0, minute=0, second=0, microsecond=0)}
+            start = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            return {"since": start.astimezone(UTC).replace(tzinfo=None)}
         if "yesterday" in ref:
-            yesterday = now - timedelta(days=1)
+            yesterday = user_now - timedelta(days=1)
+            start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
             return {
-                "since": yesterday.replace(hour=0, minute=0, second=0, microsecond=0),
-                "until": yesterday.replace(hour=23, minute=59, second=59, microsecond=999999),
+                "since": start.astimezone(UTC).replace(tzinfo=None),
+                "until": end.astimezone(UTC).replace(tzinfo=None),
             }
         if "week" in ref:
-            return {"since": now - timedelta(days=7)}
+            return {"since": (user_now - timedelta(days=7)).astimezone(UTC).replace(tzinfo=None)}
         if "month" in ref:
-            return {"since": now - timedelta(days=30)}
+            return {"since": (user_now - timedelta(days=30)).astimezone(UTC).replace(tzinfo=None)}
         if "recent" in ref:
-            return {"since": now - timedelta(days=3)}
+            return {"since": (user_now - timedelta(days=3)).astimezone(UTC).replace(tzinfo=None)}
         return None
 
     def _calculate_timeout(self, steps: list[RetrievalStep]) -> int:

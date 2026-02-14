@@ -199,6 +199,19 @@ class PostgresMemoryStore(MemoryStoreBase):
         min_similarity: float = 0.0,
     ) -> list[MemoryRecord]:
         async with self.session_factory() as session:
+            # Phase 6.1: Set HNSW ef_search for this query transaction
+            try:
+                from ..core.config import get_settings
+
+                settings = get_settings()
+                if settings.features.hnsw_ef_search_tuning:
+                    ef_search = max(settings.retrieval.hnsw_ef_search, top_k)
+                    await session.execute(
+                        text(f"SET LOCAL hnsw.ef_search = {ef_search}")
+                    )
+            except Exception:
+                pass  # Non-critical; use pgvector default
+
             base = and_(
                 MemoryRecordModel.tenant_id == tenant_id,
                 MemoryRecordModel.embedding.isnot(None),
@@ -439,3 +452,68 @@ class PostgresMemoryStore(MemoryStoreBase):
             supersedes_id=model.supersedes_id,
             content_hash=model.content_hash,
         )
+
+    # ── Phase 4.1: Bulk dependency counts ──────────────────────────
+
+    async def bulk_dependency_counts(
+        self,
+        tenant_id: str,
+        memory_ids: list[str],
+    ) -> dict[str, int]:
+        """Count references to each memory ID in a single DB query.
+
+        Counts two reference types:
+        1. ``supersedes_id`` — direct version chains.
+        2. ``metadata.evidence_refs`` — JSON array back-references.
+
+        Returns ``{memory_id: reference_count}``.
+        """
+        if not memory_ids:
+            return {}
+
+        query_str = """
+        WITH target_ids AS (
+            SELECT unnest(:ids ::text[]) AS target_id
+        ),
+        supersede_counts AS (
+            SELECT
+                CAST(supersedes_id AS text) AS target_id,
+                COUNT(*) AS cnt
+            FROM memory_records
+            WHERE tenant_id = :tenant_id
+              AND supersedes_id IS NOT NULL
+              AND CAST(supersedes_id AS text) = ANY(:ids)
+            GROUP BY supersedes_id
+        ),
+        evidence_counts AS (
+            SELECT
+                ref.value #>> '{}' AS target_id,
+                COUNT(*) AS cnt
+            FROM memory_records,
+                 jsonb_array_elements(
+                     COALESCE(meta -> 'evidence_refs', '[]'::jsonb)
+                 ) AS ref(value)
+            WHERE tenant_id = :tenant_id
+              AND ref.value #>> '{}' = ANY(:ids)
+            GROUP BY ref.value #>> '{}'
+        )
+        SELECT
+            t.target_id,
+            COALESCE(s.cnt, 0) + COALESCE(e.cnt, 0) AS total_refs
+        FROM target_ids t
+        LEFT JOIN supersede_counts s ON t.target_id = s.target_id
+        LEFT JOIN evidence_counts e ON t.target_id = e.target_id
+        """
+
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text(query_str),
+                {"tenant_id": tenant_id, "ids": memory_ids},
+            )
+            counts: dict[str, int] = {}
+            for row in result:
+                counts[row.target_id] = int(row.total_refs or 0)
+            # Ensure every requested ID has an entry
+            for mid in memory_ids:
+                counts.setdefault(mid, 0)
+            return counts

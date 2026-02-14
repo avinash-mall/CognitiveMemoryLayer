@@ -61,6 +61,15 @@ class NoOpGraphStore(GraphStoreBase):
         """Neo4jGraphStore also has this method; return empty for no-op."""
         return []
 
+    async def get_entity_facts_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        entity_names: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Batch variant; return empty dict for no-op."""
+        return {}
+
 
 class NoOpFactStore:
     """Fact store that does nothing; used when semantic facts DB is not available (lite mode)."""
@@ -117,3 +126,12 @@ class NoOpFactStore:
         limit: int = 20,
     ) -> list[SemanticFact]:
         return []
+
+    async def search_facts_batch(
+        self,
+        tenant_id: str,
+        entity_names: list[str],
+        limit_per_entity: int = 5,
+    ) -> dict[str, list[SemanticFact]]:
+        """Batch variant; return empty dict for no-op."""
+        return {}

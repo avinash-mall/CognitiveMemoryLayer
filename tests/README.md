@@ -26,9 +26,11 @@ pytest -v --tb=short
 
 | Directory        | Purpose |
 |------------------|--------|
-| `tests/unit/`    | Unit tests (mocked dependencies; no DB required for most) |
+| `tests/unit/`    | Unit tests (mocked dependencies; no DB required for most). Includes `test_deep_research_improvements.py` for stable keys, batch embeddings, retrieval timeouts, write-time facts, BoundedStateMap, feature flags. |
 | `tests/integration/` | Integration tests (real app, DB, Redis, Neo4j when available) |
 | `tests/e2e/`     | End-to-end API flow tests |
+
+Total: **301** tests (unit + integration + e2e). Run `python scripts/update_readme_badges.py` from the repo root to refresh the README badge count.
 
 ## Running subsets
 

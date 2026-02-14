@@ -61,6 +61,7 @@ class ReadMemoryRequest(BaseModel):
     since: datetime | None = None
     until: datetime | None = None
     format: Literal["packet", "list", "llm_context"] = "packet"
+    user_timezone: str | None = None  # IANA timezone (e.g. "America/New_York") for "today"/"yesterday" filters
 
 
 class MemoryItem(BaseModel):
@@ -106,6 +107,7 @@ class ProcessTurnRequest(BaseModel):
     session_id: str | None = None
     max_context_tokens: int = 1500
     timestamp: datetime | None = None  # Optional event timestamp for the turn (defaults to now)
+    user_timezone: str | None = None  # IANA timezone for retrieval "today"/"yesterday" (e.g. "America/New_York")
 
 
 class ProcessTurnResponse(BaseModel):

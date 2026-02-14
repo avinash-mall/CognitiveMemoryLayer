@@ -1,7 +1,12 @@
-"""Per-scope sensory buffer management."""
+"""Per-scope sensory buffer management.
+
+Uses :class:`BoundedStateMap` to prevent unbounded buffer growth in
+long-running servers while keeping per-scope isolation.
+"""
 
 import asyncio
 
+from ...utils.bounded_state import BoundedStateMap
 from .buffer import SensoryBuffer, SensoryBufferConfig
 
 
@@ -9,12 +14,22 @@ class SensoryBufferManager:
     """
     Manages per-scope sensory buffers.
     Each scope gets its own isolated buffer.
+
+    Bounded by LRU eviction (``max_scopes``) and TTL
+    (``scope_ttl_seconds``) to prevent memory leaks.
     """
 
-    def __init__(self, config: SensoryBufferConfig | None = None):
+    def __init__(
+        self,
+        config: SensoryBufferConfig | None = None,
+        max_scopes: int = 1000,
+        scope_ttl_seconds: float = 600.0,
+    ):
         self.config = config or SensoryBufferConfig()
-        self._buffers: dict[str, SensoryBuffer] = {}
-        self._lock = asyncio.Lock()
+        self._buffers: BoundedStateMap[SensoryBuffer] = BoundedStateMap(
+            max_size=max_scopes,
+            ttl_seconds=scope_ttl_seconds,
+        )
 
     def _get_key(self, tenant_id: str, scope_id: str) -> str:
         return f"{tenant_id}:{scope_id}"
@@ -22,10 +37,10 @@ class SensoryBufferManager:
     async def get_buffer(self, tenant_id: str, scope_id: str) -> SensoryBuffer:
         """Get or create buffer for scope."""
         key = self._get_key(tenant_id, scope_id)
-        async with self._lock:
-            if key not in self._buffers:
-                self._buffers[key] = SensoryBuffer(self.config)
-            return self._buffers[key]
+        return await self._buffers.get_or_create(
+            key,
+            factory=lambda: SensoryBuffer(self.config),
+        )
 
     async def ingest(
         self,
@@ -51,21 +66,10 @@ class SensoryBufferManager:
 
     async def clear_user(self, tenant_id: str, scope_id: str) -> None:
         """Clear a specific scope's buffer."""
-        key = self._get_key(tenant_id, scope_id)
-        async with self._lock:
-            if key in self._buffers:
-                await self._buffers[key].clear()
+        buffer = await self._buffers.get(self._get_key(tenant_id, scope_id))
+        if buffer:
+            await buffer.clear()
 
     async def cleanup_inactive(self, inactive_seconds: float = 300) -> None:
-        """Remove buffers that are empty or have had no activity for inactive_seconds (MED-21)."""
-        import time
-
-        now = time.time()
-        async with self._lock:
-            to_remove = [
-                key
-                for key, buffer in self._buffers.items()
-                if buffer.is_empty or (now - buffer.last_activity) > inactive_seconds
-            ]
-            for key in to_remove:
-                del self._buffers[key]
+        """Remove expired buffers via the bounded state map's TTL."""
+        await self._buffers.cleanup_expired()

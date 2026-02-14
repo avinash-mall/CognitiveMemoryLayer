@@ -8,7 +8,8 @@ from typing import Any, TypeVar
 
 from prometheus_client import Counter, Gauge, Histogram
 
-# Memory operation counters
+# ── Memory operation counters ───────────────────────────────────────
+
 MEMORY_WRITES = Counter(
     "memory_writes_total",
     "Total memory write operations",
@@ -21,7 +22,8 @@ MEMORY_READS = Counter(
     ["tenant_id"],
 )
 
-# Retrieval latency histogram
+# ── Retrieval latency histogram ─────────────────────────────────────
+
 RETRIEVAL_LATENCY = Histogram(
     "retrieval_latency_seconds",
     "Retrieval operation latency",
@@ -34,6 +36,36 @@ MEMORY_COUNT = Gauge(
     "memory_count",
     "Current memory count per user",
     ["tenant_id", "user_id", "type"],
+)
+
+# ── Phase 6.2: Per-step retrieval metrics ───────────────────────────
+
+RETRIEVAL_STEP_DURATION = Histogram(
+    "cml_retrieval_step_duration_ms",
+    "Duration of a single retrieval step in milliseconds",
+    ["source"],
+    buckets=[5, 10, 25, 50, 100, 200, 500, 1000, 2000],
+)
+
+RETRIEVAL_STEP_RESULT_COUNT = Histogram(
+    "cml_retrieval_step_result_count",
+    "Number of items returned by a retrieval step",
+    ["source"],
+    buckets=[0, 1, 3, 5, 10, 20, 50],
+)
+
+RETRIEVAL_TIMEOUT_COUNT = Counter(
+    "cml_retrieval_timeout_total",
+    "Number of retrieval steps that timed out",
+    ["source"],
+)
+
+# ── Phase 6.3: Fact hit rate tracking ───────────────────────────────
+
+FACT_HIT_RATE = Counter(
+    "cml_retrieval_fact_hit_total",
+    "Queries answered from semantic fact store vs vector fallback",
+    ["intent", "hit"],
 )
 
 F = TypeVar("F", bound=Callable[..., Any])
