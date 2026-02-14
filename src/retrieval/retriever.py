@@ -93,7 +93,7 @@ class HybridRetriever:
                         asyncio.gather(*coros, return_exceptions=True),
                         timeout=remaining,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.info("retrieval_group_timeout", extra={"group": group_indices})
                     break
             else:
@@ -126,7 +126,7 @@ class HybridRetriever:
                 self._execute_step(tenant_id, step, context_filter),
                 timeout=timeout_s,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.info(
                 "retrieval_step_timeout",
                 extra={"source": step.source.value, "timeout_ms": step.timeout_ms},
