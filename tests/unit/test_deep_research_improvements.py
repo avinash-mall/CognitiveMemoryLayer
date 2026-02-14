@@ -13,12 +13,24 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import time
-from datetime import UTC, datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+
+from src.core.config import FeatureFlags, RetrievalSettings, Settings
+from src.core.enums import MemoryType
+from src.extraction.write_time_facts import WriteTimeFactExtractor, _derive_predicate
+from src.memory.neocortical.schemas import FactCategory, SemanticFact
+from src.memory.sensory.buffer import SensoryBuffer
+from src.memory.working.models import ChunkType, SemanticChunk
+from src.retrieval.planner import RetrievalPlan, RetrievalPlanner, RetrievalSource, RetrievalStep
+from src.retrieval.query_types import QueryAnalysis, QueryIntent
+from src.retrieval.retriever import HybridRetriever
+from src.storage.async_pipeline import AsyncStoragePipeline
+from src.utils.bounded_state import BoundedStateMap
+from src.utils.embeddings import EmbeddingResult, MockEmbeddingClient
 
 
 def _stable_fact_key_inline(prefix: str, text: str) -> str:
@@ -56,9 +68,6 @@ class TestStableFactKey:
 # ═══════════════════════════════════════════════════════════════════
 # Phase 1.2: Hippocampal key generation
 # ═══════════════════════════════════════════════════════════════════
-
-from src.core.enums import MemoryType
-from src.memory.working.models import ChunkType, SemanticChunk
 
 
 def _make_chunk(text: str, entities: list[str] | None = None) -> SemanticChunk:
@@ -122,8 +131,6 @@ class TestHippocampalKeyGeneration:
 # Phase 1.3: Write-time fact extraction
 # ═══════════════════════════════════════════════════════════════════
 
-from src.extraction.write_time_facts import WriteTimeFactExtractor, _derive_predicate
-
 
 class TestWriteTimeFactExtractor:
     def setup_method(self):
@@ -183,8 +190,6 @@ class TestDerivePredicateFunction:
 # Phase 2.1: Batch embeddings in hippocampal store
 # ═══════════════════════════════════════════════════════════════════
 
-from src.utils.embeddings import EmbeddingResult, MockEmbeddingClient
-
 
 class TestBatchEmbeddings:
     @pytest.mark.asyncio
@@ -222,8 +227,6 @@ class TestBatchEmbeddings:
 # Phase 2.2: Async storage pipeline
 # ═══════════════════════════════════════════════════════════════════
 
-from src.storage.async_pipeline import AsyncStoragePipeline
-
 
 class TestAsyncStoragePipeline:
     @pytest.mark.asyncio
@@ -256,10 +259,6 @@ class TestAsyncStoragePipeline:
 # ═══════════════════════════════════════════════════════════════════
 # Phase 3: Retrieval reliability
 # ═══════════════════════════════════════════════════════════════════
-
-from src.retrieval.planner import RetrievalPlan, RetrievalPlanner, RetrievalSource, RetrievalStep
-from src.retrieval.query_types import QueryAnalysis, QueryIntent
-from src.retrieval.retriever import HybridRetriever, RetrievalResult
 
 
 class TestRetrievalTimeouts:
@@ -382,8 +381,6 @@ class TestTimezoneAwareTemporalQueries:
 # Phase 5.1: Sensory buffer token ID storage
 # ═══════════════════════════════════════════════════════════════════
 
-from src.memory.sensory.buffer import BufferedToken, SensoryBuffer
-
 
 class TestSensoryBufferTokenStorage:
     @pytest.mark.asyncio
@@ -412,8 +409,6 @@ class TestSensoryBufferTokenStorage:
 # ═══════════════════════════════════════════════════════════════════
 # Phase 5.2: BoundedStateMap
 # ═══════════════════════════════════════════════════════════════════
-
-from src.utils.bounded_state import BoundedStateMap
 
 
 class TestBoundedStateMap:
@@ -475,8 +470,6 @@ class TestBoundedStateMap:
 # Phase 6: Feature flags and config
 # ═══════════════════════════════════════════════════════════════════
 
-from src.core.config import FeatureFlags, RetrievalSettings, Settings
-
 
 class TestFeatureFlags:
     def test_defaults_are_true(self):
@@ -511,8 +504,6 @@ class TestFeatureFlags:
 # ═══════════════════════════════════════════════════════════════════
 # Phase 4.2: Graph multi-hop N+1 batch fix
 # ═══════════════════════════════════════════════════════════════════
-
-from src.memory.neocortical.schemas import FactCategory, SemanticFact
 
 
 def _make_semantic_fact(

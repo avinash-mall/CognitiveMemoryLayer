@@ -1,5 +1,6 @@
 """Unit tests for embedded client (mocked orchestrator, no engine required)."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -47,8 +48,6 @@ async def test_embedded_write_returns_write_response_when_initialized() -> None:
 @pytest.mark.asyncio
 async def test_embedded_read_passes_filters_and_user_timezone() -> None:
     """Embedded read() passes memory_types, since, until, and user_timezone to orchestrator.read()."""
-    from datetime import datetime, timezone
-
     from cml.models.enums import MemoryType
 
     config = EmbeddedConfig(tenant_id="t1")
@@ -63,8 +62,8 @@ async def test_embedded_read_passes_filters_and_user_timezone() -> None:
         )
     )
     client._initialized = True
-    since = datetime(2025, 1, 1, tzinfo=timezone.utc)
-    until = datetime(2025, 1, 2, tzinfo=timezone.utc)
+    since = datetime(2025, 1, 1, tzinfo=UTC)
+    until = datetime(2025, 1, 2, tzinfo=UTC)
     await client.read(
         "q",
         memory_types=[MemoryType.PREFERENCE],

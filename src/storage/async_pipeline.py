@@ -95,7 +95,7 @@ class AsyncStoragePipeline:
         await self.redis.rpush(_QUEUE_KEY, json.dumps(asdict(job)))
         return job.job_id
 
-    async def process_next(self, orchestrator: "MemoryOrchestrator") -> bool:
+    async def process_next(self, orchestrator: MemoryOrchestrator) -> bool:
         """Process the next job from the queue.
 
         Returns *True* if a job was processed (or de-duped), *False* if
