@@ -14,7 +14,6 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..core.enums import MemoryType
 from ..memory.neocortical.schemas import FactCategory
 
 if TYPE_CHECKING:
@@ -114,7 +113,7 @@ class WriteTimeFactExtractor:
     Uses purely rule-based pattern matching — no LLM calls.
     """
 
-    def extract(self, chunk: "SemanticChunk") -> list[ExtractedFact]:
+    def extract(self, chunk: SemanticChunk) -> list[ExtractedFact]:
         """Extract facts from a single chunk.
 
         Returns an empty list for chunk types that don't contain facts.

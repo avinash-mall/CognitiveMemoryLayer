@@ -4,8 +4,6 @@ Uses :class:`BoundedStateMap` to prevent unbounded buffer growth in
 long-running servers while keeping per-scope isolation.
 """
 
-import asyncio
-
 from ...utils.bounded_state import BoundedStateMap
 from .buffer import SensoryBuffer, SensoryBufferConfig
 

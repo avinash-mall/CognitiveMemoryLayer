@@ -29,7 +29,7 @@ class BufferedToken:
     # Backward-compat: expose a .token property returning an empty string
     # (callers should use SensoryBuffer.get_text instead).
     @property
-    def token(self) -> str:  # pragma: no cover – compat shim
+    def token(self) -> str:  # pragma: no cover - compat shim
         return ""
 
 
@@ -49,7 +49,7 @@ _tiktoken_available: bool | None = None
 
 def _get_tiktoken_encoder() -> Any | None:
     """Return a cached tiktoken encoder, or *None* if unavailable."""
-    global _tiktoken_encoder, _tiktoken_available  # noqa: PLW0603
+    global _tiktoken_encoder, _tiktoken_available
     if _tiktoken_available is None:
         try:
             import tiktoken
