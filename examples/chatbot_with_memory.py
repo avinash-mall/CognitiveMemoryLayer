@@ -12,6 +12,7 @@ from typing import List, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -54,7 +55,9 @@ class MemoryPoweredChatbot:
         ).strip()
         self.llm = OpenAI(api_key=llm_api_key or os.getenv("OPENAI_API_KEY"))
         self.memory = CognitiveMemoryLayer(
-            api_key=memory_api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+            api_key=memory_api_key
+            or os.environ.get("CML_API_KEY")
+            or os.environ.get("AUTH__API_KEY"),
             base_url=base_url,
         )
         self.history: List[ConversationTurn] = []

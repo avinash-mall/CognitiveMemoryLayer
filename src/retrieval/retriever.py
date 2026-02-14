@@ -73,7 +73,9 @@ class HybridRetriever:
                 elapsed = time.perf_counter() - plan_start
                 remaining = plan_budget - elapsed
                 if remaining <= 0:
-                    logger.info("retrieval_plan_budget_exceeded", extra={"elapsed_ms": elapsed * 1000})
+                    logger.info(
+                        "retrieval_plan_budget_exceeded", extra={"elapsed_ms": elapsed * 1000}
+                    )
                     break
             else:
                 remaining = None  # No cap

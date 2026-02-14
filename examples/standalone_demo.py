@@ -20,21 +20,17 @@ import httpx
 import json
 from datetime import datetime
 
-
 # API Configuration (set AUTH__API_KEY in environment)
 BASE_URL = "http://localhost:8000/api/v1"
 API_KEY = os.environ.get("AUTH__API_KEY", "")
-HEADERS = {
-    "Content-Type": "application/json",
-    "X-API-Key": API_KEY
-}
+HEADERS = {"Content-Type": "application/json", "X-API-Key": API_KEY}
 
 
 def print_section(title: str):
     """Print a section header."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 def print_response(response: httpx.Response, label: str = "Response"):
@@ -51,10 +47,10 @@ def print_response(response: httpx.Response, label: str = "Response"):
 def demo_health_check():
     """Check if the API is running."""
     print_section("Health Check")
-    
+
     response = httpx.get(f"{BASE_URL}/health")
     print_response(response, "Health")
-    
+
     if response.status_code == 200:
         print("✓ API is healthy and ready")
         return True
@@ -67,9 +63,9 @@ def demo_health_check():
 def demo_write_memories():
     """Demonstrate writing different types of memories."""
     print_section("Writing Memories")
-    
+
     session_id = "standalone-demo-session"
-    
+
     # Example memories to store (using correct API schema fields)
     memories = [
         {
@@ -77,7 +73,7 @@ def demo_write_memories():
             "session_id": session_id,
             "memory_type": "semantic_fact",
             "context_tags": ["identity"],
-            "metadata": {"source": "user_introduction"}
+            "metadata": {"source": "user_introduction"},
         },
         {
             "content": "User prefers dark mode in all applications.",
@@ -100,94 +96,79 @@ def demo_write_memories():
             "content": "User seems interested in machine learning based on questions asked.",
             "session_id": session_id,
             "context_tags": ["interests"],
-        }
+        },
     ]
-    
+
     print(f"Storing {len(memories)} memories (session: {session_id})...\n")
-    
+
     for i, memory in enumerate(memories, 1):
-        response = httpx.post(
-            f"{BASE_URL}/memory/write",
-            headers=HEADERS,
-            json=memory
-        )
-        
+        response = httpx.post(f"{BASE_URL}/memory/write", headers=HEADERS, json=memory)
+
         if response.status_code == 200:
             data = response.json()
             print(f"{i}. [{memory.get('memory_type', 'auto')}] {memory['content'][:50]}...")
             print(f"   Memory ID: {data.get('memory_id')}")
         else:
             print(f"{i}. Failed: {response.text}")
-    
+
     return session_id
 
 
 def demo_read_memories(session_id: str):
     """Demonstrate reading memories with different queries."""
     print_section("Reading Memories")
-    
+
     queries = [
-        {
-            "query": "What is the user's name?",
-            "description": "Simple fact lookup"
-        },
-        {
-            "query": "What are the user's preferences?",
-            "description": "Preference retrieval"
-        },
+        {"query": "What is the user's name?", "description": "Simple fact lookup"},
+        {"query": "What are the user's preferences?", "description": "Preference retrieval"},
         {
             "query": "Are there any medical concerns I should know about?",
-            "description": "Constraint lookup (critical info)"
+            "description": "Constraint lookup (critical info)",
         },
-        {
-            "query": "Tell me about the user",
-            "description": "General retrieval"
-        }
+        {"query": "Tell me about the user", "description": "General retrieval"},
     ]
-    
+
     for q in queries:
         print(f"Query: '{q['query']}' ({q['description']})")
         print("-" * 50)
-        
+
         response = httpx.post(
             f"{BASE_URL}/memory/read",
             headers=HEADERS,
-            json={
-                "query": q["query"],
-                "max_results": 5,
-                "format": "packet"
-            }
+            json={"query": q["query"], "max_results": 5, "format": "packet"},
         )
-        
+
         if response.status_code == 200:
             data = response.json()
-            print(f"Found {data.get('total_count', 0)} memories ({data.get('elapsed_ms', 0):.1f}ms)")
-            
+            print(
+                f"Found {data.get('total_count', 0)} memories ({data.get('elapsed_ms', 0):.1f}ms)"
+            )
+
             for mem in data.get("memories", [])[:3]:
                 conf = f"[{mem.get('confidence', 0):.0%}]"
                 print(f"  - {mem.get('type', '')}: {mem.get('text', '')[:60]}... {conf}")
         else:
             print(f"Error: {response.text}")
-        
+
         print()
 
 
 def demo_llm_context_format(session_id: str):
     """Demonstrate the LLM-ready context format."""
     print_section("LLM Context Format")
-    
+
     print("This format is designed for direct injection into LLM prompts.\n")
-    
+
     response = httpx.post(
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
         json={
             "query": "Tell me everything about the user",
             "max_results": 10,
-            "format": "llm_context"
-        }
+            "format": "llm_context",
+        },
     )
-    
+
     if response.status_code == 200:
         data = response.json()
         print("LLM Context (ready for system prompt):")
@@ -199,37 +180,31 @@ def demo_llm_context_format(session_id: str):
 def demo_update_memory(session_id: str):
     """Demonstrate updating memories with feedback."""
     print_section("Updating Memories")
-    
+
     # First, get a memory to update
     response = httpx.post(
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
-        json={
-            "query": "machine learning interest",
-            "max_results": 1
-        }
+        json={"query": "machine learning interest", "max_results": 1},
     )
-    
+
     if response.status_code == 200 and response.json().get("memories"):
         memory = response.json()["memories"][0]
         memory_id = memory["id"]
-        
+
         print(f"Found memory: {memory.get('text', '')}")
         print(f"Current confidence: {memory.get('confidence', 0):.0%}")
         print()
-        
+
         # Confirm the hypothesis
         print("Confirming this memory (feedback='correct')...")
-        
+
         update_response = httpx.post(
             f"{BASE_URL}/memory/update",
             headers=HEADERS,
-            json={
-                "memory_id": memory_id,
-                "feedback": "correct"
-            }
+            json={"memory_id": memory_id, "feedback": "correct"},
         )
-        
+
         if update_response.status_code == 200:
             print(f"Memory updated: {update_response.json()}")
         else:
@@ -241,12 +216,9 @@ def demo_update_memory(session_id: str):
 def demo_memory_stats():
     """Demonstrate memory statistics."""
     print_section("Memory Statistics")
-    
-    response = httpx.get(
-        f"{BASE_URL}/memory/stats",
-        headers=HEADERS
-    )
-    
+
+    response = httpx.get(f"{BASE_URL}/memory/stats", headers=HEADERS)
+
     if response.status_code == 200:
         stats = response.json()
         print(f"Memory Statistics:")
@@ -263,7 +235,9 @@ def demo_process_turn():
     """Demonstrate process_turn (seamless: auto-retrieve + auto-store)."""
     print_section("Process Turn (Seamless Memory)")
     session_id = "standalone-demo-session"
-    print("process_turn retrieves relevant context for a user message and can auto-store the exchange.\n")
+    print(
+        "process_turn retrieves relevant context for a user message and can auto-store the exchange.\n"
+    )
     # Retrieve only (no assistant response)
     response = httpx.post(
         f"{BASE_URL}/memory/turn",
@@ -320,18 +294,15 @@ def demo_create_session():
 def demo_forget_memory():
     """Demonstrate forgetting memories."""
     print_section("Forgetting Memories")
-    
+
     print("Forgetting memories about 'new job'...")
-    
+
     response = httpx.post(
         f"{BASE_URL}/memory/forget",
         headers=HEADERS,
-        json={
-            "query": "new job at Google",
-            "action": "archive"
-        }
+        json={"query": "new job at Google", "action": "archive"},
     )
-    
+
     if response.status_code == 200:
         data = response.json()
         print(f"Archived {data.get('affected_count', 0)} memories")
@@ -342,23 +313,35 @@ def demo_forget_memory():
 def demo_curl_examples():
     """Print curl command examples."""
     print_section("Curl Command Examples")
-    
+
     print("You can also use these curl commands directly:\n")
-    
+
     commands = [
         ("Health Check", "curl http://localhost:8000/api/v1/health -H 'X-API-Key: $AUTH__API_KEY'"),
-        ("Write Memory", '''curl -X POST http://localhost:8000/api/v1/memory/write \\
+        (
+            "Write Memory",
+            """curl -X POST http://localhost:8000/api/v1/memory/write \\
   -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
-  -d '{"content": "User likes pizza", "session_id": "test-session", "context_tags": ["preferences"]}\''''),
-        ("Read Memory", '''curl -X POST http://localhost:8000/api/v1/memory/read \\
+  -d '{"content": "User likes pizza", "session_id": "test-session", "context_tags": ["preferences"]}\'""",
+        ),
+        (
+            "Read Memory",
+            """curl -X POST http://localhost:8000/api/v1/memory/read \\
   -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
-  -d '{"query": "food preferences", "format": "llm_context"}\''''),
-        ("Process Turn", '''curl -X POST http://localhost:8000/api/v1/memory/turn \\
+  -d '{"query": "food preferences", "format": "llm_context"}\'""",
+        ),
+        (
+            "Process Turn",
+            """curl -X POST http://localhost:8000/api/v1/memory/turn \\
   -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
-  -d '{"user_message": "What do I like?", "session_id": "sess-1"}\''''),
-        ("Get Stats", '''curl http://localhost:8000/api/v1/memory/stats -H "X-API-Key: $AUTH__API_KEY"'''),
+  -d '{"user_message": "What do I like?", "session_id": "sess-1"}\'""",
+        ),
+        (
+            "Get Stats",
+            '''curl http://localhost:8000/api/v1/memory/stats -H "X-API-Key: $AUTH__API_KEY"''',
+        ),
     ]
-    
+
     for name, cmd in commands:
         print(f"# {name}")
         print(cmd)
@@ -379,34 +362,34 @@ def main():
         # Check health first
         if not demo_health_check():
             return
-        
+
         input("Press Enter to continue with write demo...")
         session_id = demo_write_memories()
-        
+
         input("Press Enter to continue with read demo...")
         demo_read_memories(session_id)
-        
+
         input("Press Enter to continue with LLM context demo...")
         demo_llm_context_format(session_id)
-        
+
         input("Press Enter to continue with update demo...")
         demo_update_memory(session_id)
-        
+
         input("Press Enter to continue with stats demo...")
         demo_memory_stats()
-        
+
         input("Press Enter to continue with process_turn demo...")
         demo_process_turn()
-        
+
         input("Press Enter to continue with create_session demo...")
         demo_create_session()
-        
+
         input("Press Enter to continue with forget demo...")
         demo_forget_memory()
-        
+
         input("Press Enter to see curl examples...")
         demo_curl_examples()
-        
+
         print_section("Demo Complete!")
         print("You've seen all the core memory operations.")
         print("Check out the other examples for LLM integration:")
@@ -414,7 +397,7 @@ def main():
         print("  - anthropic_tool_calling.py")
         print("  - chatbot_with_memory.py")
         print("  - langchain_integration.py")
-        
+
     except KeyboardInterrupt:
         print("\n\nDemo interrupted. Goodbye!")
     except httpx.ConnectError:

@@ -120,9 +120,7 @@ class SeamlessMemoryProvider:
                     stored_count += resp_result.get("chunks_created", 0) or (
                         1 if resp_result.get("memory_id") else 0
                     )
-                    reconsolidation_applied = resp_result.get(
-                        "reconsolidation_applied", False
-                    )
+                    reconsolidation_applied = resp_result.get("reconsolidation_applied", False)
 
         return SeamlessTurnResult(
             memory_context=memory_context,

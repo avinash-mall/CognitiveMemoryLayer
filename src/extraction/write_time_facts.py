@@ -62,8 +62,7 @@ _IDENTITY_PATTERNS: list[tuple[re.Pattern[str], str, FactCategory, float]] = [
     # "My name is X" / "I'm X" / "Call me X"
     (
         re.compile(
-            r"\b(?:my name is|i'?m|call me|i am)\s+"
-            r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
+            r"\b(?:my name is|i'?m|call me|i am)\s+" r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
             re.IGNORECASE,
         ),
         "user:identity:name",

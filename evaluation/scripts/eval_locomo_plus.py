@@ -59,16 +59,28 @@ def _ensure_locomo_plus_path() -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Locomo-Plus unified eval with CML + Ollama")
-    p.add_argument("--unified-file", type=str, required=True, help="Path to unified_input_samples_v2.json")
+    p.add_argument(
+        "--unified-file", type=str, required=True, help="Path to unified_input_samples_v2.json"
+    )
     p.add_argument("--out-dir", type=str, default="evaluation/outputs")
-    p.add_argument("--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000"))
+    p.add_argument(
+        "--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000")
+    )
     p.add_argument("--cml-api-key", type=str, default=os.environ.get("CML_API_KEY", "test-key"))
-    p.add_argument("--ollama-url", type=str, default=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
-    p.add_argument("--ollama-model", type=str, default=os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b"))
+    p.add_argument(
+        "--ollama-url",
+        type=str,
+        default=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
+    )
+    p.add_argument(
+        "--ollama-model", type=str, default=os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b")
+    )
     p.add_argument("--max-results", type=int, default=25)
     p.add_argument("--limit-samples", type=int, default=None)
     p.add_argument("--skip-ingestion", action="store_true")
-    p.add_argument("--score-only", action="store_true", help="Run only Phase C (judge) on existing predictions")
+    p.add_argument(
+        "--score-only", action="store_true", help="Run only Phase C (judge) on existing predictions"
+    )
     p.add_argument("--judge-model", type=str, default="gpt-4o-mini", help="Model for LLM-as-judge")
     return p.parse_args()
 
@@ -115,7 +127,12 @@ def _cml_write(
     turn_id: str,
 ) -> None:
     url = f"{base_url.rstrip('/')}/api/v1/memory/write"
-    payload = {"content": content, "session_id": session_id, "metadata": metadata, "turn_id": turn_id}
+    payload = {
+        "content": content,
+        "session_id": session_id,
+        "metadata": metadata,
+        "turn_id": turn_id,
+    }
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id, "X-Eval-Mode": "true"}
     for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
         resp = requests.post(url, json=payload, headers=headers, timeout=60)
@@ -241,9 +258,15 @@ def phase_b_qa(
             time.sleep(QA_READ_DELAY_SEC)
 
         if category == "Cognitive":
-            user_content = (llm_context or "(No retrieved context.)") + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+            user_content = (
+                (llm_context or "(No retrieved context.)")
+                + "\n\n"
+                + COGNITIVE_PROMPT.format(trigger)
+            )
         else:
-            user_content = (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+            user_content = (
+                (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+            )
 
         prediction = _ollama_chat(ollama_url, ollama_model, user_content)
         ground_truth = sample.get("answer")

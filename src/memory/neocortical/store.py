@@ -128,15 +128,17 @@ class NeocorticalStore:
                 (item.get("score", 0) for item in related if item["entity"] == name),
                 0,
             )
-            results.append({
-                "entity": name,
-                "relations": graph_by_entity.get(name, []),
-                "facts": [
-                    {"key": f.key, "value": f.value, "confidence": f.confidence}
-                    for f in facts_by_entity.get(name, [])
-                ],
-                "relevance_score": score,
-            })
+            results.append(
+                {
+                    "entity": name,
+                    "relations": graph_by_entity.get(name, []),
+                    "facts": [
+                        {"key": f.key, "value": f.value, "confidence": f.confidence}
+                        for f in facts_by_entity.get(name, [])
+                    ],
+                    "relevance_score": score,
+                }
+            )
         return results
 
     async def find_schema_match(

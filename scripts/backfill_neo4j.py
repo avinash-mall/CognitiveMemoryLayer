@@ -157,7 +157,9 @@ def main():
         args.dry_run,
     )
 
-    stats = asyncio.run(backfill(tenant_id=args.tenant, batch_size=args.batch_size, dry_run=args.dry_run))
+    stats = asyncio.run(
+        backfill(tenant_id=args.tenant, batch_size=args.batch_size, dry_run=args.dry_run)
+    )
 
     logger.info("Backfill complete: %s", stats)
     if stats["errors"]:

@@ -60,7 +60,17 @@ def extract_row(summary: dict, method: str) -> tuple[str, list[str], str, str]:
 
 def format_table(rows: list[tuple[str, list[str], str, str]]) -> str:
     """Format rows as a markdown-style table."""
-    cols = ["Method", "single-hop", "multi-hop", "temporal", "commonsense", "adversarial", "average", "LoCoMo-Plus", "Gap"]
+    cols = [
+        "Method",
+        "single-hop",
+        "multi-hop",
+        "temporal",
+        "commonsense",
+        "adversarial",
+        "average",
+        "LoCoMo-Plus",
+        "Gap",
+    ]
     widths = [max(len(c), 12) for c in cols]
     for method, factual, lp, gap in rows:
         avg_val = f"{(sum(float(p) for p in factual) / 5):.2f}" if factual else "0.00"
@@ -101,7 +111,11 @@ def main() -> None:
     args = p.parse_args()
 
     root = Path(__file__).resolve().parent.parent
-    summary_path = Path(args.summary) if args.summary else root / "outputs" / "locomo_plus_qa_cml_judge_summary.json"
+    summary_path = (
+        Path(args.summary)
+        if args.summary
+        else root / "outputs" / "locomo_plus_qa_cml_judge_summary.json"
+    )
 
     if not summary_path.exists():
         print(f"Summary file not found: {summary_path}", file=sys.stderr)

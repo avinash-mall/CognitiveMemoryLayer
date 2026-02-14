@@ -8,6 +8,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
@@ -18,7 +19,9 @@ from cml import CognitiveMemoryLayer
 def main():
     memory = CognitiveMemoryLayer(
         api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
-        base_url=os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or "http://localhost:8000",
+        base_url=os.environ.get("CML_BASE_URL")
+        or os.environ.get("MEMORY_API_URL")
+        or "http://localhost:8000",
     )
     memory.write("User prefers vegetarian food and lives in Paris.")
     memory.write("User works at a tech startup as a backend engineer.")
