@@ -231,7 +231,7 @@ class CachedEmbeddings(EmbeddingClient):
 
         cache_keys = [self._cache_key(t) for t in texts]
 
-        # Batch cache lookup (MGET instead of N×GET)
+        # Batch cache lookup (MGET instead of NxGET)
         try:
             cached_values = await self.redis.mget(*cache_keys)
         except Exception:
@@ -257,7 +257,7 @@ class CachedEmbeddings(EmbeddingClient):
         if uncached_texts:
             computed = await self.client.embed_batch(uncached_texts)
 
-            # Batch cache store (pipeline instead of N×SETEX)
+            # Batch cache store (pipeline instead of NxSETEX)
             try:
                 pipe = self.redis.pipeline()
                 for idx, result in zip(uncached_indices, computed, strict=False):
