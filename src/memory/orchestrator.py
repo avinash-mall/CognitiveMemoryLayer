@@ -28,7 +28,7 @@ from ..storage.neo4j import Neo4jGraphStore
 from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.embeddings import CachedEmbeddings, EmbeddingClient, get_embedding_client
-from ..utils.llm import LLMClient, get_llm_client
+from ..utils.llm import LLMClient, get_internal_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class MemoryOrchestrator:
         from ..core.config import get_settings
 
         settings = get_settings()
-        llm_client = get_llm_client()
+        internal_llm = get_internal_llm_client()
         embedding_client: EmbeddingClient = get_embedding_client()
 
         # Phase 2.3: wrap with Redis cache when available and enabled
@@ -94,9 +94,9 @@ class MemoryOrchestrator:
         fact_store = SemanticFactStore(db_manager.pg_session)
         neocortical = NeocorticalStore(graph_store, fact_store)
 
-        short_term = ShortTermMemory(llm_client=llm_client)
-        entity_extractor = EntityExtractor(llm_client)
-        relation_extractor = RelationExtractor(llm_client)
+        short_term = ShortTermMemory(llm_client=internal_llm)
+        entity_extractor = EntityExtractor(internal_llm)
+        relation_extractor = RelationExtractor(internal_llm)
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
@@ -107,25 +107,25 @@ class MemoryOrchestrator:
         retriever = MemoryRetriever(
             hippocampal=hippocampal,
             neocortical=neocortical,
-            llm_client=llm_client,
+            llm_client=internal_llm,
         )
 
         reconsolidation = ReconsolidationService(
             memory_store=episodic_store,
-            llm_client=llm_client,
-            fact_extractor=LLMFactExtractor(llm_client),
+            llm_client=internal_llm,
+            fact_extractor=LLMFactExtractor(internal_llm),
             redis_client=getattr(db_manager, "redis", None),
         )
 
         consolidation = ConsolidationWorker(
             episodic_store=episodic_store,
             neocortical_store=neocortical,
-            llm_client=llm_client,
+            llm_client=internal_llm,
         )
 
         forgetting = ForgettingWorker(
             store=episodic_store,
-            compression_llm_client=llm_client,
+            compression_llm_client=internal_llm,
         )
 
         scratch_pad = ScratchPad(store=episodic_store)

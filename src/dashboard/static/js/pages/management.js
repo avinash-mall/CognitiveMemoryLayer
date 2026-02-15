@@ -4,7 +4,7 @@
  * job history, and reconsolidation status.
  */
 
-import { triggerConsolidate, triggerForget, getTenants, resetDatabase, getJobs, getLabile } from '../api.js';
+import { triggerConsolidate, triggerForget, triggerReconsolidate, getTenants, resetDatabase, getJobs, getLabile } from '../api.js';
 import { showToast } from '../app.js';
 import { prettyJson, escapeHtml, formatNumber, formatDate, formatFloat } from '../utils/formatters.js';
 
@@ -134,6 +134,30 @@ function buildManagement(jobsData, labileData) {
                     <div id="fgt-result" class="result-box hidden"></div>
             </div>
 
+            <!-- Reconsolidation Panel -->
+            <div class="management-panel">
+                <h3>Reconsolidation</h3>
+                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">
+                    Release all labile state for the selected tenant. No belief revision is applied; use after retrieval or turn processing to clear labile state manually.
+                </p>
+                <div class="management-form">
+                    <div class="form-row">
+                        <label for="rec-tenant">Tenant</label>
+                        <select id="rec-tenant" class="select-sm">
+                            ${tenantOptions || '<option value="">No tenants found</option>'}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="rec-user">User ID</label>
+                        <input type="text" id="rec-user" class="input-sm" placeholder="Optional (defaults to tenant)">
+                    </div>
+                    <button id="rec-trigger" class="btn btn-primary" ${!tenants.length ? 'disabled' : ''}>
+                        Release labile
+                    </button>
+                </div>
+                <div id="rec-result" class="result-box hidden"></div>
+            </div>
+
             <!-- Database Reset Panel -->
             <div class="management-panel">
                 <h3>Database</h3>
@@ -205,6 +229,12 @@ function buildManagement(jobsData, labileData) {
                         <li><strong>Delete</strong> expired/irrelevant records</li>
                         <li><strong>Deduplicate</strong> near-identical entries</li>
                     </ol>
+                </div>
+                <div>
+                    <h4 style="font-size:0.95rem;margin-bottom:8px;">Reconsolidation (Release labile)</h4>
+                    <p style="color:var(--text-secondary);font-size:0.88rem;line-height:1.6;">
+                        Releases all labile state for the selected tenant. No conflict detection or belief revision; clears labile sessions so memories are no longer in labile state.
+                    </p>
                 </div>
             </div>
         </div>
@@ -297,6 +327,27 @@ function attachListeners() {
             resultBox?.classList.remove('hidden');
             showToast('Forgetting failed: ' + err.message, 'error');
         } finally { btn.disabled = false; btn.textContent = 'Run Forgetting'; }
+    });
+
+    // Reconsolidation trigger
+    el.querySelector('#rec-trigger')?.addEventListener('click', async () => {
+        const tenant = el.querySelector('#rec-tenant')?.value;
+        const user = el.querySelector('#rec-user')?.value || '';
+        if (!tenant) return;
+        const btn = el.querySelector('#rec-trigger');
+        const resultBox = el.querySelector('#rec-result');
+        btn.disabled = true; btn.textContent = 'Running...';
+        resultBox?.classList.add('hidden');
+        try {
+            const result = await triggerReconsolidate(tenant, user);
+            resultBox.textContent = prettyJson(result);
+            resultBox?.classList.remove('hidden');
+            showToast('Reconsolidation completed (labile released)');
+        } catch (err) {
+            resultBox.textContent = `Error: ${err.message}`;
+            resultBox?.classList.remove('hidden');
+            showToast('Reconsolidation failed: ' + err.message, 'error');
+        } finally { btn.disabled = false; btn.textContent = 'Release labile'; }
     });
 
     // Job detail expand

@@ -97,6 +97,19 @@ Key server-side flags that affect SDK responses:
 | `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populates `ReadResponse.facts` with rule-based facts at write time (preference, identity, location). |
 | `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | `true` | Per-step and total retrieval timeouts; may affect result count if a step times out. |
 
+## LLM Internal (server-side)
+
+The CML server supports optional **`LLM_INTERNAL__*`** environment variables for internal tasks. When set, the server uses a separate (often smaller) model for SemanticChunker, Entity/Relation extractors, consolidation, reconsolidation, forgetting, and QueryClassifier.
+
+| Variable | Description |
+|----------|-------------|
+| `LLM_INTERNAL__PROVIDER` | Provider (e.g. `ollama`, `openai`) |
+| `LLM_INTERNAL__MODEL` | Model name (e.g. `llama3.2:3b`) |
+| `LLM_INTERNAL__BASE_URL` | Base URL for the internal LLM endpoint |
+| `LLM_INTERNAL__API_KEY` | API key (if required) |
+
+If not set, the server uses `LLM__*` for all tasks. Useful for bulk ingestion (e.g. Locomo evaluation) where a smaller model speeds up internal tasks.
+
 ## Versioning
 
 The project follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH):

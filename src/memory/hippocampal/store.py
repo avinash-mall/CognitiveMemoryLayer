@@ -165,11 +165,12 @@ class HippocampalStore:
         memory_type_override: MemoryType | None = None,
         return_gate_results: bool = False,
     ):
-        """Encode chunks using a 3-phase batched pipeline.
+        """Encode chunks using a 4-phase batched pipeline.
 
         Phase 1: Gate + redact all chunks (CPU only, no network calls).
         Phase 2: Batch-embed surviving texts in ONE API call.
-        Phase 3: Extract entities/relations + upsert (bounded concurrency).
+        Phase 3: Batch-extract entities and relations (concurrent).
+        Phase 4: Upsert records (bounded concurrency).
         """
         existing = await self.store.scan(
             tenant_id,
@@ -205,29 +206,37 @@ class HippocampalStore:
         texts_to_embed = [text for _, _, text in surviving]
         embedding_results = await self.embeddings.embed_batch(texts_to_embed)
 
-        # ---- Phase 3: Extract + Upsert (bounded concurrency) ----
+        # ---- Phase 3: Batch extract entities and relations ----
+        entities_batch: list[list[EntityMention]] = []
+        if self.entity_extractor:
+            entities_batch = await self.entity_extractor.extract_batch(texts_to_embed)
+        else:
+            entities_batch = [
+                [
+                    EntityMention(text=e, normalized=e, entity_type="CONCEPT")
+                    for e in (chunk.entities or [])
+                ]
+                for chunk, _, _ in surviving
+            ]
+
+        relations_batch: list[list[Relation]] = []
+        if self.relation_extractor:
+            relation_items = [
+                (text, [e.normalized for e in entities])
+                for text, entities in zip(texts_to_embed, entities_batch, strict=True)
+            ]
+            relations_batch = await self.relation_extractor.extract_batch(relation_items)
+        else:
+            relations_batch = [[] for _ in surviving]
+
+        # ---- Phase 4: Upsert (bounded concurrency) ----
         results: list[MemoryRecord] = []
-        extractor_semaphore = asyncio.Semaphore(3)
 
         async def _process_chunk(idx: int) -> MemoryRecord | None:
             chunk, gate_result, text = surviving[idx]
             embedding_result = embedding_results[idx]
-
-            entities: list[EntityMention] = []
-            async with extractor_semaphore:
-                if self.entity_extractor:
-                    entities = await self.entity_extractor.extract(text)
-                elif chunk.entities:
-                    entities = [
-                        EntityMention(text=e, normalized=e, entity_type="CONCEPT")
-                        for e in chunk.entities
-                    ]
-
-            relations: list[Relation] = []
-            if self.relation_extractor:
-                async with extractor_semaphore:
-                    entity_texts = [e.normalized for e in entities]
-                    relations = await self.relation_extractor.extract(text, entities=entity_texts)
+            entities = entities_batch[idx]
+            relations = relations_batch[idx]
 
             memory_type = memory_type_override or (
                 gate_result.memory_types[0]

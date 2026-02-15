@@ -16,8 +16,9 @@ This document describes every step to run the Locomo-Plus evaluation with CML as
 
 - **Embedding model** (CML ingestion and retrieval):
   ```bash
-  ollama pull embeddinggemma
+  ollama pull <your model>
   ```
+  Use a model that matches `EMBEDDING__MODEL` in `.env` (e.g. `mxbai-embed-large` or `embeddinggemma`).
 - **QA model** (evaluation script):
   ```bash
   ollama pull gpt-oss:20b
@@ -26,7 +27,7 @@ This document describes every step to run the Locomo-Plus evaluation with CML as
 
 ### 1.3. Embedding dimension
 
-CML's vector size must match the embedding model. For EmbeddingGemma, typically 768. Set `EMBEDDING__DIMENSIONS` in `.env` accordingly. If you change model or dimension, drop databases and re-run migrations (Section 3).
+CML's vector size must match the embedding model output. Set `EMBEDDING__DIMENSIONS` in `.env` to match your model (e.g. 1024 for mxbai-embed-large, 768 for embeddinggemma). If you change model or dimension, drop databases and re-run migrations (Section 3).
 
 ### 1.4. Evaluation data
 
@@ -62,13 +63,13 @@ Use the project root `.env` (copy from `.env.example` if needed).
 ### 2.2. Authentication
 
 - `AUTH__API_KEY=test-key` (match `CML_API_KEY` when running the eval script)
-- **`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE`**: Default 60 can cause 429 during bulk ingestion. Set to **600** or higher for full evaluation, then rebuild/restart the API.
+- **`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE`**: Default 60 can cause 429 during bulk ingestion. Set to 600 or higher (e.g. 10000 for heavy bulk). Value is read from `.env`. Rebuild/restart the API after changing.
 
 ### 2.3. Embeddings (Ollama)
 
 - `EMBEDDING__PROVIDER=ollama`
-- `EMBEDDING__MODEL=embeddinggemma` (or `embeddinggemma:latest`)
-- **`EMBEDDING__DIMENSIONS`** — must match model output (e.g. **768** for EmbeddingGemma)
+- `EMBEDDING__MODEL` — set to your model (e.g. `mxbai-embed-large:latest`, `embeddinggemma` or `embeddinggemma:latest`)
+- **`EMBEDDING__DIMENSIONS`** — must match model output (e.g. 1024 for mxbai-embed-large, 768 for embeddinggemma)
 - `EMBEDDING__BASE_URL=http://localhost:11434/v1`  
   If the API runs in Docker and Ollama is on the host: `EMBEDDING__BASE_URL=http://host.docker.internal:11434/v1`
 
@@ -78,6 +79,18 @@ Use the project root `.env` (copy from `.env.example` if needed).
 - `LLM__MODEL=gpt-oss:20b` (or your chosen model)
 - `LLM__BASE_URL=http://localhost:11434/v1`  
   If API in Docker: `LLM__BASE_URL=http://host.docker.internal:11434/v1`
+
+### 2.5. LLM Internal (optional)
+
+Optional `LLM_INTERNAL__PROVIDER`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`, `LLM_INTERNAL__API_KEY`. When set, the server uses a separate model for chunking and entity/relation extraction; can speed up Phase A ingestion. If not set, `LLM__*` is used.
+
+Example:
+```
+LLM_INTERNAL__PROVIDER=ollama
+LLM_INTERNAL__MODEL=llama3.2:3b
+LLM_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1
+LLM_INTERNAL__API_KEY=
+```
 
 ---
 
@@ -167,6 +180,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | Argument | Description |
 |----------|-------------|
 | `--limit-samples N` | Run only first N samples |
+| `--ingestion-workers N` | Concurrent workers for Phase A ingestion (default 10) |
 | `--skip-ingestion` | Skip Phase A (reuse existing CML state) |
 | `--score-only` | Run only Phase C on existing predictions |
 | `--max-results 25` | CML read top-k |
@@ -204,7 +218,7 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 
 | Issue | Action |
 |-------|--------|
-| **429 Too Many Requests** | Set `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=600` in `.env`, restart API. |
+| **429 Too Many Requests** | Set `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` in `.env` to 600 or higher, restart API. |
 | **Embedding dimension mismatch** | Set `EMBEDDING__DIMENSIONS` correctly, then run Section 3 again. |
 | **Judge fails (no OPENAI_API_KEY)** | Set `OPENAI_API_KEY` or `OPENAI_BASE_URL`. |
 | **CML API not reachable** | Use `CML_BASE_URL=http://localhost:8000` (or correct host). |
@@ -216,11 +230,11 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 ## 8. Checklist
 
 - [ ] Ollama installed and running
-- [ ] `ollama pull embeddinggemma` and `ollama pull gpt-oss:20b`
-- [ ] `EMBEDDING__DIMENSIONS` set in `.env` (e.g. 768)
+- [ ] Embedding and QA models pulled (model names must match `EMBEDDING__MODEL` and `OLLAMA_QA_MODEL` in .env)
+- [ ] `EMBEDDING__DIMENSIONS` set in `.env` to match your embedding model (e.g. 1024, 768)
 - [ ] `evaluation/locomo_plus/data/unified_input_samples_v2.json` exists
 - [ ] Python deps: `requests`, `tqdm`; `OPENAI_API_KEY` set
-- [ ] `.env`: DB, `AUTH__API_KEY`, `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=600`, `EMBEDDING__*`, `LLM__*`
+- [ ] `.env`: DB, `AUTH__API_KEY`, `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` set for bulk ingestion, `EMBEDDING__*`, `LLM__*` (optionally `LLM_INTERNAL__*` for faster ingestion)
 - [ ] `docker compose -f docker/docker-compose.yml down -v`
 - [ ] `docker compose -f docker/docker-compose.yml up -d --build postgres neo4j redis api`
 - [ ] `curl -s http://localhost:8000/api/v1/health` OK

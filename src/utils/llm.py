@@ -307,5 +307,50 @@ def get_llm_client() -> LLMClient:
     raise ValueError(f"Unknown LLM provider: {provider}")
 
 
+def get_internal_llm_client() -> LLMClient:
+    """Factory for LLM client used by internal tasks (chunking, entity/relation extraction, consolidation).
+    When LLM_INTERNAL__MODEL (or other LLM_INTERNAL__*) is set, returns a client configured from those
+    settings. Otherwise returns get_llm_client()."""
+    import os
+
+    settings = get_settings()
+    internal = settings.llm_internal
+    if not internal or not internal.model:
+        return get_llm_client()
+
+    provider = internal.provider or settings.llm.provider
+    model = internal.model
+    api_key = internal.api_key or settings.llm.api_key or os.environ.get("OPENAI_API_KEY", "")
+    base_url = internal.base_url if internal.base_url is not None else settings.llm.base_url
+
+    if provider in ("openai", "openai_compatible", "vllm", "ollama"):
+        if base_url is not None:
+            url = base_url
+        elif provider == "openai":
+            url = _OPENAI_DEFAULT_BASE
+        elif provider in ("openai_compatible", "vllm"):
+            url = _OPENAI_COMPATIBLE_DEFAULT_BASE
+        else:
+            url = _OLLAMA_DEFAULT_BASE
+        key = api_key if provider == "openai" else (api_key or "dummy")
+        return OpenAICompatibleClient(base_url=url, model=model, api_key=key)
+
+    if provider == "gemini":
+        if not api_key:
+            raise ValueError(
+                "LLM_INTERNAL__API_KEY (or OPENAI_API_KEY) is required for provider=gemini"
+            )
+        return _gemini_client(api_key, model)
+
+    if provider == "claude":
+        if not api_key:
+            raise ValueError(
+                "LLM_INTERNAL__API_KEY (or OPENAI_API_KEY) is required for provider=claude"
+            )
+        return _claude_client(api_key, model)
+
+    raise ValueError(f"Unknown LLM provider: {provider}")
+
+
 # Backward-compatibility alias
 OpenAIClient = OpenAICompatibleClient

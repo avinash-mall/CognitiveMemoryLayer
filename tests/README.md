@@ -32,6 +32,8 @@ pytest -v --tb=short
 
 Total: **301** tests (unit + integration + e2e). Run `python scripts/update_readme_badges.py` from the repo root to refresh the README badge count.
 
+Key test areas: constraint layer, deep research improvements (stable keys, batch embeddings, write-time facts), **batch extraction** (`RelationExtractor.extract_batch` in `test_extraction.py`; orchestrator uses `get_internal_llm_client` in `test_orchestrator_seamless.py`, `test_api_flows.py`), evaluation (timestamp parsing, verbose diagnostics).
+
 ## Running subsets
 
 ```bash

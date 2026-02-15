@@ -569,6 +569,26 @@ class AsyncCognitiveMemoryLayer:
             use_admin_key=True,
         )
 
+    async def reconsolidate(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Release all labile state for a tenant (no belief revision). Requires admin API key."""
+        self._ensure_same_loop()
+        payload: dict[str, Any] = {
+            "tenant_id": tenant_id or self._config.tenant_id,
+        }
+        if user_id is not None:
+            payload["user_id"] = user_id
+        return await self._transport.request(
+            "POST",
+            "/dashboard/reconsolidate",
+            json=payload,
+            use_admin_key=True,
+        )
+
     # ---- Phase 5: Batch operations ----
 
     async def batch_write(
@@ -835,7 +855,7 @@ class AsyncCognitiveMemoryLayer:
         job_type: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
-        """List recent consolidation/forgetting job history (admin only)."""
+        """List recent consolidation/forgetting/reconsolidation job history (admin only)."""
         self._ensure_same_loop()
         params: dict[str, Any] = {"limit": limit}
         if tenant_id is not None:
@@ -1225,6 +1245,14 @@ class AsyncNamespacedClient:
             dry_run=dry_run,
             max_memories=max_memories,
         )
+
+    async def reconsolidate(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._parent.reconsolidate(tenant_id=tenant_id, user_id=user_id)
 
     async def batch_write(
         self,

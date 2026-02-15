@@ -44,6 +44,7 @@ from .schemas import (
     DashboardMemoryListResponse,
     DashboardOverview,
     DashboardRateLimitsResponse,
+    DashboardReconsolidateRequest,
     DashboardRetrievalRequest,
     DashboardRetrievalResponse,
     DashboardSessionsResponse,
@@ -1807,6 +1808,83 @@ async def dashboard_forget(
             pass
         logger.error("dashboard_forget_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Forgetting failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Management: Reconsolidation (release labile state)
+# ---------------------------------------------------------------------------
+
+
+@dashboard_router.post("/reconsolidate")
+async def dashboard_reconsolidate(
+    body: DashboardReconsolidateRequest,
+    request: Request,
+    auth: AuthContext = Depends(require_admin_permission),
+):
+    """Release all labile state for a tenant. No belief revision; clears labile sessions. Admin-only."""
+    db: DatabaseManager = request.app.state.db
+    job_id = uuid_mod.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    try:
+        async with db.pg_session() as session:
+            session.add(
+                DashboardJobModel(
+                    id=job_id,
+                    job_type="reconsolidate",
+                    tenant_id=body.tenant_id,
+                    user_id=body.user_id or body.tenant_id,
+                    dry_run=False,
+                    status="running",
+                    started_at=now,
+                )
+            )
+            await session.commit()
+    except Exception:
+        pass
+
+    try:
+        orchestrator = request.app.state.orchestrator
+        sessions_released = (
+            await orchestrator.reconsolidation.labile_tracker.release_all_for_tenant(body.tenant_id)
+        )
+        result_data = {
+            "status": "completed",
+            "tenant_id": body.tenant_id,
+            "sessions_released": sessions_released,
+        }
+        try:
+            async with db.pg_session() as session:
+                await session.execute(
+                    update(DashboardJobModel)
+                    .where(DashboardJobModel.id == job_id)
+                    .values(
+                        status="completed",
+                        result=result_data,
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+        except Exception:
+            pass
+        return result_data
+    except Exception as e:
+        try:
+            async with db.pg_session() as session:
+                await session.execute(
+                    update(DashboardJobModel)
+                    .where(DashboardJobModel.id == job_id)
+                    .values(
+                        status="failed",
+                        error=str(e),
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+        except Exception:
+            pass
+        logger.error("dashboard_reconsolidate_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Reconsolidation failed: {e}")
 
 
 # ---------------------------------------------------------------------------

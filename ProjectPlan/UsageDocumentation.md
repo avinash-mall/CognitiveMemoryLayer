@@ -24,7 +24,7 @@
 The Cognitive Memory Layer is a neuro-inspired memory system designed for LLMs and AI agents. It provides persistent, intelligent memory that goes beyond simple context windows by:
 
 - **Storing** information with automatic importance filtering (Write Gate)
-- **Extracting** cognitive constraints (goals, values, policies, states, causal rules) at write time
+- **Extracting** cognitive constraints (goals, values, policies, states, causal rules) at write time; entity and relation extraction uses batch processing in `encode_batch()` for lower latency on bulk writes
 - **Retrieving** relevant memories using hybrid search (semantic + graph + constraints)
 - **Updating** memories with belief revision and reconsolidation
 - **Forgetting** irrelevant information through intelligent decay and compression
@@ -651,7 +651,7 @@ A web-based dashboard provides comprehensive monitoring and management of the me
 | **Configuration** | Read-only config snapshot showing all settings grouped by section (Application, Database, Embedding, LLM, Auth). Secret values (API keys, passwords) are masked. Each setting shows its current value, default, source (env/override/default), and description. Editable settings (e.g. rate limit RPM, embedding model, debug mode) can be changed inline; overrides are stored in Redis. |
 | **Retrieval Test** | Interactive query tool for debugging memory retrieval. Select a tenant, enter a query, set max results (1-50), optional context filter tags, and format (list/packet/llm_context). Returns scored memory results with relevance bars, type badges, confidence, timestamps, and metadata. If format is `llm_context`, shows the formatted context string in a code block. |
 | **Events** | Paginated event log with filters (event type, operation). Expandable rows show full payload JSON. Optional auto-refresh every 5 seconds. |
-| **Management** | Trigger **consolidation** (tenant/user) and **active forgetting** (tenant/user, dry-run, max memories). Results displayed in place. **Reconsolidation status** section shows labile memory counts from DB and Redis (scopes, sessions, memories) per tenant. **Job history** table shows the last N consolidation/forgetting runs with type, tenant, status, dry-run flag, duration, and expandable result details. Jobs are persisted in the `dashboard_jobs` PostgreSQL table. |
+| **Management** | Trigger **consolidation** (tenant/user), **active forgetting** (tenant/user, dry-run, max memories), and **reconsolidation** (release labile state per tenant). Results displayed in place. **Reconsolidation status** section shows labile memory counts from DB and Redis (scopes, sessions, memories) per tenant. **Job history** table shows the last N consolidation/forgetting/reconsolidation runs with type, tenant, status, dry-run flag, duration, and expandable result details. Jobs are persisted in the `dashboard_jobs` PostgreSQL table. |
 
 ### Tenant Filtering
 
@@ -721,6 +721,7 @@ All dashboard endpoints live under `/api/v1/dashboard` and require **admin** per
 | GET | `/api/v1/dashboard/jobs` | Paginated job history. Query params: `tenant_id`, `job_type`, `limit`. |
 | POST | `/api/v1/dashboard/consolidate` | Trigger consolidation (with job tracking). Body: `{ "tenant_id": "...", "user_id": "..." }`. |
 | POST | `/api/v1/dashboard/forget` | Trigger forgetting (with job tracking). Body: `{ "tenant_id": "...", "user_id": "...", "dry_run": true, "max_memories": 5000 }`. |
+| POST | `/api/v1/dashboard/reconsolidate` | Release all labile state for a tenant (no belief revision). Body: `{ "tenant_id": "...", "user_id": "..." }`. |
 | POST | `/api/v1/dashboard/database/reset` | Drop all tables and re-run migrations (use with caution). |
 
 #### Export
@@ -733,7 +734,7 @@ All dashboard endpoints live under `/api/v1/dashboard` and require **admin** per
 
 - **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/` (no build step). Chart.js for charts; vis-network for knowledge graph visualization. Both loaded via CDN.
 - **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`, `SessionInfo`, `GraphExploreResponse`, `ConfigSection`, `DashboardJobItem`, `DashboardRetrievalRequest`).
-- **Job tracking**: Consolidation and forgetting runs are recorded in the `dashboard_jobs` PostgreSQL table (migration: `002_dashboard_jobs.py`). Job status, result, errors, and duration are tracked.
+- **Job tracking**: Consolidation, forgetting, and reconsolidation runs are recorded in the `dashboard_jobs` PostgreSQL table (migration: `002_dashboard_jobs.py`). Job status, result, errors, and duration are tracked.
 - **Request counting**: The `RequestLoggingMiddleware` increments hourly counters in Redis (`dashboard:reqcount:{YYYY-MM-DD-HH}`) with 48-hour TTL for the API Usage page.
 - **Config overrides**: Runtime config changes are stored in Redis (`dashboard:config:overrides`) as JSON. Only safe settings (non-secrets, non-connection strings) are writable.
 - **Static files**: Served at `/dashboard/static/*`; `/dashboard` and `/dashboard/*` (except `/dashboard/static/*`) serve `index.html` for client-side routing.
@@ -1239,6 +1240,17 @@ All configuration uses nested environment variables with `__` delimiter.
 | `LLM__MODEL` | `gpt-4o-mini` | Model name |
 | `LLM__API_KEY` | None | API key (or use `OPENAI_API_KEY`) |
 | `LLM__BASE_URL` | None | OpenAI-compatible endpoint (for Ollama, vLLM, or proxy) |
+
+#### LLM Internal (optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_INTERNAL__PROVIDER` | None | Provider for internal tasks |
+| `LLM_INTERNAL__MODEL` | None | Model for internal tasks |
+| `LLM_INTERNAL__BASE_URL` | None | Base URL for internal LLM |
+| `LLM_INTERNAL__API_KEY` | None | API key for internal LLM |
+
+When any `LLM_INTERNAL__*` is set, used for SemanticChunker, Entity/Relation extractors, consolidation, reconsolidation, forgetting, QueryClassifier. If not set, default `LLM__*` is used.
 
 #### Auth Settings
 

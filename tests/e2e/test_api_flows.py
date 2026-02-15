@@ -42,7 +42,7 @@ def client(monkeypatch):
     get_settings.cache_clear()
     mock_llm = _MockLLMClient()
     monkeypatch.setattr(
-        "src.memory.orchestrator.get_llm_client",
+        "src.memory.orchestrator.get_internal_llm_client",
         lambda: mock_llm,
     )
     if not os.environ.get("OPENAI_API_KEY"):

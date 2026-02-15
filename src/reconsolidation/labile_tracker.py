@@ -408,3 +408,50 @@ class LabileStateTracker:
             await self._redis.lrem(sk, 0, sess_key)
         # Trim to max_sessions (list is newest-first from LPUSH)
         await self._redis.ltrim(sk, 0, self.max_sessions - 1)
+
+    async def release_all_for_tenant(self, tenant_id: str) -> int:
+        """
+        Release all labile sessions for the given tenant (clear labile state).
+        Returns the number of sessions released. No belief revision is applied.
+        """
+        if self._redis is not None:
+            async with self._lock:
+                return await self._release_all_for_tenant_redis(tenant_id)
+        async with self._lock:
+            return await self._release_all_for_tenant_memory(tenant_id)
+
+    async def _release_all_for_tenant_memory(self, tenant_id: str) -> int:
+        """Release all labile sessions for tenant (in-memory backend)."""
+        prefix = tenant_id + ":"
+        count = 0
+        for scope_key in list(self._scope_sessions.keys()):
+            if not scope_key.startswith(prefix):
+                continue
+            for session_key in self._scope_sessions.get(scope_key, []):
+                if session_key in self._sessions:
+                    del self._sessions[session_key]
+                    count += 1
+            del self._scope_sessions[scope_key]
+        return count
+
+    async def _release_all_for_tenant_redis(self, tenant_id: str) -> int:
+        """Release all labile sessions for tenant (Redis backend)."""
+        # Redis scope keys: labile:scope:tenant_id:scope_id
+        match_pattern = f"labile:scope:{tenant_id}:*"
+        cursor = 0
+        total_released = 0
+        while True:
+            cursor, keys = await self._redis.scan(cursor, match=match_pattern, count=200)
+            for key in keys:
+                sk = key.decode() if isinstance(key, bytes) else key
+                # sk is full Redis key e.g. "labile:scope:lp-0:session_1"
+                raw_list = await self._redis.lrange(sk, 0, -1)
+                session_keys = [k.decode() if isinstance(k, bytes) else k for k in raw_list]
+                for sess_key in session_keys:
+                    rk = self._redis_session_key(sess_key)
+                    await self._redis.delete(rk)
+                    total_released += 1
+                await self._redis.delete(sk)
+            if cursor == 0:
+                break
+        return total_released

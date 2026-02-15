@@ -163,6 +163,12 @@ export function triggerForget(tenantId, userId, dryRun = true, maxMemories = 500
     });
 }
 
+export function triggerReconsolidate(tenantId, userId) {
+    return request('POST', '/reconsolidate', {
+        body: { tenant_id: tenantId, user_id: userId || null },
+    });
+}
+
 export function resetDatabase() {
     return request('POST', '/database/reset');
 }
