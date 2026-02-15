@@ -99,6 +99,28 @@ class TestRelationExtractor:
         result = await extractor.extract("Some text.")
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_extract_batch_returns_list_of_relation_lists(self, mock_llm):
+        mock_llm.complete.return_value = """[
+            {"subject": "A", "predicate": "knows", "object": "B", "confidence": 0.9}
+        ]"""
+        extractor = RelationExtractor(llm_client=mock_llm)
+        items = [("Alice knows Bob.", []), ("Carol works in Paris.", [])]
+        result = await extractor.extract_batch(items)
+        assert len(result) == 2
+        assert len(result[0]) == 1
+        assert result[0][0].subject == "A"
+        assert result[0][0].predicate == "knows"
+        assert result[0][0].object == "B"
+        assert len(result[1]) == 1
+        mock_llm.complete.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_extract_batch_empty_list(self, mock_llm):
+        extractor = RelationExtractor(llm_client=mock_llm)
+        result = await extractor.extract_batch([])
+        assert result == []
+
 
 class TestFactExtractor:
     """FactExtractor base (no-op) and LLMFactExtractor."""

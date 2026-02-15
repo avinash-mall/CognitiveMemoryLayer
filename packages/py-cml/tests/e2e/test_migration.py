@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 
@@ -27,8 +29,8 @@ async def test_export_import_embedded_to_server(live_client, tmp_path):
 
     try:
         async with EmbeddedCognitiveMemoryLayer() as emb:
-            await emb.write("Exported memory one")
-            await emb.write("Exported memory two")
+            await emb.write("User loves Python and prefers it for scripting")
+            await emb.write("User lives in Paris and works as a developer")
             out_path = tmp_path / "export.jsonl"
             count = await export_memories_async(emb, str(out_path), format="jsonl")
             assert count >= 2
@@ -38,5 +40,10 @@ async def test_export_import_embedded_to_server(live_client, tmp_path):
         raise
     imported = await import_memories_async(live_client, str(out_path))
     assert imported >= 2
-    r = await live_client.read("Exported")
-    assert r.total_count >= 2
+    # Retry read: server indexing can be eventually consistent
+    for _ in range(5):
+        r = await live_client.read("Python and Paris")
+        if r.total_count >= 2:
+            break
+        await asyncio.sleep(1.0)
+    assert r.total_count >= 2, f"Expected >= 2 memories, got {r.total_count} after import"

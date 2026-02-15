@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-02-15
+
 ### Added
 
+- **reconsolidate()** — Sync and async clients (and `NamespacedClient` / `AsyncNamespacedClient`) now expose `reconsolidate(tenant_id=..., user_id=...)`. Calls `POST /dashboard/reconsolidate` to release all labile state for a tenant (no belief revision). Requires admin API key. `ReconsolidationResult` typed dict added in `cml.models.responses` for the response shape; exported from `cml.models`.
 - **Constraints in ReadResponse** — `ReadResponse` now includes a `constraints` field (`list[MemoryItem]`, default empty). When the CML server returns cognitive constraints (goals, values, policies, states, causal rules) from the retrieval pipeline, they appear here alongside `facts`, `preferences`, and `episodes`. Requires a CML server with constraint extraction enabled (`FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true`).
 - **user_timezone for read and turn** — Optional `user_timezone` parameter on `read()`, `read_safe()`, and `turn()` (sync, async, and embedded clients). When provided (e.g. `"America/New_York"`), the server uses it for timezone-aware "today"/"yesterday" filters in retrieval. Requires a CML server that accepts `user_timezone` on the read and turn APIs.
 - **Optional embedding/LLM in tests** — Embedded lite-mode tests `test_write_and_read` and `test_persistent_storage` now skip (instead of fail) when the embedding model is unavailable. Skip is triggered on `ImportError`, `OSError`, or `RuntimeError`, or when any other exception message contains "model", "embed", or "rate" (e.g. sentence-transformers load failure, API or rate-limit errors). See repo `tests/README.md` § Optional LLM/embedding tests.
@@ -23,10 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **configuration.md** — Embedded configuration table documents that `dimensions` can be set via `EMBEDDING__DIMENSIONS` in `.env` (default 384). Added "Server-side feature flags and retrieval" subsection with link to main project Configuration Reference for `FEATURES__*` and `RETRIEVAL__*`.
+- **Server LLM_INTERNAL** — The CML server supports optional `LLM_INTERNAL__*` for internal tasks. When configured, the server uses a separate model for chunking, entity/relation extraction, and consolidation. Helps accelerate bulk ingestion (e.g. evaluation). See [configuration](docs/configuration.md).
+- **configuration.md** — Embedded configuration table documents that `dimensions` can be set via `EMBEDDING__DIMENSIONS` in `.env` (default 384). Added "Server-side feature flags and retrieval" subsection with link to main project Configuration Reference for `FEATURES__*` and `RETRIEVAL__*`. Added "LLM Internal (server-side)" subsection for `LLM_INTERNAL__*`.
 - **api-reference.md** — Documented `user_timezone` on `read()` and `turn()` (optional IANA timezone for "today"/"yesterday" retrieval).
 - **examples.md** — Mentioned `read(..., user_timezone=...)` and `turn(..., user_timezone=...)` for timezone-aware queries.
 - **README.md** — Added one line about optional `user_timezone` on read/turn in the Memory API features table.
+- **api-reference.md** — Documented `reconsolidate()` in admin methods; updated `get_jobs()` description to include reconsolidation job history.
+- **get_jobs() docstrings** — Sync and async clients now document `job_type` as `"consolidate"`, `"forget"`, or `"reconsolidate"`.
 
 ## [1.1.0] - 2026-02-12
 

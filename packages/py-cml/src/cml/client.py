@@ -574,6 +574,36 @@ class CognitiveMemoryLayer:
             use_admin_key=True,
         )
 
+    def reconsolidate(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Release all labile state for a tenant (no belief revision).
+
+        Clears labile sessions so memories are no longer in labile state.
+        Requires admin API key.
+
+        Args:
+            tenant_id: Target tenant (defaults to configured tenant).
+            user_id: Optional specific user within tenant.
+
+        Returns:
+            Dict with status, tenant_id, sessions_released.
+        """
+        payload: dict[str, Any] = {
+            "tenant_id": tenant_id or self._config.tenant_id,
+        }
+        if user_id is not None:
+            payload["user_id"] = user_id
+        return self._transport.request(
+            "POST",
+            "/dashboard/reconsolidate",
+            json=payload,
+            use_admin_key=True,
+        )
+
     # ---- Phase 5: Batch operations ----
 
     def batch_write(
@@ -940,7 +970,7 @@ class CognitiveMemoryLayer:
 
         Args:
             tenant_id: Optional tenant filter.
-            job_type: Optional type filter ("consolidate" or "forget").
+            job_type: Optional type filter ("consolidate", "forget", or "reconsolidate").
             limit: Max results.
 
         Returns:
@@ -1357,6 +1387,14 @@ class NamespacedClient:
             dry_run=dry_run,
             max_memories=max_memories,
         )
+
+    def reconsolidate(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._parent.reconsolidate(tenant_id=tenant_id, user_id=user_id)
 
     def batch_write(
         self,

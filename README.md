@@ -78,7 +78,7 @@ The **Cognitive Memory Layer (CML)** solves this by implementing the Multi-Store
 | **Dual-Store Architecture** | Hippocampal (episodic, pgvector) + Neocortical (semantic, Neo4j) stores following CLS theory |
 | **Semantic Chunking** | LLM-based and rule-based chunking with 8 chunk types including constraints |
 | **Write Gate (CREB/Npas4)** | Salience scoring, novelty check, PII redaction, risk assessment |
-| **Extraction Pipeline** | Entity, fact, relation, and cognitive constraint extraction at write time |
+| **Extraction Pipeline** | Entity, fact, relation, and cognitive constraint extraction at write time; batch entity/relation extraction in `encode_batch()` |
 | **Hybrid Retrieval** | Query classification (10 intents) &rarr; parallel vector + graph search &rarr; reranking &rarr; memory packets |
 | **Cognitive Constraints** | Goal/value/policy/state/causal extraction, constraint-aware retrieval, supersession |
 | **Reconsolidation** | Labile state tracking, conflict detection, 6 belief revision strategies |
@@ -395,6 +395,7 @@ flowchart TD
 | Pattern separation | Content-based stable keys (SHA256) + unique embeddings | `PostgresMemoryStore` |
 | Write-time facts | `WriteTimeFactExtractor` populates semantic store at write time | `src/extraction/write_time_facts.py` |
 | Constraint extraction | `ConstraintExtractor` detects goals/values/policies/states/causal at encode time | `src/extraction/constraint_extractor.py` |
+| Batch entity/relation extraction | `RelationExtractor.extract_batch()` in `encode_batch()` reduces per-chunk LLM calls | `src/extraction/relation_extractor.py` |
 | Contextual binding | Metadata: time, agent, turn, speaker, constraints | `MemoryRecord` schema |
 
 **Reference**: HippoRAG (2024) &mdash; "Neurobiologically Inspired Long-Term Memory for LLMs"
@@ -719,7 +720,7 @@ CML supports 15 memory types reflecting different cognitive functions:
 | Cache / Queue | **Redis** | Embedding cache (MGET/pipeline), Celery broker, rate limiting, session store |
 | Workers | **Redis + Celery** | Background consolidation and forgetting, optional async storage pipeline |
 | Embeddings | **OpenAI / sentence-transformers** | Configurable; batched + cached with Redis |
-| LLM | **OpenAI / Ollama / compatible** | Extraction, summarization, chunking |
+| LLM | **OpenAI / Ollama / compatible** | Extraction, summarization, chunking; optional `LLM_INTERNAL__*` for chunking/extraction/consolidation (bulk ingestion) |
 | Observability | **Prometheus + structlog** | Per-step retrieval metrics, structured logging |
 
 ---
@@ -981,8 +982,11 @@ python scripts/run_full_eval.py
 The evaluation pipeline:
 1. Parses LoCoMo conversation data with `DATE:` lines into UTC timestamps
 2. Writes each utterance to CML with temporal fidelity and speaker metadata
-3. Queries CML with benchmark questions using neutral prompting
-4. Scores responses using LLM-as-judge
+3. Runs consolidation and reconsolidation (release labile) for each eval tenant via the dashboard API, unless `--skip-consolidation` is set
+4. Queries CML with benchmark questions using neutral prompting
+5. Scores responses using LLM-as-judge
+
+Use `--ingestion-workers N` (default 10) for concurrent Phase A ingestion; optional `LLM_INTERNAL__*` in `.env` for faster extraction.
 
 See [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/RunEvaluation.md](ProjectPlan/LocomoEval/RunEvaluation.md).
 

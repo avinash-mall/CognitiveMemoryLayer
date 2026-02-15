@@ -362,6 +362,13 @@ class DashboardForgetRequest(BaseModel):
     max_memories: int = 5000
 
 
+class DashboardReconsolidateRequest(BaseModel):
+    """Request to trigger reconsolidation (release all labile state for tenant)."""
+
+    tenant_id: str
+    user_id: str | None = None
+
+
 # ---- Sessions Schemas ----
 
 
