@@ -29,6 +29,14 @@ class ForgettingResult(TypedDict, total=False):
     dry_run: bool
 
 
+class ReconsolidationResult(TypedDict, total=False):
+    """Typed dict for reconsolidate() result. Server may return additional fields."""
+
+    status: str
+    tenant_id: str
+    sessions_released: int
+
+
 class MemoryItem(BaseModel):
     """A single memory item from retrieval."""
 

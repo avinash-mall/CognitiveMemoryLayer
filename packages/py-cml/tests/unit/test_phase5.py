@@ -82,6 +82,29 @@ def test_run_forgetting_calls_dashboard_forget(cml_config: CMLConfig) -> None:
     assert call[1]["use_admin_key"] is True
 
 
+def test_reconsolidate_calls_dashboard_reconsolidate(cml_config: CMLConfig) -> None:
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t1",
+    )
+    client = CognitiveMemoryLayer(config=config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "status": "completed",
+            "tenant_id": "t1",
+            "sessions_released": 2,
+        }
+    )
+    out = client.reconsolidate()
+    assert out["sessions_released"] == 2
+    client._transport.request.assert_called_once()
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/dashboard/reconsolidate")
+    assert call[1]["json"]["tenant_id"] == "t1"
+    assert call[1]["use_admin_key"] is True
+
+
 # ---- Batch operations ----
 
 

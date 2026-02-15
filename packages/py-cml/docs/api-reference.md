@@ -43,6 +43,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 - **consolidate(\*, tenant_id, user_id)** → `dict` — Trigger memory consolidation (episodic → semantic). Requires admin API key.
 - **run_forgetting(\*, tenant_id, user_id, dry_run=True, max_memories=5000)** → `dict` — Trigger active forgetting cycle.
+- **reconsolidate(\*, tenant_id, user_id)** → `dict` — Release all labile state for a tenant (no belief revision). Requires admin API key.
 - **batch_write(items, \*, session_id, namespace)** → `list[WriteResponse]` — Write multiple memories sequentially.
 - **batch_read(queries, \*, max_results, response_format)** → `list[ReadResponse]` — Execute multiple read queries.
 - **list_tenants()** → `list[dict]` — List all tenants with memory/fact/event counts and last activity.
@@ -63,7 +64,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **update_config(updates)** → `dict` — Set runtime configuration overrides stored in Redis.
 - **get_labile_status(\*, tenant_id)** → `dict` — Reconsolidation / labile memory status per tenant.
 - **test_retrieval(query, \*, tenant_id, max_results=10, context_filter, memory_types, response_format="list")** → `dict` — Test retrieval via the dashboard API; returns scored memories and optional LLM context.
-- **get_jobs(\*, tenant_id, job_type, limit=50)** → `dict` — List recent consolidation/forgetting job history with status and results.
+- **get_jobs(\*, tenant_id, job_type, limit=50)** → `dict` — List recent consolidation/forgetting/reconsolidation job history with status and results.
 - **bulk_memory_action(memory_ids, action)** → `dict` — Apply "archive", "silence", or "delete" to multiple memories in bulk.
 
 All admin methods require `CML_ADMIN_API_KEY` to be configured. They are available on both `CognitiveMemoryLayer` / `AsyncCognitiveMemoryLayer` and their `NamespacedClient` / `AsyncNamespacedClient` wrappers.

@@ -532,7 +532,7 @@ class TestOrchestratorFactory:
         mock_db.redis = None
 
         with (
-            patch("src.memory.orchestrator.get_llm_client") as mock_llm,
+            patch("src.memory.orchestrator.get_internal_llm_client") as mock_llm,
             patch("src.memory.orchestrator.get_embedding_client") as mock_emb,
             patch("src.memory.orchestrator.Neo4jGraphStore"),
             patch("src.memory.orchestrator.PostgresMemoryStore"),
