@@ -112,6 +112,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Set VERSION from tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/py-cml-v}" >> $GITHUB_ENV
       - run: pip install build
       - run: python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
