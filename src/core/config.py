@@ -53,6 +53,17 @@ class LLMSettings(PydanticBaseModel):
     )  # OpenAI-compatible endpoint; for openai_compatible/ollama or proxy
 
 
+class LLMInternalSettings(PydanticBaseModel):
+    """Optional separate LLM for internal tasks (chunking, entity/relation extraction, consolidation).
+    When any field is set, used for SemanticChunker, Entity/Relation extractors, consolidation,
+    reconsolidation, forgetting, QueryClassifier. If not set, LLM__* is used."""
+
+    provider: str | None = Field(default=None)
+    model: str | None = Field(default=None)
+    base_url: str | None = Field(default=None)
+    api_key: str | None = Field(default=None)
+
+
 class AuthSettings(PydanticBaseModel):
     """
     API authentication (keys from environment).
@@ -130,6 +141,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    llm_internal: LLMInternalSettings = Field(default_factory=LLMInternalSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)

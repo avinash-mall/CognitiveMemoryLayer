@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -101,10 +102,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--limit-samples", type=int, default=None)
     p.add_argument("--skip-ingestion", action="store_true")
     p.add_argument(
+        "--skip-consolidation",
+        action="store_true",
+        help="Skip consolidation and reconsolidation between Phase A and Phase B",
+    )
+    p.add_argument(
         "--score-only", action="store_true", help="Run only Phase C (judge) on existing predictions"
     )
     p.add_argument("--judge-model", type=str, default="gpt-4o-mini", help="Model for LLM-as-judge")
     p.add_argument("--verbose", action="store_true", help="Emit per-sample retrieval diagnostics")
+    p.add_argument(
+        "--ingestion-workers",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Number of concurrent workers for Phase A ingestion (default 10)",
+    )
     return p.parse_args()
 
 
@@ -170,6 +183,30 @@ def _cml_write(
             continue
         resp.raise_for_status()
         return
+    raise requests.exceptions.HTTPError("429 Too Many Requests", response=resp)
+
+
+def _dashboard_post(
+    base_url: str,
+    api_key: str,
+    path: str,
+    body: dict,
+    max_attempts: int = 5,
+    backoff_cap_sec: int = 30,
+) -> dict:
+    """POST to a dashboard endpoint; raises on non-2xx. Used for consolidate and reconsolidate."""
+    url = f"{base_url.rstrip('/')}/api/v1/dashboard{path}"
+    headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
+    for attempt in range(max_attempts):
+        resp = requests.post(url, json=body, headers=headers, timeout=120)
+        if resp.status_code == 429:
+            if attempt == max_attempts - 1:
+                resp.raise_for_status()
+            wait = min(backoff_cap_sec, 5 * (2**attempt))
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json()
     raise requests.exceptions.HTTPError("429 Too Many Requests", response=resp)
 
 
@@ -249,41 +286,97 @@ def _ollama_available(base_url: str, model: str | None = None) -> None:
     raise RuntimeError(f"Cannot reach Ollama at {base_url}. Start with 'ollama serve'.")
 
 
+def _ingest_sample(
+    cml_url: str,
+    cml_api_key: str,
+    sample_idx: int,
+    sample: dict,
+    ingestion_delay_sec: float,
+) -> None:
+    """Ingest one sample: write all turns sequentially for tenant lp-{sample_idx}."""
+    tenant_id = f"lp-{sample_idx}"
+    input_prompt = sample.get("input_prompt", "")
+    turns = _parse_input_prompt_into_turns(input_prompt)
+    for j, (session_id, content, date_str) in enumerate(turns):
+        speaker = content.split(":")[0].strip() if ":" in content else "unknown"
+        parsed_ts = _parse_date_str(date_str)
+        ts_iso = parsed_ts.isoformat() if parsed_ts else None
+        metadata = {
+            "locomo_plus_idx": sample_idx,
+            "turn_idx": j,
+            "speaker": speaker,
+            "date_str": date_str or "",
+            "session_idx": int(session_id.split("_")[-1]) if "_" in session_id else 1,
+        }
+        _cml_write(
+            cml_url,
+            cml_api_key,
+            tenant_id,
+            content,
+            session_id,
+            metadata,
+            f"turn_{j}",
+            timestamp=ts_iso,
+        )
+        if ingestion_delay_sec > 0:
+            time.sleep(ingestion_delay_sec)
+
+
 def phase_a_ingestion(
     samples: list[dict],
     cml_url: str,
     cml_api_key: str,
     limit: int | None,
+    ingestion_workers: int = 10,
 ) -> None:
     samples_to_ingest = samples[:limit] if limit else samples
-    print(f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples into CML...", flush=True)
-    for i, sample in enumerate(tqdm(samples_to_ingest, desc="Ingestion", unit="sample")):
-        tenant_id = f"lp-{i}"
-        input_prompt = sample.get("input_prompt", "")
-        turns = _parse_input_prompt_into_turns(input_prompt)
-        for j, (session_id, content, date_str) in enumerate(turns):
-            # Extract speaker from "Speaker: text" format
-            speaker = content.split(":")[0].strip() if ":" in content else "unknown"
-            parsed_ts = _parse_date_str(date_str)
-            ts_iso = parsed_ts.isoformat() if parsed_ts else None
-            metadata = {
-                "locomo_plus_idx": i,
-                "turn_idx": j,
-                "speaker": speaker,
-                "date_str": date_str or "",
-                "session_idx": int(session_id.split("_")[-1]) if "_" in session_id else 1,
+    # Apply per-turn delay only when single-threaded (rate limiting)
+    ingestion_delay = INGESTION_DELAY_SEC if ingestion_workers == 1 else 0.0
+
+    print(
+        f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples into CML ({ingestion_workers} workers)...",
+        flush=True,
+    )
+
+    if ingestion_workers <= 1:
+        for i, sample in enumerate(tqdm(samples_to_ingest, desc="Ingestion", unit="sample")):
+            _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay)
+    else:
+        with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
+            futures = {
+                executor.submit(_ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay): i
+                for i, sample in enumerate(samples_to_ingest)
             }
-            _cml_write(
-                cml_url,
-                cml_api_key,
-                tenant_id,
-                content,
-                session_id,
-                metadata,
-                f"turn_{j}",
-                timestamp=ts_iso,
-            )
-            time.sleep(INGESTION_DELAY_SEC)
+            for future in tqdm(
+                as_completed(futures), total=len(futures), desc="Ingestion", unit="sample"
+            ):
+                future.result()  # Propagate any exception
+
+
+def phase_ab_consolidation(
+    samples: list[dict],
+    cml_url: str,
+    cml_api_key: str,
+    limit: int | None,
+) -> None:
+    """Run consolidation then reconsolidation for each eval tenant (between Phase A and Phase B)."""
+    samples_scope = samples[:limit] if limit else samples
+    n = len(samples_scope)
+    if n == 0:
+        return
+    print(
+        f"\n[Phase A-B] Consolidation and reconsolidation for {n} tenants...",
+        flush=True,
+    )
+    for i in range(n):
+        tenant_id = f"lp-{i}"
+        body = {"tenant_id": tenant_id, "user_id": None}
+        try:
+            _dashboard_post(cml_url, cml_api_key, "/consolidate", body)
+            _dashboard_post(cml_url, cml_api_key, "/reconsolidate", body)
+        except requests.RequestException as e:
+            raise RuntimeError(f"Dashboard step failed for tenant {tenant_id}: {e}") from e
+    print(f"  Completed for {n} tenants.", flush=True)
 
 
 def _count_memory_types(raw_response: dict) -> dict[str, int]:
@@ -332,9 +425,7 @@ def phase_b_qa(
             llm_context, raw_response = read_result
             type_counts = _count_memory_types(raw_response)
             tqdm.write(
-                f"  [{category}] sample={i} "
-                f"types={type_counts} "
-                f"context_len={len(llm_context)}"
+                f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
             )
         else:
             llm_context = read_result
@@ -424,7 +515,16 @@ def main() -> None:
         print(f"Loaded {len(samples)} samples", flush=True)
 
     if not args.skip_ingestion:
-        phase_a_ingestion(samples, args.cml_url, args.cml_api_key, args.limit_samples)
+        phase_a_ingestion(
+            samples,
+            args.cml_url,
+            args.cml_api_key,
+            args.limit_samples,
+            ingestion_workers=args.ingestion_workers,
+        )
+
+    if not args.skip_consolidation:
+        phase_ab_consolidation(samples, args.cml_url, args.cml_api_key, args.limit_samples)
 
     records = phase_b_qa(
         samples,

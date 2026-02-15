@@ -1,5 +1,6 @@
 """Relation (OpenIE-style) extraction from text."""
 
+import asyncio
 import json
 import re
 
@@ -74,6 +75,11 @@ class RelationExtractor:
             ]
         except (json.JSONDecodeError, KeyError, TypeError):
             return []
+
+    async def extract_batch(self, items: list[tuple[str, list[str]]]) -> list[list[Relation]]:
+        """Extract relations from multiple (text, entity_texts) pairs concurrently."""
+        tasks = [self.extract(text, entities=entities) for text, entities in items]
+        return list(await asyncio.gather(*tasks))
 
     def _normalize_predicate(self, predicate: str) -> str:
         normalized = re.sub(r"[\s\-]+", "_", predicate.lower())

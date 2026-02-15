@@ -1,7 +1,7 @@
 """Unit tests for dashboard API routes (auth and response shape with mocked DB)."""
 
 import os
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import Request
@@ -172,6 +172,15 @@ class TestDashboardAuth:
             )
         assert resp.status_code == 403
 
+    def test_reconsolidate_with_user_key_returns_403(self, user_headers):
+        """Dashboard reconsolidate requires admin key."""
+        with TestClient(app, headers=user_headers) as client:
+            resp = client.post(
+                "/api/v1/dashboard/reconsolidate",
+                json={"tenant_id": "t1"},
+            )
+        assert resp.status_code == 403
+
     def test_database_reset_with_user_key_returns_403(self, user_headers):
         """Dashboard database reset requires admin key."""
         with TestClient(app, headers=user_headers) as client:
@@ -276,6 +285,49 @@ class TestDashboardWithAdminAndMockDb:
         finally:
             app.dependency_overrides.pop(_get_db, None)
 
+    def test_reconsolidate_returns_200_and_shape(self, admin_headers, mock_db):
+        """Dashboard reconsolidate returns 200 and result shape when orchestrator is mocked."""
+        mock_labile = MagicMock()
+        mock_labile.release_all_for_tenant = AsyncMock(return_value=3)
+        mock_recon = MagicMock()
+        mock_recon.labile_tracker = mock_labile
+        mock_orchestrator = MagicMock()
+        mock_orchestrator.reconsolidation = mock_recon
+
+        # Session for job tracking: add, commit, execute
+        mock_session = _make_mock_db_session()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+
+        class AsyncSessionCM:
+            async def __aenter__(self):
+                return mock_session
+
+            async def __aexit__(self, *args):
+                pass
+
+        mock_db.pg_session = MagicMock(return_value=AsyncSessionCM())
+
+        _override_get_db(mock_db)
+        try:
+            with (
+                patch.object(app.state, "orchestrator", mock_orchestrator),
+                patch.object(app.state, "db", mock_db),
+                TestClient(app, headers=admin_headers) as client,
+            ):
+                resp = client.post(
+                    "/api/v1/dashboard/reconsolidate",
+                    json={"tenant_id": "t1"},
+                )
+                assert resp.status_code == 200
+                data = resp.json()
+                assert data.get("status") == "completed"
+                assert data.get("tenant_id") == "t1"
+                assert "sessions_released" in data
+                assert isinstance(data["sessions_released"], int)
+        finally:
+            app.dependency_overrides.pop(_get_db, None)
+
 
 class TestDashboardSchemas:
     """Tests for dashboard request/response schemas."""
@@ -303,3 +355,14 @@ class TestDashboardSchemas:
         req2 = DashboardForgetRequest(tenant_id="t2", dry_run=False, max_memories=100)
         assert req2.dry_run is False
         assert req2.max_memories == 100
+
+    def test_dashboard_reconsolidate_request(self):
+        """DashboardReconsolidateRequest validates tenant_id and optional user_id."""
+        from src.api.schemas import DashboardReconsolidateRequest
+
+        req = DashboardReconsolidateRequest(tenant_id="t1")
+        assert req.tenant_id == "t1"
+        assert req.user_id is None
+
+        req2 = DashboardReconsolidateRequest(tenant_id="t2", user_id="u2")
+        assert req2.user_id == "u2"

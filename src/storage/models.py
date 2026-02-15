@@ -147,7 +147,9 @@ class DashboardJobModel(Base):
     __tablename__ = "dashboard_jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    job_type = Column(String(30), nullable=False, index=True)  # consolidate / forget
+    job_type = Column(
+        String(30), nullable=False, index=True
+    )  # consolidate / forget / reconsolidate
     tenant_id = Column(String(100), nullable=False, index=True)
     user_id = Column(String(100), nullable=True)
     dry_run = Column(Boolean, default=False)

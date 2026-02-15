@@ -16,21 +16,22 @@ This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 
 1. **CML API** running (e.g. via Docker; see main project README).
 2. **Ollama** on the host:
-   - **Embedding model** `embeddinggemma` (for CML ingestion/retrieval)
+   - **Embedding model** — read from project root `.env`: `EMBEDDING__MODEL`, `EMBEDDING__DIMENSIONS`. Use any supported model (e.g. `mxbai-embed-large:latest` with 1024 dims, or `embeddinggemma` with 768). Pull with `ollama pull <model>`; set dimensions to match model output, then drop DBs and re-run migrations if changed.
    - **QA model** `gpt-oss:20b` or `gpt-oss-20b` (set via `OLLAMA_QA_MODEL` or `--ollama-model`)
-   - Set `EMBEDDING__DIMENSIONS` in project root `.env` to match your embedding model (e.g. 768 for EmbeddingGemma). If you change it, drop DBs and re-run migrations.
 3. **Python deps**: `requests`, `tqdm`; for LLM-as-judge, set `OPENAI_API_KEY` (or point at an Ollama-compatible `OPENAI_BASE_URL`).
 
 For a step-by-step runbook, see [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md).
 
 ## Configuration
 
+CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is read from the project root `.env`. See [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md) for full setup.
+
 ### Environment variables (eval script)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CML_BASE_URL` | `http://localhost:8000` | CML API base URL |
-| `CML_API_KEY` | `test-key` | API key (must match `AUTH__API_KEY`) |
+| `CML_API_KEY` | `test-key` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama URL (no `/v1`) |
 | `OLLAMA_QA_MODEL` | `gpt-oss:20b` | Ollama model for QA |
 | `OPENAI_API_KEY` | — | Required for LLM-as-judge |
@@ -43,7 +44,7 @@ From the **project root**:
 python evaluation/scripts/run_full_eval.py
 ```
 
-This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, QA, judge), (5) performance table.
+This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, consolidation + reconsolidation, QA, judge), (5) performance table.
 
 ### Options
 
@@ -74,7 +75,9 @@ The pipeline prints a table matching the paper format:
 
 ## Run evaluation manually
 
-When you need finer control (e.g. skip ingestion, score-only, verbose):
+Between **Phase A** (ingestion) and **Phase B** (QA), the script runs **consolidation** and **reconsolidation** (release labile) for each eval tenant via the dashboard API, unless `--skip-consolidation` is set. The API key must have dashboard/admin permission for this step.
+
+When you need finer control (e.g. skip ingestion, skip consolidation, score-only, verbose):
 
 **Windows (PowerShell):**
 
@@ -95,7 +98,9 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | Argument | Description |
 |----------|-------------|
 | `--limit-samples N` | Run only first N samples |
+| `--ingestion-workers N` | Concurrent workers for Phase A ingestion (default 10) |
 | `--skip-ingestion` | Skip Phase A (reuse existing CML state) |
+| `--skip-consolidation` | Skip consolidation and reconsolidation between Phase A and Phase B |
 | `--score-only` | Run only Phase C (judge) on existing predictions |
 | `--max-results N` | CML read top-k (default 25) |
 | `--verbose` | Per-sample retrieval diagnostics |
