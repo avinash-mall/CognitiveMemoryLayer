@@ -123,7 +123,7 @@ class FeatureFlags(PydanticBaseModel):
     )
     use_chonkie_for_large_text: bool = Field(
         default=True,
-        description="Use Chonkie semantic chunking when input text exceeds threshold (requires chonkie[semantic])",
+        description="Use Chonkie semantic chunking when input text exceeds threshold (embedding-based, no LLM; requires chonkie[semantic])",
     )
     chunker_large_text_threshold_chars: int = Field(
         default=0,
