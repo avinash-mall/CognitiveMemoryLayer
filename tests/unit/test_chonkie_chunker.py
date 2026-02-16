@@ -37,9 +37,10 @@ class TestChonkieUnavailableError:
                 raise ImportError("No module named 'chonkie'")
             return real_import(name, *args, **kwargs)
 
-        with patch("builtins.__import__", side_effect=fail_chonkie_only), pytest.raises(
-            ChonkieUnavailableError
-        ) as exc_info:
+        with (
+            patch("builtins.__import__", side_effect=fail_chonkie_only),
+            pytest.raises(ChonkieUnavailableError) as exc_info,
+        ):
             _get_chonkie_semantic_chunker()
         assert "chonkie" in str(exc_info.value).lower() or "install" in str(exc_info.value).lower()
 
