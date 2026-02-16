@@ -13,6 +13,7 @@ from .models import ChunkType, SemanticChunk
 class ChonkieUnavailableError(RuntimeError):
     """Raised when Chonkie is requested but chonkie[semantic] is not installed."""
 
+
 CHUNKING_PROMPT = """Analyze the following text and extract semantically meaningful chunks.
 
 For each chunk, identify:
