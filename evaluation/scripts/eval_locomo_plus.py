@@ -27,6 +27,7 @@ from pathlib import Path
 # Load project .env so LLM__* (and CML_*, OLLAMA_*) are available for judge and QA
 try:
     from dotenv import load_dotenv
+
     _repo_root = Path(__file__).resolve().parent.parent.parent
     load_dotenv(_repo_root / ".env")
 except ImportError:
@@ -191,9 +192,7 @@ def _cml_write(
     for retry in range(_CML_WRITE_RETRIES):
         for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
             try:
-                resp = requests.post(
-                    url, json=payload, headers=headers, timeout=_CML_WRITE_TIMEOUT
-                )
+                resp = requests.post(url, json=payload, headers=headers, timeout=_CML_WRITE_TIMEOUT)
                 if resp.status_code in [429, 500]:
                     if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
                         resp.raise_for_status()

@@ -7,10 +7,11 @@ NEO4J_URL = os.getenv("NEO4J_URL", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
+
 async def debug_neo4j():
     print(f"Connecting to {NEO4J_URL} as {NEO4J_USER}...")
     driver = AsyncGraphDatabase.driver(NEO4J_URL, auth=(NEO4J_USER, NEO4J_PASSWORD))
-    
+
     async with driver.session() as session:
         # 1. Count all nodes
         result = await session.run("MATCH (n) RETURN count(n) as count")
@@ -36,7 +37,7 @@ async def debug_neo4j():
         tenant_id = "lp-0"
         scope_id = "lp-0"
         print(f"\nSimulating getGraphOverview for tenant={tenant_id}, scope={scope_id}...")
-        
+
         # 6a. Find center node (FIXED syntax)
         query_center = """
         MATCH (n:Entity {tenant_id: $tenant_id, scope_id: $scope_id})
@@ -51,7 +52,7 @@ async def debug_neo4j():
             center_entity = record["entity"]
             degree = record["deg"]
             print(f"Center entity: '{center_entity}' (degree={degree})")
-            
+
             # 6b. Get neighbors (simplified version of dashboard query)
             query_neighbors = """
             MATCH path = (start:Entity {
@@ -60,7 +61,9 @@ async def debug_neo4j():
             WHERE neighbor.tenant_id = $tenant_id AND neighbor.scope_id = $scope_id
             RETURN count(neighbor) as tumor
             """
-            result = await session.run(query_neighbors, tenant_id=tenant_id, scope_id=scope_id, entity=center_entity)
+            result = await session.run(
+                query_neighbors, tenant_id=tenant_id, scope_id=scope_id, entity=center_entity
+            )
             record = await result.single()
             print(f"Neighbors count: {record['tumor']}")
 
@@ -68,6 +71,7 @@ async def debug_neo4j():
             print("No center entity found.")
 
     await driver.close()
+
 
 if __name__ == "__main__":
     asyncio.run(debug_neo4j())
