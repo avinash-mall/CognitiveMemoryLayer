@@ -1,0 +1,3 @@
+{"message": "ingest_sample_done", "data": {"sample_idx": 0, "turns": 419, "elapsed_sec": 89.25}, "hypothesisId": "B", "timestamp": 1771175649279.2207}
+{"message": "consolidation_done", "data": {"tenant_id": "lp-0", "consolidate_sec": 31.375, "reconsolidate_sec": 0.016}, "hypothesisId": "C", "timestamp": 1771175680675.0325}
+{"message": "phase_b_qa_sample", "data": {"sample_idx": 0, "cml_read_sec": 0.454, "ollama_sec": 8.407, "model": "gpt-oss:20b"}, "hypothesisId": "D", "timestamp": 1771175689600.9756}

@@ -22,9 +22,17 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
+
+# Load project .env so LLM__* (and CML_*, OLLAMA_*) are available for judge and QA
+try:
+    from dotenv import load_dotenv
+    _repo_root = Path(__file__).resolve().parent.parent.parent
+    load_dotenv(_repo_root / ".env")
+except ImportError:
+    pass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
-from pathlib import Path
 
 import requests
 from tqdm import tqdm
@@ -109,7 +117,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--score-only", action="store_true", help="Run only Phase C (judge) on existing predictions"
     )
-    p.add_argument("--judge-model", type=str, default="gpt-4o-mini", help="Model for LLM-as-judge")
+    p.add_argument(
+        "--judge-model",
+        type=str,
+        default=os.environ.get("LLM__MODEL", "gpt-4o-mini"),
+        help="Model for LLM-as-judge (default: LLM__MODEL from .env or gpt-4o-mini)",
+    )
     p.add_argument("--verbose", action="store_true", help="Emit per-sample retrieval diagnostics")
     p.add_argument(
         "--ingestion-workers",
@@ -173,17 +186,27 @@ def _cml_write(
     if timestamp is not None:
         payload["timestamp"] = timestamp
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id, "X-Eval-Mode": "true"}
-    for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
-        resp = requests.post(url, json=payload, headers=headers, timeout=60)
-        if resp.status_code == 429:
-            if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
+    _CML_WRITE_TIMEOUT = 180  # Allow time for first-request embedding model load
+    _CML_WRITE_RETRIES = 3  # Retry on connection errors (e.g. server busy, model loading)
+    for retry in range(_CML_WRITE_RETRIES):
+        for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
+            try:
+                resp = requests.post(
+                    url, json=payload, headers=headers, timeout=_CML_WRITE_TIMEOUT
+                )
+                if resp.status_code in [429, 500]:
+                    if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
+                        resp.raise_for_status()
+                    wait = min(_CML_WRITE_BACKOFF_CAP_SEC, 5 * (2**attempt))
+                    time.sleep(wait)
+                    continue
                 resp.raise_for_status()
-            wait = min(_CML_WRITE_BACKOFF_CAP_SEC, 5 * (2**attempt))
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        return
-    raise requests.exceptions.HTTPError("429 Too Many Requests", response=resp)
+                return
+            except (requests.exceptions.ConnectionError, OSError) as e:
+                if retry < _CML_WRITE_RETRIES - 1:
+                    time.sleep(5 * (retry + 1))
+                    break
+                raise
 
 
 def _dashboard_post(

@@ -1,12 +1,15 @@
 """Working memory manager: per-scope state and chunk processing."""
 
 import asyncio
+import structlog
 from datetime import datetime
 
 from ...utils.bounded_state import BoundedStateMap
 from ...utils.llm import LLMClient
-from .chunker import RuleBasedChunker, SemanticChunker
+from .chunker import ChonkieChunkerAdapter, ChonkieUnavailableError, RuleBasedChunker, SemanticChunker
 from .models import SemanticChunk, WorkingMemoryState
+
+logger = structlog.get_logger(__name__)
 
 
 class WorkingMemoryManager:
@@ -29,6 +32,8 @@ class WorkingMemoryManager:
         use_fast_chunker: bool = False,
         max_scopes: int = 1000,
         scope_ttl_seconds: float = 1800.0,
+        use_chonkie_for_large_text: bool = False,
+        large_text_threshold_chars: int | None = None,
     ) -> None:
         self._states: BoundedStateMap[WorkingMemoryState] = BoundedStateMap(
             max_size=max_scopes,
@@ -36,6 +41,10 @@ class WorkingMemoryManager:
         )
         self._lock = asyncio.Lock()
         self.max_chunks = max_chunks_per_user
+        self._use_chonkie_for_large_text = use_chonkie_for_large_text
+        self._large_text_threshold_chars = large_text_threshold_chars
+        self._chonkie_adapter: ChonkieChunkerAdapter | None = None
+        self._chonkie_unavailable_logged = False
 
         if llm_client and not use_fast_chunker:
             self.chunker: SemanticChunker | RuleBasedChunker = SemanticChunker(llm_client)
@@ -59,6 +68,21 @@ class WorkingMemoryManager:
             ),
         )
 
+    def _get_chonkie_adapter(self) -> ChonkieChunkerAdapter | None:
+        if self._chonkie_adapter is not None:
+            return self._chonkie_adapter
+        try:
+            self._chonkie_adapter = ChonkieChunkerAdapter()
+            return self._chonkie_adapter
+        except ChonkieUnavailableError:
+            if not self._chonkie_unavailable_logged:
+                logger.warning(
+                    "Chonkie semantic chunking requested but chonkie[semantic] not installed; "
+                    "falling back to default chunker for large text. Install with: pip install 'chonkie[semantic]'"
+                )
+                self._chonkie_unavailable_logged = True
+            return None
+
     async def process_input(
         self,
         tenant_id: str,
@@ -76,6 +100,23 @@ class WorkingMemoryManager:
         """
         state = await self.get_state(tenant_id, scope_id)
         context = state.chunks[-5:] if state.chunks else None
+
+        use_chonkie = (
+            self._use_chonkie_for_large_text
+            and self._large_text_threshold_chars is not None
+            and len(text) >= self._large_text_threshold_chars
+        )
+        if use_chonkie:
+            adapter = self._get_chonkie_adapter()
+            if adapter is not None:
+                new_chunks = adapter.chunk(
+                    text, turn_id=turn_id, role=role, timestamp=timestamp
+                )
+                for chunk in new_chunks:
+                    state.add_chunk(chunk)
+                state.turn_count += 1
+                return new_chunks
+            # Fallback to default chunker when Chonkie not installed
 
         if self._use_llm:
             new_chunks = await self.chunker.chunk(

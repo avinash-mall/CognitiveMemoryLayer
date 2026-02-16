@@ -169,7 +169,7 @@ class Neo4jGraphStore(GraphStoreBase):
         }})
         ON CREATE SET o.created_at = $now, o.entity_type = 'UNKNOWN'
 
-        MERGE (s)-[r:{rel_type}]->(o)
+        MERGE (s)-[r:`{rel_type}`]->(o)
         ON CREATE SET
             r.created_at = $now,
             r.updated_at = $now,
@@ -448,7 +448,7 @@ class Neo4jGraphStore(GraphStoreBase):
             conditions.append("o.entity = $target")
             params["target"] = target
 
-        rel_pattern = "[r]" if not predicate else f"[r:{_sanitize_rel_type(predicate)}]"
+        rel_pattern = "[r]" if not predicate else f"[r:`{_sanitize_rel_type(predicate)}`]"
         query = f"""
         MATCH (s:Entity)-{rel_pattern}->(o:Entity)
         WHERE {" AND ".join(conditions)}

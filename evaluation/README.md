@@ -26,6 +26,13 @@ For a step-by-step runbook, see [ProjectPlan/LocomoEval/RunEvaluation.md](../Pro
 
 CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is read from the project root `.env`. See [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md) for full setup.
 
+### Chonkie semantic chunking
+
+For large (or all) input text, CML can use [Chonkie](https://github.com/chonkie-inc/chonkie) semantic chunking instead of LLM/rule-based chunking. Install the optional dependency and enable the feature:
+
+- **Install:** `pip install 'chonkie[semantic]'` (or use the project extra: `pip install -e ".[chonkie]"`).
+- **Config:** In `.env` or feature flags, `use_chonkie_for_large_text=true` and `chunker_large_text_threshold_chars=0` (0 = use Chonkie for all text when enabled). If Chonkie is not installed, the server falls back to the default chunker and logs a warning.
+
 ### Environment variables (eval script)
 
 | Variable | Default | Description |

@@ -78,6 +78,13 @@ def main() -> None:
         metavar="N",
         help="Run only first N samples (for quick testing)",
     )
+    p.add_argument(
+        "--ingestion-workers",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Number of concurrent workers for Phase A ingestion (default 5)",
+    )
     args = p.parse_args()
 
     _banner("LoCoMo Full Evaluation Pipeline", "=")
@@ -86,6 +93,7 @@ def main() -> None:
         print("  Mode: skip-docker (API assumed running)", flush=True)
     if args.limit_samples:
         print(f"  Limit: {args.limit_samples} samples", flush=True)
+    print(f"  Workers: {args.ingestion_workers}", flush=True)
     print(flush=True)
 
     ollama_model = os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b")
@@ -168,6 +176,7 @@ def main() -> None:
     ]
     if args.limit_samples:
         cmd.extend(["--limit-samples", str(args.limit_samples)])
+    cmd.extend(["--ingestion-workers", str(args.ingestion_workers)])
     print(f"  PYTHONPATH={env['PYTHONPATH']}", flush=True)
     print(f"  OLLAMA_QA_MODEL={ollama_model}", flush=True)
     t0 = time.monotonic()
