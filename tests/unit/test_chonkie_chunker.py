@@ -1,6 +1,6 @@
 """Unit tests for Chonkie semantic chunking adapter and working memory integration."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -69,7 +69,7 @@ class TestChonkieChunkerAdapter:
                 "First segment. Second segment.",
                 turn_id="t1",
                 role="user",
-                timestamp=datetime.now(datetime.UTC),
+                timestamp=datetime.now(timezone.utc),  # noqa: UP017
             )
         assert len(result) == 2
         for i, c in enumerate(result):
@@ -106,7 +106,7 @@ class TestWorkingMemoryManagerChonkiePath:
                 chunk_type=ChunkType.STATEMENT,
                 salience=0.5,
                 confidence=0.8,
-                timestamp=datetime.now(datetime.UTC),
+                timestamp=datetime.now(timezone.utc),  # noqa: UP017
             ),
         ]
         with patch("src.memory.working.manager.ChonkieChunkerAdapter") as adapter_class:
