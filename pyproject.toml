@@ -80,6 +80,9 @@ docs = [
     "mkdocs-material>=9.0",
     "mkdocstrings[python]>=0.27",
 ]
+chonkie = [
+    "chonkie[semantic]",
+]
 
 [tool.hatch.metadata.hooks.custom]
 path = "hatch_build.py"
