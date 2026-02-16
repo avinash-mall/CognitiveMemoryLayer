@@ -107,10 +107,10 @@ class WorkingMemoryManager:
         state = await self.get_state(tenant_id, scope_id)
         context = state.chunks[-5:] if state.chunks else None
 
-        # Fast chunker takes precedence: when using RuleBasedChunker, skip Chonkie
+        # Chonkie is embedding-based (non-LLM) semantic chunking. When enabled and
+        # text meets threshold, try it first; fall back to default chunker if unavailable.
         use_chonkie = (
-            self._use_llm  # Chonkie only when we have SemanticChunker (not fast path)
-            and self._use_chonkie_for_large_text
+            self._use_chonkie_for_large_text
             and self._large_text_threshold_chars is not None
             and len(text) >= self._large_text_threshold_chars
         )
@@ -122,7 +122,7 @@ class WorkingMemoryManager:
                     state.add_chunk(chunk)
                 state.turn_count += 1
                 return new_chunks
-            # Fallback to default chunker when Chonkie not installed
+            # Fall back to default chunker (LLM or rule-based) when Chonkie not installed
 
         if self._use_llm:
             new_chunks = await self.chunker.chunk(
