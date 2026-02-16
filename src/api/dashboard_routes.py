@@ -954,7 +954,7 @@ async def dashboard_graph_overview(
             r0 = await session.run(
                 """
                 MATCH (n:Entity {tenant_id: $tenant_id, scope_id: $scope_id})
-                WITH n, size((n)--()) AS deg
+                WITH n, COUNT { (n)--() } AS deg
                 ORDER BY deg DESC
                 LIMIT 1
                 RETURN n.entity AS entity

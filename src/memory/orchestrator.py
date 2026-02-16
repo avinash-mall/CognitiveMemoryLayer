@@ -18,7 +18,7 @@ from ..memory.knowledge_base import KnowledgeBase
 from ..memory.neocortical.fact_store import SemanticFactStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..memory.scratch_pad import ScratchPad
-from ..memory.short_term import ShortTermMemory
+from ..memory.short_term import ShortTermMemory, ShortTermMemoryConfig
 from ..memory.tool_memory import ToolMemory
 from ..reconsolidation.service import ReconsolidationService
 from ..retrieval.memory_retriever import MemoryRetriever
@@ -94,9 +94,15 @@ class MemoryOrchestrator:
         fact_store = SemanticFactStore(db_manager.pg_session)
         neocortical = NeocorticalStore(graph_store, fact_store)
 
-        short_term = ShortTermMemory(llm_client=internal_llm)
-        entity_extractor = EntityExtractor(internal_llm)
-        relation_extractor = RelationExtractor(internal_llm)
+        short_term_config = ShortTermMemoryConfig(
+            use_fast_chunker=settings.features.use_fast_chunker,
+            use_chonkie_for_large_text=settings.features.use_chonkie_for_large_text,
+            chunker_large_text_threshold_chars=settings.features.chunker_large_text_threshold_chars,
+        )
+        short_term = ShortTermMemory(config=short_term_config, llm_client=internal_llm)
+        # Skip entity/relation extraction when fast chunker is enabled (eval fast path)
+        entity_extractor = None if settings.features.use_fast_chunker else EntityExtractor(internal_llm)
+        relation_extractor = None if settings.features.use_fast_chunker else RelationExtractor(internal_llm)
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
