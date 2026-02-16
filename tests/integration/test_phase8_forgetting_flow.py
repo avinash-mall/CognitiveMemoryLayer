@@ -130,6 +130,6 @@ async def test_forgetting_flow_protected_types_kept_low_episodic_affected(pg_ses
     episodic_after = await store.get_by_id(episodic_rec.id)
     assert episodic_after is not None
     if report2.result.decayed >= 1 or report2.result.silenced >= 1 or report2.result.deleted >= 1:
-        assert (
-            episodic_after.confidence <= 0.6 or episodic_after.status.value != "active"
-        ), "low episodic may be decayed or silenced"
+        assert episodic_after.confidence <= 0.6 or episodic_after.status.value != "active", (
+            "low episodic may be decayed or silenced"
+        )
