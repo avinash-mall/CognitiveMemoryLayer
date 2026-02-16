@@ -29,6 +29,7 @@ class TestChonkieUnavailableError:
 
     def test_get_chonkie_raises_when_import_fails(self):
         import builtins
+
         real_import = builtins.__import__
 
         def fail_chonkie_only(name, *args, **kwargs):
@@ -106,9 +107,7 @@ class TestWorkingMemoryManagerChonkiePath:
                 timestamp=datetime.now(timezone.utc),
             ),
         ]
-        with patch(
-            "src.memory.working.manager.ChonkieChunkerAdapter"
-        ) as AdapterClass:
+        with patch("src.memory.working.manager.ChonkieChunkerAdapter") as AdapterClass:
             mock_adapter = MagicMock()
             mock_adapter.chunk.return_value = fake_chunks
             AdapterClass.return_value = mock_adapter

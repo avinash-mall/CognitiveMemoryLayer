@@ -75,6 +75,6 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     else:
         scan = await store.scan(tenant_id, filters={"status": "active"}, limit=10)
         texts = [r.text for r in scan if r.text]
-        assert any("tea" in t.lower() for t in texts), (
-            "store should contain corrected preference (tea) after reconsolidation"
-        )
+        assert any(
+            "tea" in t.lower() for t in texts
+        ), "store should contain corrected preference (tea) after reconsolidation"
