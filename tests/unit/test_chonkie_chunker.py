@@ -1,6 +1,6 @@
 """Unit tests for Chonkie semantic chunking adapter and working memory integration."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,9 +37,10 @@ class TestChonkieUnavailableError:
                 raise ImportError("No module named 'chonkie'")
             return real_import(name, *args, **kwargs)
 
-        with patch("builtins.__import__", side_effect=fail_chonkie_only):
-            with pytest.raises(ChonkieUnavailableError) as exc_info:
-                _get_chonkie_semantic_chunker()
+        with patch("builtins.__import__", side_effect=fail_chonkie_only), pytest.raises(
+            ChonkieUnavailableError
+        ) as exc_info:
+            _get_chonkie_semantic_chunker()
         assert "chonkie" in str(exc_info.value).lower() or "install" in str(exc_info.value).lower()
 
 
@@ -67,7 +68,7 @@ class TestChonkieChunkerAdapter:
                 "First segment. Second segment.",
                 turn_id="t1",
                 role="user",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(datetime.UTC),
             )
         assert len(result) == 2
         for i, c in enumerate(result):
@@ -104,13 +105,13 @@ class TestWorkingMemoryManagerChonkiePath:
                 chunk_type=ChunkType.STATEMENT,
                 salience=0.5,
                 confidence=0.8,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(datetime.UTC),
             ),
         ]
-        with patch("src.memory.working.manager.ChonkieChunkerAdapter") as AdapterClass:
+        with patch("src.memory.working.manager.ChonkieChunkerAdapter") as adapter_class:
             mock_adapter = MagicMock()
             mock_adapter.chunk.return_value = fake_chunks
-            AdapterClass.return_value = mock_adapter
+            adapter_class.return_value = mock_adapter
             manager = WorkingMemoryManager(
                 use_fast_chunker=True,
                 use_chonkie_for_large_text=True,
@@ -119,7 +120,7 @@ class TestWorkingMemoryManagerChonkiePath:
             result = await manager.process_input(
                 "tenant", "scope", "Hello world.", turn_id="t1", role="user"
             )
-        AdapterClass.assert_called_once()
+        adapter_class.assert_called_once()
         mock_adapter.chunk.assert_called_once()
         call_kw = mock_adapter.chunk.call_args[1]
         assert call_kw.get("turn_id") == "t1"

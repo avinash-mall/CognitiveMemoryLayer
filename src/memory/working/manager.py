@@ -1,8 +1,9 @@
 """Working memory manager: per-scope state and chunk processing."""
 
 import asyncio
-import structlog
 from datetime import datetime
+
+import structlog
 
 from ...utils.bounded_state import BoundedStateMap
 from ...utils.llm import LLMClient
