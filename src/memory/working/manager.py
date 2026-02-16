@@ -117,11 +117,22 @@ class WorkingMemoryManager:
         if use_chonkie:
             adapter = self._get_chonkie_adapter()
             if adapter is not None:
-                new_chunks = adapter.chunk(text, turn_id=turn_id, role=role, timestamp=timestamp)
-                for chunk in new_chunks:
-                    state.add_chunk(chunk)
-                state.turn_count += 1
-                return new_chunks
+                try:
+                    new_chunks = adapter.chunk(
+                        text, turn_id=turn_id, role=role, timestamp=timestamp
+                    )
+                    for chunk in new_chunks:
+                        state.add_chunk(chunk)
+                    state.turn_count += 1
+                    return new_chunks
+                except ChonkieUnavailableError:
+                    self._chonkie_adapter = None
+                    if not self._chonkie_unavailable_logged:
+                        logger.warning(
+                            "Chonkie semantic chunking failed (not installed); "
+                            "falling back to default chunker. Install with: pip install 'chonkie[semantic]'"
+                        )
+                        self._chonkie_unavailable_logged = True
             # Fall back to default chunker (LLM or rule-based) when Chonkie not installed
 
         if self._use_llm:
