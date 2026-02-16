@@ -101,8 +101,12 @@ class MemoryOrchestrator:
         )
         short_term = ShortTermMemory(config=short_term_config, llm_client=internal_llm)
         # Skip entity/relation extraction when fast chunker is enabled (eval fast path)
-        entity_extractor = None if settings.features.use_fast_chunker else EntityExtractor(internal_llm)
-        relation_extractor = None if settings.features.use_fast_chunker else RelationExtractor(internal_llm)
+        entity_extractor = (
+            None if settings.features.use_fast_chunker else EntityExtractor(internal_llm)
+        )
+        relation_extractor = (
+            None if settings.features.use_fast_chunker else RelationExtractor(internal_llm)
+        )
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,

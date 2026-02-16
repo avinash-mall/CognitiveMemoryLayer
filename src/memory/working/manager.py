@@ -6,7 +6,12 @@ from datetime import datetime
 
 from ...utils.bounded_state import BoundedStateMap
 from ...utils.llm import LLMClient
-from .chunker import ChonkieChunkerAdapter, ChonkieUnavailableError, RuleBasedChunker, SemanticChunker
+from .chunker import (
+    ChonkieChunkerAdapter,
+    ChonkieUnavailableError,
+    RuleBasedChunker,
+    SemanticChunker,
+)
 from .models import SemanticChunk, WorkingMemoryState
 
 logger = structlog.get_logger(__name__)
@@ -111,9 +116,7 @@ class WorkingMemoryManager:
         if use_chonkie:
             adapter = self._get_chonkie_adapter()
             if adapter is not None:
-                new_chunks = adapter.chunk(
-                    text, turn_id=turn_id, role=role, timestamp=timestamp
-                )
+                new_chunks = adapter.chunk(text, turn_id=turn_id, role=role, timestamp=timestamp)
                 for chunk in new_chunks:
                     state.add_chunk(chunk)
                 state.turn_count += 1
