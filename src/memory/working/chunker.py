@@ -1,12 +1,17 @@
-"""Semantic chunking: LLM-based and rule-based."""
+"""Semantic chunking: LLM-based, rule-based, and Chonkie semantic."""
 
 import hashlib
 import json
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from ...utils.llm import LLMClient
 from .models import ChunkType, SemanticChunk
+
+
+class ChonkieUnavailableError(RuntimeError):
+    """Raised when Chonkie is requested but chonkie[semantic] is not installed."""
 
 CHUNKING_PROMPT = """Analyze the following text and extract semantically meaningful chunks.
 
@@ -331,6 +336,107 @@ class RuleBasedChunker:
                     source_role=role,
                     salience=salience,
                     confidence=0.6,
+                    timestamp=chunk_timestamp,
+                )
+            )
+        return chunks
+
+
+def _get_chonkie_semantic_chunker(
+    chunk_size: int = 512,
+    threshold: float = 0.7,
+    embedding_model: str = "minishlab/potion-base-32M",
+    **kwargs: Any,
+) -> Any:
+    """Lazy import Chonkie SemanticChunker. Raises ChonkieUnavailableError if not installed."""
+    try:
+        from chonkie import SemanticChunker as ChonkieSemanticChunker
+    except ImportError as e:
+        raise ChonkieUnavailableError(
+            "chonkie[semantic] is not installed. Install with: pip install 'chonkie[semantic]'"
+        ) from e
+    return ChonkieSemanticChunker(
+        embedding_model=embedding_model,
+        threshold=threshold,
+        chunk_size=chunk_size,
+        **kwargs,
+    )
+
+
+class ChonkieChunkerAdapter:
+    """
+    Uses Chonkie SemanticChunker for semantic chunking (no LLM or rule-based logic).
+    Maps Chonkie chunks to SemanticChunk for the rest of the pipeline.
+    """
+
+    def __init__(
+        self,
+        chunk_size: int = 512,
+        threshold: float = 0.7,
+        embedding_model: str = "minishlab/potion-base-32M",
+        **kwargs: Any,
+    ) -> None:
+        self._chunk_size = chunk_size
+        self._threshold = threshold
+        self._embedding_model = embedding_model
+        self._kwargs = kwargs
+        self._chonkie: Any = None
+
+    def _get_chonkie(self) -> Any:
+        if self._chonkie is None:
+            self._chonkie = _get_chonkie_semantic_chunker(
+                chunk_size=self._chunk_size,
+                threshold=self._threshold,
+                embedding_model=self._embedding_model,
+                **self._kwargs,
+            )
+        return self._chonkie
+
+    def _generate_chunk_id(self, text: str, index: int) -> str:
+        content = f"{text}:{index}"
+        return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+    def chunk(
+        self,
+        text: str,
+        turn_id: str | None = None,
+        role: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> list[SemanticChunk]:
+        """Chunk text with Chonkie SemanticChunker and map to SemanticChunk list."""
+        if not text.strip():
+            return []
+        chunk_timestamp = timestamp or datetime.now(UTC)
+        chonkie = self._get_chonkie()
+        raw_chunks = chonkie.chunk(text)
+        chunks = []
+        for i, c in enumerate(raw_chunks):
+            segment = getattr(c, "text", str(c)) if c else ""
+            if not segment.strip():
+                continue
+            chunk_id = self._generate_chunk_id(segment, i)
+            chunks.append(
+                SemanticChunk(
+                    id=chunk_id,
+                    text=segment,
+                    chunk_type=ChunkType.STATEMENT,
+                    source_turn_id=turn_id,
+                    source_role=role,
+                    salience=0.5,
+                    confidence=0.8,
+                    timestamp=chunk_timestamp,
+                )
+            )
+        if not chunks:
+            chunks.append(
+                SemanticChunk(
+                    id=self._generate_chunk_id(text, 0),
+                    text=text,
+                    chunk_type=ChunkType.STATEMENT,
+                    source_turn_id=turn_id,
+                    source_role=role,
+                    salience=0.5,
+                    confidence=0.8,
                     timestamp=chunk_timestamp,
                 )
             )

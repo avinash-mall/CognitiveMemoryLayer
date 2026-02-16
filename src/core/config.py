@@ -117,6 +117,18 @@ class FeatureFlags(PydanticBaseModel):
     constraint_extraction_enabled: bool = Field(
         default=True, description="Cognitive: extract and store latent constraints at write time"
     )
+    use_fast_chunker: bool = Field(
+        default=False,
+        description="Use rule-based chunker instead of LLM chunking (faster ingestion, e.g. for eval)",
+    )
+    use_chonkie_for_large_text: bool = Field(
+        default=True,
+        description="Use Chonkie semantic chunking when input text exceeds threshold (requires chonkie[semantic])",
+    )
+    chunker_large_text_threshold_chars: int = Field(
+        default=0,
+        description="Min character count for text to use Chonkie semantic chunking (0 = use Chonkie for all text when enabled)",
+    )
 
 
 class RetrievalSettings(PydanticBaseModel):

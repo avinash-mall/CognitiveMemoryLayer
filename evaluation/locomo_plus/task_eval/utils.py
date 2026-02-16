@@ -90,20 +90,42 @@ def _load_env_local_sh():
                 os.environ[key] = val
 
 
-def _get_openai_client():
-    """Lazy init OpenAI client from OPENAI_API_KEY and optional OPENAI_BASE_URL."""
+def _load_project_dotenv():
+    """Load project .env so LLM__BASE_URL / LLM__MODEL are available for judge (e.g. Ollama)."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    # evaluation/locomo_plus/task_eval/utils.py -> repo root is parent^4
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    env_file = repo_root / ".env"
+    if env_file.is_file():
+        load_dotenv(env_file)
+    # Also allow env.local.sh to have set OPENAI_* already
     _load_env_local_sh()
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key or api_key.strip() == "":
+
+
+def _get_openai_client():
+    """Lazy init OpenAI client from OPENAI_API_KEY + OPENAI_BASE_URL, or from .env LLM__* (e.g. Ollama)."""
+    _load_project_dotenv()
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    base_url = (os.environ.get("OPENAI_BASE_URL") or "").strip()
+    # If no OpenAI key but .env has LLM__BASE_URL (e.g. Ollama), use that for judge
+    if not api_key:
+        llm_base = (os.environ.get("LLM__BASE_URL") or "").strip()
+        if llm_base:
+            api_key = "ollama"
+            base_url = llm_base
+    if not api_key:
         raise ValueError(
-            "OPENAI_API_KEY is not set. Set it in env or in evaluation/locomo_plus/scripts/env.local.sh"
+            "OPENAI_API_KEY is not set and LLM__BASE_URL is not set. "
+            "Set OPENAI_API_KEY (or LLM__BASE_URL in .env for Ollama), or use evaluation/locomo_plus/scripts/env.local.sh"
         )
     from openai import OpenAI
 
-    kwargs = {"api_key": api_key.strip()}
-    base_url = os.environ.get("OPENAI_BASE_URL")
-    if base_url and base_url.strip():
-        kwargs["base_url"] = base_url.strip()
+    kwargs = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
 
 
