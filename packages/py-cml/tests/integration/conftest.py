@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 
 import pytest
@@ -62,7 +63,7 @@ def _server_reachable(config: CMLConfig) -> bool:
 @pytest_asyncio.fixture
 async def live_client(
     integration_config: CMLConfig,
-) -> pytest.AsyncGenerator[AsyncCognitiveMemoryLayer, None]:
+) -> AsyncGenerator[AsyncCognitiveMemoryLayer, None]:
     """Async client against live server; teardown tries delete_all then close."""
     if not _server_reachable(integration_config):
         pytest.skip(
@@ -78,7 +79,7 @@ async def live_client(
 @pytest.fixture
 def live_sync_client(
     integration_config: CMLConfig,
-) -> pytest.Generator[CognitiveMemoryLayer, None, None]:
+) -> Generator[CognitiveMemoryLayer, None, None]:
     """Sync client against live server; teardown tries delete_all then close."""
     if not _server_reachable(integration_config):
         pytest.skip(

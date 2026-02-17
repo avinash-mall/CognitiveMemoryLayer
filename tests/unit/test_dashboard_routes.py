@@ -1,7 +1,7 @@
 """Unit tests for dashboard API routes (auth and response shape with mocked DB)."""
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import Request
@@ -294,7 +294,7 @@ class TestDashboardWithAdminAndMockDb:
         mock_orchestrator = MagicMock()
         mock_orchestrator.reconsolidation = mock_recon
 
-        # Session for job tracking: add, commit, execute
+        # Session for job tracking: add, commit, execute (use shared helper so execute is AsyncMock)
         mock_session = _make_mock_db_session()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -307,14 +307,17 @@ class TestDashboardWithAdminAndMockDb:
                 pass
 
         mock_db.pg_session = MagicMock(return_value=AsyncSessionCM())
+        mock_db.redis = None  # so rate-limit middleware uses in-memory fallback (no connection)
+        # Route uses request.app.state.db (not Depends), so set state explicitly
 
         _override_get_db(mock_db)
+        orig_orch = getattr(app.state, "orchestrator", None)
+        orig_db = getattr(app.state, "db", None)
         try:
-            with (
-                patch.object(app.state, "orchestrator", mock_orchestrator),
-                patch.object(app.state, "db", mock_db),
-                TestClient(app, headers=admin_headers) as client,
-            ):
+            with TestClient(app, headers=admin_headers) as client:
+                # Override state after client start (lifespan may have set real db/orchestrator)
+                app.state.orchestrator = mock_orchestrator
+                app.state.db = mock_db
                 resp = client.post(
                     "/api/v1/dashboard/reconsolidate",
                     json={"tenant_id": "t1"},
@@ -326,6 +329,8 @@ class TestDashboardWithAdminAndMockDb:
                 assert "sessions_released" in data
                 assert isinstance(data["sessions_released"], int)
         finally:
+            app.state.orchestrator = orig_orch
+            app.state.db = orig_db
             app.dependency_overrides.pop(_get_db, None)
 
 

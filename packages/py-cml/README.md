@@ -17,7 +17,8 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
+[![Tests](https://img.shields.io/badge/Tests-175-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
 **What's new (1.1.0):** Dashboard admin methods — 13 new methods for sessions, rate limits, knowledge graph, configuration, labile status, retrieval testing, job history, and bulk actions. Unreleased changes (e.g. `ReadResponse.constraints`, `user_timezone` on read/turn, embedded read filter passthrough) are in [CHANGELOG](CHANGELOG.md).
 
@@ -182,10 +183,36 @@ response = helper.chat("What should I eat tonight?", session_id="s1")
 - [Configuration](docs/configuration.md)
 - [Examples](docs/examples.md)
 - [Temporal Fidelity](docs/temporal-fidelity.md)
+- [Security policy](../../SECURITY.md)
 
 [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues, server setup
 
 [CHANGELOG](CHANGELOG.md)
+
+---
+
+## Testing
+
+The SDK has **175 tests** (unit, integration, embedded, e2e). From the **repository root**:
+
+```bash
+# Run all SDK tests
+pytest packages/py-cml/tests -v
+
+# Unit only
+pytest packages/py-cml/tests/unit -v
+
+# Integration (requires CML API; set CML_BASE_URL, CML_API_KEY)
+pytest packages/py-cml/tests/integration -v
+
+# Embedded (requires embedding/LLM from .env or skip)
+pytest packages/py-cml/tests/embedded -v
+
+# E2E (requires CML API)
+pytest packages/py-cml/tests/e2e -v
+```
+
+Some integration, embedded, and e2e tests skip when the CML server or embedding model is unavailable. See the root [tests/README.md](../../tests/README.md) and [tests/SKIPPED_TESTS_REPORT.md](../../tests/SKIPPED_TESTS_REPORT.md).
 
 ---
 

@@ -169,7 +169,11 @@ class MemoryOrchestrator:
         fact_store = NoOpFactStore()
         neocortical = NeocorticalStore(graph_store, fact_store)
 
-        short_term = ShortTermMemory(llm_client=llm_client)
+        short_term_config = ShortTermMemoryConfig(
+            min_salience_for_encoding=0.0,
+            use_fast_chunker=True,
+        )
+        short_term = ShortTermMemory(config=short_term_config, llm_client=llm_client)
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
@@ -271,6 +275,22 @@ class MemoryOrchestrator:
                     )
                 except (ValueError, AttributeError):
                     pass  # Invalid memory_type; let write gate decide
+
+        # Deactivate previous episodic constraints by fact key before writing (supersession)
+        from ..core.config import get_settings as _get_settings
+
+        _settings = _get_settings()
+        if _settings.features.constraint_extraction_enabled and chunks_for_encoding:
+            if hasattr(self.hippocampal, "deactivate_constraints_by_key"):
+                from ..extraction.constraint_extractor import ConstraintExtractor
+
+                _extractor = ConstraintExtractor()
+                _fact_keys = set()
+                for _chunk in chunks_for_encoding:
+                    for _c in _extractor.extract(_chunk):
+                        _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
+                for _fk in _fact_keys:
+                    await self.hippocampal.deactivate_constraints_by_key(tenant_id, _fk)
 
         result = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,

@@ -25,6 +25,7 @@ except ImportError:
     pass
 
 from cml import CognitiveMemoryLayer
+from cml.models.enums import MemoryType
 
 
 def main():
@@ -51,35 +52,35 @@ def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
         "The user's name is Alice and she works as a software engineer at TechCorp.",
         session_id=session_id,
         context_tags=["personal"],
-        memory_type="semantic_fact",
+        memory_type=MemoryType.SEMANTIC_FACT,
     )
     print("✓ Stored semantic fact")
     memory.write(
         "User prefers Python over JavaScript for backend development.",
         session_id=session_id,
         context_tags=["preference"],
-        memory_type="preference",
+        memory_type=MemoryType.PREFERENCE,
     )
     print("✓ Stored preference")
     memory.write(
         "User is allergic to shellfish - never recommend seafood restaurants with shellfish.",
         session_id=session_id,
         context_tags=["constraint"],
-        memory_type="constraint",
+        memory_type=MemoryType.CONSTRAINT,
     )
     print("✓ Stored constraint")
     memory.write(
         "On 2024-01-15, user mentioned they are planning to learn Rust this year.",
         session_id=session_id,
         context_tags=["conversation"],
-        memory_type="episodic_event",
+        memory_type=MemoryType.EPISODIC_EVENT,
     )
     print("✓ Stored episodic event")
     memory.write(
         "User might be interested in machine learning based on their questions about PyTorch.",
         session_id=session_id,
         context_tags=["conversation"],
-        memory_type="hypothesis",
+        memory_type=MemoryType.HYPOTHESIS,
     )
     print("✓ Stored hypothesis")
 
@@ -103,7 +104,7 @@ def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
         print(ctx[:500] + ("..." if len(ctx) > 500 else ""))
     result = memory.read(
         "dietary restrictions",
-        memory_types=["constraint", "preference"],
+        memory_types=[MemoryType.CONSTRAINT, MemoryType.PREFERENCE],
     )
     print("\nQuery: 'dietary restrictions' (constraints & preferences only)")
     print(f"Found {result.total_count} memories")

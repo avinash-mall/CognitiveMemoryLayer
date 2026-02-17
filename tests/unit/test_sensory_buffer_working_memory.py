@@ -1,4 +1,4 @@
-"""Unit tests for Phase 2: sensory buffer and working memory."""
+"""Unit tests for sensory buffer and working memory."""
 
 import pytest
 

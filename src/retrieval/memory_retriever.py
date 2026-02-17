@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from ..core.config import get_settings
 from ..core.schemas import MemoryPacket
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
@@ -9,8 +10,19 @@ from ..utils.llm import LLMClient
 from .classifier import QueryClassifier
 from .packet_builder import MemoryPacketBuilder
 from .planner import RetrievalPlanner
-from .reranker import MemoryReranker
+from .reranker import MemoryReranker, RerankerConfig
 from .retriever import HybridRetriever
+
+
+def _reranker_config_from_settings() -> RerankerConfig:
+    """Build RerankerConfig from application settings."""
+    settings = get_settings()
+    r = settings.retrieval.reranker
+    return RerankerConfig(
+        recency_weight=r.recency_weight,
+        relevance_weight=r.relevance_weight,
+        confidence_weight=r.confidence_weight,
+    )
 
 
 class MemoryRetriever:
@@ -26,7 +38,7 @@ class MemoryRetriever:
         self.classifier = QueryClassifier(llm_client)
         self.planner = RetrievalPlanner()
         self.retriever = HybridRetriever(hippocampal, neocortical, cache)
-        self.reranker = MemoryReranker()
+        self.reranker = MemoryReranker(config=_reranker_config_from_settings())
         self.packet_builder = MemoryPacketBuilder()
 
     async def retrieve(

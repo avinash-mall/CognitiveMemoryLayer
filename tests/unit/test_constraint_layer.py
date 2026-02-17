@@ -651,6 +651,23 @@ class TestRetrievalPlannerConstraints:
     def test_constraints_source_enum_value(self):
         assert RetrievalSource.CONSTRAINTS.value == "constraints"
 
+    def test_can_i_afford_dinner_plan_contains_constraints_step(self):
+        """For a decision-style query like 'Can I afford dinner?' the plan contains CONSTRAINTS step."""
+        planner = RetrievalPlanner()
+        analysis = QueryAnalysis(
+            original_query="Can I afford dinner?",
+            intent=QueryIntent.CONSTRAINT_CHECK,
+            confidence=0.85,
+            suggested_sources=["constraints", "facts", "vector"],
+            suggested_top_k=10,
+            is_decision_query=True,
+            constraint_dimensions=["goal", "value"],
+        )
+        plan = planner.plan(analysis)
+        constraint_steps = [s for s in plan.steps if s.source == RetrievalSource.CONSTRAINTS]
+        assert len(constraint_steps) >= 1
+        assert constraint_steps[0].constraint_categories == ["goal", "value"]
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Phase 3c: Reranker stability-aware recency weights
@@ -753,6 +770,26 @@ class TestPacketBuilderConstraints:
         ctx = builder.to_llm_context(packet, max_tokens=500, format="markdown")
         # Should include provenance info
         assert "dairy" in ctx
+
+    def test_markdown_starts_with_active_constraints_and_filters_low_relevance_episodes(self):
+        """Packet markdown starts with Active Constraints; episodes with relevance <= 0.4 are omitted."""
+        builder = MemoryPacketBuilder()
+        memories = [
+            _make_retrieved("User must follow budget.", MemoryType.CONSTRAINT, relevance=0.9),
+            _make_retrieved("Low relevance episode.", MemoryType.EPISODIC_EVENT, relevance=0.3),
+            _make_retrieved("Another low one.", MemoryType.EPISODIC_EVENT, relevance=0.2),
+            _make_retrieved("Relevant episode.", MemoryType.EPISODIC_EVENT, relevance=0.5),
+        ]
+        packet = builder.build(memories, "query")
+        ctx = builder.to_llm_context(packet, max_tokens=1000, format="markdown")
+        assert "Active Constraints" in ctx
+        assert "Must Follow" in ctx
+        assert "budget" in ctx
+        assert "[!IMPORTANT]" in ctx
+        # Episodes with relevance > 0.4 appear in Recent Context; <= 0.4 omitted
+        assert "Relevant episode" in ctx
+        assert "Low relevance episode" not in ctx
+        assert "Another low one" not in ctx
 
 
 # ═══════════════════════════════════════════════════════════════════

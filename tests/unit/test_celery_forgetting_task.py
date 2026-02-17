@@ -1,4 +1,4 @@
-"""Unit tests for Phase 8: Celery forgetting task."""
+"""Unit tests for Celery forgetting task and beat schedule."""
 
 import pytest
 

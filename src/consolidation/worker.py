@@ -86,6 +86,39 @@ class ConsolidationWorker:
 
         clusters = self.clusterer.cluster(episodes)
         gists = await self.extractor.extract_from_clusters(clusters)
+
+        # Constraint recovery: re-extract constraints from gist text and persist as semantic facts
+        from ..extraction.constraint_extractor import ConstraintExtractor
+        from ..memory.working.models import ChunkType, SemanticChunk
+
+        constraint_extractor = ConstraintExtractor()
+        for gist in gists:
+            if not gist.text:
+                continue
+            chunk = SemanticChunk(
+                id="",
+                text=gist.text,
+                chunk_type=ChunkType.STATEMENT,
+                entities=[],
+                source_turn_id=(
+                    gist.supporting_episode_ids[0] if gist.supporting_episode_ids else None
+                ),
+                timestamp=datetime.now(UTC),
+            )
+            extracted = constraint_extractor.extract(chunk)
+            for constraint in extracted:
+                try:
+                    fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                    await self.migrator.semantic.store_fact(
+                        tenant_id=tenant_id,
+                        key=fact_key,
+                        value=constraint.description,
+                        confidence=constraint.confidence,
+                        evidence_ids=gist.supporting_episode_ids or [],
+                    )
+                except Exception:
+                    pass  # Log and continue; do not fail consolidation
+
         alignments = await self.aligner.align_batch(tenant_id, user_id, gists)
         migration = await self.migrator.migrate(
             tenant_id,
