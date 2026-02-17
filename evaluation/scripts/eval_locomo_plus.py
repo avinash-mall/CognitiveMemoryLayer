@@ -12,6 +12,10 @@ Phase C: LLM-as-judge scores predictions; writes judged JSON and summary.
 Usage (from project root):
   set PYTHONPATH=evaluation/locomo_plus
   python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json --out-dir evaluation/outputs
+  python evaluation/scripts/eval_locomo_plus.py ... --resume   # Continue from last state
+
+Resume: Use --resume to continue after a crash or interrupt. The same CML API/DB must still be
+running; do not tear down Docker between runs when resuming.
 """
 
 from __future__ import annotations
@@ -39,6 +43,8 @@ import requests  # type: ignore[import-untyped]
 from tqdm import tqdm
 
 INGESTION_DELAY_SEC = 0.2
+INGESTION_STATE_FLUSH_EVERY_N = 20
+QA_PREDICTIONS_FLUSH_EVERY_N = 10
 _CML_WRITE_MAX_429_ATTEMPTS = 15
 _CML_WRITE_BACKOFF_CAP_SEC = 65
 _CML_READ_MAX_429_ATTEMPTS = 15
@@ -89,6 +95,35 @@ def _ensure_locomo_plus_path() -> None:
         sys.path.insert(0, str(locomo_plus))
 
 
+def _load_state(state_file: Path) -> dict | None:
+    """Load pipeline state from disk. Returns None if missing or invalid."""
+    if not state_file.exists():
+        return None
+    try:
+        data = json.loads(state_file.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _write_eval_state(
+    state_file: Path,
+    eval_phase: str,
+    ingestion_completed_indices: list[int],
+    pipeline_step: int | None = None,
+) -> None:
+    """Write eval state to disk, merging with existing so pipeline_step is preserved."""
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    existing = _load_state(state_file) or {}
+    payload = {
+        "pipeline_step": pipeline_step if pipeline_step is not None else existing.get("pipeline_step", 4),
+        "eval_phase": eval_phase,
+        "ingestion_completed_indices": ingestion_completed_indices,
+        "last_updated_iso": datetime.now(UTC).isoformat(),
+    }
+    state_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Locomo-Plus unified eval with CML + Ollama")
     p.add_argument(
@@ -131,6 +166,17 @@ def parse_args() -> argparse.Namespace:
         default=10,
         metavar="N",
         help="Number of concurrent workers for Phase A ingestion (default 10)",
+    )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue from last state; skip completed ingestion/QA work. Requires same CML API/DB.",
+    )
+    p.add_argument(
+        "--state-file",
+        type=str,
+        default=None,
+        help="Path to full_eval_state.json (default: {out-dir}/full_eval_state.json)",
     )
     return p.parse_args()
 
@@ -350,29 +396,74 @@ def phase_a_ingestion(
     cml_api_key: str,
     limit: int | None,
     ingestion_workers: int = 10,
+    state_file: Path | None = None,
+    resume: bool = False,
 ) -> None:
     samples_to_ingest = samples[:limit] if limit else samples
+    n = len(samples_to_ingest)
     # Apply per-turn delay only when single-threaded (rate limiting)
     ingestion_delay = INGESTION_DELAY_SEC if ingestion_workers == 1 else 0.0
 
+    completed_set: set[int] = set()
+    if resume and state_file is not None:
+        state = _load_state(state_file)
+        if state is not None:
+            completed_set = set(state.get("ingestion_completed_indices") or [])
+
+    todo_indices = [i for i in range(n) if i not in completed_set]
+    if not todo_indices:
+        print(
+            f"\n[Phase A] Skipping ingestion: all {n} samples already completed (resume).",
+            flush=True,
+        )
+        if state_file is not None:
+            _write_eval_state(state_file, "consolidation", sorted(completed_set))
+        return
+
     print(
-        f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples into CML ({ingestion_workers} workers)...",
+        f"\n[Phase A] Ingesting {len(todo_indices)} samples into CML ({ingestion_workers} workers)"
+        + (f" ({len(completed_set)} already done)" if completed_set else "") + "...",
         flush=True,
     )
 
+    def _flush_state() -> None:
+        if state_file is not None:
+            _write_eval_state(state_file, "ingestion", sorted(completed_set))
+
     if ingestion_workers <= 1:
-        for i, sample in enumerate(tqdm(samples_to_ingest, desc="Ingestion", unit="sample")):
-            _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay)
+        for i in tqdm(todo_indices, desc="Ingestion", unit="sample"):
+            _ingest_sample(cml_url, cml_api_key, i, samples_to_ingest[i], ingestion_delay)
+            completed_set.add(i)
+            _flush_state()
     else:
         with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
             futures = {
-                executor.submit(_ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay): i
-                for i, sample in enumerate(samples_to_ingest)
+                executor.submit(
+                    _ingest_sample,
+                    cml_url,
+                    cml_api_key,
+                    i,
+                    samples_to_ingest[i],
+                    ingestion_delay,
+                ): i
+                for i in todo_indices
             }
+            done_since_flush = 0
             for future in tqdm(
                 as_completed(futures), total=len(futures), desc="Ingestion", unit="sample"
             ):
+                idx = futures[future]
                 future.result()  # Propagate any exception
+                completed_set.add(idx)
+                done_since_flush += 1
+                if done_since_flush >= INGESTION_STATE_FLUSH_EVERY_N:
+                    _flush_state()
+                    done_since_flush = 0
+            if done_since_flush:
+                _flush_state()
+
+    if state_file is not None:
+        _write_eval_state(state_file, "consolidation", sorted(completed_set))
 
 
 def phase_ab_consolidation(
@@ -418,6 +509,68 @@ def _count_memory_types(raw_response: dict) -> dict[str, int]:
     return counts
 
 
+def _run_one_qa(
+    sample: dict,
+    sample_idx: int,
+    cml_url: str,
+    cml_api_key: str,
+    ollama_url: str,
+    ollama_model: str,
+    max_results: int,
+    verbose: bool,
+) -> dict:
+    """Run QA for a single sample; used by phase_b_qa."""
+    tenant_id = f"lp-{sample_idx}"
+    trigger = (sample.get("trigger") or "").strip()
+    category = sample.get("category", "")
+    if category == "Cognitive":
+        question_input = trigger or "Context dialogue (cue awareness)"
+    else:
+        question_input = trigger
+    read_result = _cml_read(
+        cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+    )
+    if verbose:
+        assert isinstance(read_result, tuple), "return_full=True yields tuple"
+        llm_context, raw_response = read_result
+        type_counts = _count_memory_types(raw_response)
+        tqdm.write(
+            f"  [{category}] sample={sample_idx} types={type_counts} context_len={len(llm_context)}"
+        )
+    else:
+        assert isinstance(read_result, str), "return_full=False yields str"
+        llm_context = read_result
+    if QA_READ_DELAY_SEC > 0:
+        time.sleep(QA_READ_DELAY_SEC)
+
+    if category == "Cognitive":
+        user_content = (
+            (llm_context or "(No retrieved context.)")
+            + "\n\n"
+            + COGNITIVE_PROMPT.format(trigger)
+        )
+    else:
+        user_content = (
+            (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+        )
+
+    prediction = _ollama_chat(ollama_url, ollama_model, user_content)
+    ground_truth = sample.get("answer")
+    if ground_truth is None or (isinstance(ground_truth, str) and ground_truth.strip() == ""):
+        ground_truth = ""
+    record = {
+        "question_input": question_input,
+        "evidence": sample.get("evidence", ""),
+        "category": category,
+        "ground_truth": ground_truth,
+        "prediction": prediction,
+        "model": f"{ollama_model}_cml",
+    }
+    if sample.get("time_gap"):
+        record["time_gap"] = sample["time_gap"]
+    return record
+
+
 def phase_b_qa(
     samples: list[dict],
     cml_url: str,
@@ -427,61 +580,59 @@ def phase_b_qa(
     max_results: int,
     limit: int | None,
     verbose: bool = False,
+    out_dir: Path | None = None,
+    resume: bool = False,
 ) -> list[dict]:
     _ollama_available(ollama_url, ollama_model)
     samples_qa = samples[:limit] if limit else samples
-    print(f"\n[Phase B] Running QA on {len(samples_qa)} samples ({ollama_model})...", flush=True)
+    pred_file = (out_dir or Path(".")) / "locomo_plus_qa_cml_predictions.json"
+
     records: list[dict] = []
-    for i, sample in enumerate(tqdm(samples_qa, desc="QA", unit="sample")):
-        tenant_id = f"lp-{i}"
-        trigger = (sample.get("trigger") or "").strip()
-        category = sample.get("category", "")
-        if category == "Cognitive":
-            question_input = trigger or "Context dialogue (cue awareness)"
-        else:
-            question_input = trigger
-        read_result = _cml_read(
-            cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+    start_index = 0
+    if resume and out_dir is not None and pred_file.exists():
+        try:
+            data = json.loads(pred_file.read_text(encoding="utf-8"))
+            if isinstance(data, list) and len(data) <= len(samples_qa):
+                records = data
+                start_index = len(records)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if start_index >= len(samples_qa):
+        print(
+            f"\n[Phase B] Skipping QA: all {len(samples_qa)} samples already completed (resume).",
+            flush=True,
         )
-        if verbose:
-            assert isinstance(read_result, tuple), "return_full=True yields tuple"
-            llm_context, raw_response = read_result
-            type_counts = _count_memory_types(raw_response)
-            tqdm.write(
-                f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
-            )
-        else:
-            assert isinstance(read_result, str), "return_full=False yields str"
-            llm_context = read_result
-        if QA_READ_DELAY_SEC > 0:
-            time.sleep(QA_READ_DELAY_SEC)
+        return records
 
-        if category == "Cognitive":
-            user_content = (
-                (llm_context or "(No retrieved context.)")
-                + "\n\n"
-                + COGNITIVE_PROMPT.format(trigger)
-            )
-        else:
-            user_content = (
-                (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+    print(
+        f"\n[Phase B] Running QA on {len(samples_qa)} samples ({ollama_model})"
+        + (f" (resuming from {start_index})" if start_index else "") + "...",
+        flush=True,
+    )
+
+    def _flush_predictions() -> None:
+        if out_dir is not None:
+            pred_file.write_text(
+                json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
             )
 
-        prediction = _ollama_chat(ollama_url, ollama_model, user_content)
-        ground_truth = sample.get("answer")
-        if ground_truth is None or (isinstance(ground_truth, str) and ground_truth.strip() == ""):
-            ground_truth = ""
-        record = {
-            "question_input": question_input,
-            "evidence": sample.get("evidence", ""),
-            "category": category,
-            "ground_truth": ground_truth,
-            "prediction": prediction,
-            "model": f"{ollama_model}_cml",
-        }
-        if sample.get("time_gap"):
-            record["time_gap"] = sample["time_gap"]
+    for i in tqdm(
+        range(start_index, len(samples_qa)),
+        desc="QA",
+        unit="sample",
+        initial=start_index,
+        total=len(samples_qa),
+    ):
+        sample = samples_qa[i]
+        record = _run_one_qa(
+            sample, i, cml_url, cml_api_key, ollama_url, ollama_model, max_results, verbose
+        )
         records.append(record)
+        if out_dir is not None and len(records) % QA_PREDICTIONS_FLUSH_EVERY_N == 0:
+            _flush_predictions()
+    if out_dir is not None:
+        _flush_predictions()
     return records
 
 
@@ -519,6 +670,7 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    state_file = Path(args.state_file) if args.state_file else out_dir / "full_eval_state.json"
 
     if args.score_only:
         pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
@@ -545,6 +697,8 @@ def main() -> None:
             args.cml_api_key,
             args.limit_samples,
             ingestion_workers=args.ingestion_workers,
+            state_file=state_file,
+            resume=args.resume,
         )
 
     if not args.skip_consolidation:
@@ -559,6 +713,8 @@ def main() -> None:
         args.max_results,
         args.limit_samples,
         verbose=args.verbose,
+        out_dir=out_dir,
+        resume=args.resume,
     )
 
     phase_c_judge(records, out_dir, args.judge_model)

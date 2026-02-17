@@ -9,8 +9,8 @@ This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 | `locomo_plus/` | Data pipeline (`locomo10.json`, `locomo_plus.json`, `unified_input_samples_v2.json`), task_eval, scripts. See [locomo_plus/README.md](locomo_plus/README.md). |
 | `scripts/eval_locomo_plus.py` | CML-backed driver: ingest unified samples into CML, run QA via CML read + Ollama, score with LLM-as-judge (correct=1, partial=0.5, wrong=0). |
 | `scripts/generate_locomo_report.py` | Build performance table (LoCoMo factual + LoCoMo-Plus Cognitive + Gap). |
-| `scripts/run_full_eval.py` | Full pipeline: Docker down/up, API wait, eval, report table. |
-| `outputs/` | Created at run time; holds predictions, judged records, and judge summary. |
+| `scripts/run_full_eval.py` | Full pipeline: Docker down/up, API wait, eval, report table. Supports `--resume` to continue from last state. |
+| `outputs/` | Created at run time; holds predictions, judged records, judge summary, and `full_eval_state.json` (resume state). |
 
 ## Prerequisites
 
@@ -59,6 +59,8 @@ This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) 
 |--------|-------------|
 | `--skip-docker` | Skip steps 1–3 (use when API is already running) |
 | `--limit-samples N` | Run only first N samples (for quick testing) |
+| `--resume` | Continue from last saved state; skips Docker steps if state indicates step 4+. Use with `--skip-docker`; do not tear down Docker between runs. |
+| `--ingestion-workers N` | Concurrent workers for Phase A ingestion (default 5) |
 
 Examples:
 
@@ -68,6 +70,9 @@ python evaluation/scripts/run_full_eval.py --skip-docker --limit-samples 50
 
 # Full run without Docker steps
 python evaluation/scripts/run_full_eval.py --skip-docker
+
+# Resume after a stuck or interrupted run (API must still be running; do not run docker down -v)
+python evaluation/scripts/run_full_eval.py --resume --skip-docker --ingestion-workers 20
 ```
 
 ### Output table
@@ -109,6 +114,8 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `--skip-ingestion` | Skip Phase A (reuse existing CML state) |
 | `--skip-consolidation` | Skip consolidation and reconsolidation between Phase A and Phase B |
 | `--score-only` | Run only Phase C (judge) on existing predictions |
+| `--resume` | Continue from last state; skips completed ingestion/QA. Same CML API/DB must be running. |
+| `--state-file PATH` | Path to state JSON (default: `{out-dir}/full_eval_state.json`) |
 | `--max-results N` | CML read top-k (default 25) |
 | `--verbose` | Per-sample retrieval diagnostics |
 | `--cml-url`, `--cml-api-key` | Override CML connection |
@@ -119,9 +126,10 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 
 | File | Description |
 |------|-------------|
-| `locomo_plus_qa_cml_predictions.json` | Per-sample predictions (before judge) |
+| `locomo_plus_qa_cml_predictions.json` | Per-sample predictions (before judge); written incrementally when using `--resume`. |
 | `locomo_plus_qa_cml_judged.json` | Judged records (judge_label, judge_reason, judge_score) |
 | `locomo_plus_qa_cml_judge_summary.json` | Aggregate by category (for report table) |
+| `full_eval_state.json` | Resume state (pipeline step, eval phase, ingestion completed indices); used by `--resume`. |
 
 ### Generate report table
 

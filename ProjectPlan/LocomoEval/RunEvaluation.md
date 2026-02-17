@@ -151,6 +151,16 @@ python evaluation/scripts/run_full_eval.py --skip-docker
 python evaluation/scripts/run_full_eval.py --skip-docker --limit-samples 50
 ```
 
+**Resume after a stuck or interrupted run:**
+
+If the pipeline stops mid-run (e.g. ingestion at 42%), restart **without** tearing down Docker. Use `--resume` with `--skip-docker` so the same CML API/DB is still running:
+
+```bash
+python evaluation/scripts/run_full_eval.py --resume --skip-docker --ingestion-workers 20
+```
+
+Progress is saved in `evaluation/outputs/full_eval_state.json` (ingestion completed indices) and in `locomo_plus_qa_cml_predictions.json` (QA results written incrementally). Do **not** run `docker compose down -v` between runs when resuming, or ingestion/QA state will no longer match the DB.
+
 ### Option B: Manual run (eval_locomo_plus only)
 
 Set `OPENAI_API_KEY` and run:
@@ -183,6 +193,9 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `--ingestion-workers N` | Concurrent workers for Phase A ingestion (default 10) |
 | `--skip-ingestion` | Skip Phase A (reuse existing CML state) |
 | `--score-only` | Run only Phase C on existing predictions |
+| `--resume` | Continue from last state; skips completed ingestion/QA. Same CML API/DB must be running. |
+| `--state-file PATH` | Path to state JSON (default: `{out-dir}/full_eval_state.json`) |
+| `--skip-consolidation` | Skip consolidation and reconsolidation between Phase A and Phase B |
 | `--max-results 25` | CML read top-k |
 | `--verbose` | Per-sample retrieval diagnostics |
 | `--cml-url`, `--cml-api-key` | CML connection |
@@ -195,9 +208,10 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 
 | File | Description |
 |------|-------------|
-| `evaluation/outputs/locomo_plus_qa_cml_predictions.json` | Predictions (before judge) |
+| `evaluation/outputs/locomo_plus_qa_cml_predictions.json` | Predictions (before judge); written incrementally when using `--resume`. |
 | `evaluation/outputs/locomo_plus_qa_cml_judged.json` | Judged records |
 | `evaluation/outputs/locomo_plus_qa_cml_judge_summary.json` | Aggregate by category |
+| `evaluation/outputs/full_eval_state.json` | Resume state (pipeline step, eval phase, ingestion completed indices). |
 
 ---
 
@@ -224,6 +238,7 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 | **CML API not reachable** | Use `CML_BASE_URL=http://localhost:8000` (or correct host). |
 | **Ollama not reachable from container** | Set `EMBEDDING__BASE_URL` and `LLM__BASE_URL` to `http://host.docker.internal:11434/v1`. |
 | **Ollama 404 from script** | Ensure Ollama is running; `OLLAMA_BASE_URL` has no `/v1`. |
+| **Pipeline stuck or interrupted** | Do not run `docker compose down -v`. Restart with `python evaluation/scripts/run_full_eval.py --resume --skip-docker` (and same `--ingestion-workers` if desired). |
 
 ---
 
