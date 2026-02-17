@@ -35,7 +35,7 @@ except ImportError:
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-import requests
+import requests  # type: ignore[import-untyped]
 from tqdm import tqdm
 
 INGESTION_DELAY_SEC = 0.2
@@ -187,12 +187,12 @@ def _cml_write(
     if timestamp is not None:
         payload["timestamp"] = timestamp
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id, "X-Eval-Mode": "true"}
-    _CML_WRITE_TIMEOUT = 180  # Allow time for first-request embedding model load
-    _CML_WRITE_RETRIES = 3  # Retry on connection errors (e.g. server busy, model loading)
-    for retry in range(_CML_WRITE_RETRIES):
+    write_timeout = 180  # Allow time for first-request embedding model load
+    write_retries = 3  # Retry on connection errors (e.g. server busy, model loading)
+    for retry in range(write_retries):
         for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
             try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=_CML_WRITE_TIMEOUT)
+                resp = requests.post(url, json=payload, headers=headers, timeout=write_timeout)
                 if resp.status_code in [429, 500]:
                     if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
                         resp.raise_for_status()
@@ -201,8 +201,8 @@ def _cml_write(
                     continue
                 resp.raise_for_status()
                 return
-            except (requests.exceptions.ConnectionError, OSError) as e:
-                if retry < _CML_WRITE_RETRIES - 1:
+            except (requests.exceptions.ConnectionError, OSError):
+                if retry < write_retries - 1:
                     time.sleep(5 * (retry + 1))
                     break
                 raise
@@ -444,12 +444,14 @@ def phase_b_qa(
             cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
         )
         if verbose:
+            assert isinstance(read_result, tuple), "return_full=True yields tuple"
             llm_context, raw_response = read_result
             type_counts = _count_memory_types(raw_response)
             tqdm.write(
                 f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
             )
         else:
+            assert isinstance(read_result, str), "return_full=False yields str"
             llm_context = read_result
         if QA_READ_DELAY_SEC > 0:
             time.sleep(QA_READ_DELAY_SEC)

@@ -1,4 +1,4 @@
-"""Integration tests for Phase 1: EventLogRepository against PostgreSQL."""
+"""Integration tests for EventLogRepository against PostgreSQL."""
 
 from uuid import uuid4
 

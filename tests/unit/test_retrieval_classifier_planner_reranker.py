@@ -1,4 +1,4 @@
-"""Unit tests for Phase 5: retrieval (classifier, planner, reranker, packet builder)."""
+"""Unit tests for retrieval (classifier, planner, reranker, packet builder)."""
 
 from datetime import UTC, datetime
 

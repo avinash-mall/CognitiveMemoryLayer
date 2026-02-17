@@ -8,16 +8,36 @@ This is particularly useful for:
 - Benchmark evaluations (e.g., Locomo) that replay historical conversations
 - Data migration from other systems with preserved timestamps
 - Testing temporal reasoning and memory consolidation over time
+
+Set AUTH__API_KEY (or CML_API_KEY) and CML_BASE_URL (or MEMORY_API_URL) in .env.
 """
 
+import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / ".env")
+except ImportError:
+    pass
 
 from cml import CognitiveMemoryLayer
 
 
 def main():
-    # Initialize the client (reads CML_API_KEY and CML_BASE_URL from .env)
-    memory = CognitiveMemoryLayer()
+    base_url = (
+        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+    ).strip() or "http://localhost:8000"
+    with CognitiveMemoryLayer(
+        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        base_url=base_url,
+    ) as memory:
+        _run_temporal_fidelity(memory)
+
+
+def _run_temporal_fidelity(memory: CognitiveMemoryLayer) -> None:
 
     print("=" * 60)
     print("Temporal Fidelity Example")
@@ -60,7 +80,7 @@ def main():
         session_id="historical_session_3",
     )
     print(f"   ✓ Processed turn from {one_month_ago.date()}")
-    print(f"   ✓ Stored {result.chunks_created} chunks")
+    print(f"   ✓ Stored {result.memories_stored} memories")
 
     # Example 3: Store current memories (timestamp defaults to now)
     print("\n3. Storing current memories (timestamp defaults to now)...")
@@ -132,8 +152,6 @@ def main():
     print("- Timestamps default to 'now' when not provided (backward compatible)")
     print("- Essential for benchmark evaluations and data migration")
     print("- Enables accurate temporal reasoning and memory consolidation")
-
-    memory.close()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Unit tests for Phase 3: embedding client."""
+"""Unit tests for mock embedding client."""
 
 import pytest
 

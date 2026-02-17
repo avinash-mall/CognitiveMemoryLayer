@@ -1,4 +1,4 @@
-"""Integration test: full short-term ingest flow."""
+"""Integration tests for full short-term memory ingest flow."""
 
 import pytest
 
@@ -72,7 +72,8 @@ async def test_working_memory_chunk_types_and_salience():
 @pytest.mark.asyncio
 async def test_chunks_for_encoding_handoff_to_write_gate_preserves_fields():
     """Feed chunks_for_encoding to WriteGate; assert chunk fields preserved."""
-    config = ShortTermMemoryConfig(use_fast_chunker=True, min_salience_for_encoding=0.4)
+    # Use min_salience_for_encoding=0 so all chunks are encodable (no skip)
+    config = ShortTermMemoryConfig(use_fast_chunker=True, min_salience_for_encoding=0.0)
     stm = ShortTermMemory(config=config)
     await stm.ingest_turn(
         "tenant-a",
@@ -82,8 +83,7 @@ async def test_chunks_for_encoding_handoff_to_write_gate_preserves_fields():
         role="user",
     )
     encodable = await stm.get_encodable_chunks("tenant-a", "user-a")
-    if not encodable:
-        pytest.skip("No encodable chunks (chunker may not produce high-salience)")
+    assert encodable, "Chunker should produce at least one encodable chunk with min_salience=0"
     gate = WriteGate()
     for chunk in encodable:
         result = gate.evaluate(chunk)

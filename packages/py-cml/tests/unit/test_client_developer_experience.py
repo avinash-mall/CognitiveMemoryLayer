@@ -1,4 +1,4 @@
-"""Unit tests for Phase 6 developer experience."""
+"""Unit tests for client developer experience (exceptions, logging, serialization, deprecation)."""
 
 import asyncio
 from datetime import datetime

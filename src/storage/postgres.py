@@ -390,6 +390,24 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             await session.commit()
 
+    async def deactivate_constraints_by_key(self, tenant_id: str, constraint_key: str) -> int:
+        """Deactivate episodic CONSTRAINT records with the given fact key (supersession)."""
+        async with self.session_factory() as session:
+            result = await session.execute(
+                update(MemoryRecordModel)
+                .where(
+                    and_(
+                        MemoryRecordModel.tenant_id == tenant_id,
+                        MemoryRecordModel.type == MemoryType.CONSTRAINT.value,
+                        MemoryRecordModel.key == constraint_key,
+                        MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                    )
+                )
+                .values(status=MemoryStatus.SILENT.value)
+            )
+            await session.commit()
+            return result.rowcount
+
     def _hash_content(self, text: str, tenant_id: str) -> str:
         content = f"{tenant_id}:{text.lower().strip()}"
         return hashlib.sha256(content.encode()).hexdigest()

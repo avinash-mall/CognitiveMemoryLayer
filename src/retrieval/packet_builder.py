@@ -5,6 +5,9 @@ import json
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryPacket, RetrievedMemory
 
+# Minimum relevance for episodes to appear in markdown (avoid dilution of constraints)
+EPISODE_RELEVANCE_THRESHOLD = 0.4
+
 
 class MemoryPacketBuilder:
     """Builds structured memory packets from retrieved memories."""
@@ -103,7 +106,7 @@ class MemoryPacketBuilder:
             lines.append("## Active Constraints (Must Follow)")
             for c in packet.constraints[:6]:
                 prov = self._constraint_provenance(c)
-                lines.append(f"- **{c.record.text}** {prov}".rstrip())
+                lines.append(f"- [!IMPORTANT] **{c.record.text}** {prov}".rstrip())
             lines.append("")
         if packet.facts:
             lines.append("## Known Facts")
@@ -116,9 +119,14 @@ class MemoryPacketBuilder:
             for p in packet.preferences[:5]:
                 lines.append(f"- {p.record.text}")
             lines.append("")
-        if packet.recent_episodes:
+        relevant_episodes = [
+            e
+            for e in packet.recent_episodes
+            if getattr(e, "relevance_score", 1.0) > EPISODE_RELEVANCE_THRESHOLD
+        ]
+        if relevant_episodes:
             lines.append("## Recent Context")
-            for e in packet.recent_episodes[:5]:
+            for e in relevant_episodes[:5]:
                 ts = e.record.timestamp
                 date_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)
                 lines.append(f"- [{date_str}] {e.record.text}")

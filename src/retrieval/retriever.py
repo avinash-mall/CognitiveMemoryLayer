@@ -338,13 +338,30 @@ class HybridRetriever:
         # 2. Semantic fact lookup for cognitive constraint categories
         from ..memory.neocortical.schemas import FactCategory
 
-        cognitive_categories = [
+        category_map = {
+            "goal": FactCategory.GOAL,
+            "value": FactCategory.VALUE,
+            "state": FactCategory.STATE,
+            "causal": FactCategory.CAUSAL,
+            "policy": FactCategory.POLICY,
+        }
+        all_cognitive = [
             FactCategory.GOAL,
             FactCategory.VALUE,
             FactCategory.STATE,
             FactCategory.CAUSAL,
             FactCategory.POLICY,
         ]
+        if step.constraint_categories:
+            cognitive_categories = [
+                category_map[c.lower()]
+                for c in step.constraint_categories
+                if c.lower() in category_map
+            ]
+        else:
+            cognitive_categories = all_cognitive
+        if not cognitive_categories:
+            cognitive_categories = all_cognitive
         try:
             for category in cognitive_categories:
                 facts = await self.neocortical.facts.get_facts_by_category(

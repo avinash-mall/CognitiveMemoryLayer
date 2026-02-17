@@ -11,8 +11,8 @@
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests"><img src="https://img.shields.io/badge/Tests-400+-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version">
+  <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-667-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <img src="https://img.shields.io/badge/version-1.3.0-blue?style=for-the-badge" alt="Version">
 </p>
 
 <p align="center">
@@ -1017,9 +1017,9 @@ CognitiveMemoryLayer/
 ├── packages/
 │   └── py-cml/                   # Python SDK (pip install cognitive-memory-layer)
 │       ├── src/cml/              # Client, models, transport, converters
-│       ├── tests/                # 131 test functions (unit, integration, embedded, e2e)
+│       ├── tests/                # 175 tests (unit, integration, embedded, e2e)
 │       └── docs/                 # SDK documentation
-├── tests/                        # 269 test functions (unit, integration, e2e)
+├── tests/                        # 492 tests (unit, integration, e2e)
 ├── evaluation/                   # LoCoMo-Plus evaluation harness + scripts
 ├── examples/                     # 14 example scripts (quickstart, chatbot, embedded, integrations)
 ├── migrations/                   # Alembic database migrations
@@ -1032,39 +1032,42 @@ CognitiveMemoryLayer/
 
 ## Testing
 
-Tests read configuration from the project root `.env`; copy `.env.example` to `.env` and set values. See [tests/README.md](tests/README.md) for details.
+Tests read configuration from the project root `.env`; copy `.env.example` to `.env` and set values. See [tests/README.md](tests/README.md) for full layout and [packages/py-cml/README.md#testing](packages/py-cml/README.md#testing) for SDK tests.
 
 ```bash
-# Run all server tests in Docker (unit + integration + e2e)
+# Run all server tests (unit + integration + e2e)
+pytest tests/unit tests/integration tests/e2e -v --tb=short
+
+# Run in Docker (with DB)
 docker compose -f docker/docker-compose.yml build app
 docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade head && pytest tests -v --tb=short"
 
-# Run unit tests locally (no DB required)
+# Run unit tests only (no DB required for most)
 pytest tests/unit -v
 
-# Run SDK tests
+# Run SDK tests (unit, integration, embedded, e2e)
 pytest packages/py-cml/tests -v
 ```
 
 <details>
-<summary><strong>Test Suite Summary</strong></summary>
+<summary><strong>Test suite summary</strong></summary>
 
-| Suite | Test Functions | Description |
+| Suite | Count | Description |
 | :--- | ---: | :--- |
-| Server unit | 107 | Core models, write gate, chunker, extraction, constraint layer, retrieval, forgetting, API |
-| Server integration | 35 | Hippocampal encode, neocortical store, retrieval flow, consolidation, forgetting, dashboard |
+| Server unit | 413 | Core models, write gate, chunker, extraction, constraint layer, retrieval, forgetting, API |
+| Server integration | 76 | Hippocampal encode, neocortical store, retrieval flow, consolidation, forgetting, dashboard |
 | Server e2e | 3 | Full API flows |
-| SDK unit | 107 | Client, models, transport, serialization, config, enums, retry, logging |
+| **Server total** | **492** | `pytest tests/unit tests/integration tests/e2e` |
+| SDK unit | 149 | Client, models, transport, serialization, config, enums, retry, logging |
 | SDK integration | 18 | Write/read, sessions, admin, batch, stats, namespaces |
 | SDK embedded | 6 | Lite mode, lifecycle |
-| **Total** | **~400** | Across server + SDK |
+| SDK e2e | 2 | Chat flow, migration |
+| **SDK total** | **175** | `pytest packages/py-cml/tests` |
+| **Combined** | **667** | Server + SDK |
 
-Key test areas include:
-- **Constraint layer**: `ChunkType.CONSTRAINT`, salience boosting, `ConstraintExtractor` (all 5 types, batch, supersession), write gate integration, cognitive `FactCategory`, query classifier intent detection, retrieval planner steps, reranker weights, packet builder constraints, consolidation sampler time windows
-- **Deep research improvements**: Stable keys, write-time facts, batch embeddings, retrieval timeouts, HNSW tuning, bounded state, DB dependency counts
-- **Evaluation**: Timestamp parsing, neutral prompting, verbose diagnostics
+Some tests skip when services (CML API, Postgres, embedding) or optional deps (e.g. Celery) are unavailable; see [tests/SKIPPED_TESTS_REPORT.md](tests/SKIPPED_TESTS_REPORT.md).
 
-To update version/test badges: `python scripts/update_readme_badges.py`
+To refresh version and test-count badges: `python scripts/update_readme_badges.py`
 
 </details>
 

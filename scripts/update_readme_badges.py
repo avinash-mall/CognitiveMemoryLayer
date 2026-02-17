@@ -49,21 +49,22 @@ def get_version(root: Path | None = None) -> str:
 
 
 def get_test_count(root: Path | None = None) -> str:
-    """Run pytest --collect-only -q and return the number of tests collected."""
+    """Run pytest --collect-only -q on server and SDK tests; return combined count."""
     root = root or REPO_ROOT
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests", "--collect-only", "-q"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    out = (result.stdout or "") + (result.stderr or "")
-    # e.g. "297 tests collected in 2.10s" or "297 collected"
-    match = re.search(r"(\d+)\s+(?:tests?\s+)?collected", out, re.IGNORECASE)
-    if match:
-        return match.group(1)
-    return "0"
+    total = 0
+    for path in ["tests", "packages/py-cml/tests"]:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", path, "--collect-only", "-q"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        out = (result.stdout or "") + (result.stderr or "")
+        match = re.search(r"(\d+)\s+(?:tests?\s+)?collected", out, re.IGNORECASE)
+        if match:
+            total += int(match.group(1))
+    return str(total) if total else "0"
 
 
 def main() -> None:

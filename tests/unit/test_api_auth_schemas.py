@@ -1,4 +1,4 @@
-"""Unit tests for Phase 9 REST API components."""
+"""Unit tests for REST API auth config and request/response schemas."""
 
 from fastapi.testclient import TestClient
 

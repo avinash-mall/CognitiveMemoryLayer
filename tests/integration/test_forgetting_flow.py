@@ -1,4 +1,4 @@
-"""Integration tests for Phase 8: active forgetting flow."""
+"""Integration tests for active forgetting flow."""
 
 from uuid import uuid4
 
@@ -130,6 +130,96 @@ async def test_forgetting_flow_protected_types_kept_low_episodic_affected(pg_ses
     episodic_after = await store.get_by_id(episodic_rec.id)
     assert episodic_after is not None
     if report2.result.decayed >= 1 or report2.result.silenced >= 1 or report2.result.deleted >= 1:
-        assert episodic_after.confidence <= 0.6 or episodic_after.status.value != "active", (
-            "low episodic may be decayed or silenced"
+        assert (
+            episodic_after.confidence <= 0.6 or episodic_after.status.value != "active"
+        ), "low episodic may be decayed or silenced"
+
+
+# ---------------------------------------------------------------------------
+# PostgresMemoryStore dependency check and ForgettingExecutor (real DB validation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_count_references_to_zero_for_missing_record(pg_session_factory):
+    """count_references_to returns 0 for a non-existent record id."""
+    store = PostgresMemoryStore(pg_session_factory)
+    count = await store.count_references_to(uuid4())
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_count_references_to_includes_supersedes_and_evidence_refs(
+    pg_session_factory,
+):
+    """count_references_to counts supersedes_id and metadata.evidence_refs; no refs => 0."""
+    store = PostgresMemoryStore(pg_session_factory)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    r1 = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="First memory.",
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
         )
+    )
+    await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Second memory.",
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    count = await store.count_references_to(r1.id)
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_executor_delete_skipped_when_dependencies(pg_session_factory):
+    """ForgettingExecutor skips delete when record has evidence_refs dependencies."""
+    from src.forgetting.actions import ForgettingAction, ForgettingOperation
+    from src.forgetting.executor import ForgettingExecutor
+
+    store = PostgresMemoryStore(pg_session_factory)
+    executor = ForgettingExecutor(store)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    r1 = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Referenced memory.",
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    r2 = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Another memory.",
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    await store.update(
+        r2.id,
+        {"metadata": {"evidence_refs": [str(r1.id)]}},
+        increment_version=True,
+    )
+
+    ref_count = await store.count_references_to(r1.id)
+    assert ref_count >= 1
+
+    op = ForgettingOperation(
+        action=ForgettingAction.DELETE,
+        memory_id=r1.id,
+        reason="test",
+    )
+    result = await executor.execute([op], dry_run=False)
+    assert result.deleted == 0
+    assert any("dependency" in e.lower() or "Skipped" in e for e in result.errors)
