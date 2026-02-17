@@ -112,7 +112,12 @@ class HippocampalStore:
         ):
             memory_type = MemoryType.CONSTRAINT
 
-        key = self._generate_key(chunk, memory_type)
+        if memory_type == MemoryType.CONSTRAINT and extracted_constraints:
+            from ...extraction.constraint_extractor import ConstraintExtractor
+
+            key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
+        else:
+            key = self._generate_key(chunk, memory_type)
 
         # Merge request-level metadata with system metadata; request metadata wins on conflict
         system_metadata: dict[str, Any] = {
@@ -256,7 +261,12 @@ class HippocampalStore:
             ):
                 memory_type = MemoryType.CONSTRAINT
 
-            key = self._generate_key(chunk, memory_type)
+            if memory_type == MemoryType.CONSTRAINT and extracted_constraints:
+                from ...extraction.constraint_extractor import ConstraintExtractor
+
+                key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
+            else:
+                key = self._generate_key(chunk, memory_type)
 
             system_metadata: dict[str, Any] = {
                 "chunk_type": chunk.chunk_type.value,
@@ -347,6 +357,12 @@ class HippocampalStore:
                     ]
                 )
         return results
+
+    async def deactivate_constraints_by_key(self, tenant_id: str, constraint_key: str) -> int:
+        """Deactivate previous episodic CONSTRAINT records with the same fact key (supersession)."""
+        if hasattr(self.store, "deactivate_constraints_by_key"):
+            return await self.store.deactivate_constraints_by_key(tenant_id, constraint_key)
+        return 0
 
     async def get_recent(
         self,

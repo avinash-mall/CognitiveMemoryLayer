@@ -1,4 +1,4 @@
-"""Unit tests for Phase 8: active forgetting (scorer, policy, interference)."""
+"""Unit tests for active forgetting (scorer, policy, interference)."""
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -237,92 +237,5 @@ class TestCompression:
         assert len(out) <= 100
 
 
-class TestDependencyCheck:
-    @pytest.mark.asyncio
-    async def test_count_references_to_none_for_missing_record(self, pg_session_factory):
-        from src.storage.postgres import PostgresMemoryStore
-
-        store = PostgresMemoryStore(pg_session_factory)
-        count = await store.count_references_to(uuid4())
-        assert count == 0
-
-    @pytest.mark.asyncio
-    async def test_count_references_to_includes_supersedes_and_evidence_refs(
-        self, pg_session_factory
-    ):
-        from src.core.schemas import MemoryRecordCreate, Provenance
-        from src.storage.postgres import PostgresMemoryStore
-
-        store = PostgresMemoryStore(pg_session_factory)
-        tenant_id = f"t-{uuid4().hex[:8]}"
-
-        r1 = await store.upsert(
-            MemoryRecordCreate(
-                tenant_id=tenant_id,
-                context_tags=[],
-                type=MemoryType.EPISODIC_EVENT,
-                text="First memory.",
-                provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-            )
-        )
-        await store.upsert(
-            MemoryRecordCreate(
-                tenant_id=tenant_id,
-                context_tags=[],
-                type=MemoryType.EPISODIC_EVENT,
-                text="Second memory.",
-                provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-            )
-        )
-        # No refs yet
-        count = await store.count_references_to(r1.id)
-        assert count == 0
-
-    @pytest.mark.asyncio
-    async def test_executor_delete_skipped_when_dependencies(self, pg_session_factory):
-        from src.core.schemas import MemoryRecordCreate, Provenance
-        from src.forgetting.actions import ForgettingAction, ForgettingOperation
-        from src.forgetting.executor import ForgettingExecutor
-        from src.storage.postgres import PostgresMemoryStore
-
-        store = PostgresMemoryStore(pg_session_factory)
-        executor = ForgettingExecutor(store)
-        tenant_id = f"t-{uuid4().hex[:8]}"
-
-        r1 = await store.upsert(
-            MemoryRecordCreate(
-                tenant_id=tenant_id,
-                context_tags=[],
-                type=MemoryType.EPISODIC_EVENT,
-                text="Referenced memory.",
-                provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-            )
-        )
-        # Create second record that references r1 via metadata (evidence_refs)
-        r2 = await store.upsert(
-            MemoryRecordCreate(
-                tenant_id=tenant_id,
-                context_tags=[],
-                type=MemoryType.EPISODIC_EVENT,
-                text="Another memory.",
-                provenance=Provenance(source=MemorySource.USER_EXPLICIT),
-            )
-        )
-        # Manually update r2 to have evidence_refs pointing to r1 (simulate dependency)
-        await store.update(
-            r2.id,
-            {"metadata": {"evidence_refs": [str(r1.id)]}},
-            increment_version=True,
-        )
-
-        ref_count = await store.count_references_to(r1.id)
-        assert ref_count >= 1
-
-        op = ForgettingOperation(
-            action=ForgettingAction.DELETE,
-            memory_id=r1.id,
-            reason="test",
-        )
-        result = await executor.execute([op], dry_run=False)
-        assert result.deleted == 0
-        assert any("dependency" in e.lower() or "Skipped" in e for e in result.errors)
+# PostgresMemoryStore.count_references_to and ForgettingExecutor dependency checks
+# are integration tests (require real Postgres); see tests/integration/test_forgetting_flow.py

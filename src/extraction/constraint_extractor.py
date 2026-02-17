@@ -115,7 +115,10 @@ class ConstraintExtractor:
 
     def extract(self, chunk: SemanticChunk) -> list[ConstraintObject]:
         """Extract zero or more constraint objects from a single chunk."""
-        text = chunk.text.strip()
+        raw = getattr(chunk, "text", None)
+        if not isinstance(raw, str):
+            return []
+        text = raw.strip()
         if not text:
             return []
 

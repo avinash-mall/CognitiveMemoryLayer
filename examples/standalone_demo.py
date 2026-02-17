@@ -24,6 +24,21 @@ import httpx
 BASE_URL = "http://localhost:8000/api/v1"
 API_KEY = os.environ.get("AUTH__API_KEY", "")
 HEADERS = {"Content-Type": "application/json", "X-API-Key": API_KEY}
+# Read/write timeout for httpx (retrieval and process_turn can be slow)
+HTTP_TIMEOUT = 60.0
+
+# When set (e.g. CML_STANDALONE_NON_INTERACTIVE=1), run all steps without pausing for input
+NON_INTERACTIVE = os.environ.get("CML_STANDALONE_NON_INTERACTIVE", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+
+def _pause(prompt: str) -> None:
+    """Wait for Enter unless running non-interactively."""
+    if not NON_INTERACTIVE:
+        input(prompt)
 
 
 def print_section(title: str):
@@ -48,7 +63,7 @@ def demo_health_check():
     """Check if the API is running."""
     print_section("Health Check")
 
-    response = httpx.get(f"{BASE_URL}/health")
+    response = httpx.get(f"{BASE_URL}/health", timeout=HTTP_TIMEOUT)
     print_response(response, "Health")
 
     if response.status_code == 200:
@@ -84,6 +99,7 @@ def demo_write_memories():
         {
             "content": "User is severely allergic to penicillin - this is critical medical information.",
             "session_id": session_id,
+            "memory_type": "constraint",
             "context_tags": ["medical", "critical"],
         },
         {
@@ -95,6 +111,7 @@ def demo_write_memories():
         {
             "content": "User seems interested in machine learning based on questions asked.",
             "session_id": session_id,
+            "memory_type": "hypothesis",
             "context_tags": ["interests"],
         },
     ]
@@ -102,7 +119,9 @@ def demo_write_memories():
     print(f"Storing {len(memories)} memories (session: {session_id})...\n")
 
     for i, memory in enumerate(memories, 1):
-        response = httpx.post(f"{BASE_URL}/memory/write", headers=HEADERS, json=memory)
+        response = httpx.post(
+            f"{BASE_URL}/memory/write", headers=HEADERS, json=memory, timeout=HTTP_TIMEOUT
+        )
 
         if response.status_code == 200:
             data = response.json()
@@ -136,6 +155,7 @@ def demo_read_memories(session_id: str):
             f"{BASE_URL}/memory/read",
             headers=HEADERS,
             json={"query": q["query"], "max_results": 5, "format": "packet"},
+            timeout=HTTP_TIMEOUT,
         )
 
         if response.status_code == 200:
@@ -167,6 +187,7 @@ def demo_llm_context_format(session_id: str):
             "max_results": 10,
             "format": "llm_context",
         },
+        timeout=HTTP_TIMEOUT,
     )
 
     if response.status_code == 200:
@@ -186,6 +207,7 @@ def demo_update_memory(session_id: str):
         f"{BASE_URL}/memory/read",
         headers=HEADERS,
         json={"query": "machine learning interest", "max_results": 1},
+        timeout=HTTP_TIMEOUT,
     )
 
     if response.status_code == 200 and response.json().get("memories"):
@@ -203,6 +225,7 @@ def demo_update_memory(session_id: str):
             f"{BASE_URL}/memory/update",
             headers=HEADERS,
             json={"memory_id": memory_id, "feedback": "correct"},
+            timeout=HTTP_TIMEOUT,
         )
 
         if update_response.status_code == 200:
@@ -217,7 +240,7 @@ def demo_memory_stats():
     """Demonstrate memory statistics."""
     print_section("Memory Statistics")
 
-    response = httpx.get(f"{BASE_URL}/memory/stats", headers=HEADERS)
+    response = httpx.get(f"{BASE_URL}/memory/stats", headers=HEADERS, timeout=HTTP_TIMEOUT)
 
     if response.status_code == 200:
         stats = response.json()
@@ -247,6 +270,7 @@ def demo_process_turn():
             "session_id": session_id,
             "max_context_tokens": 500,
         },
+        timeout=HTTP_TIMEOUT,
     )
     if response.status_code == 200:
         data = response.json()
@@ -265,6 +289,7 @@ def demo_process_turn():
             "session_id": session_id,
             "max_context_tokens": 500,
         },
+        timeout=HTTP_TIMEOUT,
     )
     if response2.status_code == 200:
         data = response2.json()
@@ -280,6 +305,7 @@ def demo_create_session():
         f"{BASE_URL}/session/create",
         headers=HEADERS,
         json={"ttl_hours": 24},
+        timeout=HTTP_TIMEOUT,
     )
     if response.status_code == 200:
         data = response.json()
@@ -301,6 +327,7 @@ def demo_forget_memory():
         f"{BASE_URL}/memory/forget",
         headers=HEADERS,
         json={"query": "new job at Google", "action": "archive"},
+        timeout=HTTP_TIMEOUT,
     )
 
     if response.status_code == 200:
@@ -363,31 +390,31 @@ def main():
         if not demo_health_check():
             return
 
-        input("Press Enter to continue with write demo...")
+        _pause("Press Enter to continue with write demo...")
         session_id = demo_write_memories()
 
-        input("Press Enter to continue with read demo...")
+        _pause("Press Enter to continue with read demo...")
         demo_read_memories(session_id)
 
-        input("Press Enter to continue with LLM context demo...")
+        _pause("Press Enter to continue with LLM context demo...")
         demo_llm_context_format(session_id)
 
-        input("Press Enter to continue with update demo...")
+        _pause("Press Enter to continue with update demo...")
         demo_update_memory(session_id)
 
-        input("Press Enter to continue with stats demo...")
+        _pause("Press Enter to continue with stats demo...")
         demo_memory_stats()
 
-        input("Press Enter to continue with process_turn demo...")
+        _pause("Press Enter to continue with process_turn demo...")
         demo_process_turn()
 
-        input("Press Enter to continue with create_session demo...")
+        _pause("Press Enter to continue with create_session demo...")
         demo_create_session()
 
-        input("Press Enter to continue with forget demo...")
+        _pause("Press Enter to continue with forget demo...")
         demo_forget_memory()
 
-        input("Press Enter to see curl examples...")
+        _pause("Press Enter to see curl examples...")
         demo_curl_examples()
 
         print_section("Demo Complete!")
@@ -395,7 +422,7 @@ def main():
         print("Check out the other examples for LLM integration:")
         print("  - openai_tool_calling.py")
         print("  - anthropic_tool_calling.py")
-        print("  - chatbot_with_memory.py")
+        print("  - chat_with_memory.py")
         print("  - langchain_integration.py")
 
     except KeyboardInterrupt:

@@ -1,4 +1,4 @@
-"""Unit tests for embedded client (mocked orchestrator, no engine required)."""
+"""Unit tests for embedded CML client (config and mocked orchestrator)."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock

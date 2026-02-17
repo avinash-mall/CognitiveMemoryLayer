@@ -1,4 +1,4 @@
-"""Unit tests for Phase 1: core enums, schemas, and config."""
+"""Unit tests for core enums, schemas, and config."""
 
 from src.core.config import get_settings
 from src.core.enums import (

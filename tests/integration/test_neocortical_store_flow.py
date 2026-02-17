@@ -1,4 +1,4 @@
-"""Integration tests for Phase 4: NeocorticalStore (fact store + mock graph)."""
+"""Integration tests for NeocorticalStore (fact store and mock graph)."""
 
 from uuid import uuid4
 

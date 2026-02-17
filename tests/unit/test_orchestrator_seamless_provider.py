@@ -15,6 +15,7 @@ from src.core.schemas import (
     Relation,
     RetrievedMemory,
 )
+from src.memory.working.models import ChunkType, SemanticChunk
 
 
 def _make_memory_record(
@@ -45,6 +46,22 @@ def _make_retrieved_memory(
         record=_make_memory_record(text, mem_type),
         relevance_score=relevance,
         retrieval_source="vector",
+    )
+
+
+def _make_semantic_chunk(
+    text: str = "Important information",
+    chunk_type: ChunkType = ChunkType.STATEMENT,
+    salience: float = 0.8,
+    chunk_id: str = "chunk-1",
+) -> SemanticChunk:
+    """Create a real SemanticChunk for encoding/constraint-extraction paths."""
+    return SemanticChunk(
+        id=chunk_id,
+        text=text,
+        chunk_type=chunk_type,
+        salience=salience,
+        timestamp=datetime.now(UTC),
     )
 
 
@@ -270,13 +287,13 @@ class TestMemoryOrchestrator:
     @pytest.mark.asyncio
     async def test_write_stores_via_hippocampal(self, orchestrator, mock_dependencies):
         """Test that write calls hippocampal.encode_batch when chunks exist."""
-        # Setup to return chunks for encoding
+        # Setup to return chunks for encoding (real SemanticChunk for constraint extractor)
         mock_dependencies["short_term"].ingest_turn = AsyncMock(
             return_value={
                 "tokens_buffered": 10,
                 "chunks_created": 1,
                 "all_chunks": [],
-                "chunks_for_encoding": [MagicMock()],  # Non-empty to trigger encoding
+                "chunks_for_encoding": [_make_semantic_chunk("Important information")],
             }
         )
 
@@ -347,13 +364,13 @@ class TestMemoryOrchestrator:
         stored_record.entities = [entity]
         stored_record.relations = [relation]
 
-        # STM returns chunks so encode_batch is invoked
+        # STM returns chunks so encode_batch is invoked (real chunk for constraint extractor)
         mock_dependencies["short_term"].ingest_turn = AsyncMock(
             return_value={
                 "tokens_buffered": 10,
                 "chunks_created": 1,
                 "all_chunks": [],
-                "chunks_for_encoding": [MagicMock()],
+                "chunks_for_encoding": [_make_semantic_chunk("I live in Paris")],
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
@@ -397,7 +414,7 @@ class TestMemoryOrchestrator:
                 "tokens_buffered": 5,
                 "chunks_created": 1,
                 "all_chunks": [],
-                "chunks_for_encoding": [MagicMock()],
+                "chunks_for_encoding": [_make_semantic_chunk("I visited Berlin")],
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
@@ -429,7 +446,7 @@ class TestMemoryOrchestrator:
                 "tokens_buffered": 5,
                 "chunks_created": 1,
                 "all_chunks": [],
-                "chunks_for_encoding": [MagicMock()],
+                "chunks_for_encoding": [_make_semantic_chunk("I work at ACME")],
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
@@ -460,7 +477,7 @@ class TestMemoryOrchestrator:
                 "tokens_buffered": 5,
                 "chunks_created": 1,
                 "all_chunks": [],
-                "chunks_for_encoding": [MagicMock()],
+                "chunks_for_encoding": [_make_semantic_chunk("Hello world")],
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
@@ -491,7 +508,7 @@ class TestMemoryOrchestrator:
                 "tokens_buffered": 5,
                 "chunks_created": 1,
                 "all_chunks": [],
-                "chunks_for_encoding": [MagicMock()],
+                "chunks_for_encoding": [_make_semantic_chunk("I traveled to Tokyo")],
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
@@ -531,7 +548,15 @@ class TestOrchestratorFactory:
         mock_db.neo4j_driver = MagicMock()
         mock_db.redis = None
 
+        # Ensure create() wires extractors (use_fast_chunker=False)
+        mock_settings = MagicMock()
+        mock_settings.features.use_fast_chunker = False
+        mock_settings.features.use_chonkie_for_large_text = False
+        mock_settings.features.chunker_large_text_threshold_chars = 0
+        mock_settings.features.cached_embeddings_enabled = False
+
         with (
+            patch("src.core.config.get_settings", return_value=mock_settings),
             patch("src.memory.orchestrator.get_internal_llm_client") as mock_llm,
             patch("src.memory.orchestrator.get_embedding_client") as mock_emb,
             patch("src.memory.orchestrator.Neo4jGraphStore"),

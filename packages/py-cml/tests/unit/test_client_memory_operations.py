@@ -1,4 +1,4 @@
-"""Unit tests for client memory operations with mocked transport."""
+"""Unit tests for sync/async client memory operations (write, read, update, forget) with mocked transport."""
 
 from __future__ import annotations
 

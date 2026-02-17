@@ -1,4 +1,4 @@
-"""Unit tests for Phase 5 advanced features (admin, batch, tenant, events, health, namespace, iter_memories, OpenAI helper)."""
+"""Unit tests for client advanced features (admin, batch, tenant, events, health, namespace, iter_memories, OpenAI helper)."""
 
 from __future__ import annotations
 

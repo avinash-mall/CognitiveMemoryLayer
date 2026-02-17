@@ -131,6 +131,18 @@ class FeatureFlags(PydanticBaseModel):
     )
 
 
+class RerankerSettings(PydanticBaseModel):
+    """Reranker weights (tune to reduce recency bias)."""
+
+    recency_weight: float = Field(default=0.1, description="Weight for recency in reranking")
+    relevance_weight: float = Field(default=0.5, description="Weight for relevance score")
+    confidence_weight: float = Field(default=0.2, description="Weight for confidence")
+    active_constraint_bonus: float = Field(
+        default=0.2,
+        description="Optional bonus for active constraints (for future use in reranker)",
+    )
+
+
 class RetrievalSettings(PydanticBaseModel):
     """Retrieval tuning knobs."""
 
@@ -139,6 +151,7 @@ class RetrievalSettings(PydanticBaseModel):
     graph_timeout_ms: int = Field(default=1000, description="Graph step timeout (ms)")
     fact_timeout_ms: int = Field(default=200, description="Fact lookup timeout (ms)")
     hnsw_ef_search: int = Field(default=64, description="pgvector HNSW ef_search override")
+    reranker: RerankerSettings = Field(default_factory=RerankerSettings)
 
 
 class Settings(BaseSettings):

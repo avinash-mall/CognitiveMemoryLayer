@@ -1,4 +1,4 @@
-"""Unit tests for Phase 3: write gate and redactor."""
+"""Unit tests for hippocampal write gate and PII redactor."""
 
 from src.core.enums import MemoryType
 from src.memory.hippocampal.redactor import PIIRedactor
