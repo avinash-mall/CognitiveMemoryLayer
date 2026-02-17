@@ -1,4 +1,4 @@
-"""Integration test: encode chunk through hippocampal store (with mock embedding)."""
+"""Integration tests for hippocampal encode flow (encode chunk, store, retrieval)."""
 
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from src.core.config import get_settings
-from src.core.enums import MemoryType
+from src.core.enums import MemoryStatus, MemoryType
 from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.store import HippocampalStore
 from src.memory.hippocampal.write_gate import WriteGate
@@ -60,9 +60,9 @@ async def test_encode_chunk_stores_record(pg_session_factory):
     # Vector search smoke test (no exception; may return 0 results depending on pgvector/embedding env)
     results = await hippocampal_store.search(tenant_id, "user preference dark mode", top_k=5)
     if results:
-        assert any(r.id == record.id for r in results), (
-            "stored record should appear in search when results returned"
-        )
+        assert any(
+            r.id == record.id for r in results
+        ), "stored record should appear in search when results returned"
 
 
 @pytest.mark.asyncio
@@ -106,9 +106,9 @@ async def test_encode_chunk_stored_record_type_matches_gate(pg_session_factory):
         )
         if record is None:
             continue
-        assert record.type == expected_memory_type, (
-            f"ChunkType {chunk_type} should produce record type {expected_memory_type}, got {record.type}"
-        )
+        assert (
+            record.type == expected_memory_type
+        ), f"ChunkType {chunk_type} should produce record type {expected_memory_type}, got {record.type}"
         assert expected_memory_type in gate_result.memory_types
 
 
@@ -171,3 +171,56 @@ async def test_hippocampal_get_recent_and_search_with_type_filter(pg_session_fac
     )
     for r in results:
         assert r.type == MemoryType.PREFERENCE
+
+
+@pytest.mark.asyncio
+async def test_constraint_supersession_first_silent_second_active(pg_session_factory):
+    """Write two conflicting constraints (same key); assert first is SILENT and second is ACTIVE."""
+    hippocampal_store = _make_store(pg_session_factory)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    # First constraint: goal (same key as second because both goal, unscoped)
+    chunk1 = SemanticChunk(
+        id="c1",
+        text="I want to save money.",
+        chunk_type=ChunkType.CONSTRAINT,
+        salience=0.9,
+        confidence=0.85,
+        timestamp=datetime.now(UTC),
+    )
+    record1, _ = await hippocampal_store.encode_chunk(tenant_id, chunk1, existing_memories=None)
+    assert record1 is not None
+    assert record1.type == MemoryType.CONSTRAINT
+    assert record1.key is not None
+    constraint_key = record1.key
+
+    # Deactivate existing constraints with this key (simulates orchestrator before second write)
+    n = await hippocampal_store.deactivate_constraints_by_key(tenant_id, constraint_key)
+    assert n >= 1
+
+    # Second constraint: same key (goal, unscoped)
+    chunk2 = SemanticChunk(
+        id="c2",
+        text="I want to buy a Ferrari.",
+        chunk_type=ChunkType.CONSTRAINT,
+        salience=0.9,
+        confidence=0.85,
+        timestamp=datetime.now(UTC),
+    )
+    record2, _ = await hippocampal_store.encode_chunk(tenant_id, chunk2, existing_memories=None)
+    assert record2 is not None
+    assert record2.type == MemoryType.CONSTRAINT
+    assert "Ferrari" in record2.text
+
+    # Query: one ACTIVE (second), one SILENT (first)
+    all_constraints = await hippocampal_store.store.scan(
+        tenant_id,
+        limit=20,
+        filters={"type": MemoryType.CONSTRAINT.value},
+    )
+    active = [r for r in all_constraints if r.status == MemoryStatus.ACTIVE]
+    silent = [r for r in all_constraints if r.status == MemoryStatus.SILENT]
+    assert len(active) >= 1
+    assert any("Ferrari" in r.text for r in active)
+    assert len(silent) >= 1
+    assert any("save money" in r.text for r in silent)

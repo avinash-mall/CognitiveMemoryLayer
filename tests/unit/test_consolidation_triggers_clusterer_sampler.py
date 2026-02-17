@@ -1,4 +1,4 @@
-"""Unit tests for Phase 7: consolidation (triggers, clusterer, sampler scoring)."""
+"""Unit tests for consolidation (triggers, clusterer, sampler scoring)."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

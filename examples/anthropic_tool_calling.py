@@ -106,14 +106,18 @@ class ClaudeMemoryAssistant:
                 )
                 return json.dumps({"success": r.success})
             if name == "memory_read":
-                r = self.memory.read(args["query"], response_format="llm_context")
-                return r.context or "No relevant memories found."
+                read_r = self.memory.read(args["query"], response_format="llm_context")
+                return read_r.context or "No relevant memories found."
             if name == "memory_update":
-                r = self.memory.update(memory_id=UUID(args["memory_id"]), feedback=args["feedback"])
-                return json.dumps({"success": r.success})
+                update_r = self.memory.update(
+                    memory_id=UUID(args["memory_id"]), feedback=args["feedback"]
+                )
+                return json.dumps({"success": update_r.success})
             if name == "memory_forget":
-                r = self.memory.forget(query=args["query"], action=args.get("action", "archive"))
-                return json.dumps({"affected_count": r.affected_count})
+                forget_r = self.memory.forget(
+                    query=args["query"], action=args.get("action", "archive")
+                )
+                return json.dumps({"affected_count": forget_r.affected_count})
             return json.dumps({"error": f"Unknown: {name}"})
         except Exception as e:
             return json.dumps({"error": str(e)})

@@ -1,4 +1,4 @@
-"""Unit tests for Phase 4: neocortical schemas and schema manager."""
+"""Unit tests for neocortical schemas and schema manager."""
 
 from src.memory.neocortical.schema_manager import SchemaManager
 from src.memory.neocortical.schemas import (

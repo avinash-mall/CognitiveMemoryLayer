@@ -1,4 +1,4 @@
-"""Integration tests for Phase 7: consolidation flow."""
+"""Integration tests for consolidation flow."""
 
 from uuid import uuid4
 
@@ -93,9 +93,9 @@ async def test_consolidation_with_episodes_fallback_gist(pg_session_factory):
     assert report.gists_extracted >= 1
     assert report.migration.gists_processed >= 1
     assert report.success or len(report.migration.errors) >= 0
-    assert report.migration.facts_created + report.migration.facts_updated >= 1, (
-        "migrator should write gists to neocortical"
-    )
+    assert (
+        report.migration.facts_created + report.migration.facts_updated >= 1
+    ), "migrator should write gists to neocortical"
 
     # Assert neocortical store has consolidated content
     profile = await neocortical.get_tenant_profile(tenant_id)

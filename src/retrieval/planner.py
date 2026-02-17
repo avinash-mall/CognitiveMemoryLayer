@@ -33,6 +33,7 @@ class RetrievalStep:
     top_k: int = 10
     timeout_ms: int = 100
     skip_if_found: bool = False
+    constraint_categories: list[str] | None = None
 
 
 @dataclass
@@ -128,6 +129,7 @@ class RetrievalPlanner:
                     top_k=10,
                     priority=0,
                     timeout_ms=200,
+                    constraint_categories=analysis.constraint_dimensions or None,
                 )
             )
             steps.append(
@@ -175,6 +177,8 @@ class RetrievalPlanner:
                     )
                 )
             parallel_groups = [[0, 1, 2]] if len(steps) == 3 else [[0, 1]]
+
+        self._apply_retrieval_timeouts(steps)
 
         return RetrievalPlan(
             query=analysis.original_query,
@@ -245,6 +249,32 @@ class RetrievalPlanner:
             return {"since": (user_now - timedelta(days=3)).astimezone(UTC).replace(tzinfo=None)}
         return None
 
+    def _apply_retrieval_timeouts(self, steps: list[RetrievalStep]) -> None:
+        """Apply config-based timeouts so vector/embedding steps don't use hardcoded 100ms."""
+        try:
+            from ..core.config import get_settings
+
+            settings = get_settings()
+            if not getattr(settings.features, "retrieval_timeouts_enabled", True):
+                return
+            r = settings.retrieval
+            for step in steps:
+                if step.source == RetrievalSource.VECTOR:
+                    step.timeout_ms = r.default_step_timeout_ms
+                elif step.source == RetrievalSource.GRAPH:
+                    step.timeout_ms = r.graph_timeout_ms
+                elif step.source == RetrievalSource.FACTS and step.timeout_ms == 100:
+                    step.timeout_ms = r.fact_timeout_ms
+                elif step.source == RetrievalSource.CONSTRAINTS and step.timeout_ms == 100:
+                    step.timeout_ms = r.default_step_timeout_ms
+        except Exception:
+            pass
+
     def _calculate_timeout(self, steps: list[RetrievalStep]) -> int:
         """Calculate total timeout based on steps."""
-        return sum(s.timeout_ms for s in steps) // 2 + 100
+        try:
+            from ..core.config import get_settings
+
+            return get_settings().retrieval.total_timeout_ms
+        except Exception:
+            return sum(s.timeout_ms for s in steps) // 2 + 100

@@ -1,4 +1,4 @@
-"""Unit tests for Phase 6: reconsolidation (labile tracker, conflict detector, belief revision)."""
+"""Unit tests for reconsolidation (labile tracker, conflict detector, belief revision)."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

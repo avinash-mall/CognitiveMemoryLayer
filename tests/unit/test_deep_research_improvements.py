@@ -13,14 +13,15 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
 from src.core.config import FeatureFlags, RetrievalSettings, Settings
-from src.core.enums import MemoryType
+from src.core.enums import MemorySource, MemoryType
+from src.core.schemas import MemoryRecord, Provenance
 from src.extraction.write_time_facts import WriteTimeFactExtractor, _derive_predicate
 from src.memory.neocortical.schemas import FactCategory, SemanticFact
 from src.memory.sensory.buffer import SensoryBuffer
@@ -221,6 +222,47 @@ class TestBatchEmbeddings:
         results = await store.encode_batch("tenant1", chunks)
         mock_embeddings.embed_batch.assert_called_once()
         assert len(results) == 2
+
+    @pytest.mark.asyncio
+    async def test_search_calls_increment_access_counts_once_with_result_ids(self):
+        """search() invokes increment_access_counts once with the list of result IDs (no N+1)."""
+        from src.memory.hippocampal.store import HippocampalStore
+
+        id1 = uuid4()
+        id2 = uuid4()
+        record1 = MemoryRecord(
+            id=id1,
+            tenant_id="t",
+            type=MemoryType.EPISODIC_EVENT,
+            text="one",
+            provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+            timestamp=datetime.now(UTC),
+        )
+        record2 = MemoryRecord(
+            id=id2,
+            tenant_id="t",
+            type=MemoryType.EPISODIC_EVENT,
+            text="two",
+            provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+            timestamp=datetime.now(UTC),
+        )
+        mock_store = MagicMock()
+        mock_store.vector_search = AsyncMock(return_value=[record1, record2])
+        mock_store.increment_access_counts = AsyncMock()
+
+        mock_embeddings = MagicMock()
+        mock_embeddings.embed = AsyncMock(
+            return_value=EmbeddingResult(
+                embedding=[0.1] * 8, model="m", dimensions=8, tokens_used=1
+            )
+        )
+
+        store = HippocampalStore(vector_store=mock_store, embedding_client=mock_embeddings)
+        results = await store.search("tenant1", "query", top_k=10)
+        assert len(results) == 2
+        mock_store.increment_access_counts.assert_awaited_once()
+        call_args = mock_store.increment_access_counts.call_args
+        assert list(call_args[0][0]) == [id1, id2]
 
 
 # ═══════════════════════════════════════════════════════════════════

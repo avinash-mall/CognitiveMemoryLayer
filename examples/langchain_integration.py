@@ -5,7 +5,7 @@ Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 try:
     from dotenv import load_dotenv
@@ -63,9 +63,15 @@ class CognitiveMemory(BaseMemory):
         query = inputs.get(self.input_key, "")
         if not query:
             return {self.memory_key: "" if not self.return_messages else []}
+        if self.memory_client is None:
+            return {self.memory_key: "" if not self.return_messages else []}
         try:
+            fmt = cast(
+                "Literal['packet', 'list', 'llm_context']",
+                self.retrieval_format,
+            )
             r = self.memory_client.read(
-                query, max_results=self.max_retrieval_results, response_format=self.retrieval_format
+                query, max_results=self.max_retrieval_results, response_format=fmt
             )
             ctx = r.context
             if self.return_messages:
@@ -78,7 +84,11 @@ class CognitiveMemory(BaseMemory):
     def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
         if not self.auto_store:
             return
+        if self.memory_client is None:
+            return
         try:
+            from cml.models.enums import MemoryType
+
             if self.store_human:
                 human = inputs.get(self.input_key, "")
                 if human:
@@ -86,7 +96,7 @@ class CognitiveMemory(BaseMemory):
                         f"User said: {human}",
                         session_id=self.session_id,
                         context_tags=["conversation"],
-                        memory_type="episodic_event",
+                        memory_type=MemoryType.EPISODIC_EVENT,
                     )
             if self.store_ai:
                 ai = outputs.get(self.output_key, "")
@@ -95,12 +105,14 @@ class CognitiveMemory(BaseMemory):
                         f"Assistant: {ai[:200]}",
                         session_id=self.session_id,
                         context_tags=["conversation"],
-                        memory_type="episodic_event",
+                        memory_type=MemoryType.EPISODIC_EVENT,
                     )
         except Exception as e:
             print(f"Warning: Could not save: {e}")
 
     def clear(self) -> None:
+        if self.memory_client is None:
+            return
         try:
             self.memory_client.forget(query="*", action="delete")
         except Exception:

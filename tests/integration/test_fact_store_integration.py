@@ -1,4 +1,4 @@
-"""Integration tests for Phase 4: SemanticFactStore with PostgreSQL."""
+"""Integration tests for SemanticFactStore with PostgreSQL."""
 
 from uuid import uuid4
 

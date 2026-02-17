@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from cml.models.enums import MemoryType
 from cml.models.requests import (
     CreateSessionRequest,
     ForgetRequest,
@@ -85,7 +86,7 @@ def test_write_request_model_dump_exclude_none() -> None:
     req_full = WriteRequest(
         content="hi",
         session_id="s1",
-        memory_type="preference",
+        memory_type=MemoryType.PREFERENCE,
     )
     d_full = req_full.model_dump(exclude_none=True)
     assert d_full["session_id"] == "s1"
@@ -204,7 +205,7 @@ def test_read_request_max_results_validation() -> None:
 
 def test_read_request_format_alias() -> None:
     """ReadRequest accepts 'format' as alias for response_format in API payload."""
-    req = ReadRequest(query="q", response_format="llm_context")
+    req = ReadRequest(query="q", response_format="llm_context")  # type: ignore[call-arg]
     d = req.model_dump(by_alias=True, exclude_none=True)
     assert d.get("format") == "llm_context"
     assert "response_format" not in d or d.get("response_format") != "llm_context"

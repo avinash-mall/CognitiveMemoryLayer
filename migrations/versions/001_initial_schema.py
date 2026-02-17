@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 try:
     from pgvector.sqlalchemy import Vector
 except ImportError:
-    Vector = None  # type: ignore
+    Vector = None
 
 from src.core.config import get_settings
 

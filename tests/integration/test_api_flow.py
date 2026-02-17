@@ -1,4 +1,4 @@
-"""Integration tests for Phase 9 REST API flow."""
+"""Integration tests for REST API flow (health, auth)."""
 
 import pytest
 from fastapi.testclient import TestClient

@@ -6,6 +6,7 @@ Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 import json
 import os
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 try:
@@ -121,20 +122,20 @@ class MemoryEnabledAssistant:
                 )
                 return json.dumps({"success": r.success, "message": r.message})
             if name == "memory_read":
-                r = self.memory.read(args["query"], response_format="llm_context")
-                return r.context or "No relevant memories found."
+                read_r = self.memory.read(args["query"], response_format="llm_context")
+                return read_r.context or "No relevant memories found."
             if name == "memory_update":
-                r = self.memory.update(
+                update_r = self.memory.update(
                     memory_id=UUID(args["memory_id"]),
                     feedback=args["feedback"],
                 )
-                return json.dumps({"success": r.success, "version": r.version})
+                return json.dumps({"success": update_r.success, "version": update_r.version})
             if name == "memory_forget":
-                r = self.memory.forget(
+                forget_r = self.memory.forget(
                     query=args["query"],
                     action=args.get("action", "archive"),
                 )
-                return json.dumps({"affected_count": r.affected_count})
+                return json.dumps({"affected_count": forget_r.affected_count})
             return json.dumps({"error": f"Unknown tool: {name}"})
         except Exception as e:
             return json.dumps({"error": str(e)})
@@ -142,7 +143,7 @@ class MemoryEnabledAssistant:
     def chat(self, user_message: str) -> str:
         self.messages.append({"role": "user", "content": user_message})
         while True:
-            resp = self.openai.chat.completions.create(
+            resp = self.openai.chat.completions.create(  # type: ignore[call-overload]
                 model=self.model,
                 messages=self.messages,
                 tools=MEMORY_TOOLS,
@@ -150,23 +151,22 @@ class MemoryEnabledAssistant:
             )
             msg = resp.choices[0].message
             if msg.tool_calls:
-                self.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": msg.content,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in msg.tool_calls
-                        ],
-                    }
-                )
+                assistant_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                }
+                self.messages.append(assistant_msg)
                 for tc in msg.tool_calls:
                     args = json.loads(tc.function.arguments)
                     print(f"  [Tool: {tc.function.name}] {args}")

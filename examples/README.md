@@ -43,6 +43,8 @@ Working examples for the Cognitive Memory Layer with LLMs and as a standalone se
 | `standalone_demo.py` | **No py-cml**: raw httpx demo of all API endpoints |
 | `openclaw_skill/` | [OpenClaw](https://openclaw.ai/) skill: persistent structured memory (SKILL.md + setup) |
 
+See also **packages/py-cml/examples/temporal_fidelity.py** for timestamped writes and turns (historical replay, benchmarks).
+
 ### Quick Start
 
 ```bash
@@ -81,6 +83,27 @@ python examples/embedded_mode.py
 ```bash
 python examples/standalone_demo.py
 ```
+
+### Running all examples
+
+From the project root you can run each example in turn and get a Pass / Fail / Skip report:
+
+```bash
+# Run all non-LLM examples (embedded, quickstart, basic_usage, async, agent_integration, temporal_fidelity, standalone_demo)
+python scripts/run_examples.py --all
+
+# Run a single example by name
+python scripts/run_examples.py --example embedded_mode
+python scripts/run_examples.py --example quickstart
+
+# Include LLM examples (requires OPENAI_* or ANTHROPIC_* keys and CML API)
+python scripts/run_examples.py --all --include-llm
+
+# Do not skip when env vars are missing (useful for debugging)
+python scripts/run_examples.py --all --no-skip
+```
+
+Prerequisites for the runner: same as above (API up for API-dependent examples, `.env` with `AUTH__API_KEY`; for embedded, `pip install -e "packages/py-cml[embedded]"`). The standalone demo is run in non-interactive mode automatically by the script.
 
 ## API Quick Reference (py-cml)
 

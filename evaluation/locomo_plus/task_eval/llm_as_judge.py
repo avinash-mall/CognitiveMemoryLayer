@@ -90,28 +90,30 @@ def _judge_one_record(record: dict, args) -> dict:
 
 def _compute_summary(results: list) -> dict:
     total_score = 0.0
-    by_cat = defaultdict(lambda: {"score": 0.0, "count": 0})
+    by_cat: defaultdict[str, dict[str, float | int]] = defaultdict(
+        lambda: {"score": 0.0, "count": 0}
+    )
     for r in results:
         s = float(r.get("judge_score", 0.0))
         total_score += s
         cat = r.get("category") or "default"
         by_cat[cat]["score"] += s
         by_cat[cat]["count"] += 1
-    summary = {
-        "total_score": round(total_score, 2),
-        "total_samples": len(results),
-        "max_possible": len(results),
-        "overall_avg": round(total_score / len(results), 4) if results else 0.0,
-        "by_category": {},
-    }
+    by_category: dict[str, dict[str, float | int]] = {}
     for cat, v in sorted(by_cat.items()):
         n = v["count"]
-        summary["by_category"][cat] = {
+        by_category[cat] = {
             "score": round(v["score"], 2),
             "count": n,
             "avg": round(v["score"] / n, 4) if n else 0.0,
         }
-    return summary
+    return {
+        "total_score": round(total_score, 2),
+        "total_samples": len(results),
+        "max_possible": len(results),
+        "overall_avg": round(total_score / len(results), 4) if results else 0.0,
+        "by_category": by_category,
+    }
 
 
 def _print_summary(summary: dict) -> None:
