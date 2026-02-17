@@ -1065,8 +1065,6 @@ pytest packages/py-cml/tests -v
 | **SDK total** | **175** | `pytest packages/py-cml/tests` |
 | **Combined** | **667** | Server + SDK |
 
-Some tests skip when services (CML API, Postgres, embedding) or optional deps (e.g. Celery) are unavailable; see [tests/SKIPPED_TESTS_REPORT.md](tests/SKIPPED_TESTS_REPORT.md).
-
 To refresh version and test-count badges: `python scripts/update_readme_badges.py`
 
 </details>
