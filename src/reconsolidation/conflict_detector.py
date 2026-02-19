@@ -67,7 +67,11 @@ class ConflictDetector:
         context: str | None = None,
     ) -> ConflictResult:
         """Detect if new statement conflicts with existing memory."""
-        fast_result = self._fast_detect(old_memory.text, new_statement)
+        from ..core.config import get_settings
+
+        fast_result: ConflictResult | None = None
+        if not get_settings().features.use_llm_conflict_detection_only:
+            fast_result = self._fast_detect(old_memory.text, new_statement)
         if fast_result and fast_result.confidence > 0.8:
             return fast_result
         if self.llm:

@@ -247,7 +247,8 @@ class TestMemoryOrchestrator:
                 "chunks_for_encoding": [],
             }
         )
-        deps["hippocampal"].encode_batch = AsyncMock(return_value=[])
+        deps["hippocampal"].unified_extractor = None
+        deps["hippocampal"].encode_batch = AsyncMock(return_value=([], None, []))
         # Setup store mock for update operations and scan (used by get_session_context)
         deps["hippocampal"].store = MagicMock()
         deps["hippocampal"].store.get_by_id = AsyncMock(return_value=None)
@@ -373,7 +374,9 @@ class TestMemoryOrchestrator:
                 "chunks_for_encoding": [_make_semantic_chunk("I live in Paris")],
             }
         )
-        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(
+            return_value=([stored_record], None, [])
+        )
 
         # Setup neocortical graph mock
         mock_dependencies["neocortical"].graph = MagicMock()
@@ -417,7 +420,9 @@ class TestMemoryOrchestrator:
                 "chunks_for_encoding": [_make_semantic_chunk("I visited Berlin")],
             }
         )
-        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(
+            return_value=([stored_record], None, [])
+        )
 
         # Make Neo4j merge_node explode
         mock_dependencies["neocortical"].graph = MagicMock()
@@ -449,7 +454,9 @@ class TestMemoryOrchestrator:
                 "chunks_for_encoding": [_make_semantic_chunk("I work at ACME")],
             }
         )
-        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(
+            return_value=([stored_record], None, [])
+        )
 
         # Make store_relations_batch explode
         mock_dependencies["neocortical"].graph = MagicMock()
@@ -480,7 +487,9 @@ class TestMemoryOrchestrator:
                 "chunks_for_encoding": [_make_semantic_chunk("Hello world")],
             }
         )
-        mock_dependencies["hippocampal"].encode_batch = AsyncMock(return_value=[stored_record])
+        mock_dependencies["hippocampal"].encode_batch = AsyncMock(
+            return_value=([stored_record], None, [])
+        )
 
         mock_dependencies["neocortical"].graph = MagicMock()
         mock_dependencies["neocortical"].graph.merge_node = AsyncMock()
@@ -512,7 +521,7 @@ class TestMemoryOrchestrator:
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
-            return_value=([stored_record], [gate_result])
+            return_value=([stored_record], [gate_result], [])
         )
 
         mock_dependencies["neocortical"].graph = MagicMock()
