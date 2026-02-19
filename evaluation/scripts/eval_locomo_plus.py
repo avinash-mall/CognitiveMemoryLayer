@@ -390,7 +390,7 @@ def phase_ab_consolidation(
         f"\n[Phase A-B] Consolidation and reconsolidation for {n} tenants...",
         flush=True,
     )
-    for i in range(n):
+    for i in tqdm(range(n), desc="Phase A-B", unit="tenant"):
         tenant_id = f"lp-{i}"
         body = {"tenant_id": tenant_id, "user_id": None}
         try:
