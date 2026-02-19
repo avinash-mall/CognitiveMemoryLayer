@@ -11,6 +11,13 @@ Run from project root:
   python evaluation/scripts/run_full_eval.py --skip-docker    # API already running
   python evaluation/scripts/run_full_eval.py --limit-samples 50  # Quick test
 
+Resume (use with --skip-docker so DB/API state is preserved):
+  python evaluation/scripts/run_full_eval.py --skip-docker --resume
+    # Skip Phase A (ingestion) and A-B (consolidation); re-run QA + judge. Use if ingestion
+    # completed but the run died during or after QA.
+  python evaluation/scripts/run_full_eval.py --skip-docker --score-only
+    # Run only Phase C (judge) and the table. Requires evaluation/outputs/locomo_plus_qa_cml_predictions.json.
+
 Requires: OPENAI_API_KEY (for LLM-as-judge), OLLAMA_QA_MODEL (optional, default gpt-oss:20b).
 """
 
@@ -85,12 +92,26 @@ def main() -> None:
         metavar="N",
         help="Number of concurrent workers for Phase A ingestion (default 5)",
     )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip Phase A (ingestion) and consolidation; re-run QA + judge. Use with --skip-docker.",
+    )
+    p.add_argument(
+        "--score-only",
+        action="store_true",
+        help="Run only Phase C (judge) and performance table; requires existing predictions JSON.",
+    )
     args = p.parse_args()
 
     _banner("LoCoMo Full Evaluation Pipeline", "=")
     print(f"  Project root: {_ROOT}", flush=True)
     if args.skip_docker:
         print("  Mode: skip-docker (API assumed running)", flush=True)
+    if args.resume:
+        print("  Mode: resume (skip ingestion + consolidation)", flush=True)
+    if args.score_only:
+        print("  Mode: score-only (judge + table)", flush=True)
     if args.limit_samples:
         print(f"  Limit: {args.limit_samples} samples", flush=True)
     print(f"  Workers: {args.ingestion_workers}", flush=True)
@@ -176,6 +197,10 @@ def main() -> None:
     ]
     if args.limit_samples:
         cmd.extend(["--limit-samples", str(args.limit_samples)])
+    if args.resume:
+        cmd.extend(["--skip-ingestion", "--skip-consolidation"])
+    if args.score_only:
+        cmd.append("--score-only")
     cmd.extend(["--ingestion-workers", str(args.ingestion_workers)])
     print(f"  PYTHONPATH={env['PYTHONPATH']}", flush=True)
     print(f"  OLLAMA_QA_MODEL={ollama_model}", flush=True)
