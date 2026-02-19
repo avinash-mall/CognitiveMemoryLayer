@@ -114,7 +114,12 @@ class QueryClassifier:
         effective_query = query
         if recent_context and self._is_vague(query):
             effective_query = f"{recent_context}\nUser now asks: {query}"
-        fast_result = self._fast_classify(effective_query)
+        # Skip fast path when use_llm_query_classifier_only
+        from ..core.config import get_settings
+
+        fast_result: QueryAnalysis | None = None
+        if not get_settings().features.use_llm_query_classifier_only:
+            fast_result = self._fast_classify(effective_query)
         if fast_result and fast_result.confidence > 0.8:
             self._enrich_constraint_dimensions(fast_result)
             return fast_result

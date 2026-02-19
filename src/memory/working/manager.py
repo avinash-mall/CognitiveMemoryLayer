@@ -40,6 +40,7 @@ class WorkingMemoryManager:
         scope_ttl_seconds: float = 1800.0,
         use_chonkie_for_large_text: bool = False,
         large_text_threshold_chars: int | None = None,
+        chunker_require_llm: bool | None = None,
     ) -> None:
         self._states: BoundedStateMap[WorkingMemoryState] = BoundedStateMap(
             max_size=max_scopes,
@@ -52,6 +53,19 @@ class WorkingMemoryManager:
         self._chonkie_adapter: ChonkieChunkerAdapter | None = None
         self._chonkie_unavailable_logged = False
 
+        from ...core.config import get_settings
+
+        _chunker_require_llm = (
+            chunker_require_llm
+            if chunker_require_llm is not None
+            else get_settings().features.chunker_require_llm
+        )
+        if not use_fast_chunker and _chunker_require_llm and not llm_client:
+            raise ValueError(
+                "chunker_require_llm is true and use_fast_chunker is false but no llm_client "
+                "provided. Set FEATURES__CHUNKER_REQUIRE_LLM=false to fall back to rule-based "
+                "chunker, or configure LLM__* or LLM_INTERNAL__* and use_fast_chunker=false."
+            )
         if llm_client and not use_fast_chunker:
             self.chunker: SemanticChunker | RuleBasedChunker = SemanticChunker(llm_client)
             self._use_llm = True
