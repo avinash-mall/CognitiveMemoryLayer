@@ -31,11 +31,20 @@ class PIIRedactor:
             name: re.compile(pattern, re.IGNORECASE) for name, pattern in self.patterns.items()
         }
 
-    def redact(self, text: str) -> RedactionResult:
+    def redact(
+        self,
+        text: str,
+        additional_spans: list[tuple[int, int, str]] | None = None,
+    ) -> RedactionResult:
+        """Redact PII from text. additional_spans: [(start, end, pii_type), ...] from LLM."""
         matches: list[tuple[int, int, str, str]] = []  # start, end, pii_type, original
         for pii_type, pattern in self._compiled.items():
             for match in pattern.finditer(text):
                 matches.append((match.start(), match.end(), pii_type, match.group()))
+        if additional_spans:
+            for start, end, pii_type in additional_spans:
+                if 0 <= start < end <= len(text):
+                    matches.append((start, end, pii_type, text[start:end]))
 
         # Merge overlapping ranges to avoid garbled output (LOW-11)
         if matches:

@@ -107,11 +107,22 @@ class MemoryOrchestrator:
         relation_extractor = (
             None if settings.features.use_fast_chunker else RelationExtractor(internal_llm)
         )
+        from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
+
+        _use_unified = (
+            settings.features.use_llm_constraint_extractor
+            or settings.features.use_llm_write_time_facts
+            or settings.features.use_llm_salience_refinement
+            or settings.features.use_llm_pii_redaction
+            or settings.features.use_llm_write_gate_importance
+        )
+        unified_extractor = UnifiedWritePathExtractor(internal_llm) if _use_unified else None
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
             entity_extractor=entity_extractor,
             relation_extractor=relation_extractor,
+            unified_extractor=unified_extractor,
         )
 
         retriever = MemoryRetriever(
@@ -276,19 +287,45 @@ class MemoryOrchestrator:
                 except (ValueError, AttributeError):
                     pass  # Invalid memory_type; let write gate decide
 
-        # Deactivate previous episodic constraints by fact key before writing (supersession)
+        # Run unified extraction first when LLM path enabled (for deactivation + encode_batch)
         from ..core.config import get_settings as _get_settings
 
         _settings = _get_settings()
+        _unified_results: list | None = None
+        _use_unified = getattr(self.hippocampal, "unified_extractor", None) is not None and (
+            _settings.features.use_llm_constraint_extractor
+            or _settings.features.use_llm_write_time_facts
+            or _settings.features.use_llm_salience_refinement
+            or _settings.features.use_llm_pii_redaction
+            or _settings.features.use_llm_write_gate_importance
+        )
+        if (
+            _use_unified
+            and hasattr(self.hippocampal, "unified_extractor")
+            and self.hippocampal.unified_extractor
+        ):
+            import asyncio
+
+            _tasks = [self.hippocampal.unified_extractor.extract(c) for c in chunks_for_encoding]
+            _raw = await asyncio.gather(*_tasks, return_exceptions=True)
+            _unified_results = [r if not isinstance(r, Exception) else None for r in _raw]
+
+        # Deactivate previous episodic constraints by fact key before writing (supersession)
         if _settings.features.constraint_extraction_enabled and chunks_for_encoding:
             if hasattr(self.hippocampal, "deactivate_constraints_by_key"):
                 from ..extraction.constraint_extractor import ConstraintExtractor
 
-                _extractor = ConstraintExtractor()
                 _fact_keys = set()
-                for _chunk in chunks_for_encoding:
-                    for _c in _extractor.extract(_chunk):
-                        _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
+                if _unified_results:
+                    for _ur in _unified_results:
+                        if _ur and hasattr(_ur, "constraints"):
+                            for _c in _ur.constraints:
+                                _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
+                else:
+                    _extractor = ConstraintExtractor()
+                    for _chunk in chunks_for_encoding:
+                        for _c in _extractor.extract(_chunk):
+                            _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
                 for _fk in _fact_keys:
                     await self.hippocampal.deactivate_constraints_by_key(tenant_id, _fk)
 
@@ -303,13 +340,10 @@ class MemoryOrchestrator:
             request_metadata=metadata if metadata else None,
             memory_type_override=_memory_type_override,
             return_gate_results=eval_mode,
+            unified_results=_unified_results,
         )
 
-        if eval_mode:
-            stored, gate_results = result
-        else:
-            stored = result
-            gate_results = None
+        stored, gate_results, unified_results = result
 
         # Sync extracted entities and relations to Neo4j knowledge graph
         if stored:
@@ -321,27 +355,47 @@ class MemoryOrchestrator:
         settings = get_settings()
         if settings.features.write_time_facts_enabled and chunks_for_encoding:
             try:
-                from ..extraction.write_time_facts import WriteTimeFactExtractor
+                evidence = [str(stored[0].id)] if stored else []
+                # Use unified extractor facts when LLM path enabled, else rule-based
+                if settings.features.use_llm_write_time_facts and unified_results:
+                    for ur in unified_results:
+                        if ur and hasattr(ur, "facts"):
+                            for fact in ur.facts:
+                                try:
+                                    await self.neocortical.store_fact(
+                                        tenant_id=tenant_id,
+                                        key=fact.key,
+                                        value=fact.value,
+                                        confidence=fact.confidence,
+                                        evidence_ids=evidence,
+                                    )
+                                except Exception:
+                                    logger.warning(
+                                        "write_time_fact_store_failed",
+                                        extra={"tenant_id": tenant_id, "fact_key": fact.key},
+                                        exc_info=True,
+                                    )
+                else:
+                    from ..extraction.write_time_facts import WriteTimeFactExtractor
 
-                extractor = WriteTimeFactExtractor()
-                for chunk in chunks_for_encoding:
-                    extracted_facts = extractor.extract(chunk)
-                    for fact in extracted_facts:
-                        try:
-                            evidence = [str(stored[0].id)] if stored else []
-                            await self.neocortical.store_fact(
-                                tenant_id=tenant_id,
-                                key=fact.key,
-                                value=fact.value,
-                                confidence=fact.confidence,
-                                evidence_ids=evidence,
-                            )
-                        except Exception:
-                            logger.warning(
-                                "write_time_fact_store_failed",
-                                extra={"tenant_id": tenant_id, "fact_key": fact.key},
-                                exc_info=True,
-                            )
+                    extractor = WriteTimeFactExtractor()
+                    for chunk in chunks_for_encoding:
+                        extracted_facts = extractor.extract(chunk)
+                        for fact in extracted_facts:
+                            try:
+                                await self.neocortical.store_fact(
+                                    tenant_id=tenant_id,
+                                    key=fact.key,
+                                    value=fact.value,
+                                    confidence=fact.confidence,
+                                    evidence_ids=evidence,
+                                )
+                            except Exception:
+                                logger.warning(
+                                    "write_time_fact_store_failed",
+                                    extra={"tenant_id": tenant_id, "fact_key": fact.key},
+                                    exc_info=True,
+                                )
             except Exception:
                 logger.warning("write_time_facts_skipped", exc_info=True)
 
@@ -352,29 +406,55 @@ class MemoryOrchestrator:
 
                 constraint_extractor = ConstraintExtractor()
                 constraints_stored = 0
-                for chunk in chunks_for_encoding:
-                    extracted_constraints = constraint_extractor.extract(chunk)
-                    for constraint in extracted_constraints:
-                        try:
-                            evidence = [str(stored[0].id)] if stored else []
-                            fact_key = ConstraintExtractor.constraint_fact_key(constraint)
-                            await self.neocortical.store_fact(
-                                tenant_id=tenant_id,
-                                key=fact_key,
-                                value=constraint.description,
-                                confidence=constraint.confidence,
-                                evidence_ids=evidence,
-                            )
-                            constraints_stored += 1
-                        except Exception:
-                            logger.warning(
-                                "constraint_fact_store_failed",
-                                extra={
-                                    "tenant_id": tenant_id,
-                                    "constraint_type": constraint.constraint_type,
-                                },
-                                exc_info=True,
-                            )
+                # Use unified extractor constraints when LLM path enabled, else rule-based
+                if settings.features.use_llm_constraint_extractor and unified_results:
+                    for ur in unified_results:
+                        if ur and hasattr(ur, "constraints"):
+                            for constraint in ur.constraints:
+                                try:
+                                    evidence_c = [str(stored[0].id)] if stored else []
+                                    fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                                    await self.neocortical.store_fact(
+                                        tenant_id=tenant_id,
+                                        key=fact_key,
+                                        value=constraint.description,
+                                        confidence=constraint.confidence,
+                                        evidence_ids=evidence_c,
+                                    )
+                                    constraints_stored += 1
+                                except Exception:
+                                    logger.warning(
+                                        "constraint_fact_store_failed",
+                                        extra={
+                                            "tenant_id": tenant_id,
+                                            "constraint_type": constraint.constraint_type,
+                                        },
+                                        exc_info=True,
+                                    )
+                else:
+                    for chunk in chunks_for_encoding:
+                        extracted_constraints = constraint_extractor.extract(chunk)
+                        for constraint in extracted_constraints:
+                            try:
+                                evidence_c = [str(stored[0].id)] if stored else []
+                                fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                                await self.neocortical.store_fact(
+                                    tenant_id=tenant_id,
+                                    key=fact_key,
+                                    value=constraint.description,
+                                    confidence=constraint.confidence,
+                                    evidence_ids=evidence_c,
+                                )
+                                constraints_stored += 1
+                            except Exception:
+                                logger.warning(
+                                    "constraint_fact_store_failed",
+                                    extra={
+                                        "tenant_id": tenant_id,
+                                        "constraint_type": constraint.constraint_type,
+                                    },
+                                    exc_info=True,
+                                )
                 if constraints_stored > 0:
                     logger.info(
                         "constraints_extracted",

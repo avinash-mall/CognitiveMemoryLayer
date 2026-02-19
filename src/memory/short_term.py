@@ -22,6 +22,7 @@ class ShortTermMemoryConfig:
     min_salience_for_encoding: float = 0.4
     use_chonkie_for_large_text: bool = False
     chunker_large_text_threshold_chars: int = 0
+    chunker_require_llm: bool | None = None
 
 
 class ShortTermMemory:
@@ -48,6 +49,7 @@ class ShortTermMemory:
             use_fast_chunker=self.config.use_fast_chunker,
             use_chonkie_for_large_text=self.config.use_chonkie_for_large_text,
             large_text_threshold_chars=self.config.chunker_large_text_threshold_chars,
+            chunker_require_llm=self.config.chunker_require_llm,
         )
 
     async def ingest_turn(

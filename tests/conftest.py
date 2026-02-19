@@ -17,6 +17,23 @@ try:
 except ImportError:
     pass
 
+# Disable LLM replacement flags so tests don't require LLM (override .env)
+# Individual tests can monkeypatch get_settings when testing LLM path
+import os
+
+_llm_flags = (
+    "FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR",
+    "FEATURES__USE_LLM_WRITE_TIME_FACTS",
+    "FEATURES__CHUNKER_REQUIRE_LLM",
+    "FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY",
+    "FEATURES__USE_LLM_SALIENCE_REFINEMENT",
+    "FEATURES__USE_LLM_PII_REDACTION",
+    "FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE",
+    "FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY",
+)
+for _f in _llm_flags:
+    os.environ[_f] = "false"
+
 # Allow importing src when run from project root or with PYTHONPATH
 try:
     import src.storage.models  # noqa: F401 - ensure module loaded for fixtures
