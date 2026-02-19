@@ -148,7 +148,7 @@ Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(
 
 **Response shape:** `ReadResponse` has `memories`, `facts`, `preferences`, `episodes`, `constraints` (when the server has constraint extraction), and `context` (formatted string for LLM injection).
 
-**Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them.
+**Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them. The server can use LLM-based extraction (constraints, facts, salience, importance) when `FEATURES__USE_LLM_*` flags are enabled; see [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) § Configuration Reference.
 
 **Session and namespace:** `memory.session(name=...)` (SessionScope) scopes writes/reads/turns to a session. `with_namespace(namespace)` returns a `NamespacedClient` (and async `AsyncNamespacedClient`) that injects namespace into write, update, and batch_write.
 

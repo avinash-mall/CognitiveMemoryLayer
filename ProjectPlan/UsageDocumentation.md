@@ -1278,6 +1278,16 @@ All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
 | `FEATURES__BOUNDED_STATE_ENABLED` | `true` | Working/sensory in-memory state uses LRU+TTL (BoundedStateMap) to prevent unbounded growth. |
 | `FEATURES__HNSW_EF_SEARCH_TUNING` | `true` | Set pgvector `hnsw.ef_search` at query time for recall/latency trade-off. |
 | `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `true` | Extract cognitive constraints (goals, values, policies, states, causal rules) at write time. Constraints are stored as `MemoryType.CONSTRAINT` and as cognitive `FactCategory` facts. At read time, decision-style queries trigger constraint-first retrieval. See the [deep-research report](../evaluation/deep-research-report.md). |
+| `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR` | `true` | Use LLM (via unified extractor) for constraint extraction instead of rule-based. |
+| `FEATURES__USE_LLM_WRITE_TIME_FACTS` | `true` | Use LLM (via unified extractor) for write-time fact extraction instead of rule-based. |
+| `FEATURES__CHUNKER_REQUIRE_LLM` | `true` | Fail fast when `use_fast_chunker=false` and no LLM available; otherwise fallback to rule-based chunker. |
+| `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY` | `true` | Skip fast pattern path, always use LLM for query classification. |
+| `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `true` | Use LLM salience from unified extractor instead of rule-based boosts. |
+| `FEATURES__USE_LLM_PII_REDACTION` | `true` | Use LLM PII spans from unified extractor, merged with regex redaction. |
+| `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `true` | Use LLM importance from unified extractor instead of rule-based _compute_importance. |
+| `FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY` | `true` | Skip fast pattern path, always use LLM for conflict detection. |
+
+When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, and importance in one LLM request. See [RuleBasedExtractorsAndLLMReplacement.md](../ProjectPlan/BaseCML/RuleBasedExtractorsAndLLMReplacement.md).
 
 #### Retrieval Settings
 

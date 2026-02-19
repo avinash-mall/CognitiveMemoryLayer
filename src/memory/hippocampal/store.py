@@ -25,6 +25,10 @@ from .write_gate import WriteDecision, WriteGate, WriteGateResult
 
 if TYPE_CHECKING:
     from ...extraction.constraint_extractor import ConstraintExtractor
+    from ...extraction.unified_write_extractor import (
+        UnifiedExtractionResult,
+        UnifiedWritePathExtractor,
+    )
 
 
 def _gate_result_to_dict(g: WriteGateResult) -> dict:
@@ -47,6 +51,7 @@ class HippocampalStore:
         write_gate: WriteGate | None = None,
         redactor: PIIRedactor | None = None,
         constraint_extractor: ConstraintExtractor | None = None,
+        unified_extractor: UnifiedWritePathExtractor | None = None,
     ) -> None:
         from ...extraction.constraint_extractor import ConstraintExtractor as _ConstraintExtractor
 
@@ -57,6 +62,22 @@ class HippocampalStore:
         self.write_gate = write_gate or WriteGate()
         self.redactor = redactor or PIIRedactor()
         self.constraint_extractor = constraint_extractor or _ConstraintExtractor()
+        self.unified_extractor = unified_extractor
+
+    def _use_unified_write_path(self) -> bool:
+        """True when any write-path LLM flag is enabled and we have a unified extractor."""
+        if self.unified_extractor is None:
+            return False
+        from ...core.config import get_settings
+
+        s = get_settings().features
+        return (
+            s.use_llm_constraint_extractor
+            or s.use_llm_write_time_facts
+            or s.use_llm_salience_refinement
+            or s.use_llm_pii_redaction
+            or s.use_llm_write_gate_importance
+        )
 
     async def encode_chunk(
         self,
@@ -75,10 +96,30 @@ class HippocampalStore:
         if gate_result.decision == WriteDecision.SKIP:
             return (None, gate_result)
 
+        unified_result: UnifiedExtractionResult | None = None
+        if self._use_unified_write_path() and self.unified_extractor:
+            unified_result = await self.unified_extractor.extract(chunk)
+
         text = chunk.text
         if gate_result.redaction_required:
-            redaction_result = self.redactor.redact(text)
+            from ...core.config import get_settings
+
+            pii_spans = None
+            if (
+                unified_result
+                and unified_result.pii_spans
+                and get_settings().features.use_llm_pii_redaction
+            ):
+                pii_spans = [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
+            redaction_result = self.redactor.redact(text, additional_spans=pii_spans)
             text = redaction_result.redacted_text
+        elif unified_result and unified_result.pii_spans and self._use_unified_write_path():
+            from ...core.config import get_settings
+
+            if get_settings().features.use_llm_pii_redaction:
+                pii_spans = [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
+                redaction_result = self.redactor.redact(text, additional_spans=pii_spans)
+                text = redaction_result.redacted_text
 
         embedding_result = await self.embeddings.embed(text)
 
@@ -100,8 +141,14 @@ class HippocampalStore:
             gate_result.memory_types[0] if gate_result.memory_types else MemoryType.EPISODIC_EVENT
         )
 
-        # Constraint extraction: attach structured constraints to metadata
-        extracted_constraints = self.constraint_extractor.extract(chunk)
+        # Constraint extraction: unified or rule-based
+        from ...core.config import get_settings as _get_settings
+
+        settings = _get_settings().features
+        if unified_result and settings.use_llm_constraint_extractor:
+            extracted_constraints = unified_result.constraints
+        else:
+            extracted_constraints = self.constraint_extractor.extract(chunk)
         constraint_dicts = [c.to_dict() for c in extracted_constraints]
 
         # If high-confidence constraint extracted, override memory type
@@ -118,6 +165,11 @@ class HippocampalStore:
             key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
         else:
             key = self._generate_key(chunk, memory_type)
+
+        # Importance: unified or gate
+        importance = gate_result.importance
+        if unified_result and settings.use_llm_write_gate_importance:
+            importance = unified_result.importance
 
         # Merge request-level metadata with system metadata; request metadata wins on conflict
         system_metadata: dict[str, Any] = {
@@ -147,7 +199,7 @@ class HippocampalStore:
             metadata=merged_metadata,
             timestamp=timestamp or chunk.timestamp,
             confidence=chunk.confidence,
-            importance=gate_result.importance,
+            importance=importance,
             provenance=Provenance(
                 source=MemorySource.AGENT_INFERRED,
                 evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
@@ -169,6 +221,7 @@ class HippocampalStore:
         request_metadata: dict[str, Any] | None = None,
         memory_type_override: MemoryType | None = None,
         return_gate_results: bool = False,
+        unified_results: list[UnifiedExtractionResult | None] | None = None,
     ):
         """Encode chunks using a 4-phase batched pipeline.
 
@@ -186,10 +239,10 @@ class HippocampalStore:
         existing_dicts = [{"text": m.text} for m in existing]
 
         # ---- Phase 1: Gate + Redact (no network calls) ----
-        surviving: list[tuple[SemanticChunk, WriteGateResult, str]] = []
+        surviving: list[tuple[int, SemanticChunk, WriteGateResult, str]] = []
         gate_results_list: list[dict] = []
 
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
             gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_dicts)
             if return_gate_results:
                 gate_results_list.append(_gate_result_to_dict(gate_result))
@@ -202,13 +255,46 @@ class HippocampalStore:
                 redaction_result = self.redactor.redact(text)
                 text = redaction_result.redacted_text
 
-            surviving.append((chunk, gate_result, text))
+            surviving.append((idx, chunk, gate_result, text))
 
         if not surviving:
-            return ([], gate_results_list) if return_gate_results else []
+            return ([], gate_results_list if return_gate_results else None, [])
+
+        # ---- Phase 1.5: Unified extraction (when LLM flags enabled) ----
+        if unified_results is None:
+            unified_results = [None] * len(chunks)
+        # Map unified_results (by chunk index) to surviving
+        surviving_unified: list[UnifiedExtractionResult | None] = []
+        for idx, chunk, _, _ in surviving:
+            ur = unified_results[idx] if idx < len(unified_results) else None
+            surviving_unified.append(ur)
+
+        if (
+            all(r is None for r in surviving_unified)
+            and self._use_unified_write_path()
+            and self.unified_extractor
+        ):
+            tasks = [self.unified_extractor.extract(chunk) for _idx, chunk, _gr, _txt in surviving]
+            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, res in enumerate(raw_results):
+                if i < len(surviving_unified):
+                    surviving_unified[i] = res if not isinstance(res, Exception) else None
+
+        unified_results = surviving_unified
+
+        # Apply LLM PII spans to texts before embedding (merge with regex redaction)
+        from ...core.config import get_settings as _cfg
+
+        cfg = _cfg().features
+        final_texts: list[str] = []
+        for i, (_idx, chunk, gate_result, text) in enumerate(surviving):
+            if unified_results[i] and unified_results[i].pii_spans and cfg.use_llm_pii_redaction:
+                pii_spans = [(s.start, s.end, s.pii_type) for s in unified_results[i].pii_spans]
+                text = self.redactor.redact(chunk.text, additional_spans=pii_spans).redacted_text
+            final_texts.append(text)
 
         # ---- Phase 2: Batch embed (ONE API call) ----
-        texts_to_embed = [text for _, _, text in surviving]
+        texts_to_embed = final_texts
         embedding_results = await self.embeddings.embed_batch(texts_to_embed)
 
         # ---- Phase 3: Batch extract entities and relations ----
@@ -221,7 +307,7 @@ class HippocampalStore:
                     EntityMention(text=e, normalized=e, entity_type="CONCEPT")
                     for e in (chunk.entities or [])
                 ]
-                for chunk, _, _ in surviving
+                for _idx, chunk, _gr, _txt in surviving
             ]
 
         relations_batch: list[list[Relation]] = []
@@ -238,10 +324,17 @@ class HippocampalStore:
         results: list[MemoryRecord] = []
 
         async def _process_chunk(idx: int) -> MemoryRecord | None:
-            chunk, gate_result, text = surviving[idx]
+            _oi, chunk, gate_result, _ = surviving[idx]
+            text = final_texts[idx]
             embedding_result = embedding_results[idx]
             entities = entities_batch[idx]
             relations = relations_batch[idx]
+            unified_res = unified_results[idx] if idx < len(unified_results) else None
+
+            from ...core.config import get_settings as _gs
+
+            settings = _gs().features
+            # text from surviving is already redacted (incl. LLM spans applied above)
 
             memory_type = memory_type_override or (
                 gate_result.memory_types[0]
@@ -249,8 +342,11 @@ class HippocampalStore:
                 else MemoryType.EPISODIC_EVENT
             )
 
-            # Constraint extraction: attach structured constraints to metadata
-            extracted_constraints = self.constraint_extractor.extract(chunk)
+            # Constraint extraction: unified or rule-based
+            if unified_res and settings.use_llm_constraint_extractor:
+                extracted_constraints = unified_res.constraints
+            else:
+                extracted_constraints = self.constraint_extractor.extract(chunk)
             constraint_dicts = [c.to_dict() for c in extracted_constraints]
 
             # If high-confidence constraint extracted, override memory type
@@ -267,6 +363,10 @@ class HippocampalStore:
                 key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
             else:
                 key = self._generate_key(chunk, memory_type)
+
+            importance = gate_result.importance
+            if unified_res and settings.use_llm_write_gate_importance:
+                importance = unified_res.importance
 
             system_metadata: dict[str, Any] = {
                 "chunk_type": chunk.chunk_type.value,
@@ -292,7 +392,7 @@ class HippocampalStore:
                 metadata=merged_metadata,
                 timestamp=timestamp or chunk.timestamp,
                 confidence=chunk.confidence,
-                importance=gate_result.importance,
+                importance=importance,
                 provenance=Provenance(
                     source=MemorySource.AGENT_INFERRED,
                     evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
@@ -312,9 +412,7 @@ class HippocampalStore:
                 results.append(res)
                 existing_dicts.append({"text": res.text})
 
-        if return_gate_results:
-            return results, gate_results_list
-        return results
+        return results, (gate_results_list if return_gate_results else None), unified_results
 
     async def search(
         self,
