@@ -129,6 +129,39 @@ class FeatureFlags(PydanticBaseModel):
         default=0,
         description="Min character count for text to use Chonkie semantic chunking (0 = use Chonkie for all text when enabled)",
     )
+    # Rule-based extractor LLM replacement (RuleBasedExtractorsAndLLMReplacement.md)
+    use_llm_constraint_extractor: bool = Field(
+        default=True,
+        description="Use LLM (via unified extractor) for constraint extraction instead of rule-based",
+    )
+    use_llm_write_time_facts: bool = Field(
+        default=True,
+        description="Use LLM (via unified extractor) for write-time fact extraction instead of rule-based",
+    )
+    chunker_require_llm: bool = Field(
+        default=True,
+        description="Fail fast when use_fast_chunker=false and no LLM available (vs fallback to rule-based chunker)",
+    )
+    use_llm_query_classifier_only: bool = Field(
+        default=True,
+        description="Skip fast pattern path, always use LLM for query classification",
+    )
+    use_llm_salience_refinement: bool = Field(
+        default=True,
+        description="Use LLM salience from unified extractor instead of rule-based boosts",
+    )
+    use_llm_pii_redaction: bool = Field(
+        default=True,
+        description="Use LLM PII spans from unified extractor, merged with regex redaction",
+    )
+    use_llm_write_gate_importance: bool = Field(
+        default=True,
+        description="Use LLM importance from unified extractor instead of rule-based _compute_importance",
+    )
+    use_llm_conflict_detection_only: bool = Field(
+        default=True,
+        description="Skip fast pattern path, always use LLM for conflict detection",
+    )
 
 
 class RerankerSettings(PydanticBaseModel):
