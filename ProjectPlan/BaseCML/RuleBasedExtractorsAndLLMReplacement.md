@@ -1,5 +1,15 @@
 # Rule-Based Extractors Audit and LLM Replacement Report
 
+> [!NOTE]
+> **Implementation Status:**  
+> Implemented per plan. See BaseCMLStatus.md "Rule-Based Extractors LLM Replacement" and UsageDocumentation.md § Feature Flags.
+
+> [!NOTE]
+> **Validation Status:**  
+> Verified against codebase (Commit/Version: `HEAD` as of Feb 18 2026).  
+> All described locations, patterns, and logic match the implementation in `src/extraction/`, `src/memory/`, and `src/retrieval/`.
+
+
 ## Introduction
 
 This document inventories all rule-based extractors and keyword-matching logic in the Cognitive Memory Layer (CML) codebase and describes how each can be made **dynamic** by calling the internal LLM (configured via `LLM_INTERNAL__*` in `.env`, e.g. Ollama). The goal is to allow implementers to replace fixed regex/marker rules with LLM-driven extraction without changing downstream contracts (hippocampal store, consolidation, retrieval). It covers extraction and classification (ConstraintExtractor, WriteTimeFactExtractor, RuleBasedChunker, QueryClassifier, salience boosts), security/risk logic (PIIRedactor, WriteGate PII/secret patterns), and other validation/utility rules.
@@ -9,7 +19,7 @@ This document inventories all rule-based extractors and keyword-matching logic i
 - `LLM_INTERNAL__PROVIDER=ollama`
 - `LLM_INTERNAL__MODEL=llama3.2:3b`
 - `LLM_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1`
-- `LLM_INTERNAL__API_KEY=` (optional)
+- `LLM_INTERNAL__API_KEY=` ()
 
 When any `LLM_INTERNAL__*` is set, `get_internal_llm_client()` in `src/utils/llm.py` returns a client for that config; otherwise it falls back to the primary `LLM__*` client. Existing LLM consumers (SemanticChunker, EntityExtractor, RelationExtractor, GistExtractor, QueryClassifier) already use this pattern.
 
@@ -43,6 +53,14 @@ Each type has a list of `(compiled_regex, confidence_boost)`. Minimum cumulative
 |         | `(?:i must|i have to|i need to avoid|i can'?t)` | 0.1 |
 |         | `(?:i should|i shouldn'?t|i'?m not allowed to)` | 0.05 |
 
+### [Recommended] Additional Patterns
+
+| Type    | Patterns (New) | Boosts |
+|---------|----------------|--------|
+| **goal** | `(?:i aspire to|my ambition is|i dream of|i'?m determined to)` | 0.1 |
+| **state** | `(?:i'?m feeling|my mood is|i feel|i'?m exhausted)` | 0.1 |
+| **policy** | `(?:it is forbidden|off limits|strictly prohibited)` | 0.1 |
+
 ### Subject extraction (_extract_subject)
 
 Rule-based logic to determine the constraint subject (usually `"user"`):
@@ -60,7 +78,7 @@ Rule-based logic to determine the constraint subject (usually `"user"`):
 ### How to replace with LLM calls
 
 1. **New class (or feature-flagged path):** e.g. `LLMConstraintExtractor` that takes `LLMClient` from `get_internal_llm_client()`.
-2. **Prompt:** Given chunk text, ask the LLM to return a JSON array of constraints, each with: `constraint_type` (one of goal, value, state, causal, policy, preference), `subject`, `description`, `scope` (list of strings), `confidence` (0.0–1.0). Optionally `activation`, `status`.
+2. **Prompt:** Given chunk text, ask the LLM to return a JSON array of constraints, each with: `constraint_type` (one of goal, value, state, causal, policy, preference), `subject`, `description`, `scope` (list of strings), `confidence` (0.0–1.0). ly `activation`, `status`.
 3. **Parsing:** Parse JSON response and map each item to `ConstraintObject`; use `chunk.timestamp` for `valid_from`, `chunk.source_turn_id` for `provenance`.
 4. **Keep unchanged:** `ConstraintExtractor.detect_supersession()` and `ConstraintExtractor.constraint_fact_key()` so downstream logic (deduplication, fact keys) is unchanged.
 5. **Feature flag:** e.g. `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR`; when True, hippocampal store and consolidation use `LLMConstraintExtractor` instead of `ConstraintExtractor`. Default False for low latency on the hot write path.
@@ -102,13 +120,21 @@ Used by `_derive_predicate(value)` when the preference value does not come from 
 | movie     | movie, film, cinema, watch |
 | book      | book, read, author, novel |
 
+### [Recommended] New Categories (Relationships & Skills)
+
+| Pattern (concept) | Regex | Key template | Category | Conf boost |
+|-------------------|-------|--------------|----------|------------|
+| **Relationship**<br>My X is Y | `(?:my|our)\s+(wife|husband|partner|spouse|mom|dad|mother|father|brother|sister|son|daughter|friend|colleague|boss)\s+(?:is|named?)\s+(.+)` | `user:relationship:{group1}` | RELATIONSHIP | 0.8 |
+| **Skill/Ability**<br>I am good at X | `(?:i|i'?m)\s+(?:good at|skilled in|experienced with|an expert in)\s+(.+)` | `user:skill:{value_hash}` | ATTRIBUTE | 0.7 |
+| **Allergy**<br>I am allergic to X | `(?:i|i'?m)\s+(?:allergic to|have a .* allergy to|intolerant to)\s+(.+)` | `user:health:allergy` | ATTRIBUTE | 0.9 |
+
 ### Output schema
 
 `ExtractedFact`: `key`, `category` (FactCategory), `predicate`, `value`, `confidence`. Base confidence for write-time facts: `0.6`.
 
 ### How to replace with LLM calls
 
-1. **Optional new class:** `LLMWriteTimeFactExtractor` taking `LLMClient` from `get_internal_llm_client()`.
+1. ** new class:** `LLMWriteTimeFactExtractor` taking `LLMClient` from `get_internal_llm_client()`.
 2. **Prompt:** Given chunk text and chunk type (preference/fact/constraint), ask for a JSON array of facts: `key`, `category` (preference, identity, location, occupation), `predicate`, `value`, `confidence`. Align categories with `FactCategory` enum.
 3. **Predicate derivation:** Either let the LLM output predicate names (and map to known predicates or keep as-is), or keep the existing `_PREDICATE_KEYWORDS` fallback for backward compatibility when LLM omits predicate.
 4. **Integration:** Use in orchestrator write-time fact path behind a feature flag or config so rule-based remains default for latency.
@@ -144,7 +170,7 @@ Used by `_derive_predicate(value)` when the preference value does not come from 
 
 1. **Config:** Set `FEATURES__USE_FAST_CHUNKER=false` and ensure `LLM_INTERNAL__*` (or `LLM__*`) is set so `get_internal_llm_client()` returns a valid client.
 2. **Docs:** Recommend in configuration docs that for dynamic chunking, use the LLM-based path (SemanticChunker) rather than RuleBasedChunker.
-3. **Optional:** Add a feature flag to completely hide RuleBasedChunker when LLM is required (e.g. fail fast if LLM unavailable instead of falling back to rules).
+3. **:** Add a feature flag to completely hide RuleBasedChunker when LLM is required (e.g. fail fast if LLM unavailable instead of falling back to rules).
 
 ---
 
@@ -164,6 +190,13 @@ Used by `_derive_predicate(value)` when the preference value does not come from 
 | TEMPORAL_QUERY | `(last|past) (week|month|day|year)`, `(yesterday|today|recently)`, `when did (i|we)`, `what happened` |
 | PROCEDURAL | `how (do|can|should) (i|we)`, `what('s\| are) the steps`, `(procedure|process) for` |
 | CONSTRAINT_CHECK | `should i`, `can i`, `is it ok (to|if)`, `would it be (ok|fine|good|bad)`, `what if i`, `do you think i should`, `recommend`, `is (this|that|it) (consistent|aligned|compatible)`, `would (this|that) (conflict|contradict|go against)` |
+
+### [Recommended] Additional Intents
+
+| Intent | Patterns |
+|--------|----------|
+| **RISK_ASSESSMENT** (maps to CONSTRAINT_CHECK) | `is it safe (to\|for)`, `(any\|what) (risk\|danger)`, `(is\|are) there (risks?\|dangers?)`, `potential downsides` |
+| **OPINION_REQUEST** (maps to GENERAL_QUESTION or CONSTRAINT_CHECK) | `what do you think (about\|of)`, `your (thoughts\|opinion) on`, `how do you feel about` |
 
 ### _DECISION_PATTERNS (regex)
 
@@ -198,12 +231,12 @@ Used only on the **fast path** when pattern-based classification succeeds. Rule-
 
 - Split query into words; for each word (stripped of `?.,!`), treat as entity only if: (1) first character uppercase, (2) length &gt; 1, (3) not at sentence start (position 0 or after a word ending in `.!?`). This avoids "The", "What", "How" as entities.
 
-**LLM replacement:** `_llm_classify()` already returns `entities` from the LLM. When using the fast path, either keep this heuristic or add an optional small LLM call to extract entities for the query; or force LLM path when entity quality matters.
+**LLM replacement:** `_llm_classify()` already returns `entities` from the LLM. When using the fast path, either keep this heuristic or add an  small LLM call to extract entities for the query; or force LLM path when entity quality matters.
 
 ### How to replace / make dynamic
 
 - **LLM path already exists:** `_llm_classify()` uses `CLASSIFICATION_PROMPT` and returns `QueryAnalysis` with intent, entities, time_reference, confidence. The retrieval path should pass `get_internal_llm_client()` (or the same internal client used by the orchestrator) into `QueryClassifier(llm_client=...)` so that when the fast path does not yield confidence &gt; 0.8, the LLM is used.
-- **Making classification more dynamic:** Document that with LLM configured, the rule-based path is only a fast path for high-confidence matches. Optionally add a feature flag (e.g. `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY`) to skip the fast path and always call the LLM for classification.
+- **Making classification more dynamic:** Document that with LLM configured, the rule-based path is only a fast path for high-confidence matches. ly add a feature flag (e.g. `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY`) to skip the fast path and always call the LLM for classification.
 
 ---
 
@@ -230,7 +263,7 @@ Logic: 2+ matches → +0.4; 1 match → +0.3.
 ### How to replace with LLM
 
 - **Recommendation:** Keep as lightweight post-processing after LLM chunking to avoid extra latency. The LLM (SemanticChunker) already returns a salience value per chunk; these boosts refine it.
-- **Optional:** Add an optional "salience refinement" LLM call (e.g. "Rate importance 0–1 for this chunk and one reason") only when a product needs finer-grained salience; otherwise keep rule-based boosts.
+- **:** Add an  "salience refinement" LLM call (e.g. "Rate importance 0–1 for this chunk and one reason") only when a product needs finer-grained salience; otherwise keep rule-based boosts.
 
 ---
 
@@ -264,7 +297,7 @@ flowchart LR
   end
   RBChunker -.->|"use_fast_chunker=false"| SemanticChunker
   CE -.->|"feature flag"| LLMCE
-  WTF -.->|"optional"| LLMWTF
+  WTF -.->|""| LLMWTF
   QC -->|"fast path"| QC
   QC -->|"fallback"| QCLlm
   SemanticChunker --> InternalClient
@@ -293,7 +326,7 @@ flowchart LR
 | CREDIT_CARD  | `\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b` |
 | IP_ADDRESS   | `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b` |
 
-**LLM replacement:** Optional. For stricter compliance or custom PII types, add an LLM step that returns span labels (e.g. "EMAIL", "PHONE") and merge with regex redaction. Keep regex as primary for latency and deterministic behaviour; LLM can run in parallel or as a second pass for high-risk content.
+**LLM replacement:** . For stricter compliance or custom PII types, add an LLM step that returns span labels (e.g. "EMAIL", "PHONE") and merge with regex redaction. Keep regex as primary for latency and deterministic behaviour; LLM can run in parallel or as a second pass for high-risk content.
 
 ### WriteGate (PII and secret detection)
 
@@ -312,7 +345,7 @@ flowchart LR
 
 If any secret pattern matches, the chunk is **skipped** (not stored). If any PII pattern matches, `redaction_required` is set and the chunk can be redacted then stored.
 
-**LLM replacement:** Optional. Use internal LLM to classify "contains_secrets" / "contains_pii" for edge cases (e.g. obfuscated secrets); keep regex as default for speed and auditability.
+**LLM replacement:** . Use internal LLM to classify "contains_secrets" / "contains_pii" for edge cases (e.g. obfuscated secrets); keep regex as default for speed and auditability.
 
 ### WriteGate importance heuristic (_compute_importance)
 
@@ -327,27 +360,12 @@ Used to compute an importance score (capped at 1.0) for the write decision. Rule
 - **Constraint cues** (12 phrases): `"i'm trying to"`, `"i don't want"`, `"it's important that"`, `"my goal is"`, `"i value"`, `"i believe"`, `"i must"`, `"i should"`, `"i'm preparing for"`, `"i'm focused on"`, `"in order to"`, `"because of"` → +0.2.
 - **Entity count:** +0.1 per entity, cap 3. Final score is min(score, 1.0).
 
-**LLM replacement:** Optional. Use internal LLM to output an importance score (0–1) per chunk; keep rule-based as default for latency.
+**LLM replacement:** . Use internal LLM to output an importance score (0–1) per chunk; keep rule-based as default for latency.
+
 
 ---
 
-## 9. Other keyword-based logic (validation / utility)
-
-| Location / component | Logic | Role | LLM replacement |
-|----------------------|-------|------|------------------|
-| **Neo4j** `_REL_TYPE_ALLOWLIST` | `re.compile(r"^[A-Za-z0-9_\s]+$")` | Sanitize relationship type (security: reject invalid chars). | No; keep as validation. |
-| **Entity/Relation/Fact extractors** | `text.startswith("```")` and strip markdown code fences | Parse LLM response (utility). | No. |
-| **Summarizer / GistExtractor** | `raw.startswith("```")` strip | Parse LLM response (utility). | No. |
-| **llm.py** | `re.search(r"\[.*\]|\{.*\}", response)` | Detect JSON in response for parsing. | No. |
-| **dashboard_routes** | `_SECRET_FIELD_TOKENS = {"key", "password", "secret", "token"}`; `_is_secret_field(field_name)` checks if any token in `field_name.lower()` | Mask config field values in API (return "****"). | No; keep for API safety. |
-| **relation_extractor** | `_normalize_predicate`: `re.sub(r"[\s\-]+", "_", predicate.lower())` then `re.sub(r"[^a-z0-9_]", "", normalized)` | Sanitize relation predicate for storage. | No; keep as validation/normalization. |
-| **config** | `re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)` | Rewrite DB URL for async driver. | No; utility. |
-
-These are validation or response-parsing utilities, not semantic extractors; they are left as rule-based.
-
----
-
-## 10. ConflictDetector (reconsolidation)
+## 9. ConflictDetector (reconsolidation)
 
 **Location:** `src/reconsolidation/conflict_detector.py` — `_fast_detect()` (lines 92–171).
 
@@ -362,7 +380,7 @@ These are validation or response-parsing utilities, not semantic extractors; the
 | **preference_words** | `["like", "prefer", "favorite", "enjoy", "love", "hate"]` | If both old and new contain one, and topic overlap (words minus preference_words and stopwords) &gt; 0.2 → TEMPORAL_CHANGE (0.6). |
 | **stopwords** (topic overlap) | `{"i", "my", "a", "the", "is", "are"}` | Removed from word sets when computing topic overlap for TEMPORAL_CHANGE. |
 
-**LLM replacement:** ConflictDetector already has `_llm_detect()`; the rule-based path is the fast path when confidence &gt; 0.8. Document that with LLM configured, rule-based is used first; optional feature flag to force LLM-only for conflict detection.
+**LLM replacement:** ConflictDetector already has `_llm_detect()`; the rule-based path is the fast path when confidence &gt; 0.8. Document that with LLM configured, rule-based is used first;  feature flag to force LLM-only for conflict detection.
 
 ---
 

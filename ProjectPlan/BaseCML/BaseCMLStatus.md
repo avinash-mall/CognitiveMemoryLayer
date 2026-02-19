@@ -104,6 +104,21 @@ A production-ready, neuro-inspired memory system for LLMs that replicates human 
 
 ## Recent Enhancements
 
+### Rule-Based Extractors LLM Replacement (Completed)
+
+- Implements [RuleBasedExtractorsAndLLMReplacement.md](RuleBasedExtractorsAndLLMReplacement.md): 8 LLM-based replacements for rule-based extractors.
+- **Unified write-path extraction**: One LLM call per chunk returns constraints, facts, salience, importance, and optional PII spans.
+- **8 feature flags** (default true; set `FEATURES__*=false` to use rule-based path):
+  - `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR`
+  - `FEATURES__USE_LLM_WRITE_TIME_FACTS`
+  - `FEATURES__CHUNKER_REQUIRE_LLM` (fail fast when use_fast_chunker=false and no LLM)
+  - `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY`
+  - `FEATURES__USE_LLM_SALIENCE_REFINEMENT`
+  - `FEATURES__USE_LLM_PII_REDACTION`
+  - `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE`
+  - `FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY`
+- Uses `LLM_INTERNAL__*` when set, else `LLM__*`. See UsageDocumentation § Configuration Reference.
+
 ### Temporal Fidelity (Completed)
 
 - ✅ Added optional `timestamp` field to `WriteMemoryRequest` and `ProcessTurnRequest`

@@ -793,6 +793,7 @@ All features can be toggled via environment variables. See [.env.example](.env.e
 | Flag | Description | Default |
 | :--- | :--- | :---: |
 | `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | Extract and store cognitive constraints at write time | On |
+| `FEATURES__USE_LLM_*` (8 flags) | LLM-based extractors (constraint, facts, salience, importance, PII, classifier, conflict) | On |
 | `FEATURES__STABLE_KEYS_ENABLED` | SHA256-based fact/memory keys (no process-random `hash()`) | On |
 | `FEATURES__WRITE_TIME_FACTS_ENABLED` | Populate semantic store at write time (preference/identity) | On |
 | `FEATURES__BATCH_EMBEDDINGS_ENABLED` | Single `embed_batch()` call per turn instead of N per-chunk calls | On |
