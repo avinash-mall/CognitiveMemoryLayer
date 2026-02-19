@@ -41,6 +41,7 @@ cml_memory.db
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 
@@ -65,6 +66,9 @@ htmlcov/
 evaluation/locomo_plus/data/unified_input_samples_v2.json
 evaluation/outputs/
 evaluation/**/*.log
+
+# Logs
+*.log
 
 # OS
 .DS_Store
