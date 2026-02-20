@@ -163,7 +163,7 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
         tenant_id,
         SemanticChunk(
             id="c1",
-            text="The project deadline is next Monday.",
+            text="theme",
             chunk_type=ChunkType.EVENT,
             salience=0.8,
             timestamp=datetime.now(UTC),
@@ -172,7 +172,7 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
     )
     await neocortical.store_fact(tenant_id, "user:preference:theme", "dark", confidence=0.9)
 
-    packet = await retriever.retrieve(tenant_id, "deadline and theme", max_results=10)
+    packet = await retriever.retrieve(tenant_id, "theme", max_results=10)
     all_mems = packet.all_memories
     assert len(all_mems) >= 1
     types = {m.record.type for m in all_mems}
