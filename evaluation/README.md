@@ -7,18 +7,18 @@ This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 | Path | Description |
 |------|-------------|
 | `locomo_plus/` | Data pipeline (`locomo10.json`, `locomo_plus.json`, `unified_input_samples_v2.json`), task_eval, scripts. See [locomo_plus/README.md](locomo_plus/README.md). |
-| `scripts/eval_locomo_plus.py` | CML-backed driver: ingest unified samples into CML, run QA via CML read + Ollama, score with LLM-as-judge (correct=1, partial=0.5, wrong=0). |
+| `scripts/eval_locomo_plus.py` | CML-backed driver: ingest unified samples into CML, run QA via CML read + LLM (provider from .env), score with LLM-as-judge (correct=1, partial=0.5, wrong=0). |
 | `scripts/generate_locomo_report.py` | Build performance table (LoCoMo factual + LoCoMo-Plus Cognitive + Gap). |
-| `scripts/run_full_eval.py` | Full pipeline: Docker down/up, API wait, eval, report table. |
-| `outputs/` | Created at run time; holds predictions, judged records, and judge summary. |
+| `scripts/run_full_eval.py` | Full pipeline: Docker down/up, API wait, eval, report table. Validates outputs after each step; on failure writes state for `--resume`. |
+| `scripts/validate_outputs.py` | Validates predictions, judged, and judge_summary JSON (structure and consistency). |
+| `outputs/` | Created at run time; holds predictions, judged records, judge summary, and `run_full_eval_state.json` (failure state for resume). |
 
 ## Prerequisites
 
 1. **CML API** running (e.g. via Docker; see main project README).
-2. **Ollama** on the host:
-   - **Embedding model** — read from project root `.env`: `EMBEDDING__MODEL`, `EMBEDDING__DIMENSIONS`. Use any supported model (e.g. `mxbai-embed-large:latest` with 1024 dims, or `embeddinggemma` with 768). Pull with `ollama pull <model>`; set dimensions to match model output, then drop DBs and re-run migrations if changed.
-   - **QA model** `gpt-oss:20b` or `gpt-oss-20b` (set via `OLLAMA_QA_MODEL` or `--ollama-model`)
-3. **Python deps**: `requests`, `tqdm`; for LLM-as-judge, set `OPENAI_API_KEY` (or point at an Ollama-compatible `OPENAI_BASE_URL`).
+2. **Embedding** (for CML): project root `.env` — `EMBEDDING__MODEL`, `EMBEDDING__DIMENSIONS`. If using Ollama embeddings, pull the model and set dimensions; then drop DBs and re-run migrations if changed.
+3. **QA model**: Phase B uses the **LLM** from project root `.env` (`LLM__PROVIDER`, `LLM__MODEL`, `LLM__BASE_URL`, `LLM__API_KEY`). Same as [.env.example lines 45–49](../.env.example) — e.g. `openai`, `openai_compatible`, or `ollama` (with `LLM__BASE_URL=http://localhost:11434/v1`).
+4. **Python deps**: `requests`, `tqdm`, `openai`; for LLM-as-judge, set `OPENAI_API_KEY` (or `OPENAI_BASE_URL` / `LLM__BASE_URL` for compatible endpoints).
 
 For a step-by-step runbook, see [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md).
 
@@ -39,9 +39,11 @@ For large (or all) input text, CML can use [Chonkie](https://github.com/chonkie-
 |----------|---------|-------------|
 | `CML_BASE_URL` | `http://localhost:8000` | CML API base URL |
 | `CML_API_KEY` | `test-key` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama URL (no `/v1`) |
-| `OLLAMA_QA_MODEL` | `gpt-oss:20b` | Ollama model for QA |
-| `OPENAI_API_KEY` | — | Required for LLM-as-judge |
+| `LLM__PROVIDER` | `openai` | LLM provider for QA: `openai` \| `openai_compatible` \| `ollama` \| `gemini` \| `claude` (see project root [.env.example](../.env.example) lines 45–49) |
+| `LLM__MODEL` | `gpt-4o-mini` | Model for QA (e.g. `gpt-4o-mini`, `gpt-oss:20b` for Ollama) |
+| `LLM__BASE_URL` | — | OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1` for Ollama) |
+| `LLM__API_KEY` | — | API key (optional for Ollama; server may use `OPENAI_API_KEY`) |
+| `OPENAI_API_KEY` | — | Required for LLM-as-judge; also used for `LLM__API_KEY` when not set |
 
 ## Run full evaluation
 
@@ -51,13 +53,14 @@ From the **project root**:
 python evaluation/scripts/run_full_eval.py
 ```
 
-This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, consolidation + reconsolidation, QA, judge), (5) performance table.
+This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, consolidation + reconsolidation, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json` with the failed step and message (and, for step 4, the last completed sample index). Use **`--resume`** to continue from the failed step (and from the next sample for step 4); **`--resume` implies `--skip-docker`** (no need to pass both).
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
 | `--skip-docker` | Skip steps 1–3 (use when API is already running) |
+| `--resume` | Resume from last failure; implies `--skip-docker`. Resumes evaluation from the next sample if step 4 failed during QA. |
 | `--limit-samples N` | Run only first N samples (for quick testing) |
 
 Examples:
@@ -68,6 +71,9 @@ python evaluation/scripts/run_full_eval.py --skip-docker --limit-samples 50
 
 # Full run without Docker steps
 python evaluation/scripts/run_full_eval.py --skip-docker
+
+# Resume after a failure (skips Docker, continues from failed step/sample)
+python evaluation/scripts/run_full_eval.py --resume
 ```
 
 ### Output table
@@ -76,7 +82,7 @@ The pipeline prints a table matching the paper format:
 
 | Method | single-hop | multi-hop | temporal | commonsense | adversarial | average | LoCoMo-Plus | Gap |
 |--------|------------|-----------|----------|-------------|-------------|---------|-------------|-----|
-| CML+gpt-oss:20b | ... | ... | ... | ... | ... | ... | ... | ... |
+| CML+&lt;LLM__MODEL&gt; | ... | ... | ... | ... | ... | ... | ... | ... |
 
 **Gap** = LoCoMo average − LoCoMo-Plus (performance drop from factual to cognitive memory).
 
@@ -112,8 +118,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `--max-results N` | CML read top-k (default 25) |
 | `--verbose` | Per-sample retrieval diagnostics |
 | `--cml-url`, `--cml-api-key` | Override CML connection |
-| `--ollama-url`, `--ollama-model` | Override Ollama connection |
-| `--judge-model` | Model for LLM-as-judge (default gpt-4o-mini) |
+| `--judge-model` | Model for LLM-as-judge (default: `LLM__MODEL` or gpt-4o-mini) |
 
 ### Outputs
 
@@ -126,10 +131,10 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 ### Generate report table
 
 ```bash
-python evaluation/scripts/generate_locomo_report.py --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+gpt-oss:20b"
+python evaluation/scripts/generate_locomo_report.py --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+gpt-4o-mini"
 ```
 
-Use `--method` to match your QA model (e.g. `CML+gpt-oss:20b`).
+Use `--method` to match your QA model (same as `LLM__MODEL` from .env, e.g. `CML+gpt-4o-mini` or `CML+gpt-oss:20b`).
 
 ## Level-2 Cognitive Memory
 
