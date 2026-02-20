@@ -10,8 +10,16 @@ from cml.embedded import EmbeddedCognitiveMemoryLayer
 from cml.embedded_config import EmbeddedConfig
 
 
-def test_embedded_config_defaults() -> None:
+def test_embedded_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     """EmbeddedConfig has expected defaults."""
+    for key in (
+        "EMBEDDING__PROVIDER",
+        "EMBEDDING__MODEL",
+        "EMBEDDING__DIMENSIONS",
+        "EMBEDDING__BASE_URL",
+        "EMBEDDING__LOCAL_MODEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
     config = EmbeddedConfig()
     assert config.storage_mode == "lite"
     assert config.tenant_id == "default"
