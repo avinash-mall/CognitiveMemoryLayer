@@ -6,7 +6,7 @@ Unified six-category eval: LoCoMo (multi-hop, temporal, common-sense, single-hop
 plus Cognitive. Uses LLM-as-judge for scoring (correct=1, partial=0.5, wrong=0).
 
 Phase A: Ingest each unified sample's input_prompt (parsed into turns) into CML.
-Phase B: For each sample, CML read with query=trigger, then Ollama generates answer.
+Phase B: For each sample, CML read with query=trigger, then LLM generates answer (provider from .env LLM__*).
 Phase C: LLM-as-judge scores predictions; writes judged JSON and summary.
 
 Usage (from project root):
@@ -24,7 +24,7 @@ import sys
 import time
 from pathlib import Path
 
-# Load project .env so LLM__* (and CML_*, OLLAMA_*) are available for judge and QA
+# Load project .env so LLM__* (and CML_*) are available for judge and QA
 try:
     from dotenv import load_dotenv
 
@@ -90,7 +90,9 @@ def _ensure_locomo_plus_path() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Locomo-Plus unified eval with CML + Ollama")
+    p = argparse.ArgumentParser(
+        description="Locomo-Plus unified eval with CML; QA uses LLM from .env (LLM__PROVIDER, LLM__MODEL, etc.)"
+    )
     p.add_argument(
         "--unified-file", type=str, required=True, help="Path to unified_input_samples_v2.json"
     )
@@ -99,14 +101,6 @@ def parse_args() -> argparse.Namespace:
         "--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000")
     )
     p.add_argument("--cml-api-key", type=str, default=os.environ.get("CML_API_KEY", "test-key"))
-    p.add_argument(
-        "--ollama-url",
-        type=str,
-        default=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
-    )
-    p.add_argument(
-        "--ollama-model", type=str, default=os.environ.get("OLLAMA_QA_MODEL", "gpt-oss:20b")
-    )
     p.add_argument("--max-results", type=int, default=25)
     p.add_argument("--limit-samples", type=int, default=None)
     p.add_argument("--skip-ingestion", action="store_true")
@@ -261,51 +255,69 @@ def _cml_read(
     raise requests.exceptions.HTTPError("429 Too Many Requests", response=resp)
 
 
-def _ollama_chat(base_url: str, model: str, user_content: str, max_tokens: int = 256) -> str:
-    base = base_url.rstrip("/")
-    messages = [{"role": "user", "content": user_content}]
-    url = f"{base}/api/chat"
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {"num_predict": max_tokens, "temperature": 0},
-    }
-    resp = requests.post(url, json=payload, timeout=120)
-    if resp.status_code == 200:
-        msg = (resp.json().get("message") or {}).get("content", "")
-        return (msg or "").strip()
-    if resp.status_code == 404:
-        url_openai = f"{base}/v1/chat/completions"
-        resp = requests.post(
-            url_openai,
-            json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0},
-            timeout=120,
+# Default OpenAI-compatible base URLs per provider (align with .env.example and src/utils/llm.py)
+_LLM_DEFAULT_BASE: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "ollama": "http://localhost:11434/v1",
+    "openai_compatible": "http://localhost:8000/v1",
+}
+
+
+def _get_llm_qa_config() -> tuple[str, str, str]:
+    """Resolve (base_url, model, api_key) for QA from .env: LLM__PROVIDER, LLM__MODEL, LLM__API_KEY, LLM__BASE_URL."""
+    provider = (os.environ.get("LLM__PROVIDER") or "openai").strip().lower()
+    model = (os.environ.get("LLM__MODEL") or "gpt-4o-mini").strip()
+    api_key = (os.environ.get("LLM__API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    base_url = (os.environ.get("LLM__BASE_URL") or "").strip()
+    if not base_url:
+        base_url = _LLM_DEFAULT_BASE.get(provider, "")
+    if not base_url and provider in ("gemini", "claude"):
+        raise RuntimeError(
+            f"LLM__BASE_URL is required for provider={provider!r}. "
+            "Use an OpenAI-compatible proxy or set LLM__PROVIDER=openai_compatible with a proxy URL."
         )
-        if resp.status_code == 200:
-            choices = resp.json().get("choices", [])
-            if choices:
-                return (choices[0].get("message") or {}).get("content", "").strip()
-    resp.raise_for_status()
-    return ""
+    if not base_url:
+        base_url = _LLM_DEFAULT_BASE.get("openai_compatible", "http://localhost:8000/v1")
+    if provider != "openai" and not api_key:
+        api_key = "dummy"
+    base_url = base_url.rstrip("/")
+    return base_url, model, api_key
 
 
-def _ollama_available(base_url: str, model: str | None = None) -> None:
-    base = base_url.rstrip("/")
+def _llm_chat(user_content: str, max_tokens: int = 256) -> str:
+    """Call LLM for QA using OpenAI-compatible API (provider from .env LLM__*). Retries once on empty."""
     try:
-        r = requests.get(f"{base}/api/tags", timeout=5)
-        if r.status_code == 200 and model:
-            models = r.json().get("models") or []
-            model_base = model.split(":")[0]
-            names = [(m.get("name") or "").split(":")[0] for m in models]
-            if names and model_base not in names:
-                raise RuntimeError(f"Model {model!r} not in Ollama. Pull with: ollama pull {model}")
-        return
-    except RuntimeError:
-        raise
-    except requests.RequestException:
-        pass
-    raise RuntimeError(f"Cannot reach Ollama at {base_url}. Start with 'ollama serve'.")
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package is required for evaluation QA. Install with: pip install openai")
+
+    base_url, model, api_key = _get_llm_qa_config()
+
+    def _do_request() -> str:
+        client = OpenAI(base_url=base_url, api_key=api_key)
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": user_content}],
+                max_tokens=max_tokens,
+                temperature=0,
+            )
+        except Exception:
+            return ""
+        choices = getattr(resp, "choices", None) or []
+        if not choices:
+            return ""
+        msg = getattr(choices[0], "message", None)
+        if msg is None:
+            return ""
+        content = getattr(msg, "content", None)
+        return (content or "").strip()
+
+    out = _do_request()
+    if not out:
+        time.sleep(2.0)
+        out = _do_request()
+    return out or ""
 
 
 def _ingest_sample(
@@ -422,17 +434,34 @@ def phase_b_qa(
     samples: list[dict],
     cml_url: str,
     cml_api_key: str,
-    ollama_url: str,
-    ollama_model: str,
     max_results: int,
     limit: int | None,
+    out_dir: Path,
     verbose: bool = False,
 ) -> list[dict]:
-    _ollama_available(ollama_url, ollama_model)
+    _, qa_model, _ = _get_llm_qa_config()
     samples_qa = samples[:limit] if limit else samples
-    print(f"\n[Phase B] Running QA on {len(samples_qa)} samples ({ollama_model})...", flush=True)
+    pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
     records: list[dict] = []
-    for i, sample in enumerate(tqdm(samples_qa, desc="QA", unit="sample")):
+    start_index = 0
+    if pred_file.exists():
+        try:
+            loaded = json.loads(pred_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, list) and loaded:
+                required = {"question_input", "evidence", "category", "ground_truth", "prediction", "model"}
+                if all(isinstance(r, dict) and required.issubset(set(r.keys())) for r in loaded):
+                    records = loaded
+                    start_index = len(records)
+                    if start_index >= len(samples_qa):
+                        print(f"\n[Phase B] Predictions already complete ({len(records)} records), skipping QA.", flush=True)
+                        return records
+                    print(f"\n[Phase B] Resuming QA from sample {start_index} (LLM: {qa_model})...", flush=True)
+        except (json.JSONDecodeError, OSError):
+            pass
+    if start_index == 0:
+        print(f"\n[Phase B] Running QA on {len(samples_qa)} samples (LLM: {qa_model})...", flush=True)
+    for i in tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample"):
+        sample = samples_qa[i]
         tenant_id = f"lp-{i}"
         trigger = (sample.get("trigger") or "").strip()
         category = sample.get("category", "")
@@ -467,7 +496,7 @@ def phase_b_qa(
                 (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
             )
 
-        prediction = _ollama_chat(ollama_url, ollama_model, user_content)
+        prediction = _llm_chat(user_content)
         ground_truth = sample.get("answer")
         if ground_truth is None or (isinstance(ground_truth, str) and ground_truth.strip() == ""):
             ground_truth = ""
@@ -477,11 +506,20 @@ def phase_b_qa(
             "category": category,
             "ground_truth": ground_truth,
             "prediction": prediction,
-            "model": f"{ollama_model}_cml",
+            "model": f"{qa_model}_cml",
         }
         if sample.get("time_gap"):
             record["time_gap"] = sample["time_gap"]
         records.append(record)
+        pred_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    empty_count = sum(1 for r in records if not (r.get("prediction") or "").strip())
+    if empty_count:
+        print(
+            f"\n[Phase B] Warning: {empty_count}/{len(records)} predictions are empty. "
+            "Check LLM output and CML read context (e.g. --verbose).",
+            flush=True,
+        )
     return records
 
 
@@ -554,10 +592,9 @@ def main() -> None:
         samples,
         args.cml_url,
         args.cml_api_key,
-        args.ollama_url,
-        args.ollama_model,
         args.max_results,
         args.limit_samples,
+        out_dir,
         verbose=args.verbose,
     )
 

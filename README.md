@@ -989,7 +989,17 @@ The evaluation pipeline:
 
 Use `--ingestion-workers N` (default 10) for concurrent Phase A ingestion; optional `LLM_INTERNAL__*` in `.env` for faster extraction.
 
-See [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/RunEvaluation.md](ProjectPlan/LocomoEval/RunEvaluation.md).
+### LoCoMo-Plus comparison highlights (CML vs paper baselines)
+
+| Aspect | CML (gpt-oss:20b + CML) | Lead |
+| :--- | :--- | :--- |
+| **Cognitive (LoCoMo-Plus)** | **21.45%** | **Above** Mem0 (15.80%), SeCom (14.90%), RAG (12–15%), smaller Qwen (9–19%) |
+| **Gap** (factual − cognitive) | **10.04%** | **Smaller** than most baselines (paper: ~18–45%); CML keeps cognitive performance closer to factual |
+| **Setup** | Local 20B QA + CML backend | Paper baselines use GPT-4o, Gemini, or Qwen; CML achieves strong cognitive scores with a smaller model |
+
+Full numbers, breakdown by category, and script: **[evaluation/COMPARISON.md](evaluation/COMPARISON.md)**.
+
+See also [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/RunEvaluation.md](ProjectPlan/LocomoEval/RunEvaluation.md).
 
 ---
 
