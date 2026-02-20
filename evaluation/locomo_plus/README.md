@@ -41,7 +41,7 @@
    python evaluation/locomo_plus/scripts/run_judge.py --model gpt-4o-mini
    ```
 
-3. **Run CML-backed evaluation** (ingest into CML, QA via CML read + Ollama, judge):
+3. **Run CML-backed evaluation** (ingest into CML, QA via CML read + LLM from .env, judge):
 
    From project root:
 
