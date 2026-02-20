@@ -1,6 +1,6 @@
 # LoCoMo Evaluation — Complete Runbook
 
-This document describes every step to run the Locomo-Plus evaluation with CML as the RAG backend and local Ollama. The evaluation uses **eval_locomo_plus.py** (unified LoCoMo + Locomo-Plus) and produces a performance table.
+This document describes every step to run the Locomo-Plus evaluation with CML as the RAG backend. The evaluation uses **eval_locomo_plus.py** (unified LoCoMo + Locomo-Plus) and produces a performance table. QA uses the LLM from project `.env` (`LLM__PROVIDER`, `LLM__MODEL`, `LLM__BASE_URL`) — same as the rest of the codebase; no Ollama-specific wiring.
 
 **References:** [evaluation/README.md](../../evaluation/README.md), [Locomo-Plus repo](https://github.com/xjtuleeyf/Locomo-Plus).
 
@@ -19,11 +19,7 @@ This document describes every step to run the Locomo-Plus evaluation with CML as
   ollama pull <your model>
   ```
   Use a model that matches `EMBEDDING__MODEL` in `.env` (e.g. `mxbai-embed-large` or `embeddinggemma`).
-- **QA model** (evaluation script):
-  ```bash
-  ollama pull gpt-oss:20b
-  ```
-  Or use another model and set `OLLAMA_QA_MODEL` or `--ollama-model`.
+- **QA model** (evaluation script): Uses `LLM__MODEL` from project root `.env` (see Section 2.4). If using Ollama, pull the model (e.g. `ollama pull gpt-oss:20b`) and set `LLM__PROVIDER=ollama`, `LLM__MODEL=gpt-oss:20b`, `LLM__BASE_URL=http://localhost:11434/v1`.
 
 ### 1.3. Embedding dimension
 
@@ -137,7 +133,7 @@ From **project root**:
 python evaluation/scripts/run_full_eval.py
 ```
 
-This runs: (1) Docker down -v, (2) Docker up, (3) API health wait, (4) eval_locomo_plus (ingest, QA, judge), (5) performance table.
+This runs: (1) Docker down -v, (2) Docker up, (3) API health wait, (4) eval_locomo_plus (ingest, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json`. Use **`--resume`** to continue from the failed step (and from the next sample if step 4 failed during QA). **`--resume` implies `--skip-docker`** (no need to pass both).
 
 **If API is already running:**
 
@@ -149,6 +145,12 @@ python evaluation/scripts/run_full_eval.py --skip-docker
 
 ```bash
 python evaluation/scripts/run_full_eval.py --skip-docker --limit-samples 50
+```
+
+**Resume after a failure:**
+
+```bash
+python evaluation/scripts/run_full_eval.py --resume
 ```
 
 ### Option B: Manual run (eval_locomo_plus only)
@@ -172,7 +174,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 ### Phases
 
 1. **Phase A:** Ingest each sample into CML (one tenant per sample). `DATE:` lines parsed to UTC; metadata includes `speaker`, `date_str`, `session_idx`.
-2. **Phase B:** For each QA item: CML read → Ollama generates answer.
+2. **Phase B:** For each QA item: CML read → LLM generates answer. Predictions are written incrementally; if the run fails, resume continues from the next sample.
 3. **Phase C:** LLM-as-judge (correct=1, partial=0.5, wrong=0) writes judged records and summary.
 
 ### eval_locomo_plus.py options
@@ -186,7 +188,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `--max-results 25` | CML read top-k |
 | `--verbose` | Per-sample retrieval diagnostics |
 | `--cml-url`, `--cml-api-key` | CML connection |
-| `--ollama-url`, `--ollama-model` | Ollama connection |
+| (QA uses `LLM__*` from .env; no CLI override) | — |
 | `--judge-model` | Judge model (default gpt-4o-mini) |
 
 ---
@@ -195,9 +197,10 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 
 | File | Description |
 |------|-------------|
-| `evaluation/outputs/locomo_plus_qa_cml_predictions.json` | Predictions (before judge) |
+| `evaluation/outputs/locomo_plus_qa_cml_predictions.json` | Predictions (before judge); written incrementally for resume |
 | `evaluation/outputs/locomo_plus_qa_cml_judged.json` | Judged records |
 | `evaluation/outputs/locomo_plus_qa_cml_judge_summary.json` | Aggregate by category |
+| `evaluation/outputs/run_full_eval_state.json` | Failure state for `--resume` (step, message, last completed sample) |
 
 ---
 
@@ -230,7 +233,7 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 ## 8. Checklist
 
 - [ ] Ollama installed and running
-- [ ] Embedding and QA models pulled (model names must match `EMBEDDING__MODEL` and `OLLAMA_QA_MODEL` in .env)
+- [ ] Embedding and QA models configured (match `EMBEDDING__MODEL` and `LLM__MODEL` in .env)
 - [ ] `EMBEDDING__DIMENSIONS` set in `.env` to match your embedding model (e.g. 1024, 768)
 - [ ] `evaluation/locomo_plus/data/unified_input_samples_v2.json` exists
 - [ ] Python deps: `requests`, `tqdm`; `OPENAI_API_KEY` set
