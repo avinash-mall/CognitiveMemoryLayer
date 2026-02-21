@@ -113,3 +113,137 @@ class TestSemanticClusterer:
         assert len(clusters) >= 1
         if len(clusters) == 1 and len(clusters[0].episodes) == 2:
             assert "alice" in clusters[0].common_entities or clusters[0].dominant_type
+
+
+class TestGistExtractorConstraintValidation:
+    """GistExtractor validates that cognitive gists preserve constraint-signal words."""
+
+    @pytest.mark.asyncio
+    async def test_policy_gist_preserving_signal_word_accepted(self):
+        """When LLM returns policy gist with 'never', validation accepts it."""
+        import json
+
+        from src.consolidation.clusterer import EpisodeCluster
+        from src.consolidation.summarizer import GistExtractor
+
+        class MockLLM:
+            async def complete(self, *args, **kwargs):
+                return json.dumps(
+                    {
+                        "gist": "User never eats shellfish due to allergy",
+                        "type": "policy",
+                        "confidence": 0.9,
+                        "subject": "user",
+                        "predicate": "diet",
+                        "value": "no shellfish",
+                        "key": "user:policy:diet",
+                    }
+                )
+
+        cluster = EpisodeCluster(
+            cluster_id=0,
+            episodes=[_make_record("I never eat shellfish because I'm allergic.")],
+            avg_confidence=0.9,
+        )
+        extractor = GistExtractor(MockLLM())
+        gists = await extractor.extract_gist(cluster)
+        assert len(gists) >= 1
+        assert gists[0].gist_type == "policy"
+        assert "shellfish" in gists[0].text.lower() or "never" in gists[0].text.lower()
+
+    @pytest.mark.asyncio
+    async def test_policy_gist_losing_signal_word_filtered(self):
+        """When LLM returns policy gist that lost 'never'/'shellfish', validation filters it."""
+        import json
+
+        from src.consolidation.clusterer import EpisodeCluster
+        from src.consolidation.summarizer import GistExtractor
+
+        class MockLLM:
+            async def complete(self, *args, **kwargs):
+                # Gist lost constraint signals (no never, shellfish, allergic)
+                return json.dumps(
+                    {
+                        "gist": "User has dietary preferences",
+                        "type": "policy",
+                        "confidence": 0.9,
+                        "subject": "user",
+                        "predicate": "diet",
+                        "value": "preferences",
+                        "key": "user:policy:diet",
+                    }
+                )
+
+        cluster = EpisodeCluster(
+            cluster_id=0,
+            episodes=[_make_record("I never eat shellfish because I'm allergic.")],
+            avg_confidence=0.9,
+        )
+        extractor = GistExtractor(MockLLM())
+        gists = await extractor.extract_gist(cluster)
+        # Validation should filter out the gist that lost constraint semantics
+        assert len(gists) == 0
+
+    @pytest.mark.asyncio
+    async def test_causal_gist_preserves_signal_word_accepted(self):
+        """When LLM returns causal gist with 'because', validation accepts it."""
+        import json
+
+        from src.consolidation.clusterer import EpisodeCluster
+        from src.consolidation.summarizer import GistExtractor
+
+        class MockLLM:
+            async def complete(self, *args, **kwargs):
+                return json.dumps(
+                    {
+                        "gist": "User studies hard because of scholarship goal",
+                        "type": "causal",
+                        "confidence": 0.9,
+                        "subject": "user",
+                        "predicate": "motivation",
+                        "value": "scholarship",
+                        "key": "user:causal:scholarship",
+                    }
+                )
+
+        cluster = EpisodeCluster(
+            cluster_id=0,
+            episodes=[_make_record("I'm studying hard because I want the scholarship.")],
+            avg_confidence=0.9,
+        )
+        extractor = GistExtractor(MockLLM())
+        gists = await extractor.extract_gist(cluster)
+        assert len(gists) >= 1
+        assert gists[0].gist_type == "causal"
+        assert "because" in gists[0].text.lower() or "reason" in gists[0].text.lower()
+
+    @pytest.mark.asyncio
+    async def test_causal_gist_losing_signal_word_filtered(self):
+        """When LLM returns causal gist that lost 'because'/'reason', validation filters it."""
+        import json
+
+        from src.consolidation.clusterer import EpisodeCluster
+        from src.consolidation.summarizer import GistExtractor
+
+        class MockLLM:
+            async def complete(self, *args, **kwargs):
+                return json.dumps(
+                    {
+                        "gist": "User is motivated by scholarship",
+                        "type": "causal",
+                        "confidence": 0.9,
+                        "subject": "user",
+                        "predicate": "motivation",
+                        "value": "scholarship",
+                        "key": "user:causal:scholarship",
+                    }
+                )
+
+        cluster = EpisodeCluster(
+            cluster_id=0,
+            episodes=[_make_record("I'm studying hard because I want the scholarship.")],
+            avg_confidence=0.9,
+        )
+        extractor = GistExtractor(MockLLM())
+        gists = await extractor.extract_gist(cluster)
+        assert len(gists) == 0

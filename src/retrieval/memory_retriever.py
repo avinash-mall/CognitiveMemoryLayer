@@ -38,7 +38,9 @@ class MemoryRetriever:
         self.classifier = QueryClassifier(llm_client)
         self.planner = RetrievalPlanner()
         self.retriever = HybridRetriever(hippocampal, neocortical, cache)
-        self.reranker = MemoryReranker(config=_reranker_config_from_settings())
+        self.reranker = MemoryReranker(
+            config=_reranker_config_from_settings(), llm_client=llm_client
+        )
         self.packet_builder = MemoryPacketBuilder()
 
     async def retrieve(
@@ -73,8 +75,20 @@ class MemoryRetriever:
                         time_filter["until"] = until
                     step.time_filter = time_filter
 
-        raw_results = await self.retriever.retrieve(tenant_id, plan, context_filter=context_filter)
-        reranked = self.reranker.rerank(raw_results, query, max_results=max_results)
+        # Embed query once and pass to retriever to avoid redundant embedding calls
+        query_embedding = None
+        if plan.steps:
+            emb_result = await self.retriever.hippocampal.embeddings.embed(
+                plan.analysis.original_query
+            )
+            query_embedding = emb_result.embedding
+        raw_results = await self.retriever.retrieve(
+            tenant_id,
+            plan,
+            context_filter=context_filter,
+            query_embedding=query_embedding,
+        )
+        reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
         if return_packet:
             return self.packet_builder.build(reranked, query)
         return MemoryPacket(query=query, recent_episodes=reranked)
