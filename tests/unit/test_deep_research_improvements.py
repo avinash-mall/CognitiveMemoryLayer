@@ -41,7 +41,7 @@ def _stable_fact_key_inline(prefix: str, text: str) -> str:
 
 
 class TestStableFactKey:
-    def test_deterministic_across_calls(self):
+    def test_stable_fact_key_deterministic(self):
         key1 = _stable_fact_key_inline("user:custom", "User likes hiking")
         key2 = _stable_fact_key_inline("user:custom", "User likes hiking")
         assert key1 == key2
@@ -183,7 +183,7 @@ class TestDerivePredicateFunction:
         pred = _derive_predicate("quantum physics")
         assert len(pred) == 12  # sha256 truncated
 
-    def test_deterministic(self):
+    def test_derive_predicate_deterministic(self):
         assert _derive_predicate("xyz") == _derive_predicate("xyz")
 
 
@@ -397,8 +397,18 @@ class TestTimezoneAwareTemporalQueries:
         planner.plan.side_effect = capture_plan
         retriever = MagicMock()
         retriever.retrieve = AsyncMock(return_value=[])
+        retriever.hippocampal = MagicMock()
+        retriever.hippocampal.embeddings = MagicMock()
+        retriever.hippocampal.embeddings.embed = AsyncMock(
+            return_value=EmbeddingResult(
+                embedding=[0.1] * 1536,
+                model="test",
+                dimensions=1536,
+                tokens_used=10,
+            )
+        )
         reranker = MagicMock()
-        reranker.rerank.return_value = []
+        reranker.rerank = AsyncMock(return_value=[])
         packet_builder = MagicMock()
         packet_builder.build.return_value = MemoryPacket(query="today?", recent_episodes=[])
 

@@ -2,7 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from ..consolidation.worker import ConsolidationWorker
@@ -21,7 +21,9 @@ from ..memory.scratch_pad import ScratchPad
 from ..memory.short_term import ShortTermMemory, ShortTermMemoryConfig
 from ..memory.tool_memory import ToolMemory
 from ..reconsolidation.service import ReconsolidationService
-from ..retrieval.memory_retriever import MemoryRetriever
+
+if TYPE_CHECKING:
+    from ..retrieval.memory_retriever import MemoryRetriever
 from ..storage.base import MemoryStoreBase
 from ..storage.connection import DatabaseManager
 from ..storage.neo4j import Neo4jGraphStore
@@ -50,7 +52,7 @@ class MemoryOrchestrator:
         short_term: ShortTermMemory,
         hippocampal: HippocampalStore,
         neocortical: NeocorticalStore,
-        retriever: MemoryRetriever,
+        retriever: "MemoryRetriever",
         reconsolidation: ReconsolidationService,
         consolidation: ConsolidationWorker,
         forgetting: ForgettingWorker,
@@ -116,6 +118,10 @@ class MemoryOrchestrator:
             or settings.features.use_llm_pii_redaction
             or settings.features.use_llm_write_gate_importance
         )
+        if _use_unified:
+            entity_extractor = None
+            relation_extractor = None
+
         unified_extractor = UnifiedWritePathExtractor(internal_llm) if _use_unified else None
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
@@ -124,6 +130,8 @@ class MemoryOrchestrator:
             relation_extractor=relation_extractor,
             unified_extractor=unified_extractor,
         )
+
+        from ..retrieval.memory_retriever import MemoryRetriever
 
         retriever = MemoryRetriever(
             hippocampal=hippocampal,
@@ -189,6 +197,8 @@ class MemoryOrchestrator:
             vector_store=episodic_store,
             embedding_client=embedding_client,
         )
+
+        from ..retrieval.memory_retriever import MemoryRetriever
 
         retriever = MemoryRetriever(
             hippocampal=hippocampal,
@@ -313,21 +323,72 @@ class MemoryOrchestrator:
         # Deactivate previous episodic constraints by fact key before writing (supersession)
         if _settings.features.constraint_extraction_enabled and chunks_for_encoding:
             if hasattr(self.hippocampal, "deactivate_constraints_by_key"):
-                from ..extraction.constraint_extractor import ConstraintExtractor
+                from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
+                from ..memory.neocortical.schemas import FactCategory
 
                 _fact_keys = set()
+                _new_constraints: list = []
                 if _unified_results:
                     for _ur in _unified_results:
                         if _ur and hasattr(_ur, "constraints"):
                             for _c in _ur.constraints:
                                 _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
+                                _new_constraints.append(_c)
                 else:
                     _extractor = ConstraintExtractor()
                     for _chunk in chunks_for_encoding:
                         for _c in _extractor.extract(_chunk):
                             _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
+                            _new_constraints.append(_c)
                 for _fk in _fact_keys:
                     await self.hippocampal.deactivate_constraints_by_key(tenant_id, _fk)
+                # BUG-05: Deactivate overlapping constraints (different scope, same type)
+                _cat_map = {
+                    "goal": FactCategory.GOAL,
+                    "value": FactCategory.VALUE,
+                    "state": FactCategory.STATE,
+                    "causal": FactCategory.CAUSAL,
+                    "policy": FactCategory.POLICY,
+                }
+                for _nc in _new_constraints:
+                    _cat = _cat_map.get((_nc.constraint_type or "").lower())
+                    if not _cat:
+                        continue
+                    try:
+                        _existing = await self.neocortical.facts.get_facts_by_category(
+                            tenant_id, _cat, current_only=True
+                        )
+                        for _old in _existing:
+                            if _old.key in _fact_keys:
+                                continue
+                            _old_obj = ConstraintObject(
+                                constraint_type=_cat.value,
+                                subject="user",
+                                description=str(_old.value),
+                                scope=getattr(_old, "context_tags", None) or [],
+                            )
+                            if await ConstraintExtractor.detect_supersession(
+                                _old_obj,
+                                _nc,
+                                llm_client=getattr(
+                                    getattr(self.hippocampal, "unified_extractor", None),
+                                    "llm_client",
+                                    None,
+                                ),
+                            ):
+                                await self.neocortical.facts.deactivate_fact(_old.id)
+                                await self.hippocampal.deactivate_constraints_by_key(
+                                    tenant_id, _old.key
+                                )
+                                await self.neocortical.facts.invalidate_fact(
+                                    tenant_id, _old.key, reason="superseded"
+                                )
+                    except Exception as e:
+                        logger.warning(
+                            "supersession_check_failed",
+                            extra={"constraint_type": _nc.constraint_type, "error": str(e)},
+                            exc_info=True,
+                        )
 
         result = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
@@ -420,6 +481,7 @@ class MemoryOrchestrator:
                                         value=constraint.description,
                                         confidence=constraint.confidence,
                                         evidence_ids=evidence_c,
+                                        context_tags=constraint.scope,  # BUG-05: persist scope for supersession
                                     )
                                     constraints_stored += 1
                                 except Exception:
@@ -444,6 +506,7 @@ class MemoryOrchestrator:
                                     value=constraint.description,
                                     confidence=constraint.confidence,
                                     evidence_ids=evidence_c,
+                                    context_tags=constraint.scope,  # BUG-05: persist scope for supersession
                                 )
                                 constraints_stored += 1
                             except Exception:

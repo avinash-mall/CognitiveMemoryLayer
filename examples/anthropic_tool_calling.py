@@ -70,7 +70,7 @@ MEMORY_TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string"},
-                "action": {"type": "string", "enum": ["delete", "archive"]},
+                "action": {"type": "string", "enum": ["delete", "archive", "silence"]},
             },
             "required": ["query"],
         },

@@ -1,9 +1,11 @@
 """Integration tests for full retrieval flow (classify, plan, retrieve, rerank, packet)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import and_, update
 
 from src.core.config import get_settings
 from src.core.enums import MemoryType
@@ -13,6 +15,7 @@ from src.memory.hippocampal.write_gate import WriteGate
 from src.memory.neocortical.fact_store import SemanticFactStore
 from src.memory.neocortical.store import NeocorticalStore
 from src.retrieval.memory_retriever import MemoryRetriever
+from src.storage.models import SemanticFactModel
 from src.storage.postgres import PostgresMemoryStore
 from src.utils.embeddings import MockEmbeddingClient
 
@@ -179,3 +182,92 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
     has_vector = MemoryType.EPISODIC_EVENT in types or len(packet.recent_episodes) >= 1
     has_fact = MemoryType.SEMANTIC_FACT in types or len(packet.facts) >= 1
     assert has_vector or has_fact, "packet should contain vector and/or fact results"
+
+
+@pytest.mark.asyncio
+async def test_retrieval_embedding_called_once(pg_session_factory):
+    """MemoryRetriever calls embeddings.embed exactly once per retrieve (embedding reuse)."""
+    from src.utils.embeddings import EmbeddingResult
+
+    pg_store = PostgresMemoryStore(pg_session_factory)
+    mock_embed = AsyncMock(
+        return_value=EmbeddingResult(
+            embedding=[0.1] * get_settings().embedding.dimensions,
+            model="test",
+            dimensions=get_settings().embedding.dimensions,
+            tokens_used=10,
+        )
+    )
+    embedding_client = MockEmbeddingClient(dimensions=get_settings().embedding.dimensions)
+    embedding_client.embed = mock_embed
+
+    hippocampal = HippocampalStore(
+        vector_store=pg_store,
+        embedding_client=embedding_client,
+        entity_extractor=None,
+        relation_extractor=None,
+        write_gate=WriteGate(),
+        redactor=PIIRedactor(),
+    )
+    fact_store = SemanticFactStore(pg_session_factory)
+    neocortical = NeocorticalStore(graph_store=_MockGraph(), fact_store=fact_store)
+    retriever = MemoryRetriever(
+        hippocampal=hippocampal,
+        neocortical=neocortical,
+        llm_client=None,
+    )
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    await retriever.retrieve(tenant_id, "Should I order the lobster?")
+
+    assert mock_embed.await_count == 1
+    mock_embed.assert_called_once_with("Should I order the lobster?")
+
+
+@pytest.mark.asyncio
+async def test_retrieval_validity_filtering(pg_session_factory):
+    """Expired constraint facts (valid_to in past) are not returned in retrieval packet."""
+    pg_store = PostgresMemoryStore(pg_session_factory)
+    hippocampal = HippocampalStore(
+        vector_store=pg_store,
+        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        entity_extractor=None,
+        relation_extractor=None,
+        write_gate=WriteGate(),
+        redactor=PIIRedactor(),
+    )
+    fact_store = SemanticFactStore(pg_session_factory)
+    neocortical = NeocorticalStore(graph_store=_MockGraph(), fact_store=fact_store)
+    retriever = MemoryRetriever(
+        hippocampal=hippocampal,
+        neocortical=neocortical,
+        llm_client=None,
+    )
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    await neocortical.store_fact(
+        tenant_id,
+        "user:policy:old_diet",
+        "I used to avoid gluten but no longer.",
+        confidence=0.9,
+    )
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    past = now - timedelta(days=1)
+    async with pg_session_factory() as session:
+        await session.execute(
+            update(SemanticFactModel)
+            .where(
+                and_(
+                    SemanticFactModel.tenant_id == tenant_id,
+                    SemanticFactModel.key == "user:policy:old_diet",
+                )
+            )
+            .values(valid_to=past)
+        )
+        await session.commit()
+
+    packet = await retriever.retrieve(tenant_id, "What restaurant should we go to?")
+
+    all_texts = [m.record.text for m in packet.all_memories]
+    assert not any("gluten" in t or "old_diet" in t for t in all_texts)

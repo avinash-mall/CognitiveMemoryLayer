@@ -30,7 +30,7 @@ class TestQueryClassifier:
         assert "facts" in result.suggested_sources
 
     @pytest.mark.asyncio
-    async def test_fallback_without_llm(self):
+    async def test_classifier_returns_general_or_unknown_for_random_query_without_llm(self):
         classifier = QueryClassifier(llm_client=None)
         result = await classifier.classify("xyz random query abc")
         assert result.intent in (QueryIntent.GENERAL_QUESTION, QueryIntent.UNKNOWN)
@@ -38,7 +38,7 @@ class TestQueryClassifier:
 
 
 class TestRetrievalPlanner:
-    def test_plan_preference_lookup(self):
+    def test_planner_preference_lookup_produces_facts_step(self):
         planner = RetrievalPlanner()
         analysis = QueryAnalysis(
             original_query="my favorite cuisine",
@@ -53,7 +53,7 @@ class TestRetrievalPlanner:
         assert any(s.source == RetrievalSource.FACTS for s in plan.steps)
         assert plan.steps[0].key == "user:preference:cuisine"
 
-    def test_plan_general_question(self):
+    def test_planner_general_question_includes_vector_and_facts_steps(self):
         planner = RetrievalPlanner()
         analysis = QueryAnalysis(
             original_query="tell me about the project",
@@ -83,20 +83,22 @@ class TestMemoryReranker:
             retrieval_source="vector",
         )
 
-    def test_rerank_orders_by_score(self):
+    @pytest.mark.asyncio
+    async def test_rerank_orders_by_score(self):
         reranker = MemoryReranker()
         mems = [
             self._make_memory("low", relevance=0.3, confidence=0.5),
             self._make_memory("high", relevance=0.9, confidence=0.9),
         ]
-        result = reranker.rerank(mems, "query", max_results=2)
+        result = await reranker.rerank(mems, "query", max_results=2)
         assert len(result) == 2
         assert result[0].record.text == "high"
 
-    def test_rerank_respects_max_results(self):
+    @pytest.mark.asyncio
+    async def test_rerank_respects_max_results(self):
         reranker = MemoryReranker()
         mems = [self._make_memory(f"text{i}") for i in range(5)]
-        result = reranker.rerank(mems, "query", max_results=2)
+        result = await reranker.rerank(mems, "query", max_results=2)
         assert len(result) == 2
 
 
@@ -116,7 +118,7 @@ class TestMemoryPacketBuilder:
             retrieval_source="vector",
         )
 
-    def test_build_categorizes_by_type(self):
+    def test_packet_builder_categorizes_by_memory_type(self):
         builder = MemoryPacketBuilder()
         memories = [
             self._make_retrieved("episode one", MemoryType.EPISODIC_EVENT),
@@ -128,7 +130,7 @@ class TestMemoryPacketBuilder:
         assert len(packet.facts) >= 1
         assert len(packet.preferences) >= 1
 
-    def test_to_llm_context_markdown(self):
+    def test_packet_builder_to_llm_context_includes_markdown(self):
         builder = MemoryPacketBuilder()
         memories = [self._make_retrieved("User likes coffee", MemoryType.PREFERENCE)]
         packet = builder.build(memories, "query")

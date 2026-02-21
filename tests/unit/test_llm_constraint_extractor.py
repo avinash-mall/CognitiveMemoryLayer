@@ -76,7 +76,7 @@ def test_rule_based_constraint_extractor_still_works():
     assert any(c.constraint_type == "goal" for c in constraints)
 
 
-def test_constraint_fact_key_preserved():
+def test_constraint_fact_key_used_for_deduplication():
     """ConstraintExtractor.constraint_fact_key is used for deduplication."""
     c = ConstraintObject(
         constraint_type="goal",
