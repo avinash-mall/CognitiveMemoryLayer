@@ -5,8 +5,11 @@ import json
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryPacket, RetrievedMemory
 
-# Minimum relevance for episodes to appear in markdown (avoid dilution of constraints)
-EPISODE_RELEVANCE_THRESHOLD = 0.4
+# Fallback constants when config unavailable (BUG-02: avoid diluting constraints)
+EPISODE_RELEVANCE_THRESHOLD = 0.5
+MAX_EPISODES_WHEN_CONSTRAINTS = 3
+MAX_EPISODES_DEFAULT = 5
+MAX_CONSTRAINT_TOKENS = 400
 
 
 class MemoryPacketBuilder:
@@ -100,44 +103,118 @@ class MemoryPacketBuilder:
         return ""
 
     def _format_markdown(self, packet: MemoryPacket, max_tokens: int) -> str:
-        """Format as markdown."""
-        lines = ["# Retrieved Memory Context\n"]
+        """Format as markdown with constraint-first token budget.
+
+        Constraints get a reserved budget so they are never truncated.
+        Facts, preferences, and episodes share the remaining budget.
+        """
+        max_chars = max_tokens * 4
+        main_header = "# Retrieved Memory Context\n\n"
+        sections_budget = max_chars - len(main_header)
+        try:
+            from ..core.config import get_settings
+
+            settings = get_settings()
+            constraint_budget = min(settings.retrieval.max_constraint_tokens * 4, sections_budget)
+            threshold = settings.retrieval.episode_relevance_threshold
+            episode_limit = (
+                settings.retrieval.max_episodes_when_constraints
+                if packet.constraints
+                else settings.retrieval.max_episodes_default
+            )
+        except Exception:
+            constraint_budget = min(MAX_CONSTRAINT_TOKENS * 4, sections_budget)
+            threshold = EPISODE_RELEVANCE_THRESHOLD
+            episode_limit = (
+                MAX_EPISODES_WHEN_CONSTRAINTS if packet.constraints else MAX_EPISODES_DEFAULT
+            )
+
+        sections: list[str] = []
+        used = 0
+
+        # 1. Constraints first (reserved budget; never truncate mid-constraint)
         if packet.constraints:
-            lines.append("## Active Constraints (Must Follow)")
+            header = "## Active Constraints (Must Follow)\n"
+            constraint_lines: list[str] = []
             for c in packet.constraints[:6]:
                 prov = self._constraint_provenance(c)
-                lines.append(f"- [!IMPORTANT] **{c.record.text}** {prov}".rstrip())
-            lines.append("")
-        if packet.facts:
-            lines.append("## Known Facts")
+                line = f"- [!IMPORTANT] **{c.record.text}** {prov}".rstrip() + "\n"
+                if (
+                    used + len(header) + sum(len(x) for x in constraint_lines) + len(line)
+                    <= constraint_budget
+                ):
+                    constraint_lines.append(line)
+                else:
+                    break
+            if constraint_lines:
+                sections.append(header + "".join(constraint_lines) + "\n")
+                used += len(sections[-1])
+
+        remaining = sections_budget - used
+
+        # 2. Facts
+        if packet.facts and remaining > 100:
+            header = "## Known Facts\n"
+            fact_lines: list[str] = []
             for f in packet.facts[:5]:
                 conf = f"[{f.record.confidence:.0%}]" if f.record.confidence < 1.0 else ""
-                lines.append(f"- {f.record.text} {conf}")
-            lines.append("")
-        if packet.preferences:
-            lines.append("## User Preferences")
+                line = f"- {f.record.text} {conf}\n"
+                if len(header) + sum(len(x) for x in fact_lines) + len(line) <= remaining:
+                    fact_lines.append(line)
+                else:
+                    break
+            if fact_lines:
+                s = header + "".join(fact_lines) + "\n"
+                sections.append(s)
+                used += len(s)
+                remaining -= len(s)
+
+        # 3. Preferences
+        if packet.preferences and remaining > 100:
+            header = "## User Preferences\n"
+            pref_lines: list[str] = []
             for p in packet.preferences[:5]:
-                lines.append(f"- {p.record.text}")
-            lines.append("")
+                line = f"- {p.record.text}\n"
+                if len(header) + sum(len(x) for x in pref_lines) + len(line) <= remaining:
+                    pref_lines.append(line)
+                else:
+                    break
+            if pref_lines:
+                s = header + "".join(pref_lines) + "\n"
+                sections.append(s)
+                used += len(s)
+                remaining -= len(s)
+
+        # 4. Recent episodes
         relevant_episodes = [
-            e
-            for e in packet.recent_episodes
-            if getattr(e, "relevance_score", 1.0) > EPISODE_RELEVANCE_THRESHOLD
+            e for e in packet.recent_episodes if getattr(e, "relevance_score", 1.0) > threshold
         ]
-        if relevant_episodes:
-            lines.append("## Recent Context")
-            for e in relevant_episodes[:5]:
+        if relevant_episodes and remaining > 100:
+            header = "## Recent Context\n"
+            ep_lines: list[str] = []
+            for e in relevant_episodes[:episode_limit]:
                 ts = e.record.timestamp
                 date_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)
-                lines.append(f"- [{date_str}] {e.record.text}")
-            lines.append("")
-        if packet.warnings:
-            lines.append("## Warnings")
-            for w in packet.warnings:
-                lines.append(f"- ⚠️ {w}")
-            lines.append("")
-        result = "\n".join(lines)
-        max_chars = max_tokens * 4
+                line = f"- [{date_str}] {e.record.text}\n"
+                if len(header) + sum(len(x) for x in ep_lines) + len(line) <= remaining:
+                    ep_lines.append(line)
+                else:
+                    break
+            if ep_lines:
+                s = header + "".join(ep_lines) + "\n"
+                sections.append(s)
+                used += len(s)
+                remaining -= len(s)
+
+        # 5. Warnings
+        if packet.warnings and remaining > 50:
+            header = "## Warnings\n"
+            warn_lines = [f"- {w}\n" for w in packet.warnings]
+            s = header + "".join(warn_lines) + "\n"
+            if len(s) <= remaining:
+                sections.append(s)
+
+        result = "# Retrieved Memory Context\n\n" + "".join(sections)
         if len(result) > max_chars:
             result = result[:max_chars] + "\n... (truncated)"
         return result

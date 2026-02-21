@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, and_, cast, select, update
+from sqlalchemy import String, and_, cast, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...storage.models import SemanticFactModel
@@ -83,8 +83,9 @@ class SemanticFactStore:
         tenant_id: str,
         category: FactCategory,
         current_only: bool = True,
+        limit: int = 50,
     ) -> list[SemanticFact]:
-        """Get all facts in a category. Holistic: tenant-only."""
+        """Get facts in a category. Holistic: tenant-only."""
         async with self.session_factory() as session:
             q = select(SemanticFactModel).where(
                 and_(
@@ -94,6 +95,15 @@ class SemanticFactStore:
             )
             if current_only:
                 q = q.where(SemanticFactModel.is_current.is_(True))
+                # Exclude expired facts: valid_to is null or in the future
+                now = datetime.now(UTC).replace(tzinfo=None)
+                q = q.where(
+                    or_(
+                        SemanticFactModel.valid_to.is_(None),
+                        SemanticFactModel.valid_to >= now,
+                    )
+                )
+            q = q.limit(limit)
             result = await session.execute(q)
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]

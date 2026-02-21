@@ -1,6 +1,9 @@
 """Use py-cml without a server — embedded mode with serverless SQLite.
 
 Uses aiosqlite (in-memory or file-based). No HTTP or CML API required.
+
+Monorepo setup: pip install -e . && pip install -e "packages/py-cml[embedded]"
+Released package: pip install cognitive-memory-layer[embedded]
 """
 
 import asyncio

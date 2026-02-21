@@ -111,10 +111,12 @@ class CognitiveMemory(BaseMemory):
             print(f"Warning: Could not save: {e}")
 
     def clear(self) -> None:
+        """Clear memories. Uses semantic query - clears tenant memories matching
+        'conversation session', not just this session. CML has no session-scoped forget."""
         if self.memory_client is None:
             return
         try:
-            self.memory_client.forget(query="*", action="delete")
+            self.memory_client.forget(query="conversation session memories", action="delete")
         except Exception:
             pass
 
@@ -177,7 +179,11 @@ def main():
                 break
             if not user_input:
                 continue
-            print(f"\nBot: {chain.predict(input=user_input)}\n")
+            out = chain.invoke({"input": user_input})
+            response = out.get("response", out.get("output", str(out)))
+            if hasattr(response, "content"):
+                response = response.content
+            print(f"\nBot: {response}\n")
     except KeyboardInterrupt:
         print("\nGoodbye!")
 

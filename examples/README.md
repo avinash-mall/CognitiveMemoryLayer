@@ -41,9 +41,21 @@ Working examples for the Cognitive Memory Layer with LLMs and as a standalone se
 | `embedded_mode.py` | Serverless: py-cml embedded with SQLite (no API) |
 | `agent_integration.py` | Agent pattern: observe, plan, reflect using memory |
 | `standalone_demo.py` | **No py-cml**: raw httpx demo of all API endpoints |
+| `api_direct_minimal.py` | **No py-cml**: minimal httpx-only script (health, write, read, turn, stats) |
+| `api_curl_examples.sh` | **No py-cml**: curl commands for all memory endpoints |
 | `openclaw_skill/` | [OpenClaw](https://openclaw.ai/) skill: persistent structured memory (SKILL.md + setup) |
 
 See also **packages/py-cml/examples/temporal_fidelity.py** for timestamped writes and turns (historical replay, benchmarks).
+
+### Direct API (no py-cml)
+
+Use the REST API without the SDK. Requires `httpx` (for Python) or `curl` (for shell).
+
+```bash
+python examples/api_direct_minimal.py
+# Or run curl examples (set AUTH__API_KEY first):
+bash examples/api_curl_examples.sh
+```
 
 ### Quick Start
 
@@ -82,6 +94,12 @@ python examples/embedded_mode.py
 
 ```bash
 python examples/standalone_demo.py
+```
+
+### Direct API Minimal (no py-cml, httpx only)
+
+```bash
+python examples/api_direct_minimal.py
 ```
 
 ### Running all examples

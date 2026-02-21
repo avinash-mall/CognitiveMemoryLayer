@@ -110,6 +110,10 @@ def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
     print(f"Found {result.total_count} memories")
     for mem in result.memories:
         print(f"  - [{mem.type}] {mem.text}")
+    if result.constraints:
+        print("  Constraints (server-extracted when enabled):")
+        for c in result.constraints:
+            print(f"    - {c.text}")
 
     # 3. Update memories with feedback
     print("\n3. UPDATING MEMORIES")

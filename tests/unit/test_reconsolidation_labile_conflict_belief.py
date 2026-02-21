@@ -61,7 +61,7 @@ class TestLabileStateTracker:
         assert got.turn_id == "turn1"
 
     @pytest.mark.asyncio
-    async def test_release_labile(self):
+    async def test_release_labile_clears_session(self):
         tracker = LabileStateTracker(labile_duration_seconds=60)
         mid = uuid4()
         await tracker.mark_labile("t", "u", "turn1", [mid], "q", ["t1"], [0.5], [0.5])
@@ -107,7 +107,7 @@ class TestConflictDetector:
 
 
 class TestBeliefRevisionEngine:
-    def test_plan_reinforcement(self):
+    def test_belief_revision_reinforcement_plan(self):
         engine = BeliefRevisionEngine()
         old = _make_memory("I like coffee.", key="pref:drink")
         conflict = ConflictResult(
@@ -124,7 +124,7 @@ class TestBeliefRevisionEngine:
         assert plan.operations[0].patch is not None
         assert plan.operations[0].patch["confidence"] > old.confidence
 
-    def test_plan_correction(self):
+    def test_belief_revision_correction_plan(self):
         engine = BeliefRevisionEngine()
         old = _make_memory("I like coffee.", key="pref:drink")
         conflict = ConflictResult(
@@ -143,7 +143,7 @@ class TestBeliefRevisionEngine:
         assert plan.operations[1].new_record is not None
         assert plan.operations[1].new_record.text == "I prefer tea."
 
-    def test_plan_temporal_time_slice(self):
+    def test_belief_revision_temporal_time_slice_plan(self):
         engine = BeliefRevisionEngine()
         old = _make_memory("I prefer coffee.", key="pref:drink")
         conflict = ConflictResult(

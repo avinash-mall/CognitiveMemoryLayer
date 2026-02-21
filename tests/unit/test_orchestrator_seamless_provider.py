@@ -563,6 +563,11 @@ class TestOrchestratorFactory:
         mock_settings.features.use_chonkie_for_large_text = False
         mock_settings.features.chunker_large_text_threshold_chars = 0
         mock_settings.features.cached_embeddings_enabled = False
+        mock_settings.features.use_llm_constraint_extractor = False
+        mock_settings.features.use_llm_write_time_facts = False
+        mock_settings.features.use_llm_salience_refinement = False
+        mock_settings.features.use_llm_pii_redaction = False
+        mock_settings.features.use_llm_write_gate_importance = False
 
         with (
             patch("src.core.config.get_settings", return_value=mock_settings),

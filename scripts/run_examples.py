@@ -90,6 +90,15 @@ EXAMPLES = [
         "timeout_sec": 60,
     },
     {
+        "name": "api_direct_minimal",
+        "path": "examples/api_direct_minimal.py",
+        "needs_api": True,
+        "needs_llm_openai": False,
+        "needs_llm_anthropic": False,
+        "interactive": False,
+        "timeout_sec": 60,
+    },
+    {
         "name": "standalone_demo",
         "path": "examples/standalone_demo.py",
         "needs_api": True,
