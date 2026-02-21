@@ -129,12 +129,30 @@ class OpenAICompatibleClient(LLMClient):
         schema: dict | None = None,
         temperature: float = 0.0,
     ) -> dict[str, Any]:
-        response = await self.complete(
-            prompt,
-            temperature=temperature,
-            system_prompt="You are a JSON generator. Always respond with valid JSON only, no markdown.",
-        )
-        return _parse_json_from_response(response)
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a JSON generator. Always respond with valid JSON only, no markdown.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                response_format={"type": "json_object"},
+            )
+            text = response.choices[0].message.content or "{}"
+        except Exception:
+            # Fallback for models/endpoints that don't support strict response_format
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+            )
+            text = response.choices[0].message.content or "{}"
+        return _parse_json_from_response(text)
 
 
 class MockLLMClient(LLMClient):

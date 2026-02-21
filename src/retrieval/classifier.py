@@ -98,7 +98,10 @@ class QueryClassifier:
     _CONSTRAINT_DIM_PATTERNS: dict[str, list[re.Pattern]] = {
         "goal": [re.compile(r"\b(goal|objective|target|aim|ambition|milestone)\b", re.I)],
         "value": [re.compile(r"\b(value|principle|ethic|belief|priority)\b", re.I)],
-        "state": [re.compile(r"\b(feel|mood|stress|anxious|tired|busy|sick)\b", re.I)],
+        "state": [
+            re.compile(r"\b(feel|mood|stress|anxious|tired|busy|sick)\b", re.I),
+            re.compile(r"\b(energy|improve|energetic)\b", re.I),  # BUG-03: energy/improve -> state
+        ],
         "causal": [re.compile(r"\b(because|reason|consequence|result|cause)\b", re.I)],
         "policy": [re.compile(r"\b(rule|policy|restriction|limit|boundary)\b", re.I)],
     }
@@ -143,6 +146,10 @@ class QueryClassifier:
         # Check if this is a decision/temptation query
         if any(p.search(q) for p in self._DECISION_PATTERNS):
             analysis.is_decision_query = True
+        # BUG-03: When confidence low, retrieve all categories (constraint_dimensions=None)
+        if analysis.confidence < 0.8:
+            analysis.constraint_dimensions = None
+            return
         # Detect constraint dimensions
         dims: list[str] = []
         for dim, patterns in self._CONSTRAINT_DIM_PATTERNS.items():

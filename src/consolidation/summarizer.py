@@ -47,6 +47,32 @@ Rules:
 - Higher confidence if multiple memories support the same conclusion
 - Use "goal"/"value"/"state"/"causal"/"policy" types when memories express constraints, commitments, or conditions that should govern future behavior"""
 
+# Constraint-signal words to preserve when gist_type is cognitive
+_COGNITIVE_GIST_TYPES = {"goal", "value", "state", "causal", "policy"}
+_CONSTRAINT_SIGNAL_WORDS = frozenset(
+    {
+        "never",
+        "always",
+        "must",
+        "avoid",
+        "allergic",
+        "shouldn't",
+        "can't",
+        "won't",
+        "refuse",
+        "should",
+        "need",
+        "have to",
+        "trying",
+        "value",
+        "important",
+        "because",
+        "reason",
+        "policy",
+        "rule",
+    }
+)
+
 
 @dataclass
 class ExtractedGist:
@@ -106,11 +132,22 @@ class GistExtractor:
 
             gists = []
             for gd in gists_data:
+                gist_text = gd.get("gist", "").strip()
+                gist_type = gd.get("type", "summary")
+                if not gist_text:
+                    continue
+                # Optional validation: cognitive gists should preserve constraint-signal words
+                if gist_type in _COGNITIVE_GIST_TYPES:
+                    cluster_text = " ".join(ep.text for ep in cluster.episodes).lower()
+                    gist_lower = gist_text.lower()
+                    signals_in_cluster = [w for w in _CONSTRAINT_SIGNAL_WORDS if w in cluster_text]
+                    if signals_in_cluster and not any(w in gist_lower for w in signals_in_cluster):
+                        continue  # Drop gist that lost constraint semantics
                 conf = float(gd.get("confidence", 0.7)) * cluster.avg_confidence
                 gists.append(
                     ExtractedGist(
-                        text=gd.get("gist", ""),
-                        gist_type=gd.get("type", "summary"),
+                        text=gist_text,
+                        gist_type=gist_type,
                         confidence=conf,
                         supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
                         key=gd.get("key"),

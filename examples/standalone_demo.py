@@ -167,6 +167,10 @@ def demo_read_memories(session_id: str):
             for mem in data.get("memories", [])[:3]:
                 conf = f"[{mem.get('confidence', 0):.0%}]"
                 print(f"  - {mem.get('type', '')}: {mem.get('text', '')[:60]}... {conf}")
+            if data.get("constraints"):
+                print("  Constraints (server-extracted when enabled):")
+                for c in data["constraints"][:3]:
+                    print(f"    - {c.get('text', '')[:60]}...")
         else:
             print(f"Error: {response.text}")
 
@@ -298,6 +302,27 @@ def demo_process_turn():
         print(f"  Memories stored: {data.get('memories_stored', 0)}")
 
 
+def demo_session_context(session_id: str):
+    """Demonstrate getting session context (messages, tool_results, scratch_pad)."""
+    print_section("Session Context")
+    response = httpx.get(
+        f"{BASE_URL}/session/{session_id}/context",
+        headers=HEADERS,
+        timeout=HTTP_TIMEOUT,
+    )
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Session {session_id}:")
+        print(f"  Messages: {len(data.get('messages', []))}")
+        print(f"  Tool results: {len(data.get('tool_results', []))}")
+        print(f"  Scratch pad: {len(data.get('scratch_pad', []))}")
+        ctx = data.get("context_string", "")
+        if ctx:
+            print(f"  Context snippet: {ctx[:200]}...")
+    else:
+        print(f"Error: {response.text}")
+
+
 def demo_create_session():
     """Demonstrate session creation."""
     print_section("Create Session")
@@ -407,6 +432,9 @@ def main():
 
         _pause("Press Enter to continue with process_turn demo...")
         demo_process_turn()
+
+        _pause("Press Enter to continue with session context demo...")
+        demo_session_context(session_id)
 
         _pause("Press Enter to continue with create_session demo...")
         demo_create_session()

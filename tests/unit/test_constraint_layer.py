@@ -168,7 +168,7 @@ class TestRuleBasedChunkerConstraint:
 class TestConstraintExtractor:
     """ConstraintExtractor detects goals, values, states, causal, policy."""
 
-    def test_extract_goal(self):
+    def test_constraint_extractor_extracts_goal(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk("I'm trying to eat healthier this year.")
         constraints = extractor.extract(chunk)
@@ -176,7 +176,7 @@ class TestConstraintExtractor:
         types = {c.constraint_type for c in constraints}
         assert "goal" in types
 
-    def test_extract_value(self):
+    def test_constraint_extractor_extracts_value(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk("I value environmental sustainability.")
         constraints = extractor.extract(chunk)
@@ -184,7 +184,7 @@ class TestConstraintExtractor:
         types = {c.constraint_type for c in constraints}
         assert "value" in types
 
-    def test_extract_state(self):
+    def test_constraint_extractor_extracts_state(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk("I'm currently dealing with a tight deadline.")
         constraints = extractor.extract(chunk)
@@ -192,7 +192,7 @@ class TestConstraintExtractor:
         types = {c.constraint_type for c in constraints}
         assert "state" in types
 
-    def test_extract_causal(self):
+    def test_constraint_extractor_extracts_causal(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk("I'm studying hard in order to get the scholarship.")
         constraints = extractor.extract(chunk)
@@ -200,7 +200,7 @@ class TestConstraintExtractor:
         types = {c.constraint_type for c in constraints}
         assert "causal" in types
 
-    def test_extract_policy(self):
+    def test_constraint_extractor_extracts_policy(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk("I never eat shellfish because I'm allergic.")
         constraints = extractor.extract(chunk)
@@ -329,30 +329,35 @@ class TestConstraintObjectSerialization:
 class TestConstraintSupersession:
     """detect_supersession() identifies when a new constraint replaces an old one."""
 
-    def test_same_type_same_scope_supersedes(self):
+    @pytest.mark.asyncio
+    async def test_same_type_same_scope_supersedes(self):
         old = ConstraintObject("goal", "user", "Save 1000", scope=["money"])
         new = ConstraintObject("goal", "user", "Save 2000", scope=["money"])
-        assert ConstraintExtractor.detect_supersession(old, new) is True
+        assert await ConstraintExtractor.detect_supersession(old, new) is True
 
-    def test_different_type_does_not_supersede(self):
+    @pytest.mark.asyncio
+    async def test_different_type_does_not_supersede(self):
         old = ConstraintObject("goal", "user", "Save money", scope=["money"])
         new = ConstraintObject("policy", "user", "Never spend", scope=["money"])
-        assert ConstraintExtractor.detect_supersession(old, new) is False
+        assert await ConstraintExtractor.detect_supersession(old, new) is False
 
-    def test_same_type_no_scope_overlap_does_not_supersede(self):
+    @pytest.mark.asyncio
+    async def test_same_type_no_scope_overlap_does_not_supersede(self):
         old = ConstraintObject("goal", "user", "Save money", scope=["money"])
         new = ConstraintObject("goal", "user", "Lose weight", scope=["health"])
-        assert ConstraintExtractor.detect_supersession(old, new) is False
+        assert await ConstraintExtractor.detect_supersession(old, new) is False
 
-    def test_both_unscoped_same_type_supersedes(self):
+    @pytest.mark.asyncio
+    async def test_both_unscoped_same_type_supersedes(self):
         old = ConstraintObject("policy", "user", "Never eat late")
         new = ConstraintObject("policy", "user", "Never eat after 8pm")
-        assert ConstraintExtractor.detect_supersession(old, new) is True
+        assert await ConstraintExtractor.detect_supersession(old, new) is True
 
-    def test_inactive_old_does_not_supersede(self):
+    @pytest.mark.asyncio
+    async def test_inactive_old_does_not_supersede(self):
         old = ConstraintObject("goal", "user", "Old goal", status="superseded")
         new = ConstraintObject("goal", "user", "New goal")
-        assert ConstraintExtractor.detect_supersession(old, new) is False
+        assert await ConstraintExtractor.detect_supersession(old, new) is False
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -363,13 +368,13 @@ class TestConstraintSupersession:
 class TestConstraintFactKey:
     """constraint_fact_key() generates stable keys."""
 
-    def test_deterministic(self):
+    def test_constraint_fact_key_deterministic(self):
         co = ConstraintObject("goal", "user", "Save money", scope=["finance"])
         key1 = ConstraintExtractor.constraint_fact_key(co)
         key2 = ConstraintExtractor.constraint_fact_key(co)
         assert key1 == key2
 
-    def test_format(self):
+    def test_constraint_fact_key_format(self):
         co = ConstraintObject("value", "user", "Health matters", scope=["health"])
         key = ConstraintExtractor.constraint_fact_key(co)
         assert key.startswith("user:value:")
@@ -445,19 +450,19 @@ class TestWriteGateConstraint:
 class TestFactCategoryCognitive:
     """FactCategory enum includes cognitive constraint types."""
 
-    def test_goal_value(self):
+    def test_fact_category_goal_value(self):
         assert FactCategory.GOAL.value == "goal"
 
-    def test_state_value(self):
+    def test_fact_category_state_value(self):
         assert FactCategory.STATE.value == "state"
 
-    def test_value_value(self):
+    def test_fact_category_value_value(self):
         assert FactCategory.VALUE.value == "value"
 
-    def test_causal_value(self):
+    def test_fact_category_causal_value(self):
         assert FactCategory.CAUSAL.value == "causal"
 
-    def test_policy_value(self):
+    def test_fact_category_policy_value(self):
         assert FactCategory.POLICY.value == "policy"
 
 
@@ -635,7 +640,8 @@ class TestRetrievalPlannerConstraints:
         assert any(s.source == RetrievalSource.VECTOR for s in plan.steps)
         assert any(s.source == RetrievalSource.FACTS for s in plan.steps)
 
-    def test_general_question_no_constraints_step(self):
+    def test_general_question_has_constraints_step(self):
+        """BUG-01: General path now includes CONSTRAINTS step for semantic overlap (preferences/values)."""
         planner = RetrievalPlanner()
         analysis = QueryAnalysis(
             original_query="Tell me about the project status.",
@@ -646,7 +652,7 @@ class TestRetrievalPlannerConstraints:
         )
         plan = planner.plan(analysis)
         constraint_steps = [s for s in plan.steps if s.source == RetrievalSource.CONSTRAINTS]
-        assert len(constraint_steps) == 0
+        assert len(constraint_steps) >= 1
 
     def test_constraints_source_enum_value(self):
         assert RetrievalSource.CONSTRAINTS.value == "constraints"
@@ -685,8 +691,8 @@ class TestRerankerConstraintWeights:
             metadata={"constraints": [{"constraint_type": "policy"}]},
         )
         weight = reranker._get_recency_weight(constraint_mem)
-        # Stable constraint types (policy) should have very low recency weight
-        assert weight <= 0.10
+        # Stable constraint types (policy) have zero recency weight
+        assert weight == 0.0
 
     def test_goal_constraint_semi_stable_weight(self):
         reranker = MemoryReranker()
@@ -706,7 +712,8 @@ class TestRerankerConstraintWeights:
         # Default recency weight from config (0.2)
         assert weight == reranker.config.recency_weight
 
-    def test_constraint_reranked_above_old_episode(self):
+    @pytest.mark.asyncio
+    async def test_constraint_reranked_above_old_episode(self):
         reranker = MemoryReranker()
         # Constraint: lower relevance but stable
         constraint = _make_retrieved(
@@ -723,9 +730,117 @@ class TestRerankerConstraintWeights:
             relevance=0.75,
             confidence=0.6,
         )
-        result = reranker.rerank([episode, constraint], "Should I eat the shrimp?", max_results=2)
+        result = await reranker.rerank(
+            [episode, constraint], "Should I eat the shrimp?", max_results=2
+        )
         # Both should be present (we aren't testing exact ordering due to complex scoring)
         assert len(result) == 2
+
+    def test_value_constraint_recency_weight_zero(self):
+        """Value constraint type gets recency_weight=0 (stable)."""
+        reranker = MemoryReranker()
+        value_mem = _make_retrieved(
+            "I value sustainability.",
+            mem_type=MemoryType.CONSTRAINT,
+            metadata={"constraints": [{"constraint_type": "value"}]},
+        )
+        weight = reranker._get_recency_weight(value_mem)
+        assert weight == 0.0
+
+    def test_state_constraint_semi_stable_weight(self):
+        """State constraint type gets semi-stable recency weight (0.15)."""
+        reranker = MemoryReranker()
+        state_mem = _make_retrieved(
+            "I'm currently stressed about work.",
+            mem_type=MemoryType.CONSTRAINT,
+            metadata={"constraints": [{"constraint_type": "state"}]},
+        )
+        weight = reranker._get_recency_weight(state_mem)
+        assert 0.10 <= weight <= 0.20
+
+    @pytest.mark.asyncio
+    async def test_stable_constraint_not_outranked_by_recency(self):
+        """Old policy constraint (90 days) should not be outranked by recent episode;
+        stable constraints have recency_weight=0, so age does not affect their score."""
+        from datetime import timedelta
+
+        reranker = MemoryReranker()
+        old = datetime.now(UTC) - timedelta(days=90)
+        recent = datetime.now(UTC) - timedelta(days=1)
+        constraint = RetrievedMemory(
+            record=MemoryRecord(
+                tenant_id="t",
+                context_tags=[],
+                type=MemoryType.CONSTRAINT,
+                text="I never eat shellfish.",
+                provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+                timestamp=old,
+                confidence=0.95,
+                metadata={"constraints": [{"constraint_type": "policy"}]},
+            ),
+            relevance_score=0.85,
+            retrieval_source="constraints",
+        )
+        episode = RetrievedMemory(
+            record=MemoryRecord(
+                tenant_id="t",
+                context_tags=[],
+                type=MemoryType.EPISODIC_EVENT,
+                text="Yesterday I had pizza at the place.",
+                provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+                timestamp=recent,
+                confidence=0.6,
+            ),
+            relevance_score=0.7,
+            retrieval_source="vector",
+        )
+        result = await reranker.rerank(
+            [episode, constraint], "recommend a restaurant", max_results=2
+        )
+        assert len(result) == 2
+        # Constraint (policy) has recency_weight=0 so age does not hurt it;
+        # with higher relevance+confidence it should rank first
+        assert result[0].record.text == "I never eat shellfish."
+
+    @pytest.mark.asyncio
+    async def test_rerank_stable_constraint_beats_newer_episode(self):
+        """Old value constraint should rank above recent episode when scores are comparable;
+        value has recency_weight=0 so age does not penalize it."""
+        from datetime import timedelta
+
+        reranker = MemoryReranker()
+        old = datetime.now(UTC) - timedelta(days=60)
+        recent = datetime.now(UTC) - timedelta(days=1)
+        constraint = RetrievedMemory(
+            record=MemoryRecord(
+                tenant_id="t",
+                context_tags=[],
+                type=MemoryType.CONSTRAINT,
+                text="I value honesty above everything.",
+                provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+                timestamp=old,
+                confidence=0.95,
+                metadata={"constraints": [{"constraint_type": "value"}]},
+            ),
+            relevance_score=0.9,
+            retrieval_source="constraints",
+        )
+        episode = RetrievedMemory(
+            record=MemoryRecord(
+                tenant_id="t",
+                context_tags=[],
+                type=MemoryType.EPISODIC_EVENT,
+                text="Today I had a great meeting.",
+                provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+                timestamp=recent,
+                confidence=0.5,
+            ),
+            relevance_score=0.65,
+            retrieval_source="vector",
+        )
+        result = await reranker.rerank([episode, constraint], "how should I behave?", max_results=2)
+        assert len(result) == 2
+        assert result[0].record.text == "I value honesty above everything."
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -772,13 +887,13 @@ class TestPacketBuilderConstraints:
         assert "dairy" in ctx
 
     def test_markdown_starts_with_active_constraints_and_filters_low_relevance_episodes(self):
-        """Packet markdown starts with Active Constraints; episodes with relevance <= 0.4 are omitted."""
+        """Packet markdown starts with Active Constraints; episodes with relevance <= threshold omitted (BUG-02: default 0.5)."""
         builder = MemoryPacketBuilder()
         memories = [
             _make_retrieved("User must follow budget.", MemoryType.CONSTRAINT, relevance=0.9),
             _make_retrieved("Low relevance episode.", MemoryType.EPISODIC_EVENT, relevance=0.3),
             _make_retrieved("Another low one.", MemoryType.EPISODIC_EVENT, relevance=0.2),
-            _make_retrieved("Relevant episode.", MemoryType.EPISODIC_EVENT, relevance=0.5),
+            _make_retrieved("Relevant episode.", MemoryType.EPISODIC_EVENT, relevance=0.6),
         ]
         packet = builder.build(memories, "query")
         ctx = builder.to_llm_context(packet, max_tokens=1000, format="markdown")
@@ -786,10 +901,87 @@ class TestPacketBuilderConstraints:
         assert "Must Follow" in ctx
         assert "budget" in ctx
         assert "[!IMPORTANT]" in ctx
-        # Episodes with relevance > 0.4 appear in Recent Context; <= 0.4 omitted
+        # Episodes with relevance > threshold (default 0.5) appear in Recent Context
         assert "Relevant episode" in ctx
         assert "Low relevance episode" not in ctx
         assert "Another low one" not in ctx
+
+    def test_constraint_token_budget_constraints_not_truncated(self):
+        """With many facts/preferences and few constraints, constraints section is
+        present and not truncated; truncation happens in facts/preferences first."""
+        builder = MemoryPacketBuilder()
+        memories = [
+            _make_retrieved("User must avoid shellfish.", MemoryType.CONSTRAINT, relevance=0.9),
+            _make_retrieved("User follows a budget.", MemoryType.CONSTRAINT, relevance=0.8),
+        ]
+        for i in range(10):
+            memories.append(
+                _make_retrieved(
+                    f"Fact number {i} with some extra text to consume tokens.",
+                    MemoryType.SEMANTIC_FACT,
+                    relevance=0.7,
+                )
+            )
+        for i in range(5):
+            memories.append(
+                _make_retrieved(
+                    f"Preference {i} with additional content.",
+                    MemoryType.PREFERENCE,
+                    relevance=0.7,
+                )
+            )
+        packet = builder.build(memories, "query")
+        ctx = builder.to_llm_context(packet, max_tokens=500, format="markdown")
+        # Constraints section must be present and contain both constraints
+        assert "Active Constraints" in ctx
+        assert "shellfish" in ctx
+        assert "budget" in ctx
+        assert "Must Follow" in ctx
+        # Truncation should happen in facts/preferences, not constraints
+        assert ctx.find("shellfish") < ctx.find("... (truncated)") or "... (truncated)" not in ctx
+
+    def test_markdown_section_order_constraints_first(self):
+        """Markdown output has Active Constraints before Recent Context and Known Facts."""
+        builder = MemoryPacketBuilder()
+        memories = [
+            _make_retrieved("User must avoid gluten.", MemoryType.CONSTRAINT, relevance=0.9),
+            _make_retrieved("A known fact.", MemoryType.SEMANTIC_FACT, relevance=0.8),
+            _make_retrieved("Recent episode.", MemoryType.EPISODIC_EVENT, relevance=0.7),
+        ]
+        packet = builder.build(memories, "query")
+        ctx = builder.to_llm_context(packet, max_tokens=500, format="markdown")
+        constraints_pos = ctx.find("Active Constraints")
+        recent_pos = ctx.find("Recent Context")
+        facts_pos = ctx.find("Known Facts")
+        assert constraints_pos >= 0
+        if recent_pos >= 0:
+            assert constraints_pos < recent_pos
+        if facts_pos >= 0:
+            assert constraints_pos < facts_pos
+
+    def test_tight_token_budget_truncates_facts_not_constraints(self):
+        """With tight token budget, constraints appear in full; facts get less space."""
+        builder = MemoryPacketBuilder()
+        memories = [
+            _make_retrieved("User must avoid shellfish.", MemoryType.CONSTRAINT, relevance=0.9),
+            _make_retrieved("User follows budget.", MemoryType.CONSTRAINT, relevance=0.8),
+        ]
+        for i in range(20):
+            memories.append(
+                _make_retrieved(
+                    f"Fact {i} with substantial text to consume token budget.",
+                    MemoryType.SEMANTIC_FACT,
+                    relevance=0.7,
+                )
+            )
+        packet = builder.build(memories, "query")
+        ctx_small = builder.to_llm_context(packet, max_tokens=100, format="markdown")
+        ctx_large = builder.to_llm_context(packet, max_tokens=500, format="markdown")
+        assert "Active Constraints" in ctx_small
+        assert "shellfish" in ctx_small
+        assert "budget" in ctx_small
+        assert "Must Follow" in ctx_small
+        assert len(ctx_small) < len(ctx_large)
 
 
 # ═══════════════════════════════════════════════════════════════════

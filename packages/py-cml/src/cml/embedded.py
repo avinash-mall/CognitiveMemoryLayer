@@ -165,7 +165,14 @@ class EmbeddedCognitiveMemoryLayer:
 
         db_url = self._config.database.database_url
         if db_url.startswith("sqlite+aiosqlite://"):
-            path = db_url.replace("sqlite+aiosqlite:///", "").strip("/") or ":memory:"
+            raw = db_url.replace("sqlite+aiosqlite:///", "")
+            # Preserve absolute path: "/tmp/foo" or "//tmp/foo" -> "/tmp/foo"; "relative" -> "relative"
+            if raw.startswith("//"):
+                path = raw[1:]
+            elif raw.startswith("/"):
+                path = raw
+            else:
+                path = raw.strip("/") or ":memory:"
         else:
             path = ":memory:"
         self._sqlite_store = SQLiteMemoryStore(db_path=path)

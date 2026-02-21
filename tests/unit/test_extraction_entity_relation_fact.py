@@ -50,7 +50,7 @@ class TestEntityExtractor:
         assert result[0].entity_type == "LOCATION"
 
     @pytest.mark.asyncio
-    async def test_extract_returns_empty_on_invalid_json(self, mock_llm):
+    async def test_entity_extractor_returns_empty_on_invalid_json(self, mock_llm):
         mock_llm.complete.return_value = "not json at all"
         extractor = EntityExtractor(llm_client=mock_llm)
         result = await extractor.extract("Some text.")
@@ -93,7 +93,7 @@ class TestRelationExtractor:
         assert result[0].predicate == "prefers_something"
 
     @pytest.mark.asyncio
-    async def test_extract_returns_empty_on_invalid_json(self, mock_llm):
+    async def test_relation_extractor_returns_empty_on_invalid_json(self, mock_llm):
         mock_llm.complete.return_value = "not json"
         extractor = RelationExtractor(llm_client=mock_llm)
         result = await extractor.extract("Some text.")
@@ -158,7 +158,7 @@ class TestLLMFactExtractor:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_extract_returns_empty_on_invalid_json(self, mock_llm):
+    async def test_llm_fact_extractor_returns_empty_on_invalid_json(self, mock_llm):
         mock_llm.complete.return_value = "not json"
         extractor = LLMFactExtractor(llm_client=mock_llm)
         result = await extractor.extract("Some conversation.")

@@ -16,6 +16,8 @@ from .schema_aligner import SchemaAligner
 from .summarizer import GistExtractor
 from .triggers import ConsolidationScheduler, ConsolidationTask
 
+logger = get_logger(__name__)
+
 
 @dataclass
 class ConsolidationReport:
@@ -84,40 +86,49 @@ class ConsolidationWorker:
                 elapsed_seconds=0.0,
             )
 
-        clusters = self.clusterer.cluster(episodes)
-        gists = await self.extractor.extract_from_clusters(clusters)
+        # BUG-06: Preserve constraints from episodic memories before gist extraction
+        from ..core.enums import MemoryType
+        from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
 
-        # Constraint recovery: re-extract constraints from gist text and persist as semantic facts
-        from ..extraction.constraint_extractor import ConstraintExtractor
-        from ..memory.working.models import ChunkType, SemanticChunk
-
-        constraint_extractor = ConstraintExtractor()
-        for gist in gists:
-            if not gist.text:
+        for ep in episodes:
+            if ep.type != MemoryType.CONSTRAINT:
                 continue
-            chunk = SemanticChunk(
-                id="",
-                text=gist.text,
-                chunk_type=ChunkType.STATEMENT,
-                entities=[],
-                source_turn_id=(
-                    gist.supporting_episode_ids[0] if gist.supporting_episode_ids else None
-                ),
-                timestamp=datetime.now(UTC),
-            )
-            extracted = constraint_extractor.extract(chunk)
-            for constraint in extracted:
+            meta = ep.metadata or {}
+            constraints_meta = meta.get("constraints", [])
+            if not isinstance(constraints_meta, list):
+                continue
+            for cdict in constraints_meta:
+                if not isinstance(cdict, dict):
+                    continue
                 try:
-                    fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                    c = ConstraintObject(
+                        constraint_type=cdict.get("constraint_type", "value"),
+                        subject=cdict.get("subject", "user"),
+                        description=cdict.get("description", ep.text),
+                        scope=cdict.get("scope", []),
+                        activation=cdict.get("activation", ""),
+                        status=cdict.get("status", "active"),
+                        confidence=float(cdict.get("confidence", 0.7)),
+                        provenance=cdict.get("provenance", []),
+                    )
+                    fact_key = ConstraintExtractor.constraint_fact_key(c)
                     await self.migrator.semantic.store_fact(
                         tenant_id=tenant_id,
                         key=fact_key,
-                        value=constraint.description,
-                        confidence=constraint.confidence,
-                        evidence_ids=gist.supporting_episode_ids or [],
+                        value=c.description,
+                        confidence=c.confidence,
+                        evidence_ids=[str(ep.id)],
+                        context_tags=c.scope,
                     )
-                except Exception:
-                    pass  # Log and continue; do not fail consolidation
+                except Exception as e:
+                    logger.warning(
+                        "consolidation_constraint_from_episode_failed",
+                        extra={"episode_id": str(ep.id), "error": str(e)},
+                        exc_info=True,
+                    )
+
+        clusters = self.clusterer.cluster(episodes)
+        gists = await self.extractor.extract_from_clusters(clusters)
 
         alignments = await self.aligner.align_batch(tenant_id, user_id, gists)
         migration = await self.migrator.migrate(
