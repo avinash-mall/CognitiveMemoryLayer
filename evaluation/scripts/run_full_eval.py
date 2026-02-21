@@ -117,7 +117,10 @@ def _run_validation() -> tuple[bool, str]:
     )
     if proc.returncode == 0:
         return True, ""
-    return False, (proc.stderr or proc.stdout or f"Validation exited with code {proc.returncode}").strip()
+    return (
+        False,
+        (proc.stderr or proc.stdout or f"Validation exited with code {proc.returncode}").strip(),
+    )
 
 
 def main() -> None:
@@ -313,7 +316,9 @@ def main() -> None:
     # Step 4: Run evaluation
     current_step = 4
     if current_step >= step_start:
-        _banner(f"Step {current_step}/{step_count}: Locomo-Plus evaluation (ingest, QA, judge)", "-")
+        _banner(
+            f"Step {current_step}/{step_count}: Locomo-Plus evaluation (ingest, QA, judge)", "-"
+        )
         _OUT_DIR.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["PYTHONPATH"] = str(_LOCOMO_PLUS_ROOT)
