@@ -96,19 +96,10 @@ class MemoryOrchestrator:
         fact_store = SemanticFactStore(db_manager.pg_session)
         neocortical = NeocorticalStore(graph_store, fact_store)
 
-        short_term_config = ShortTermMemoryConfig(
-            use_fast_chunker=settings.features.use_fast_chunker,
-            use_chonkie_for_large_text=settings.features.use_chonkie_for_large_text,
-            chunker_large_text_threshold_chars=settings.features.chunker_large_text_threshold_chars,
-        )
-        short_term = ShortTermMemory(config=short_term_config, llm_client=internal_llm)
-        # Skip entity/relation extraction when fast chunker is enabled (eval fast path)
-        entity_extractor = (
-            None if settings.features.use_fast_chunker else EntityExtractor(internal_llm)
-        )
-        relation_extractor = (
-            None if settings.features.use_fast_chunker else RelationExtractor(internal_llm)
-        )
+        short_term_config = ShortTermMemoryConfig()
+        short_term = ShortTermMemory(config=short_term_config)
+        entity_extractor = EntityExtractor(internal_llm)
+        relation_extractor = RelationExtractor(internal_llm)
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
 
         _use_unified = (
@@ -188,11 +179,8 @@ class MemoryOrchestrator:
         fact_store = NoOpFactStore()
         neocortical = NeocorticalStore(graph_store, fact_store)
 
-        short_term_config = ShortTermMemoryConfig(
-            min_salience_for_encoding=0.0,
-            use_fast_chunker=True,
-        )
-        short_term = ShortTermMemory(config=short_term_config, llm_client=llm_client)
+        short_term_config = ShortTermMemoryConfig(min_salience_for_encoding=0.0)
+        short_term = ShortTermMemory(config=short_term_config)
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
@@ -328,7 +316,7 @@ class MemoryOrchestrator:
 
                 _fact_keys = set()
                 _new_constraints: list = []
-                if _unified_results:
+                if _unified_results and _settings.features.use_llm_constraint_extractor:
                     for _ur in _unified_results:
                         if _ur and hasattr(_ur, "constraints"):
                             for _c in _ur.constraints:

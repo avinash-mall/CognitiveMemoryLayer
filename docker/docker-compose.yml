@@ -76,7 +76,6 @@ services:
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
-      FEATURES__USE_FAST_CHUNKER: "true"
     depends_on:
       postgres:
         condition: service_healthy

@@ -18,7 +18,7 @@ pytest tests/unit tests/integration tests/e2e -v
 # Short tracebacks
 pytest tests/unit tests/integration tests/e2e -v --tb=short
 
-# Run server + SDK tests (667 total)
+# Run server + SDK tests (704 total)
 pytest tests/unit tests/integration tests/e2e packages/py-cml/tests -v
 ```
 
@@ -30,7 +30,7 @@ pytest tests/unit tests/integration tests/e2e packages/py-cml/tests -v
 | `tests/integration/`| Integration tests (real app, Postgres; optional Neo4j/Redis). |
 | `tests/e2e/`        | End-to-end API flow tests. |
 
-**Server total: 492 tests** (unit + integration + e2e). With `packages/py-cml/tests` (175 tests), **combined total: 667**. Run `python scripts/update_readme_badges.py` from the repo root to refresh version and test-count badges in the READMEs.
+**Server total: 529 tests** (unit + integration + e2e). With `packages/py-cml/tests` (175 tests), **combined total: 704**. Run `python scripts/update_readme_badges.py` from the repo root to refresh version and test-count badges in the READMEs.
 
 ### Unit test files (by domain)
 
@@ -186,7 +186,7 @@ Some tests skip when dependencies or services are unavailable. Summary:
 | `packages/py-cml/tests/integration/test_*` (write/read) | Server stored no chunks or read returned 0 | CML API running with embedding/write-gate |
 | `packages/py-cml/tests/embedded/test_*` | Embedding/LLM unavailable in embedded | Install `.[embedded]` and have embedding model/API available |
 
-Full report: [SKIPPED_TESTS_REPORT.md](SKIPPED_TESTS_REPORT.md).
+See the Skipped tests table above for a summary.
 
 ## CI
 

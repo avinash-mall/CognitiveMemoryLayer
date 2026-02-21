@@ -39,7 +39,7 @@ flowchart TB
     end
     
     subgraph Orch["Memory Orchestrator"]
-        flow["Write Gate → Hippocampal Store → Neocortical Store → Retrieval"]
+        flow["Unified Extraction → Write Gate → Hippocampal Store → Neocortical Store → Retrieval"]
     end
     
     subgraph Stores["Memory Stores"]
@@ -55,6 +55,47 @@ flowchart TB
     style Orch fill:#fff3e0,color:#000
     style Stores fill:#e8f5e9,color:#000
 ```
+
+### Write Path: LLM Gating (FEATURES__USE_LLM_*)
+
+When write-path LLM feature flags are enabled (default), the Write Gate and extraction use values from `UnifiedWritePathExtractor` only; rule-based logic for those fields is skipped. This ensures a single source of truth per field.
+
+```mermaid
+flowchart TB
+    subgraph Orch["Orchestrator"]
+        UnifiedExtract["Unified extraction<br/>1 LLM call per chunk"]
+        ConstraintSupersession["Constraint supersession"]
+        EncodeBatch["encode_batch"]
+    end
+    
+    subgraph Store["Hippocampal Store"]
+        Phase1["Phase 1: Gate"]
+        Phase15["Phase 1.5: PII / fallback"]
+        Phase4["Phase 4: Upsert"]
+    end
+    
+    subgraph Gate["WriteGate"]
+        Eval["evaluate"]
+        Importance["Importance from unified or rule"]
+        PII["PII from unified or rule"]
+    end
+    
+    UnifiedExtract --> EncodeBatch
+    EncodeBatch --> Phase1
+    Phase1 --> Eval
+    Eval -->|"use_llm_write_gate_importance + unified_result"| Importance
+    Eval -->|"use_llm_pii_redaction + unified_result"| PII
+    Phase1 --> Phase15
+    Phase15 --> Phase4
+```
+
+| Field | Flag | When flag on | Rule-based skipped |
+|-------|------|--------------|--------------------|
+| Salience | `USE_LLM_SALIENCE_REFINEMENT` | Gate uses `unified_result.salience` | `_compute_importance` salience boosts |
+| Importance | `USE_LLM_WRITE_GATE_IMPORTANCE` | Gate uses `unified_result.importance` | `_compute_importance` entirely |
+| PII | `USE_LLM_PII_REDACTION` | Gate uses `unified_result.pii_spans` | Regex `_check_pii` |
+| Constraints | `USE_LLM_CONSTRAINT_EXTRACTOR` | Hippocampal + supersession use unified constraints | `ConstraintExtractor.extract()` |
+| Facts | `USE_LLM_WRITE_TIME_FACTS` | Use unified facts | `WriteTimeFactExtractor` |
 
 ---
 
@@ -802,7 +843,7 @@ Memory access is **holistic per tenant**: there are no scopes or partitions. All
 - Safety-critical or compliance-related
 - Cognitive constraints: goals, values, policies, states, causal rules
 - Example: "User is allergic to shellfish", "Never share user's email", "We should save money for the trip", "I'm trying to eat healthier"
-- When `FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true`, constraints are also **automatically extracted** from text at write time by the `ConstraintExtractor` (goal/value/state/causal/policy patterns). They are stored both as episodic records with `MemoryType.CONSTRAINT` and as semantic facts with cognitive `FactCategory` values.
+- When `FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true`, constraints are also **automatically extracted** from text at write time by the `UnifiedWritePathExtractor` or `ConstraintExtractor` (goal/value/state/causal/policy patterns). They are stored both as episodic records with `MemoryType.CONSTRAINT` and as semantic facts with cognitive `FactCategory` values.
 
 **Use `hypothesis` when:**
 - You're inferring something not explicitly stated
@@ -1250,7 +1291,21 @@ All configuration uses nested environment variables with `__` delimiter.
 | `LLM_INTERNAL__BASE_URL` | None | Base URL for internal LLM |
 | `LLM_INTERNAL__API_KEY` | None | API key for internal LLM |
 
-When any `LLM_INTERNAL__*` is set, used for SemanticChunker, Entity/Relation extractors, consolidation, reconsolidation, forgetting, QueryClassifier. If not set, default `LLM__*` is used.
+When any `LLM_INTERNAL__*` is set, used for Entity/Relation extractors, consolidation, reconsolidation, forgetting, QueryClassifier. If not set, default `LLM__*` is used.
+
+#### Internal LLM Call Counts (default settings)
+
+With default feature flags (unified write path, LLM query classifier, etc.), the server makes the following approximate internal LLM calls per API operation:
+
+| Operation | Approximate LLM calls | Notes |
+|-----------|-----------------------|-------|
+| **Write** | ~1 | One call per chunk via UnifiedWritePathExtractor; a typical short message yields one chunk. |
+| **Read** | 1–2 | QueryClassifier (1) plus optional Reranker constraint scoring (0–1 when constraints appear in results). |
+| **Process Turn** | ~5–10 | Retrieve (1–2) + write user message (~1) + write assistant message (~1) + reconsolidation (fact extraction: 1; conflict detection: retrieved × new facts). |
+
+- **Write:** Uses UnifiedWritePathExtractor: one LLM call per chunk returns constraints, facts, salience, importance, and PII spans. Chunking is tokenizer-based (no LLM).
+- **Read:** QueryClassifier classifies the query (1 call); when constraint memories are in the result set, the Reranker may score them in batches (0–1 additional call).
+- **Process Turn:** Performs (1) retrieve, (2) write user message, (3) write assistant message, and (4) reconsolidation when there is an assistant response and retrieved memories. Reconsolidation runs fact extraction (1 call) and conflict detection (one call per retrieved memory × new fact pair). Plain **write** does not perform reconsolidation: it is stateless (single content only) and has no access to retrieved memories or the user+assistant exchange; reconsolidation requires that context.
 
 #### Auth Settings
 
@@ -1277,17 +1332,24 @@ All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
 | `FEATURES__DB_DEPENDENCY_COUNTS` | `true` | Forgetting uses one SQL query for dependency counts instead of O(n²) Python loop. |
 | `FEATURES__BOUNDED_STATE_ENABLED` | `true` | Working/sensory in-memory state uses LRU+TTL (BoundedStateMap) to prevent unbounded growth. |
 | `FEATURES__HNSW_EF_SEARCH_TUNING` | `true` | Set pgvector `hnsw.ef_search` at query time for recall/latency trade-off. |
-| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `true` | Extract cognitive constraints (goals, values, policies, states, causal rules) at write time. Constraints are stored as `MemoryType.CONSTRAINT` and as cognitive `FactCategory` facts. At read time, decision-style queries trigger constraint-first retrieval. See the [deep-research report](../evaluation/deep-research-report.md). |
-| `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR` | `true` | Use LLM (via unified extractor) for constraint extraction instead of rule-based. |
-| `FEATURES__USE_LLM_WRITE_TIME_FACTS` | `true` | Use LLM (via unified extractor) for write-time fact extraction instead of rule-based. |
-| `FEATURES__CHUNKER_REQUIRE_LLM` | `true` | Fail fast when `use_fast_chunker=false` and no LLM available; otherwise fallback to rule-based chunker. |
+| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `true` | Extract cognitive constraints (goals, values, policies, states, causal rules) at write time. Constraints are stored as `MemoryType.CONSTRAINT` and as cognitive `FactCategory` facts. At read time, decision-style queries trigger constraint-first retrieval. See the Cognitive Constraint Layer implementation in the CHANGELOG. |
+| `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR` | `true` | Use LLM (via unified extractor) for constraint extraction; when on, rule-based `ConstraintExtractor` is skipped for write path and supersession. |
+| `FEATURES__USE_LLM_WRITE_TIME_FACTS` | `true` | Use LLM (via unified extractor) for write-time fact extraction; when on, rule-based `WriteTimeFactExtractor` is skipped. |
 | `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY` | `true` | Skip fast pattern path, always use LLM for query classification. |
-| `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `true` | Use LLM salience from unified extractor instead of rule-based boosts. |
-| `FEATURES__USE_LLM_PII_REDACTION` | `true` | Use LLM PII spans from unified extractor, merged with regex redaction. |
-| `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `true` | Use LLM importance from unified extractor instead of rule-based _compute_importance. |
+| `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `true` | Use LLM salience from unified extractor for gate importance; when on, rule-based salience boosts in `_compute_importance` are skipped. |
+| `FEATURES__USE_LLM_PII_REDACTION` | `true` | Use LLM PII spans from unified extractor for redaction; when on, regex `_check_pii` is skipped in the gate. |
+| `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `true` | Use LLM importance from unified extractor for gate decision; when on, `_compute_importance` is skipped entirely. |
 | `FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY` | `true` | Skip fast pattern path, always use LLM for conflict detection. |
 
-When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, and importance in one LLM request. See [RuleBasedExtractorsAndLLMReplacement.md](../ProjectPlan/BaseCML/RuleBasedExtractorsAndLLMReplacement.md).
+#### Chunker (semchunk)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHUNKER__TOKENIZER` | `google/flan-t5-base` | Hugging Face tokenizer model ID for semchunk. |
+| `CHUNKER__CHUNK_SIZE` | `500` | Max tokens per chunk (align with embedding model max input). |
+| `CHUNKER__OVERLAP_PERCENT` | `0.15` | Overlap ratio 0-1 (e.g. 0.15 = 15%). |
+
+When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, importance, and PII spans in one LLM request. For each flag that is on, the corresponding rule-based logic is skipped (LLM gating). See the Write Path LLM Gating table in the Overview section.
 
 #### Retrieval Settings
 

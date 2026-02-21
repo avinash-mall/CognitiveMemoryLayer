@@ -44,8 +44,9 @@ Working examples for the Cognitive Memory Layer with LLMs and as a standalone se
 | `api_direct_minimal.py` | **No py-cml**: minimal httpx-only script (health, write, read, turn, stats) |
 | `api_curl_examples.sh` | **No py-cml**: curl commands for all memory endpoints |
 | `openclaw_skill/` | [OpenClaw](https://openclaw.ai/) skill: persistent structured memory (SKILL.md + setup) |
+| `packages/py-cml/examples/temporal_fidelity.py` | Timestamped writes and turns (historical replay, benchmarks) |
 
-See also **packages/py-cml/examples/temporal_fidelity.py** for timestamped writes and turns (historical replay, benchmarks).
+See also [packages/py-cml/examples/temporal_fidelity.py](../packages/py-cml/examples/temporal_fidelity.py) for temporal fidelity.
 
 ### Direct API (no py-cml)
 

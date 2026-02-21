@@ -20,7 +20,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![Tests](https://img.shields.io/badge/Tests-175-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
 [![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
-**What's new (1.1.0):** Dashboard admin methods — 13 new methods for sessions, rate limits, knowledge graph, configuration, labile status, retrieval testing, job history, and bulk actions. Unreleased changes (e.g. `ReadResponse.constraints`, `user_timezone` on read/turn, embedded read filter passthrough) are in [CHANGELOG](CHANGELOG.md).
+**What's new (1.3.x):** `ReadResponse.constraints`, `user_timezone` on read/turn, `reconsolidate()`, eval_mode for write, embedded read filter passthrough. Dashboard admin methods (1.1.0): sessions, rate limits, knowledge graph, config, retrieval test, bulk actions. See [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -212,7 +212,7 @@ pytest packages/py-cml/tests/embedded -v
 pytest packages/py-cml/tests/e2e -v
 ```
 
-Some integration, embedded, and e2e tests skip when the CML server or embedding model is unavailable. See the root [tests/README.md](../../tests/README.md) and [tests/SKIPPED_TESTS_REPORT.md](../../tests/SKIPPED_TESTS_REPORT.md).
+Some integration, embedded, and e2e tests skip when the CML server or embedding model is unavailable. See the root [tests/README.md](../../tests/README.md) for skipped-test details.
 
 ---
 
