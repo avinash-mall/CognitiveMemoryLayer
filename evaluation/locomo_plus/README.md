@@ -54,7 +54,7 @@
 
 ## Outputs
 
-- `evaluation/outputs/locomo_plus_predictions.json` – predictions (from run_evaluate or eval_locomo_plus)
-- `evaluation/outputs/locomo_plus_judged.json` – judged records (judge_label, judge_reason, judge_score)
-- `evaluation/outputs/locomo_plus_qa_cml_predictions.json` – CML-backed predictions
+- `evaluation/outputs/locomo_plus_predictions.json` – predictions from run_evaluate (non-CML)
+- `evaluation/outputs/locomo_plus_qa_cml_predictions.json` – predictions from eval_locomo_plus (CML-backed)
+- `evaluation/outputs/locomo_plus_judged.json` – judged records (non-CML)
 - `evaluation/outputs/locomo_plus_qa_cml_judged.json` – CML-backed judged output

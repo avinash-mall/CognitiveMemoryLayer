@@ -54,14 +54,31 @@ class LLMSettings(PydanticBaseModel):
 
 
 class LLMInternalSettings(PydanticBaseModel):
-    """Optional separate LLM for internal tasks (chunking, entity/relation extraction, consolidation).
-    When any field is set, used for SemanticChunker, Entity/Relation extractors, consolidation,
+    """Optional separate LLM for internal tasks (entity/relation extraction, consolidation).
+    When any field is set, used for Entity/Relation extractors, consolidation,
     reconsolidation, forgetting, QueryClassifier. If not set, LLM__* is used."""
 
     provider: str | None = Field(default=None)
     model: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
     api_key: str | None = Field(default=None)
+
+
+class ChunkerSettings(PydanticBaseModel):
+    """Chunker configuration (semchunk; Hugging Face tokenizer)."""
+
+    tokenizer: str = Field(
+        default="google/flan-t5-base",
+        description="Hugging Face tokenizer model ID",
+    )
+    chunk_size: int = Field(
+        default=500,
+        description="Max tokens per chunk (align with embedding model max input)",
+    )
+    overlap_percent: float = Field(
+        default=0.15,
+        description="Overlap ratio 0-1 (e.g. 0.15 = 15%)",
+    )
 
 
 class AuthSettings(PydanticBaseModel):
@@ -117,18 +134,6 @@ class FeatureFlags(PydanticBaseModel):
     constraint_extraction_enabled: bool = Field(
         default=True, description="Cognitive: extract and store latent constraints at write time"
     )
-    use_fast_chunker: bool = Field(
-        default=False,
-        description="Use rule-based chunker instead of LLM chunking (faster ingestion, e.g. for eval)",
-    )
-    use_chonkie_for_large_text: bool = Field(
-        default=True,
-        description="Use Chonkie semantic chunking when input text exceeds threshold (embedding-based, no LLM; requires chonkie[semantic])",
-    )
-    chunker_large_text_threshold_chars: int = Field(
-        default=0,
-        description="Min character count for text to use Chonkie semantic chunking (0 = use Chonkie for all text when enabled)",
-    )
     # Rule-based extractor LLM replacement (RuleBasedExtractorsAndLLMReplacement.md)
     use_llm_constraint_extractor: bool = Field(
         default=True,
@@ -138,12 +143,8 @@ class FeatureFlags(PydanticBaseModel):
         default=True,
         description="Use LLM (via unified extractor) for write-time fact extraction instead of rule-based",
     )
-    chunker_require_llm: bool = Field(
-        default=True,
-        description="Fail fast when use_fast_chunker=false and no LLM available (vs fallback to rule-based chunker)",
-    )
     use_llm_query_classifier_only: bool = Field(
-        default=True,
+        default=False,
         description="Skip fast pattern path, always use LLM for query classification",
     )
     use_llm_salience_refinement: bool = Field(
@@ -159,8 +160,13 @@ class FeatureFlags(PydanticBaseModel):
         description="Use LLM importance from unified extractor instead of rule-based _compute_importance",
     )
     use_llm_conflict_detection_only: bool = Field(
-        default=True,
+        default=False,
         description="Skip fast pattern path, always use LLM for conflict detection",
+    )
+    use_llm_constraint_reranker: bool = Field(
+        default=False,
+        description="Use LLM to score constraint relevance during reranking (1 call per read); "
+        "when False, falls back to fast text-similarity scoring",
     )
 
 
@@ -214,6 +220,7 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     llm_internal: LLMInternalSettings = Field(default_factory=LLMInternalSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    chunker: ChunkerSettings = Field(default_factory=ChunkerSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
 

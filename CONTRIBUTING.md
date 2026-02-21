@@ -7,7 +7,7 @@ Thank you for your interest in contributing. This document outlines how to get s
 1. **Clone and install**
 
    ```bash
-   git clone https://github.com/your-org/CognitiveMemoryLayer.git
+   git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
    cd CognitiveMemoryLayer
    python -m venv .venv
    source .venv/bin/activate   # or `.venv\Scripts\activate` on Windows

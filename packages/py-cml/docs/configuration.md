@@ -94,12 +94,16 @@ Key server-side flags that affect SDK responses:
 | Server Variable | Default | Effect on SDK |
 |----------------|---------|---------------|
 | `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `true` | When enabled, the server extracts cognitive constraints (goals, values, policies, states, causal rules) at write time. `ReadResponse.constraints` will contain constraint memories when a decision-style query triggers constraint retrieval. |
-| `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populates `ReadResponse.facts` with rule-based facts at write time (preference, identity, location). |
+| `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR` | `true` | When on, constraints come from unified LLM extraction only; rule-based `ConstraintExtractor` is skipped. |
+| `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `true` | When on, salience/importance come from unified extractor; rule-based boosts skipped. |
+| `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `true` | When on, gate importance comes from unified extractor; rule-based `_compute_importance` skipped. |
+| `FEATURES__USE_LLM_PII_REDACTION` | `true` | When on, PII redaction uses unified extractor spans; regex PII detection skipped. |
+| `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populates `ReadResponse.facts` with write-time facts (LLM or rule-based per `USE_LLM_WRITE_TIME_FACTS`). |
 | `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | `true` | Per-step and total retrieval timeouts; may affect result count if a step times out. |
 
 ## LLM Internal (server-side)
 
-The CML server supports optional **`LLM_INTERNAL__*`** environment variables for internal tasks. When set, the server uses a separate (often smaller) model for SemanticChunker, Entity/Relation extractors, consolidation, reconsolidation, forgetting, and QueryClassifier.
+The CML server supports optional **`LLM_INTERNAL__*`** environment variables for internal tasks. When set, the server uses a separate (often smaller) model for UnifiedWritePathExtractor, Entity/Relation extractors, consolidation, reconsolidation, forgetting, and QueryClassifier.
 
 | Variable | Description |
 |----------|-------------|
@@ -109,6 +113,18 @@ The CML server supports optional **`LLM_INTERNAL__*`** environment variables for
 | `LLM_INTERNAL__API_KEY` | API key (if required) |
 
 If not set, the server uses `LLM__*` for all tasks. Useful for bulk ingestion (e.g. Locomo evaluation) where a smaller model speeds up internal tasks.
+
+### Internal LLM Call Counts (default settings)
+
+With default feature flags, approximate internal LLM calls per operation:
+
+| Operation | Calls |
+|-----------|-------|
+| **Write** | ~1 (1 per chunk via UnifiedWritePathExtractor) |
+| **Read** | 1–2 (QueryClassifier + optional Reranker when constraints present) |
+| **Process Turn** | ~5–10 (retrieve + 2 writes + reconsolidation) |
+
+For a full breakdown (why turn exceeds read+write, reconsolidation, etc.), see the main project [UsageDocumentation — Internal LLM Call Counts](../../../ProjectPlan/UsageDocumentation.md#internal-llm-call-counts-default-settings).
 
 ## Versioning
 

@@ -4,13 +4,12 @@ import pytest
 
 from src.memory.hippocampal.write_gate import WriteGate
 from src.memory.short_term import ShortTermMemory, ShortTermMemoryConfig
-from src.memory.working.models import ChunkType
 
 
 @pytest.mark.asyncio
 async def test_sensory_buffer_content_and_token_count():
     """Ingest text -> verify sensory buffer content and token count."""
-    config = ShortTermMemoryConfig(use_fast_chunker=True, min_salience_for_encoding=0.4)
+    config = ShortTermMemoryConfig(min_salience_for_encoding=0.4)
     stm = ShortTermMemory(config=config)
     text = "I prefer coffee and my name is Bob."
     r = await stm.ingest_turn("tenant-a", "user-a", text, turn_id="turn-1", role="user")
@@ -24,7 +23,6 @@ async def test_sensory_buffer_content_and_token_count():
 async def test_chunks_for_encoding_respect_min_salience():
     """Encodable chunks only include those with salience >= min_salience_for_encoding."""
     config = ShortTermMemoryConfig(
-        use_fast_chunker=True,
         min_salience_for_encoding=0.6,
         working_max_chunks=10,
     )
@@ -50,7 +48,7 @@ async def test_chunks_for_encoding_respect_min_salience():
 @pytest.mark.asyncio
 async def test_working_memory_chunk_types_and_salience():
     """Verify working memory chunks have expected types and salience."""
-    config = ShortTermMemoryConfig(use_fast_chunker=True, min_salience_for_encoding=0.3)
+    config = ShortTermMemoryConfig(min_salience_for_encoding=0.3)
     stm = ShortTermMemory(config=config)
     r = await stm.ingest_turn(
         "tenant-a",
@@ -61,9 +59,8 @@ async def test_working_memory_chunk_types_and_salience():
     )
     assert r["chunks_created"] >= 1
     all_chunks = r["all_chunks"]
-    pref = [c for c in all_chunks if c.chunk_type == ChunkType.PREFERENCE]
-    fact = [c for c in all_chunks if c.chunk_type == ChunkType.FACT]
-    assert len(pref) >= 1 or len(fact) >= 1
+    # Semchunk returns STATEMENT only; ensure chunks exist and have valid salience
+    assert len(all_chunks) >= 1
     for c in all_chunks:
         assert 0 <= c.salience <= 1.0
         assert c.text
@@ -73,7 +70,7 @@ async def test_working_memory_chunk_types_and_salience():
 async def test_chunks_for_encoding_handoff_to_write_gate_preserves_fields():
     """Feed chunks_for_encoding to WriteGate; assert chunk fields preserved."""
     # Use min_salience_for_encoding=0 so all chunks are encodable (no skip)
-    config = ShortTermMemoryConfig(use_fast_chunker=True, min_salience_for_encoding=0.0)
+    config = ShortTermMemoryConfig(min_salience_for_encoding=0.0)
     stm = ShortTermMemory(config=config)
     await stm.ingest_turn(
         "tenant-a",
@@ -99,7 +96,6 @@ async def test_chunks_for_encoding_handoff_to_write_gate_preserves_fields():
 async def test_full_ingest_flow():
     """Ingest turns -> get encodable chunks -> clear."""
     config = ShortTermMemoryConfig(
-        use_fast_chunker=True,
         min_salience_for_encoding=0.4,
         working_max_chunks=10,
     )
