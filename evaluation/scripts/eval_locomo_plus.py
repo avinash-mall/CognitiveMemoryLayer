@@ -289,7 +289,9 @@ def _llm_chat(user_content: str, max_tokens: int = 256) -> str:
     try:
         from openai import OpenAI
     except ImportError:
-        raise ImportError("openai package is required for evaluation QA. Install with: pip install openai")
+        raise ImportError(
+            "openai package is required for evaluation QA. Install with: pip install openai"
+        )
 
     base_url, model, api_key = _get_llm_qa_config()
 
@@ -448,18 +450,33 @@ def phase_b_qa(
         try:
             loaded = json.loads(pred_file.read_text(encoding="utf-8"))
             if isinstance(loaded, list) and loaded:
-                required = {"question_input", "evidence", "category", "ground_truth", "prediction", "model"}
+                required = {
+                    "question_input",
+                    "evidence",
+                    "category",
+                    "ground_truth",
+                    "prediction",
+                    "model",
+                }
                 if all(isinstance(r, dict) and required.issubset(set(r.keys())) for r in loaded):
                     records = loaded
                     start_index = len(records)
                     if start_index >= len(samples_qa):
-                        print(f"\n[Phase B] Predictions already complete ({len(records)} records), skipping QA.", flush=True)
+                        print(
+                            f"\n[Phase B] Predictions already complete ({len(records)} records), skipping QA.",
+                            flush=True,
+                        )
                         return records
-                    print(f"\n[Phase B] Resuming QA from sample {start_index} (LLM: {qa_model})...", flush=True)
+                    print(
+                        f"\n[Phase B] Resuming QA from sample {start_index} (LLM: {qa_model})...",
+                        flush=True,
+                    )
         except (json.JSONDecodeError, OSError):
             pass
     if start_index == 0:
-        print(f"\n[Phase B] Running QA on {len(samples_qa)} samples (LLM: {qa_model})...", flush=True)
+        print(
+            f"\n[Phase B] Running QA on {len(samples_qa)} samples (LLM: {qa_model})...", flush=True
+        )
     for i in tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample"):
         sample = samples_qa[i]
         tenant_id = f"lp-{i}"
