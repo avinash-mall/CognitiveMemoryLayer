@@ -17,7 +17,7 @@ class RerankerConfig:
     """Reranker configuration."""
 
     relevance_weight: float = 0.5
-    recency_weight: float = 0.2
+    recency_weight: float = 0.1  # BUG-04: reduced from 0.2 to limit recency bias
     confidence_weight: float = 0.2
     diversity_weight: float = 0.1
     diversity_threshold: float = 0.8
@@ -27,10 +27,11 @@ class RerankerConfig:
 class MemoryReranker:
     """Reranks retrieved memories by relevance, recency, confidence, and diversity."""
 
-    def __init__(self, config: RerankerConfig | None = None):
+    def __init__(self, config: RerankerConfig | None = None, llm_client=None):
         self.config = config or RerankerConfig()
+        self.llm_client = llm_client
 
-    def rerank(
+    async def rerank(
         self,
         memories: list[RetrievedMemory],
         query: str,
@@ -40,10 +41,20 @@ class MemoryReranker:
         if not memories:
             return []
         max_results = max_results or self.config.max_results
-        scored: list[tuple[float, RetrievedMemory]] = []
-        for mem in memories:
-            score = self._calculate_score(mem, memories)
-            scored.append((score, mem))
+
+        base_scores = {i: self._calculate_score(mem, memories) for i, mem in enumerate(memories)}
+
+        constraints = [
+            (i, m) for i, m in enumerate(memories) if m.record.type == MemoryType.CONSTRAINT
+        ]
+        if constraints:
+            constraint_texts = [m.record.text for _, m in constraints]
+            boosts = await self._score_constraints_batch(query, constraint_texts)
+            for (idx, mem), boost in zip(constraints, boosts, strict=True):
+                base_scores[idx] += boost * 2.0
+
+        scored = [(score, memories[idx]) for idx, score in base_scores.items()]
+
         scored.sort(key=lambda x: x[0], reverse=True)
         diverse = self._apply_diversity(scored, max_results)
         return [mem for _, mem in diverse]
@@ -51,8 +62,12 @@ class MemoryReranker:
     def _get_recency_weight(self, memory: RetrievedMemory) -> float:
         """Determine recency weight based on memory type stability.
 
-        Stable constraints (value/policy) should not be penalised for age.
+        Stable constraints (value/policy) and preference/value facts (BUG-04)
+        should not be heavily penalised for age.
         """
+        key = getattr(memory.record, "key", None) or ""
+        if key.startswith(("user:preference:", "user:value:")):
+            return 0.1  # Semi-stable: preferences/values age slowly
         if memory.record.type in _STABLE_TYPES:
             # Check constraint sub-type from metadata
             meta = memory.record.metadata or {}
@@ -60,7 +75,7 @@ class MemoryReranker:
             if constraints_meta and isinstance(constraints_meta, list):
                 ctype = constraints_meta[0].get("constraint_type", "")
                 if ctype in _STABLE_CONSTRAINT_TYPES:
-                    return 0.05
+                    return 0.0  # Stable: age does not affect score
                 if ctype in _SEMI_STABLE_CONSTRAINT_TYPES:
                     return 0.15
             return 0.10  # Generic constraint: moderate stability
@@ -83,10 +98,12 @@ class MemoryReranker:
         recency = 1.0 / (1.0 + age_days * 0.1)
         confidence = memory.record.confidence
 
-        # Compute actual diversity: average dissimilarity to other memories (LOW-13)
-        # Cap pairwise comparisons to avoid O(n^2) on large result sets
-        diversity_cap = min(len(all_memories), 50)
-        if len(all_memories) > 1:
+        # Compute actual diversity: average dissimilarity to other memories (LOW-13, BUG-07)
+        # Cap pairwise comparisons to avoid O(n^2); skip for small N
+        diversity_cap = min(len(all_memories), 20)
+        if len(all_memories) <= 5:
+            diversity = 1.0
+        elif len(all_memories) > 1:
             total_sim = 0.0
             count = 0
             for other in all_memories[:diversity_cap]:
@@ -102,10 +119,11 @@ class MemoryReranker:
         recency_weight = self._get_recency_weight(memory)
         score = (
             self.config.relevance_weight * relevance
-            + recency_weight * recency
             + self.config.confidence_weight * confidence
             + self.config.diversity_weight * diversity
         )
+        if recency_weight > 0:
+            score += recency_weight * recency
         return score
 
     def _apply_diversity(
@@ -144,3 +162,54 @@ class MemoryReranker:
         intersection = len(words1 & words2)
         union = len(words1 | words2)
         return intersection / union if union > 0 else 0.0
+
+    async def _score_constraints_batch(
+        self, query: str, constraint_texts: list[str]
+    ) -> list[float]:
+        """Score multiple constraints against a query using a single LLM batch call."""
+        if not self.llm_client or not constraint_texts:
+            return [self._text_similarity(query, text) for text in constraint_texts]
+
+        import asyncio
+
+        batch_size = 10
+        results = [self._text_similarity(query, text) for text in constraint_texts]
+
+        for i in range(0, len(constraint_texts), batch_size):
+            batch = constraint_texts[i : i + batch_size]
+            prompt = f"""Evaluate the relevance of multiple constraints to the given query.
+Score each constraint from 0.0 to 1.0 based on how logically it applies to fulfilling the query.
+Return the results in a JSON array of objects, where each object has "index" (the integer ID of the constraint) and "score" (a float between 0.0 and 1.0).
+
+Query: "{query}"
+
+Constraints:
+"""
+            for idx, text in enumerate(batch):
+                prompt += f'[{idx}] "{text}"\n'
+
+            try:
+                resp = await asyncio.wait_for(
+                    self.llm_client.complete_json(prompt, temperature=0.0), timeout=5.0
+                )
+                items = (
+                    resp
+                    if isinstance(resp, list)
+                    else resp.get("results", [])
+                    if isinstance(resp, dict)
+                    else []
+                )
+                for item in items:
+                    if isinstance(item, dict):
+                        idx = item.get("index")
+                        score = item.get("score")
+                        if (
+                            isinstance(idx, int)
+                            and 0 <= idx < len(batch)
+                            and isinstance(score, (int, float))
+                        ):
+                            results[i + idx] = min(1.0, max(0.0, float(score)))
+            except Exception:
+                pass
+
+        return results

@@ -168,28 +168,43 @@ class ConstraintExtractor:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def detect_supersession(
+    async def detect_supersession(
         old: ConstraintObject,
         new: ConstraintObject,
+        llm_client=None,
     ) -> bool:
-        """Return True if *new* should supersede *old*.
+        """Return True if *new* should supersede *old* using strict validation.
 
-        A constraint is superseded when a newer constraint of the same type
-        and overlapping scope is detected.  Simple heuristic: same type and
-        at least one shared scope tag, or both have empty scope.
+        Strictly use LLM if available to evaluate complex supersessions.
         """
         if old.constraint_type != new.constraint_type:
             return False
         if old.status != "active":
             return False
-        # Scope overlap check
-        if old.scope and new.scope:
-            if set(old.scope) & set(new.scope):
+
+        if not llm_client:
+            # Scope overlap check fallback if no LLM
+            if old.scope and new.scope:
+                if set(old.scope) & set(new.scope):
+                    return True
+            elif not old.scope and not new.scope:
                 return True
-        elif not old.scope and not new.scope:
-            # Both unscoped -- same type supersedes
-            return True
-        return False
+            return False
+
+        prompt = f"""Evaluate constraint supersession.
+Old Constraint: "{old.description}"
+New Constraint: "{new.description}"
+Does the new constraint logically update, replace, or supersede the old one? Answer 'yes' or 'no'."""
+        try:
+            import asyncio
+
+            resp = await asyncio.wait_for(
+                llm_client.complete(prompt, max_tokens=10, temperature=0.0), timeout=2.0
+            )
+            return "yes" in resp.lower()
+        except Exception:
+            # Fallback
+            return False
 
     @staticmethod
     def constraint_fact_key(constraint: ConstraintObject) -> str:

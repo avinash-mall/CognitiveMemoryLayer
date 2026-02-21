@@ -243,6 +243,14 @@ class PostgresMemoryStore(MemoryStoreBase):
                         q = q.where(MemoryRecordModel.timestamp <= until)
                 if "min_confidence" in filters:
                     q = q.where(MemoryRecordModel.confidence >= filters["min_confidence"])
+                if filters.get("exclude_expired"):
+                    now = datetime.now(UTC).replace(tzinfo=None)
+                    q = q.where(
+                        or_(
+                            MemoryRecordModel.valid_to.is_(None),
+                            MemoryRecordModel.valid_to >= now,
+                        )
+                    )
             q = q.order_by(MemoryRecordModel.embedding.cosine_distance(embedding)).limit(top_k)
             result = await session.execute(q)
             records = []
