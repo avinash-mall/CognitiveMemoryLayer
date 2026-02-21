@@ -11,11 +11,13 @@ FAST_PATTERNS = {
         r"what (do|does) (i|my) (like|prefer|want|enjoy)",
         r"(my|i) (favorite|preferred)",
         r"do i (like|prefer|enjoy)",
+        r"what (food|cuisine|music|movie|book|sport|hobby|color|drink) do (i|they)",
     ],
     QueryIntent.IDENTITY_LOOKUP: [
         r"what('s| is) my (name|email|phone|address|job|title)",
         r"who am i",
         r"my (name|email|phone)",
+        r"what (is|was) (\w+'s|their|his|her) (name|job|role|title)",
     ],
     QueryIntent.TASK_STATUS: [
         r"where (am i|are we) (in|on|at)",
@@ -25,13 +27,24 @@ FAST_PATTERNS = {
     QueryIntent.TEMPORAL_QUERY: [
         r"(last|past) (week|month|day|year)",
         r"(yesterday|today|recently)",
-        r"when did (i|we)",
+        r"when did (i|we|he|she|they)",
         r"what happened",
+        r"(first|last) time",
+        r"how long (ago|have|has)",
     ],
     QueryIntent.PROCEDURAL: [
-        r"how (do|can|should) (i|we)",
+        r"how (do|can|should|did) (i|we)",
         r"what('s| are) the steps",
         r"(procedure|process) for",
+    ],
+    QueryIntent.EPISODIC_RECALL: [
+        r"what did (\w+ )?(say|talk|mention|discuss|tell|share|bring up)",
+        r"what (was|were) (\w+ )?(talking|saying|discussing|doing)",
+        r"tell me (about|what)",
+        r"do (you|i) remember",
+        r"(who|what|where|which) (was|were|did|is|are) (\w+ )?(said|told|mentioned|discussed|shared)",
+        r"(describe|summarize) (the|our|my|their) (conversation|discussion|talk|meeting)",
+        r"what (topics?|subjects?) (came up|were covered|did we discuss)",
     ],
     QueryIntent.CONSTRAINT_CHECK: [
         r"should i",
@@ -43,6 +56,10 @@ FAST_PATTERNS = {
         r"recommend",
         r"is (this|that|it) (consistent|aligned|compatible)",
         r"would (this|that) (conflict|contradict|go against)",
+    ],
+    QueryIntent.GENERAL_QUESTION: [
+        r"(who|what|where|when|why|which|how) (is|are|was|were|did|do|does|has|have|had)",
+        r"tell me (more )?(about|what|how|why|when|where)",
     ],
 }
 
@@ -111,25 +128,44 @@ class QueryClassifier:
         query: str,
         recent_context: str | None = None,
     ) -> QueryAnalysis:
-        """Classify a query and extract relevant information. Uses recent_context when
-        query is vague (e.g. 'Any suggestions?')."""
+        """Classify a query and extract relevant information.
+
+        Strategy:
+        1. Always try fast regex patterns first.
+        2. If a pattern matches with confidence > 0.8, return immediately.
+        3. Only call the LLM when ``use_llm_query_classifier_only`` is
+           explicitly enabled in settings — never as a silent fallback for
+           unmatched queries.  This avoids one LLM call per read request for
+           the common case of queries that simply don't match any pattern.
+        4. For unmatched queries (fast_result is None or low-confidence)
+           without LLM, default to GENERAL_QUESTION with confidence 0.5,
+           which triggers vector + facts retrieval — a safe, broad baseline.
+        """
         # If query is vague and we have context, use it to infer intent
         effective_query = query
         if recent_context and self._is_vague(query):
             effective_query = f"{recent_context}\nUser now asks: {query}"
-        # Skip fast path when use_llm_query_classifier_only
+
         from ..core.config import get_settings
 
+        settings = get_settings().features
+
+        # Fast path (always attempted unless force-LLM flag is set)
         fast_result: QueryAnalysis | None = None
-        if not get_settings().features.use_llm_query_classifier_only:
+        if not settings.use_llm_query_classifier_only:
             fast_result = self._fast_classify(effective_query)
+
         if fast_result and fast_result.confidence > 0.8:
             self._enrich_constraint_dimensions(fast_result)
             return fast_result
-        if self.llm:
+
+        # LLM path: only when explicitly requested via feature flag
+        if self.llm and settings.use_llm_query_classifier_only:
             result = await self._llm_classify(effective_query, recent_context=recent_context)
             self._enrich_constraint_dimensions(result)
             return result
+
+        # Default: use the partial fast result when available, else GENERAL_QUESTION
         result = fast_result or QueryAnalysis(
             original_query=query,
             intent=QueryIntent.GENERAL_QUESTION,

@@ -26,12 +26,13 @@ For a step-by-step runbook, see [ProjectPlan/LocomoEval/RunEvaluation.md](../Pro
 
 CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is read from the project root `.env`. See [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md) for full setup.
 
-### Chonkie semantic chunking
+### Chunker (semchunk)
 
-For large (or all) input text, CML can use [Chonkie](https://github.com/chonkie-inc/chonkie) semantic chunking instead of LLM/rule-based chunking. Install the optional dependency and enable the feature:
+CML uses [semchunk](https://github.com/isaacus-dev/semchunk) with a Hugging Face tokenizer for semantic chunking. Configure in `.env`:
 
-- **Install:** `pip install 'chonkie[semantic]'` (or use the project extra: `pip install -e ".[chonkie]"`).
-- **Config:** In `.env` or feature flags, `use_chonkie_for_large_text=true` and `chunker_large_text_threshold_chars=0` (0 = use Chonkie for all text when enabled). If Chonkie is not installed, the server falls back to the default chunker and logs a warning.
+- **CHUNKER__TOKENIZER** — Hugging Face tokenizer model ID (default: google/flan-t5-base)
+- **CHUNKER__CHUNK_SIZE** — Max tokens per chunk (default: 500; align with embedding model max input)
+- **CHUNKER__OVERLAP_PERCENT** — Overlap ratio 0-1 (default: 0.15 = 15%)
 
 ### Environment variables (eval script)
 

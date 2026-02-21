@@ -166,8 +166,24 @@ class MemoryReranker:
     async def _score_constraints_batch(
         self, query: str, constraint_texts: list[str]
     ) -> list[float]:
-        """Score multiple constraints against a query using a single LLM batch call."""
+        """Score multiple constraints against a query using a single LLM batch call.
+
+        The LLM call is skipped (falling back to text similarity) when:
+        - The query is empty (context-only reads with query='')
+        - No llm_client is configured
+        - FEATURES__USE_LLM_CONSTRAINT_RERANKER is False (default)
+        """
         if not self.llm_client or not constraint_texts:
+            return [self._text_similarity(query, text) for text in constraint_texts]
+
+        # Skip expensive LLM scoring when query is empty (e.g. context reads)
+        if not query.strip():
+            return [self._text_similarity(query, text) for text in constraint_texts]
+
+        # Gate behind feature flag (default: off to avoid one LLM call per read)
+        from ..core.config import get_settings
+
+        if not get_settings().features.use_llm_constraint_reranker:
             return [self._text_similarity(query, text) for text in constraint_texts]
 
         import asyncio
@@ -195,9 +211,7 @@ Constraints:
                 items = (
                     resp
                     if isinstance(resp, list)
-                    else resp.get("results", [])
-                    if isinstance(resp, dict)
-                    else []
+                    else resp.get("results", []) if isinstance(resp, dict) else []
                 )
                 for item in items:
                     if isinstance(item, dict):

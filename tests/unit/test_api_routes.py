@@ -1,6 +1,7 @@
 """Unit tests for API routes and middleware."""
 
 import os
+from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
@@ -98,17 +99,24 @@ class TestAPISchemas:
 
     def test_write_memory_request_with_all_fields(self):
         """WriteMemoryRequest accepts all optional fields."""
+        from datetime import datetime
+
         from src.api.schemas import WriteMemoryRequest
 
+        ts = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
         req = WriteMemoryRequest(
             content="Test",
             context_tags=["conversation"],
             session_id="s1",
             memory_type="episodic_event",
             metadata={"key": "value"},
+            namespace="ns1",
+            timestamp=ts,
         )
         assert req.context_tags == ["conversation"]
         assert req.session_id == "s1"
+        assert req.namespace == "ns1"
+        assert req.timestamp == ts
 
     def test_read_memory_request_defaults(self):
         """ReadMemoryRequest has sensible defaults."""
@@ -227,6 +235,23 @@ class TestResponseSchemas:
         )
         assert resp.success is True
         assert resp.chunks_created == 2
+        assert resp.eval_outcome is None
+        assert resp.eval_reason is None
+
+    def test_write_memory_response_eval_mode(self):
+        """WriteMemoryResponse accepts eval_outcome and eval_reason when X-Eval-Mode used."""
+        from src.api.schemas import WriteMemoryResponse
+
+        resp = WriteMemoryResponse(
+            success=True,
+            memory_id=None,
+            chunks_created=0,
+            message="Skipped",
+            eval_outcome="skipped",
+            eval_reason="Below novelty threshold: 0.10 < 0.20",
+        )
+        assert resp.eval_outcome == "skipped"
+        assert resp.eval_reason == "Below novelty threshold: 0.10 < 0.20"
 
     def test_read_memory_response(self):
         """ReadMemoryResponse structure."""

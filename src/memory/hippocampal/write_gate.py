@@ -3,10 +3,14 @@
 import re
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ...core.config import get_settings
 from ...core.enums import MemoryType
 from ..working.models import ChunkType, SemanticChunk
+
+if TYPE_CHECKING:
+    from ...extraction.unified_write_extractor import UnifiedExtractionResult
 
 
 class WriteDecision(StrEnum):
@@ -71,9 +75,10 @@ class WriteGate:
         chunk: SemanticChunk,
         existing_memories: list[dict[str, Any]] | None = None,
         context: dict[str, Any] | None = None,
+        unified_result: "UnifiedExtractionResult | None" = None,
     ) -> WriteGateResult:
         risk_flags: list[str] = []
-        redaction_required = False
+        settings = get_settings().features
 
         if self._check_secrets(chunk.text):
             risk_flags.append("contains_secrets")
@@ -87,11 +92,25 @@ class WriteGate:
                 reason="Contains potential secrets - skipping",
             )
 
-        if self._check_pii(chunk.text):
-            risk_flags.append("contains_pii")
-            redaction_required = True
+        redaction_required: bool
+        if settings.use_llm_pii_redaction and unified_result is not None:
+            redaction_required = bool(unified_result.pii_spans)
+            if redaction_required:
+                risk_flags.append("contains_pii")
+        else:
+            if self._check_pii(chunk.text):
+                risk_flags.append("contains_pii")
+                redaction_required = True
+            else:
+                redaction_required = False
 
-        importance = self._compute_importance(chunk, context)
+        importance: float
+        if settings.use_llm_write_gate_importance and unified_result is not None:
+            importance = unified_result.importance
+        elif settings.use_llm_salience_refinement and unified_result is not None:
+            importance = unified_result.salience
+        else:
+            importance = self._compute_importance(chunk, context)
         novelty = self._compute_novelty(chunk, existing_memories)
         memory_types = self._determine_memory_types(chunk)
 

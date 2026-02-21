@@ -557,12 +557,14 @@ class TestOrchestratorFactory:
         mock_db.neo4j_driver = MagicMock()
         mock_db.redis = None
 
-        # Ensure create() wires extractors (use_fast_chunker=False)
+        # Ensure create() wires extractors
         mock_settings = MagicMock()
-        mock_settings.features.use_fast_chunker = False
-        mock_settings.features.use_chonkie_for_large_text = False
-        mock_settings.features.chunker_large_text_threshold_chars = 0
         mock_settings.features.cached_embeddings_enabled = False
+        mock_chunker = MagicMock()
+        mock_chunker.tokenizer = "google/flan-t5-base"
+        mock_chunker.chunk_size = 500
+        mock_chunker.overlap_percent = 0.15
+        mock_settings.chunker = mock_chunker
         mock_settings.features.use_llm_constraint_extractor = False
         mock_settings.features.use_llm_write_time_facts = False
         mock_settings.features.use_llm_salience_refinement = False

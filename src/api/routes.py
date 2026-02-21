@@ -70,7 +70,7 @@ async def write_memory(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Store new information in memory. Accepts content, optional context tags, session ID, and memory type. Use X-Eval-Mode: true header for evaluation outcome/reason. Tenant-scoped via X-Tenant-ID."""
+    """Store new information in memory. Accepts content, optional context tags, session ID, and memory type. Use X-Eval-Mode: true header for evaluation outcome/reason. Tenant-scoped via X-Tenant-ID. Internal LLM: ~1 call per chunk (UnifiedWritePathExtractor) with default settings."""
     eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
@@ -112,7 +112,7 @@ async def process_turn(
     auth: AuthContext = Depends(require_write_permission),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Process a conversation turn with seamless memory: auto-retrieves relevant context for the user message, optionally auto-stores it, and returns formatted memory context for LLM injection."""
+    """Process a conversation turn with seamless memory: auto-retrieves relevant context for the user message, optionally auto-stores it, and returns formatted memory context for LLM injection. Internal LLM: ~5-10 calls (retrieve + 2 writes + reconsolidation). Reconsolidation runs when assistant response and retrieved memories exist; write alone cannot perform reconsolidation."""
     try:
         provider = SeamlessMemoryProvider(
             orchestrator,
@@ -144,7 +144,7 @@ async def read_memory(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Retrieve memories relevant to a query. Supports filtering by context tags, memory types, and date range. Returns facts, preferences, episodes, and optional llm_context format."""
+    """Retrieve memories relevant to a query. Supports filtering by context tags, memory types, and date range. Returns facts, preferences, episodes, and optional llm_context format. Internal LLM: 1-2 calls (QueryClassifier + optional Reranker) with default settings."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(UTC)
     try:

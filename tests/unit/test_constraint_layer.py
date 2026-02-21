@@ -28,10 +28,6 @@ from src.memory.neocortical.schemas import (
     DEFAULT_FACT_SCHEMAS,
     FactCategory,
 )
-from src.memory.working.chunker import (
-    RuleBasedChunker,
-    _compute_salience_boost_for_constraints,
-)
 from src.memory.working.models import ChunkType, SemanticChunk
 from src.retrieval.classifier import QueryClassifier
 from src.retrieval.packet_builder import MemoryPacketBuilder
@@ -98,66 +94,6 @@ class TestChunkTypeConstraint:
         all_types = {t.value for t in ChunkType}
         assert "constraint" in all_types
         assert len(all_types) == len(ChunkType)  # No duplicates
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Phase 2a: Constraint salience boost in chunker
-# ═══════════════════════════════════════════════════════════════════
-
-
-class TestConstraintSalienceBoost:
-    """Constraint cue phrases boost salience in the chunker."""
-
-    def test_single_cue_phrase_boost(self):
-        boost = _compute_salience_boost_for_constraints("I'm trying to eat healthier.")
-        assert boost >= 0.3
-
-    def test_double_cue_phrase_boost(self):
-        boost = _compute_salience_boost_for_constraints(
-            "I'm trying to save money because of the trip."
-        )
-        assert boost >= 0.4
-
-    def test_no_cue_phrase_no_boost(self):
-        boost = _compute_salience_boost_for_constraints("The weather is nice today.")
-        assert boost == 0.0
-
-    def test_boost_capped_at_04(self):
-        text = (
-            "I'm trying to save money. I must avoid spending. I always budget. I never overspend."
-        )
-        boost = _compute_salience_boost_for_constraints(text)
-        assert boost <= 0.4
-
-
-class TestRuleBasedChunkerConstraint:
-    """RuleBasedChunker detects CONSTRAINT chunk type."""
-
-    def test_goal_marker_becomes_constraint(self):
-        chunker = RuleBasedChunker()
-        chunks = chunker.chunk("I'm trying to lose weight this year.", role="user")
-        assert len(chunks) >= 1
-        constraint_chunks = [c for c in chunks if c.chunk_type == ChunkType.CONSTRAINT]
-        assert len(constraint_chunks) >= 1
-        assert constraint_chunks[0].salience >= 0.8
-
-    def test_policy_marker_becomes_constraint(self):
-        chunker = RuleBasedChunker()
-        chunks = chunker.chunk("I never eat after 8pm.", role="user")
-        constraint_chunks = [c for c in chunks if c.chunk_type == ChunkType.CONSTRAINT]
-        assert len(constraint_chunks) >= 1
-
-    def test_value_marker_becomes_constraint(self):
-        chunker = RuleBasedChunker()
-        chunks = chunker.chunk("I value family time above everything.", role="user")
-        constraint_chunks = [c for c in chunks if c.chunk_type == ChunkType.CONSTRAINT]
-        assert len(constraint_chunks) >= 1
-
-    def test_plain_statement_is_not_constraint(self):
-        chunker = RuleBasedChunker()
-        chunks = chunker.chunk("The weather is sunny today.", role="user")
-        constraint_chunks = [c for c in chunks if c.chunk_type == ChunkType.CONSTRAINT]
-        assert len(constraint_chunks) == 0
 
 
 # ═══════════════════════════════════════════════════════════════════
