@@ -95,7 +95,11 @@ def main() -> None:
     args = p.parse_args()
 
     root = Path(__file__).resolve().parent.parent
-    summary_path = Path(args.summary) if args.summary else root / "outputs" / "locomo_plus_qa_cml_judge_summary.json"
+    summary_path = (
+        Path(args.summary)
+        if args.summary
+        else root / "outputs" / "locomo_plus_qa_cml_judge_summary.json"
+    )
 
     if not summary_path.exists():
         print(f"Summary not found: {summary_path}", file=sys.stderr)
@@ -131,7 +135,9 @@ def main() -> None:
 
     print()
     print("Comparison: This project vs Locomo-Plus paper baselines (Table 1, arXiv:2602.10715)")
-    print("All numbers are LLM-as-judge scores in %. Same protocol: constraint consistency, no task disclosure.")
+    print(
+        "All numbers are LLM-as-judge scores in %. Same protocol: constraint consistency, no task disclosure."
+    )
     print()
     print(" | ".join(c.rjust(widths[i]) for i, c in enumerate(cols)))
     print(sep())
@@ -142,11 +148,21 @@ def main() -> None:
     # Short narrative
     avg_factual_cml = sum(cml_factual) / len(cml_factual)
     print("Summary:")
-    print(f"  - CML (this project): LoCoMo factual avg = {avg_factual_cml:.2f}%, LoCoMo-Plus (Cognitive) = {cml_lp:.2f}%, Gap = {cml_gap:.2f}%")
-    print("  - CML uses a local QA model (gpt-oss:20b); paper baselines use GPT-4o, Gemini, or Qwen.")
-    print("  - Among RAG/memory systems in the paper (all GPT-4o backbone), factual averages range ~37-60%;")
-    print("    CML's factual average is lower, consistent with a smaller QA model and retrieval-dependent pipeline.")
-    print("  - LoCoMo-Plus (Cognitive) is hard for all methods; CML's Cognitive score is in the range of")
+    print(
+        f"  - CML (this project): LoCoMo factual avg = {avg_factual_cml:.2f}%, LoCoMo-Plus (Cognitive) = {cml_lp:.2f}%, Gap = {cml_gap:.2f}%"
+    )
+    print(
+        "  - CML uses a local QA model (gpt-oss:20b); paper baselines use GPT-4o, Gemini, or Qwen."
+    )
+    print(
+        "  - Among RAG/memory systems in the paper (all GPT-4o backbone), factual averages range ~37-60%;"
+    )
+    print(
+        "    CML's factual average is lower, consistent with a smaller QA model and retrieval-dependent pipeline."
+    )
+    print(
+        "  - LoCoMo-Plus (Cognitive) is hard for all methods; CML's Cognitive score is in the range of"
+    )
     print("    several paper baselines; relative Gap (factual - cognitive) is smaller for CML.")
     print()
 
