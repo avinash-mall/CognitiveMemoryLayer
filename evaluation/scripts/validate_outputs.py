@@ -119,7 +119,7 @@ def validate_judged(path: Path, predictions_path: Path) -> list[str]:
 
 def validate_state_file(path: Path) -> list[str]:
     """Optional: full_eval_state.json if present (pipeline resume state)."""
-    errors = []
+    errors: list[str] = []
     if not path.exists():
         return errors
     try:
@@ -238,10 +238,10 @@ def main() -> None:
         try:
             judged = load_json(judged_file)
             if isinstance(judged, list):
-                labels = {}
+                labels: dict[str, int] = {}
                 for r in judged:
-                    L = (r.get("judge_label") or "").strip().lower() or "(empty)"
-                    labels[L] = labels.get(L, 0) + 1
+                    label = (r.get("judge_label") or "").strip().lower() or "(empty)"
+                    labels[label] = labels.get(label, 0) + 1
                 stats.append(f"judged: {len(judged)} records, labels: {labels}")
         except Exception:
             pass
@@ -270,13 +270,13 @@ def main() -> None:
             print(f"  - {e}", file=sys.stderr, flush=True)
         if stats:
             print("\nStats:", file=sys.stderr, flush=True)
-            for s in stats:
-                print(f"  {s}", file=sys.stderr, flush=True)
+            for stat_line in stats:
+                print(f"  {stat_line}", file=sys.stderr, flush=True)
         sys.exit(1)
     print("Validation passed.", flush=True)
     if stats:
-        for s in stats:
-            print(f"  {s}", flush=True)
+        for stat_line in stats:
+            print(f"  {stat_line}", flush=True)
     sys.exit(0)
 
 

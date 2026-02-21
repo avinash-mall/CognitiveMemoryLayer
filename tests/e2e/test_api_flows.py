@@ -20,7 +20,7 @@ class _MockLLMClient:
         max_tokens: int = 500,
         system_prompt: str | None = None,
     ) -> str:
-        # Return valid chunk JSON so SemanticChunker parses it
+        # Return valid JSON for unified extractor etc.
         text = prompt.split("Text to chunk:")[-1] if "Text to chunk:" in prompt else prompt
         text = text.strip()[:500]
         return json.dumps(
@@ -125,9 +125,9 @@ def test_unauthorized_access():
                 "X-Tenant-ID": "e2e-unauth"
             },  # distinct tenant so rate limit bucket is separate
         )
-        assert resp.status_code == 401, (
-            f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
-        )
+        assert (
+            resp.status_code == 401
+        ), f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
 
 
 def test_health_response_structure(client):
@@ -138,3 +138,23 @@ def test_health_response_structure(client):
     assert "status" in data
     assert data["status"] == "healthy"
     assert "timestamp" in data
+
+
+def test_write_eval_mode_returns_outcome_and_reason(client):
+    """When X-Eval-Mode: true, write response includes eval_outcome and eval_reason."""
+    resp = client.post(
+        "/api/v1/memory/write",
+        json={"content": "Eval mode test: user likes hiking"},
+        headers={
+            "X-API-Key": "demo-key-123",
+            "X-Tenant-ID": "demo",
+            "X-Eval-Mode": "true",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "eval_outcome" in data
+    assert "eval_reason" in data
+    assert data["eval_outcome"] in ("stored", "skipped")
+    assert isinstance(data["eval_reason"], str)

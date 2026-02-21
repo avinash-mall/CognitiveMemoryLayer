@@ -92,13 +92,17 @@ class HippocampalStore:
         request_metadata: dict[str, Any] | None = None,
         memory_type_override: MemoryType | None = None,
     ) -> tuple[MemoryRecord | None, WriteGateResult]:
-        gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_memories)
-        if gate_result.decision == WriteDecision.SKIP:
-            return (None, gate_result)
-
         unified_result: UnifiedExtractionResult | None = None
         if self._use_unified_write_path() and self.unified_extractor:
             unified_result = await self.unified_extractor.extract(chunk)
+
+        gate_result = self.write_gate.evaluate(
+            chunk,
+            existing_memories=existing_memories,
+            unified_result=unified_result,
+        )
+        if gate_result.decision == WriteDecision.SKIP:
+            return (None, gate_result)
 
         text = chunk.text
         if gate_result.redaction_required:
@@ -239,11 +243,18 @@ class HippocampalStore:
         existing_dicts = [{"text": m.text} for m in existing]
 
         # ---- Phase 1: Gate + Redact (no network calls) ----
+        from ...core.config import get_settings as _cfg_phase1
+
         surviving: list[tuple[int, SemanticChunk, WriteGateResult, str]] = []
         gate_results_list: list[dict] = []
+        _ur_list = unified_results if unified_results is not None else [None] * len(chunks)
+        _cfg = _cfg_phase1().features
 
         for idx, chunk in enumerate(chunks):
-            gate_result = self.write_gate.evaluate(chunk, existing_memories=existing_dicts)
+            ur = _ur_list[idx] if idx < len(_ur_list) else None
+            gate_result = self.write_gate.evaluate(
+                chunk, existing_memories=existing_dicts, unified_result=ur
+            )
             if return_gate_results:
                 gate_results_list.append(_gate_result_to_dict(gate_result))
 
@@ -251,7 +262,9 @@ class HippocampalStore:
                 continue
 
             text = chunk.text
-            if gate_result.redaction_required:
+            if gate_result.redaction_required and not (
+                _cfg.use_llm_pii_redaction and ur and getattr(ur, "pii_spans", None)
+            ):
                 redaction_result = self.redactor.redact(text)
                 text = redaction_result.redacted_text
 

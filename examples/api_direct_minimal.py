@@ -34,7 +34,9 @@ def main():
         # Health
         r = client.get(f"{API_URL}/health", headers=HEADERS)
         if r.status_code != 200:
-            print(f"API not ready: {r.status_code}. Start with: docker compose -f docker/docker-compose.yml up api")
+            print(
+                f"API not ready: {r.status_code}. Start with: docker compose -f docker/docker-compose.yml up api"
+            )
             return 1
         print("Health OK:", r.json().get("status"))
 
@@ -85,7 +87,9 @@ def main():
         )
         assert r.status_code == 200
         t = r.json()
-        print(f"Turn OK: retrieved {t.get('memories_retrieved')}, stored {t.get('memories_stored')}")
+        print(
+            f"Turn OK: retrieved {t.get('memories_retrieved')}, stored {t.get('memories_stored')}"
+        )
 
         # Stats
         r = client.get(f"{API_URL}/memory/stats", headers=HEADERS)

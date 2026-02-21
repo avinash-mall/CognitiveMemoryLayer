@@ -23,7 +23,7 @@ CML acts as a structured memory backend that any OpenClaw agent can use alongsid
 2. **CML server** running (Docker recommended):
    ```bash
    # Clone the CognitiveMemoryLayer repo (if you haven't already)
-   git clone https://github.com/your-org/CognitiveMemoryLayer.git
+   git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
    cd CognitiveMemoryLayer
 
    # Copy and configure environment

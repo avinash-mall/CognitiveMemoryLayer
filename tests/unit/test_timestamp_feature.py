@@ -119,7 +119,7 @@ class TestTimestampBackwardCompatibility:
         from src.memory.orchestrator import MemoryOrchestrator
         from src.memory.seamless_provider import SeamlessMemoryProvider
         from src.memory.short_term import ShortTermMemory
-        from src.memory.working.chunker import RuleBasedChunker, SemanticChunker
+        from src.memory.working.chunker import SemchunkChunker
         from src.memory.working.manager import WorkingMemoryManager
 
         # Check all key methods have optional timestamp parameter
@@ -127,8 +127,7 @@ class TestTimestampBackwardCompatibility:
             (MemoryOrchestrator, "write"),
             (ShortTermMemory, "ingest_turn"),
             (WorkingMemoryManager, "process_input"),
-            (RuleBasedChunker, "chunk"),
-            (SemanticChunker, "chunk"),
+            (SemchunkChunker, "chunk"),
             (HippocampalStore, "encode_chunk"),
             (HippocampalStore, "encode_batch"),
             (SeamlessMemoryProvider, "process_turn"),
@@ -140,12 +139,12 @@ class TestTimestampBackwardCompatibility:
             params = sig.parameters
 
             # timestamp should exist and be optional
-            assert "timestamp" in params, (
-                f"{cls.__name__}.{method_name} missing timestamp parameter"
-            )
-            assert params["timestamp"].default is not inspect.Parameter.empty, (
-                f"{cls.__name__}.{method_name} timestamp should be optional"
-            )
+            assert (
+                "timestamp" in params
+            ), f"{cls.__name__}.{method_name} missing timestamp parameter"
+            assert (
+                params["timestamp"].default is not inspect.Parameter.empty
+            ), f"{cls.__name__}.{method_name} timestamp should be optional"
 
 
 class TestTimestampTemporalFidelity:
@@ -154,12 +153,16 @@ class TestTimestampTemporalFidelity:
     @pytest.mark.asyncio
     async def test_historical_timestamp_preserved(self):
         """Historical timestamps should be preserved through the pipeline."""
-        from src.memory.working.chunker import RuleBasedChunker
+        from src.memory.working.chunker import SemchunkChunker
 
         # Use a historical timestamp (e.g., from Locomo benchmark)
         historical_ts = datetime(2023, 6, 15, 14, 30, 0, tzinfo=UTC)
 
-        chunker = RuleBasedChunker()
+        chunker = SemchunkChunker(
+            tokenizer_id="google/flan-t5-base",
+            chunk_size=500,
+            overlap_percent=0.15,
+        )
         chunks = chunker.chunk(text="I prefer dark mode.", timestamp=historical_ts)
 
         # All chunks should have the historical timestamp

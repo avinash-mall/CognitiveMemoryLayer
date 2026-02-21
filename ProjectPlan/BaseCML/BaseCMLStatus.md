@@ -108,16 +108,16 @@ A production-ready, neuro-inspired memory system for LLMs that replicates human 
 
 - Implements [RuleBasedExtractorsAndLLMReplacement.md](RuleBasedExtractorsAndLLMReplacement.md): 8 LLM-based replacements for rule-based extractors.
 - **Unified write-path extraction**: One LLM call per chunk returns constraints, facts, salience, importance, and optional PII spans.
+- **LLM gating**: When each `FEATURES__USE_LLM_*` flag is on (default), the corresponding rule-based logic is skipped. WriteGate uses `unified_result` for importance, salience, and PII; constraint supersession uses unified constraints only when `USE_LLM_CONSTRAINT_EXTRACTOR` is on.
 - **8 feature flags** (default true; set `FEATURES__*=false` to use rule-based path):
   - `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR`
   - `FEATURES__USE_LLM_WRITE_TIME_FACTS`
-  - `FEATURES__CHUNKER_REQUIRE_LLM` (fail fast when use_fast_chunker=false and no LLM)
   - `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY`
   - `FEATURES__USE_LLM_SALIENCE_REFINEMENT`
   - `FEATURES__USE_LLM_PII_REDACTION`
   - `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE`
   - `FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY`
-- Uses `LLM_INTERNAL__*` when set, else `LLM__*`. See UsageDocumentation § Configuration Reference.
+- Uses `LLM_INTERNAL__*` when set, else `LLM__*`. See UsageDocumentation § Configuration Reference. With default settings: ~1 internal LLM call per write, 1–2 per read, ~5–10 per process turn; see [UsageDocumentation — Internal LLM Call Counts](../UsageDocumentation.md#internal-llm-call-counts-default-settings).
 
 ### Temporal Fidelity (Completed)
 
@@ -457,9 +457,10 @@ Implement the LLM client used by the chunker and other components.
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Write Gate                                  │
-│   - Salience check (importance, novelty, stability)             │
-│   - Risk assessment (PII, secrets)                               │
-│   - Deduplication check                                          │
+│   - Importance/salience from UnifiedExtractionResult (LLM)      │
+│     or rule-based _compute_importance when flags off            │
+│   - PII from unified_result.pii_spans (LLM) or regex when off   │
+│   - Risk assessment (secrets), novelty, deduplication           │
 │   Decision: STORE / SKIP / ASYNC_STORE                          │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -1826,8 +1827,8 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 2 Tests
 
-- **Unit:** `tests/unit/test_phase2_sensory_working.py` – buffer, manager, RuleBasedChunker, WorkingMemoryState, ShortTermMemory
-- **Integration:** `tests/integration/test_phase2_short_term_flow.py` – full ingest → encodable chunks → clear
+- **Unit:** `tests/unit/test_sensory_buffer_working_memory.py` – buffer, manager, RuleBasedChunker, WorkingMemoryState, ShortTermMemory
+- **Integration:** `tests/integration/test_short_term_memory_flow.py` – full ingest → encodable chunks → clear
 
 **Phase 2 deliverables (from plan):** All checklist items completed.
 
@@ -1873,9 +1874,9 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 3 Tests
 
-- **Unit:** `tests/unit/test_phase3_write_gate.py` – WriteGate (skip/store/skip secrets/novelty), PIIRedactor (email, phone, clean)
-- **Unit:** `tests/unit/test_phase3_embeddings.py` – MockEmbeddingClient (dimensions, deterministic embed, batch)
-- **Integration:** `tests/integration/test_phase3_hippocampal_encode.py` – encode_chunk → record in DB, get_recent retrieval, search smoke test; skip low salience
+- **Unit:** `tests/unit/test_hippocampal_write_gate_redactor.py` – WriteGate (skip/store/skip secrets/novelty), PIIRedactor (email, phone, clean)
+- **Unit:** `tests/unit/test_embeddings_mock_client.py` – MockEmbeddingClient (dimensions, deterministic embed, batch)
+- **Integration:** `tests/integration/test_hippocampal_encode_flow.py` – encode_chunk → record in DB, get_recent retrieval, search smoke test; skip low salience
 
 **Phase 3 deliverables (from plan):** All checklist items completed.
 
@@ -1910,9 +1911,9 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 4 Tests
 
-- **Unit:** `tests/unit/test_phase4_schemas.py` – FactCategory, FactSchema, SemanticFact, DEFAULT_FACT_SCHEMAS, SchemaManager
-- **Integration:** `tests/integration/test_phase4_fact_store.py` – upsert/get fact, get_facts_by_category, get_user_profile, search_facts
-- **Integration:** `tests/integration/test_phase4_neocortical.py` – NeocorticalStore store_fact, get_fact, get_user_profile, text_search (with mock graph)
+- **Unit:** `tests/unit/test_neocortical_schemas.py` – FactCategory, FactSchema, SemanticFact, DEFAULT_FACT_SCHEMAS, SchemaManager
+- **Integration:** `tests/integration/test_fact_store_integration.py` – upsert/get fact, get_facts_by_category, get_user_profile, search_facts
+- **Integration:** `tests/integration/test_neocortical_store_flow.py` – NeocorticalStore store_fact, get_fact, get_user_profile, text_search (with mock graph)
 
 **Phase 4 deliverables (from plan):** All checklist items completed.
 
@@ -1958,8 +1959,8 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 5 Tests
 
-- **Unit:** `tests/unit/test_phase5_retrieval.py` – QueryClassifier (fast preference/identity, fallback), RetrievalPlanner (preference lookup, general), MemoryReranker, MemoryPacketBuilder
-- **Integration:** `tests/integration/test_phase5_retrieval_flow.py` – full retrieve returns packet with facts, retrieve_for_llm returns string
+- **Unit:** `tests/unit/test_retrieval_classifier_planner_reranker.py` – QueryClassifier (fast preference/identity, fallback), RetrievalPlanner (preference lookup, general), MemoryReranker, MemoryPacketBuilder
+- **Integration:** `tests/integration/test_retrieval_flow.py` – full retrieve returns packet with facts, retrieve_for_llm returns string
 
 **Phase 5 deliverables (from plan):** All checklist items completed.
 
@@ -2000,8 +2001,8 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 6 Tests
 
-- **Unit:** `tests/unit/test_phase6_reconsolidation.py` – LabileStateTracker, ConflictDetector (fast path), BeliefRevisionEngine (reinforce, correction, time_slice)
-- **Integration:** `tests/integration/test_phase6_reconsolidation_flow.py` – process_turn with no memories; correction flow (store → retrieve → correct → reconsolidate)
+- **Unit:** `tests/unit/test_reconsolidation_labile_conflict_belief.py` – LabileStateTracker, ConflictDetector (fast path), BeliefRevisionEngine (reinforce, correction, time_slice)
+- **Integration:** `tests/integration/test_reconsolidation_flow.py` – process_turn with no memories; correction flow (store → retrieve → correct → reconsolidate)
 
 ### Phase 6 Deliverables Checklist (from plan)
 
@@ -2058,8 +2059,8 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 7 Tests
 
-- **Unit:** `tests/unit/test_phase7_consolidation.py` – ConsolidationScheduler (manual, quota, scheduled), SemanticClusterer (empty, single, similar embeddings)
-- **Integration:** `tests/integration/test_phase7_consolidation_flow.py` – empty episodes report; full flow with fallback gist and migrate
+- **Unit:** `tests/unit/test_consolidation_triggers_clusterer_sampler.py` – ConsolidationScheduler (manual, quota, scheduled), SemanticClusterer (empty, single, similar embeddings)
+- **Integration:** `tests/integration/test_consolidation_flow.py` – empty episodes report; full flow with fallback gist and migrate
 
 ### Phase 7 Deliverables Checklist (from plan)
 
@@ -2137,10 +2138,10 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 8 Tests
 
-- **Unit:** `tests/unit/test_phase8_forgetting.py` – RelevanceWeights, RelevanceScorer, ForgettingPolicyEngine, InterferenceDetector, **Compression (LLM/truncate), DependencyCheck (count_references_to, executor skip delete)**
-- **Unit:** `tests/unit/test_phase8_celery.py` – task registration, beat schedule
-- **Integration:** `tests/integration/test_phase8_forgetting_flow.py` – empty memories, dry run, decay reduces confidence
-- **Integration:** `tests/integration/test_phase8_vllm_compression.py` – **real vLLM summarization** (skipped unless `LLM__VLLM_BASE_URL` or `VLLM_BASE_URL` is set). To run: start vLLM (`docker compose --profile vllm up -d vllm` or `--profile vllm-cpu up -d vllm-cpu`), then `docker compose run --rm -e LLM__VLLM_BASE_URL=http://vllm:8000/v1 app pytest tests/integration/test_phase8_vllm_compression.py -v`.
+- **Unit:** `tests/unit/test_forgetting_scorer_policy_interference.py` – RelevanceWeights, RelevanceScorer, ForgettingPolicyEngine, InterferenceDetector, **Compression (LLM/truncate), DependencyCheck (count_references_to, executor skip delete)**
+- **Unit:** `tests/unit/test_celery_forgetting_task.py` – task registration, beat schedule
+- **Integration:** `tests/integration/test_forgetting_flow.py` – empty memories, dry run, decay reduces confidence
+- **Integration:** `tests/integration/test_forgetting_llm_compression.py` – **LLM summarization for compression** (skipped unless LLM is configured). Run with: `pytest -m requires_llm tests/integration/test_forgetting_llm_compression.py -v`.
 
 ### Phase 8 Deliverables Checklist (from plan)
 
@@ -2228,8 +2229,8 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 ### Phase 9 Tests
 
-- **Unit:** `tests/unit/test_phase9_api.py` – Auth config (_build_api_keys), schemas
-- **Integration:** `tests/integration/test_phase9_api_flow.py` – health, auth required for write/read/stats
+- **Unit:** `tests/unit/test_api_auth_schemas.py` – Auth config (_build_api_keys), schemas
+- **Integration:** `tests/integration/test_api_flow.py` – health, auth required for write/read/stats
 
 ### Phase 9 Deliverables Checklist (from plan)
 
@@ -2264,10 +2265,10 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
 | conftest fixtures (sample_memory_record, sample_chunk, mock_llm, mock_embeddings) | ✅ | `tests/conftest.py` |
-| WriteGateConfig tests | ✅ | `tests/unit/test_phase3_write_gate.py` – TestWriteGateConfig |
-| WriteGate PII redaction test | ✅ | `tests/unit/test_phase3_write_gate.py` – test_pii_triggers_redaction |
-| RelevanceScorer tests | ✅ | Existing in `tests/unit/test_phase8_forgetting.py` |
-| ConflictDetector tests | ✅ | Existing in `tests/unit/test_phase6_reconsolidation.py` |
+| WriteGateConfig tests | ✅ | `tests/unit/test_hippocampal_write_gate_redactor.py` – TestWriteGateConfig |
+| WriteGate PII redaction test | ✅ | `tests/unit/test_hippocampal_write_gate_redactor.py` – test_pii_triggers_redaction |
+| RelevanceScorer tests | ✅ | Existing in `tests/unit/test_forgetting_scorer_policy_interference.py` |
+| ConflictDetector tests | ✅ | Existing in `tests/unit/test_reconsolidation_labile_conflict_belief.py` |
 
 ### Task 10.2: Integration Testing ✅
 

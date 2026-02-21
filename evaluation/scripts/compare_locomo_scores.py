@@ -17,12 +17,12 @@ import json
 import sys
 from pathlib import Path
 
-# Columns matching paper Table 1 (percentages 0–100)
+# Columns matching paper Table 1 (percentages 0-100)
 COL_NAMES = ["single-hop", "multi-hop", "temporal", "commonsense", "adversarial"]
 FACTUAL_CATEGORIES = ["single-hop", "multi-hop", "temporal", "common-sense", "adversarial"]
 COGNITIVE_CATEGORY = "Cognitive"
 
-# Baseline rows from Locomo-Plus paper Table 1 (arXiv:2602.10715). Values in 0–100.
+# Baseline rows from Locomo-Plus paper Table 1 (arXiv:2602.10715). Values in 0-100.
 # Format: (method_name, [sh, mh, temp, cs, adv], locomoplus_pct, gap not stored; we compute)
 PAPER_BASELINES: list[tuple[str, list[float], float]] = [
     # Open-source LLMs (full context, no retrieval)

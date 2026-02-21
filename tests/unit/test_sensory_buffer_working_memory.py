@@ -8,7 +8,7 @@ from src.memory.sensory.buffer import (
 )
 from src.memory.sensory.manager import SensoryBufferManager
 from src.memory.short_term import ShortTermMemory, ShortTermMemoryConfig
-from src.memory.working.chunker import RuleBasedChunker
+from src.memory.working.chunker import SemchunkChunker
 from src.memory.working.models import ChunkType, SemanticChunk, WorkingMemoryState
 
 
@@ -67,26 +67,41 @@ class TestSensoryBufferManager:
         assert text == ""
 
 
-class TestRuleBasedChunker:
-    """Rule-based chunker."""
+class TestSemchunkChunker:
+    """Semchunk-based chunker."""
 
-    def test_preference_markers(self):
-        chunker = RuleBasedChunker()
+    def test_chunk_returns_semantic_chunks(self):
+        chunker = SemchunkChunker(
+            tokenizer_id="google/flan-t5-base",
+            chunk_size=500,
+            overlap_percent=0.15,
+        )
         chunks = chunker.chunk("I prefer dark mode", role="user")
         assert len(chunks) >= 1
-        pref = [c for c in chunks if c.chunk_type == ChunkType.PREFERENCE]
-        assert len(pref) >= 1
-        assert pref[0].salience >= 0.7
+        for c in chunks:
+            assert c.chunk_type == ChunkType.STATEMENT
+            assert c.salience == 0.5
+            assert c.text
 
-    def test_fact_markers(self):
-        chunker = RuleBasedChunker()
+    def test_chunk_preserves_text_content(self):
+        chunker = SemchunkChunker(
+            tokenizer_id="google/flan-t5-base",
+            chunk_size=500,
+            overlap_percent=0.15,
+        )
         chunks = chunker.chunk("My name is Alice.")
-        assert any(c.chunk_type == ChunkType.FACT for c in chunks)
+        assert len(chunks) >= 1
+        texts = " ".join(c.text for c in chunks)
+        assert "Alice" in texts
 
-    def test_question(self):
-        chunker = RuleBasedChunker()
+    def test_chunk_handles_questions(self):
+        chunker = SemchunkChunker(
+            tokenizer_id="google/flan-t5-base",
+            chunk_size=500,
+            overlap_percent=0.15,
+        )
         chunks = chunker.chunk("What time is it?")
-        assert any(c.chunk_type == ChunkType.QUESTION for c in chunks)
+        assert len(chunks) >= 1
 
 
 class TestWorkingMemoryState:
@@ -115,7 +130,7 @@ class TestShortTermMemory:
 
     @pytest.mark.asyncio
     async def test_ingest_turn_returns_chunks(self):
-        config = ShortTermMemoryConfig(use_fast_chunker=True)
+        config = ShortTermMemoryConfig()
         stm = ShortTermMemory(config=config)
         result = await stm.ingest_turn(
             "t1", "u1", "I prefer coffee and my name is Bob.", turn_id="turn-1", role="user"
@@ -127,7 +142,7 @@ class TestShortTermMemory:
 
     @pytest.mark.asyncio
     async def test_get_immediate_context(self):
-        config = ShortTermMemoryConfig(use_fast_chunker=True)
+        config = ShortTermMemoryConfig()
         stm = ShortTermMemory(config=config)
         await stm.ingest_turn("t1", "u1", "Hello world.")
         ctx = await stm.get_immediate_context("t1", "u1", include_sensory=True)
@@ -136,7 +151,7 @@ class TestShortTermMemory:
 
     @pytest.mark.asyncio
     async def test_clear(self):
-        config = ShortTermMemoryConfig(use_fast_chunker=True)
+        config = ShortTermMemoryConfig()
         stm = ShortTermMemory(config=config)
         await stm.ingest_turn("t1", "u1", "Some text.")
         await stm.clear("t1", "u1")

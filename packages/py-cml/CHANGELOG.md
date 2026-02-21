@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Server LLM gating** — The CML server now uses LLM gating for write-path flags: when `FEATURES__USE_LLM_*` flags are on (default), only the LLM path updates salience, importance, constraints, PII, and facts; rule-based logic for those fields is skipped. No SDK API changes. See [configuration](docs/configuration.md).
+
 ## [1.3.1] - 2026-02-21
 
 ### Changed
