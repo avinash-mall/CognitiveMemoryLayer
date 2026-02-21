@@ -60,6 +60,12 @@ RETRIEVAL_TIMEOUT_COUNT = Counter(
     ["source"],
 )
 
+RETRIEVAL_STEP_FAILURES = Counter(
+    "cml_retrieval_step_failures_total",
+    "Number of retrieval steps that failed with an exception",
+    ["source"],
+)
+
 # ── Phase 6.3: Fact hit rate tracking ───────────────────────────────
 
 FACT_HIT_RATE = Counter(

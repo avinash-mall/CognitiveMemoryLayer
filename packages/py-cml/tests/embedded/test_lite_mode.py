@@ -39,7 +39,7 @@ async def test_zero_config_init():
 
 @pytest.mark.embedded
 @pytest.mark.asyncio
-async def test_write_and_read():
+async def test_lite_mode_write_and_read_roundtrip():
     """Write one memory, read and assert total_count >= 1. Skips if embedding/model unavailable."""
     from cml.embedded import EmbeddedCognitiveMemoryLayer
 
@@ -64,9 +64,14 @@ async def test_write_and_read():
 @pytest.mark.asyncio
 async def test_persistent_storage(tmp_path):
     """Two instances with same db_path: write in first, read in second. Skips if embedding/model unavailable."""
+    # Use tempdir (TMPDIR or /tmp); sqlite fails in some Docker tmp_path locations
+    import tempfile
+    from pathlib import Path
+
     from cml.embedded import EmbeddedCognitiveMemoryLayer
 
-    db_path = str(tmp_path / "cml.db")
+    base = Path(tempfile.mkdtemp(prefix="cml_embed_"))
+    db_path = str(base / "cml.db")
     try:
         async with EmbeddedCognitiveMemoryLayer(db_path=db_path) as m1:
             await m1.write("Persistent memory content")

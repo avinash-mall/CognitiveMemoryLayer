@@ -34,6 +34,7 @@ class RetrievalStep:
     timeout_ms: int = 100
     skip_if_found: bool = False
     constraint_categories: list[str] | None = None
+    associative_expansion: bool = False
 
 
 @dataclass
@@ -151,6 +152,17 @@ class RetrievalPlanner:
             parallel_groups = [[0, 1, 2]]
 
         else:
+            # Add CONSTRAINTS strictly matching detected dimensions, no general fallback
+            steps.append(
+                RetrievalStep(
+                    source=RetrievalSource.CONSTRAINTS,
+                    query=analysis.original_query,
+                    top_k=5,
+                    priority=1,
+                    constraint_categories=analysis.constraint_dimensions,
+                    associative_expansion=True,
+                )
+            )
             steps.append(
                 RetrievalStep(
                     source=RetrievalSource.VECTOR,
@@ -176,7 +188,10 @@ class RetrievalPlanner:
                         priority=1,
                     )
                 )
-            parallel_groups = [[0, 1, 2]] if len(steps) == 3 else [[0, 1]]
+            # CONSTRAINTS + VECTOR + FACTS (+ optional GRAPH)
+            parallel_groups = (
+                [[0, 1, 2, 3]] if len(steps) == 4 else [[0, 1, 2]] if len(steps) == 3 else [[0, 1]]
+            )
 
         self._apply_retrieval_timeouts(steps)
 
@@ -206,6 +221,7 @@ class RetrievalPlanner:
             top_k=3,
             priority=3,
             timeout_ms=50,
+            associative_expansion=True,
         )
 
     def _build_time_filter(self, analysis: QueryAnalysis) -> dict[str, Any] | None:
@@ -267,8 +283,12 @@ class RetrievalPlanner:
                     step.timeout_ms = r.fact_timeout_ms
                 elif step.source == RetrievalSource.CONSTRAINTS and step.timeout_ms == 100:
                     step.timeout_ms = r.default_step_timeout_ms
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "retrieval_timeouts_apply_failed", extra={"error": str(e)}, exc_info=True
+            )
 
     def _calculate_timeout(self, steps: list[RetrievalStep]) -> int:
         """Calculate total timeout based on steps."""
@@ -276,5 +296,10 @@ class RetrievalPlanner:
             from ..core.config import get_settings
 
             return get_settings().retrieval.total_timeout_ms
-        except Exception:
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "retrieval_timeout_calc_failed", extra={"error": str(e)}, exc_info=True
+            )
             return sum(s.timeout_ms for s in steps) // 2 + 100

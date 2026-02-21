@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..core.schemas import EntityMention, Relation
 from ..memory.neocortical.schemas import FactCategory
 from ..memory.working.models import SemanticChunk
 from ..utils.llm import LLMClient
@@ -36,6 +37,8 @@ class PIISpan:
 class UnifiedExtractionResult:
     """Result of unified write-path extraction."""
 
+    entities: list[EntityMention] = field(default_factory=list)
+    relations: list[Relation] = field(default_factory=list)
     constraints: list[ConstraintObject] = field(default_factory=list)
     facts: list[ExtractedFact] = field(default_factory=list)
     salience: float = 0.5
@@ -55,6 +58,8 @@ Text: {text}
 Chunk type: {chunk_type}
 
 Return a JSON object with these fields (use empty arrays/0.0 when none apply):
+- "entities": array of strings representing key concepts, names, or items mentioned.
+- "relations": array of objects with: source (string), target (string), type (string, e.g. "owns", "likes", "is_in").
 - "constraints": array of objects with: constraint_type (one of: goal, value, state, causal, policy, preference), subject (usually "user"), description, scope (array of strings), confidence (0.0-1.0)
 - "facts": array of objects with: key (e.g. "user:preference:cuisine"), category (one of: preference, identity, location, occupation, relationship, attribute), predicate, value, confidence (0.0-1.0)
 - "salience": float 0.0-1.0 (how important/central is this to the user's memory)
@@ -132,6 +137,23 @@ class UnifiedWritePathExtractor:
         chunk: SemanticChunk,
     ) -> UnifiedExtractionResult:
         """Parse LLM JSON into UnifiedExtractionResult."""
+
+        entities: list[EntityMention] = []
+        for e in data.get("entities") or []:
+            if isinstance(e, str) and e.strip():
+                entities.append(
+                    EntityMention(text=e.strip(), normalized=e.strip(), entity_type="CONCEPT")
+                )
+
+        relations: list[Relation] = []
+        for r in data.get("relations") or []:
+            if isinstance(r, dict):
+                src = r.get("source")
+                tgt = r.get("target")
+                rtype = r.get("type", "related_to")
+                if isinstance(src, str) and isinstance(tgt, str) and src and tgt:
+                    relations.append(Relation(source=src, target=tgt, type=rtype))
+
         constraints: list[ConstraintObject] = []
         for item in data.get("constraints") or []:
             if not isinstance(item, dict):
@@ -189,6 +211,8 @@ class UnifiedWritePathExtractor:
         contains_secrets = bool(data.get("contains_secrets", False))
 
         return UnifiedExtractionResult(
+            entities=entities,
+            relations=relations,
             constraints=constraints,
             facts=facts,
             salience=salience,

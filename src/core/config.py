@@ -179,6 +179,19 @@ class RerankerSettings(PydanticBaseModel):
 class RetrievalSettings(PydanticBaseModel):
     """Retrieval tuning knobs."""
 
+    episode_relevance_threshold: float = Field(
+        default=0.5,
+        description="Min relevance for episodes in context (avoid diluting constraints)",
+    )
+    max_episodes_when_constraints: int = Field(
+        default=3,
+        description="Max episodes to show when constraints exist (reduces dilution)",
+    )
+    max_episodes_default: int = Field(default=5, description="Max episodes when no constraints")
+    max_constraint_tokens: int = Field(
+        default=400,
+        description="Token budget reserved for Active Constraints (ensures constraints are not truncated)",
+    )
     default_step_timeout_ms: int = Field(default=500, description="Per-step timeout (ms)")
     total_timeout_ms: int = Field(default=2000, description="Total retrieval budget (ms)")
     graph_timeout_ms: int = Field(default=1000, description="Graph step timeout (ms)")

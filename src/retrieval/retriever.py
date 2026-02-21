@@ -51,6 +51,7 @@ class HybridRetriever:
         tenant_id: str,
         plan: RetrievalPlan,
         context_filter: list[str] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[RetrievedMemory]:
         """Execute a retrieval plan with enforced timeouts. Holistic: tenant-only."""
         from ..core.config import get_settings
@@ -85,7 +86,9 @@ class HybridRetriever:
             # Execute group in parallel with per-step timeouts
             if timeouts_enabled:
                 coros = [
-                    self._execute_step_with_timeout(tenant_id, step, context_filter)
+                    self._execute_step_with_timeout(
+                        tenant_id, step, context_filter, query_embedding
+                    )
                     for step in group_steps
                 ]
                 try:
@@ -98,7 +101,10 @@ class HybridRetriever:
                     break
             else:
                 group_results = await asyncio.gather(
-                    *[self._execute_step(tenant_id, step, context_filter) for step in group_steps],
+                    *[
+                        self._execute_step(tenant_id, step, context_filter, query_embedding)
+                        for step in group_steps
+                    ],
                     return_exceptions=True,
                 )
 
@@ -111,6 +117,51 @@ class HybridRetriever:
                     if step.skip_if_found and result.items and cross_skip:
                         skip_remaining = True
 
+        # PR 1: Strict Associative Expansion
+        if any(getattr(step, "associative_expansion", False) for step in plan.steps):
+            session_ids = set()
+            for r in all_results:
+                rec = r.get("record")
+                if (
+                    rec
+                    and hasattr(rec, "source_session_id")
+                    and getattr(rec, "source_session_id", None)
+                ):
+                    session_ids.add(rec.source_session_id)
+            if session_ids:
+                try:
+                    for sid in session_ids:
+                        extra = await self.hippocampal.store.scan(
+                            tenant_id,
+                            filters={
+                                "type": [MemoryType.CONSTRAINT.value],
+                                "source_session_id": sid,
+                                "status": "active",
+                            },
+                            limit=10,
+                        )
+                        for c in extra:
+                            if not any(
+                                x.get("record")
+                                and getattr(x["record"], "id", None) == getattr(c, "id", None)
+                                for x in all_results
+                            ):
+                                all_results.append(
+                                    {
+                                        "type": MemoryType.CONSTRAINT.value,
+                                        "source": "constraints_associative",
+                                        "text": getattr(c, "text", ""),
+                                        "confidence": getattr(c, "confidence", 0.7),
+                                        "relevance": 0.8,
+                                        "timestamp": getattr(c, "timestamp", None),
+                                        "record": c,
+                                    }
+                                )
+                except Exception as e:
+                    logger.warning(
+                        "associative_expansion_failed", extra={"error": str(e)}, exc_info=True
+                    )
+
         return self._to_retrieved_memories(all_results, plan.analysis)
 
     async def _execute_step_with_timeout(
@@ -118,12 +169,13 @@ class HybridRetriever:
         tenant_id: str,
         step: RetrievalStep,
         context_filter: list[str] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> RetrievalResult:
         """Execute a step wrapped in its own timeout."""
         timeout_s = step.timeout_ms / 1000.0
         try:
             return await asyncio.wait_for(
-                self._execute_step(tenant_id, step, context_filter),
+                self._execute_step(tenant_id, step, context_filter, query_embedding),
                 timeout=timeout_s,
             )
         except TimeoutError:
@@ -144,6 +196,7 @@ class HybridRetriever:
         tenant_id: str,
         step: RetrievalStep,
         context_filter: list[str] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> RetrievalResult:
         """Execute a single retrieval step. Holistic: tenant-only."""
         start = time.perf_counter()
@@ -151,11 +204,15 @@ class HybridRetriever:
             if step.source == RetrievalSource.FACTS:
                 items = await self._retrieve_facts(tenant_id, step)
             elif step.source == RetrievalSource.VECTOR:
-                items = await self._retrieve_vector(tenant_id, step, context_filter)
+                items = await self._retrieve_vector(
+                    tenant_id, step, context_filter, query_embedding
+                )
             elif step.source == RetrievalSource.GRAPH:
                 items = await self._retrieve_graph(tenant_id, step)
             elif step.source == RetrievalSource.CONSTRAINTS:
-                items = await self._retrieve_constraints(tenant_id, step, context_filter)
+                items = await self._retrieve_constraints(
+                    tenant_id, step, context_filter, query_embedding
+                )
             elif step.source == RetrievalSource.CACHE:
                 items = await self._retrieve_cache(tenant_id, step)
             else:
@@ -173,6 +230,17 @@ class HybridRetriever:
             )
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start) * 1000
+            logger.warning(
+                "retrieval_step_failed",
+                extra={"source": step.source.value, "error": str(e)},
+                exc_info=True,
+            )
+            try:
+                from ..utils.metrics import RETRIEVAL_STEP_FAILURES
+
+                RETRIEVAL_STEP_FAILURES.labels(source=step.source.value).inc()
+            except Exception:
+                pass  # Metrics optional
             return RetrievalResult(
                 source=step.source,
                 items=[],
@@ -192,8 +260,8 @@ class HybridRetriever:
 
             RETRIEVAL_STEP_DURATION.labels(source=source.value).observe(elapsed_ms)
             RETRIEVAL_STEP_RESULT_COUNT.labels(source=source.value).observe(count)
-        except Exception:
-            pass  # Metrics are optional
+        except Exception as e:
+            logger.debug("metrics_emit_failed", extra={"error": str(e)}, exc_info=True)
 
     async def _retrieve_facts(
         self,
@@ -239,6 +307,7 @@ class HybridRetriever:
         tenant_id: str,
         step: RetrievalStep,
         context_filter: list[str] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieve via vector similarity search. Holistic: tenant-only."""
         filters = None
@@ -256,6 +325,7 @@ class HybridRetriever:
             top_k=step.top_k,
             context_filter=context_filter,
             filters=filters,
+            query_embedding=query_embedding,
         )
         return [
             {
@@ -298,6 +368,7 @@ class HybridRetriever:
         tenant_id: str,
         step: RetrievalStep,
         context_filter: list[str] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieve active constraints via vector search + semantic fact lookup.
 
@@ -311,6 +382,7 @@ class HybridRetriever:
         constraint_filters: dict[str, Any] = {
             "type": [MemoryType.CONSTRAINT.value],
             "status": "active",
+            "exclude_expired": True,
         }
         try:
             records = await self.hippocampal.search(
@@ -319,6 +391,7 @@ class HybridRetriever:
                 top_k=step.top_k,
                 context_filter=context_filter,
                 filters=constraint_filters,
+                query_embedding=query_embedding,
             )
             for r in records:
                 results.append(
@@ -338,34 +411,26 @@ class HybridRetriever:
         # 2. Semantic fact lookup for cognitive constraint categories
         from ..memory.neocortical.schemas import FactCategory
 
-        category_map = {
-            "goal": FactCategory.GOAL,
-            "value": FactCategory.VALUE,
-            "state": FactCategory.STATE,
-            "causal": FactCategory.CAUSAL,
-            "policy": FactCategory.POLICY,
-        }
-        all_cognitive = [
-            FactCategory.GOAL,
-            FactCategory.VALUE,
-            FactCategory.STATE,
-            FactCategory.CAUSAL,
-            FactCategory.POLICY,
-        ]
+        cognitive_categories: list[FactCategory] = []
         if step.constraint_categories:
-            cognitive_categories = [
-                category_map[c.lower()]
-                for c in step.constraint_categories
-                if c.lower() in category_map
-            ]
+            for cat_str in step.constraint_categories:
+                try:
+                    cognitive_categories.append(FactCategory(cat_str.lower()))
+                except ValueError:
+                    pass
         else:
-            cognitive_categories = all_cognitive
-        if not cognitive_categories:
-            cognitive_categories = all_cognitive
+            cognitive_categories = [
+                FactCategory.GOAL,
+                FactCategory.STATE,
+                FactCategory.VALUE,
+                FactCategory.CAUSAL,
+                FactCategory.POLICY,
+            ]
+
         try:
             for category in cognitive_categories:
                 facts = await self.neocortical.facts.get_facts_by_category(
-                    tenant_id, category, current_only=True
+                    tenant_id, category, current_only=True, limit=step.top_k
                 )
                 for fact in facts:
                     fact_text = f"[{category.value.title()}] {fact.value}"
@@ -398,7 +463,10 @@ class HybridRetriever:
         cache_key = f"hot:{tenant_id}"
         try:
             cached = await self.cache.get(cache_key)
-        except Exception:
+        except Exception as e:
+            logger.debug(
+                "cache_get_failed", extra={"cache_key": cache_key, "error": str(e)}, exc_info=True
+            )
             return []
         if cached:
             import json
@@ -460,12 +528,15 @@ class HybridRetriever:
         )
         fid = getattr(fact, "id", None)
         context_tags = getattr(fact, "context_tags", None) or []
+        mem_type = MemoryType.SEMANTIC_FACT
+        if item.get("type") == MemoryType.CONSTRAINT.value or item.get("source") == "constraints":
+            mem_type = MemoryType.CONSTRAINT
         return MemoryRecord(
             id=UUID(fid) if fid else uuid4(),
             tenant_id=getattr(fact, "tenant_id", ""),
             context_tags=list(context_tags),
             source_session_id=None,
-            type=MemoryType.SEMANTIC_FACT,
+            type=mem_type,
             text=text,
             key=getattr(fact, "key", None),
             confidence=getattr(fact, "confidence", 0.5),

@@ -421,11 +421,16 @@ class HippocampalStore:
         top_k: int = 10,
         context_filter: list[str] | None = None,
         filters: dict[str, Any] | None = None,
+        query_embedding: list[float] | None = None,
     ) -> list[MemoryRecord]:
-        query_embedding = await self.embeddings.embed(query)
+        if query_embedding is None:
+            emb_result = await self.embeddings.embed(query)
+            embedding = emb_result.embedding
+        else:
+            embedding = query_embedding
         results = await self.store.vector_search(
             tenant_id,
-            embedding=query_embedding.embedding,
+            embedding=embedding,
             top_k=top_k,
             context_filter=context_filter,
             filters=filters,

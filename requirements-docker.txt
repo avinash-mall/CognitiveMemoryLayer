@@ -16,6 +16,9 @@ python-dotenv>=1.0
 structlog>=24.0
 prometheus-client>=0.21
 chonkie[semantic]
+# Embedded mode (for py-cml embedded/e2e tests)
+aiosqlite>=0.20
+
 # Test
 pytest>=8.0
 pytest-asyncio>=0.24
