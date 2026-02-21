@@ -6,7 +6,7 @@ Set AUTH__API_KEY, CML_BASE_URL, ANTHROPIC_API_KEY in .env.
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 try:
@@ -129,8 +129,8 @@ class ClaudeMemoryAssistant:
                 model=self.model,
                 max_tokens=4096,
                 system=self.system,
-                tools=MEMORY_TOOLS,
-                messages=self.messages,
+                tools=MEMORY_TOOLS,  # type: ignore[arg-type]
+                messages=self.messages,  # type: ignore[arg-type]
             )
             if resp.stop_reason == "tool_use":
                 self.messages.append({"role": "assistant", "content": resp.content})
@@ -138,7 +138,7 @@ class ClaudeMemoryAssistant:
                 for block in resp.content:
                     if block.type == "tool_use":
                         print(f"  [Tool: {block.name}] {block.input}")
-                        result = self._execute_tool(block.name, block.input)
+                        result = self._execute_tool(block.name, cast("dict[str, Any]", block.input))
                         tool_results.append(
                             {"type": "tool_result", "tool_use_id": block.id, "content": result}
                         )

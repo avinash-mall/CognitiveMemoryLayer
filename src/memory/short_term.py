@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from ..utils.llm import LLMClient
 from .sensory.buffer import SensoryBufferConfig
 from .sensory.manager import SensoryBufferManager
 from .working.manager import WorkingMemoryManager
@@ -18,11 +17,7 @@ class ShortTermMemoryConfig:
     sensory_max_tokens: int = 500
     sensory_decay_seconds: float = 30.0
     working_max_chunks: int = 10
-    use_fast_chunker: bool = False
     min_salience_for_encoding: float = 0.4
-    use_chonkie_for_large_text: bool = False
-    chunker_large_text_threshold_chars: int = 0
-    chunker_require_llm: bool | None = None
 
 
 class ShortTermMemory:
@@ -35,7 +30,7 @@ class ShortTermMemory:
     def __init__(
         self,
         config: ShortTermMemoryConfig | None = None,
-        llm_client: LLMClient | None = None,
+        llm_client: Any = None,
     ) -> None:
         self.config = config or ShortTermMemoryConfig()
         sensory_config = SensoryBufferConfig(
@@ -44,12 +39,7 @@ class ShortTermMemory:
         )
         self.sensory = SensoryBufferManager(sensory_config)
         self.working = WorkingMemoryManager(
-            llm_client=llm_client,
             max_chunks_per_user=self.config.working_max_chunks,
-            use_fast_chunker=self.config.use_fast_chunker,
-            use_chonkie_for_large_text=self.config.use_chonkie_for_large_text,
-            large_text_threshold_chars=self.config.chunker_large_text_threshold_chars,
-            chunker_require_llm=self.config.chunker_require_llm,
         )
 
     async def ingest_turn(
@@ -115,6 +105,6 @@ class ShortTermMemory:
         )
 
     async def clear(self, tenant_id: str, scope_id: str) -> None:
-        """Clear all short-term memory for scope."""
+        """Clear short-term memory for scope."""
         await self.sensory.clear_user(tenant_id, scope_id)
         await self.working.clear_user(tenant_id, scope_id)

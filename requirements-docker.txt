@@ -15,7 +15,8 @@ tiktoken>=0.8
 python-dotenv>=1.0
 structlog>=24.0
 prometheus-client>=0.21
-chonkie[semantic]
+semchunk
+transformers
 # Embedded mode (for py-cml embedded/e2e tests)
 aiosqlite>=0.20
 
