@@ -22,10 +22,10 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 ### Methods
 
-- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. Optional `timestamp` (datetime) for event time; defaults to now. When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason)—useful for benchmark scripts to aggregate gating statistics.
-- **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format, user_timezone=None)** → `ReadResponse` — Retrieve memories. The server applies `memory_types`, `since`, and `until`. `response_format`: "packet" (categorized), "list" (flat), "llm_context" (markdown string). Optional `user_timezone` (IANA string, e.g. `"America/New_York"`) for timezone-aware "today"/"yesterday" filters in retrieval.
+- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. Optional `timestamp` (datetime) for event time; defaults to now. When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason)—useful for benchmark scripts to aggregate gating statistics. Server-side: ~1 internal LLM call per chunk (default settings).
+- **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format, user_timezone=None)** → `ReadResponse` — Retrieve memories. The server applies `memory_types`, `since`, and `until`. `response_format`: "packet" (categorized), "list" (flat), "llm_context" (markdown string). Optional `user_timezone` (IANA string, e.g. `"America/New_York"`) for timezone-aware "today"/"yesterday" filters in retrieval. Server-side: 1–2 internal LLM calls (query classification + optional constraint reranking).
 - **read_safe(query, \*\*kwargs)** → `ReadResponse` — Like read; returns empty result on connection/timeout. Accepts same kwargs as read (including `user_timezone`).
-- **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp, user_timezone=None)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now. Optional `user_timezone` for retrieval "today"/"yesterday" (e.g. `"America/New_York"`).
+- **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp, user_timezone=None)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now. Optional `user_timezone` for retrieval "today"/"yesterday" (e.g. `"America/New_York"`). Server-side: ~5–10 internal LLM calls (retrieve + 2 writes + reconsolidation). See [Configuration](configuration.md) for breakdown.
 - **update(memory_id, \*, text, confidence, importance, metadata, feedback)** → `UpdateResponse` — Update an existing memory.
 - **forget(\*, memory_ids, query, before, action="delete")** → `ForgetResponse` — Forget memories. At least one of memory_ids, query, before required.
 - **stats()** → `StatsResponse` — Memory statistics.
@@ -132,3 +132,7 @@ All inherit from **CMLError**. **AuthenticationError** (401), **AuthorizationErr
 ## Configuration
 
 **CMLConfig** — api_key, base_url, tenant_id, timeout, max_retries, retry_delay, admin_api_key, verify_ssl. See [Configuration](configuration.md) for env vars.
+
+### Internal LLM Usage
+
+With default server settings: write uses ~1 internal LLM call per chunk; read uses 1–2 calls (query classification + optional constraint reranking); turn uses ~5–10 calls (retrieve + 2 writes + reconsolidation). Full breakdown in [Configuration — Internal LLM Call Counts](configuration.md#internal-llm-call-counts-default-settings).

@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-667-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-704-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
   <img src="https://img.shields.io/badge/version-1.3.0-blue?style=for-the-badge" alt="Version">
 </p>
 
@@ -87,6 +87,7 @@ The **Cognitive Memory Layer (CML)** solves this by implementing the Multi-Store
 | **Monitoring Dashboard** | 11-page admin dashboard: memories, graph explorer, sessions, retrieval tester, management |
 | **Python SDK** | `pip install cognitive-memory-layer` with sync, async, and embedded (SQLite) modes |
 | **Evaluation** | LoCoMo-Plus benchmark harness with LLM-as-judge scoring |
+| **Internal LLM usage** | ~1 call per write, 1–2 per read, ~5–10 per process turn (default settings). See [UsageDocumentation — Internal LLM Call Counts](ProjectPlan/UsageDocumentation.md#internal-llm-call-counts-default-settings) for details. |
 
 ---
 
@@ -204,9 +205,8 @@ flowchart LR
         W3["Semantic Chunker"]:::write
         W4["Write Gate"]:::process
         W5["PII Redactor"]:::process
-        W6["Embed + Extract"]:::process
-        W7["Constraint Extract"]:::process
-        W1 --> W2 --> W3 --> W4 --> W5 --> W6 --> W7
+        W6["Unified Extract + Embed"]:::process
+        W1 --> W2 --> W3 --> W4 --> W5 --> W6
     end
 
     subgraph Store ["STORAGE"]
@@ -227,8 +227,8 @@ flowchart LR
         R1 --> R2 --> R3 --> R4 --> R5 --> R6
     end
 
-    W7 --> S1
-    W7 --> S2
+    W6 --> S1
+    W6 --> S2
     W6 --> S3
     S1 --> R4
     S2 --> R4
@@ -280,7 +280,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | Sensory buffer | `SensoryBuffer` (token-ID storage via tiktoken, batch decode) | `src/memory/sensory/buffer.py` |
 | Working memory limit | `WorkingMemoryManager` (max=10) + `BoundedStateMap` (LRU/TTL) | `src/memory/working/manager.py` |
-| Semantic chunking | `SemanticChunker` (LLM) + `RuleBasedChunker` (8 chunk types incl. CONSTRAINT) | `src/memory/working/chunker.py` |
+| Semantic chunking | `SemchunkChunker` (semchunk + Hugging Face tokenizer) | `src/memory/working/chunker.py` |
 
 **Reference**: Miller, G.A. (1956). "The Magical Number Seven, Plus or Minus Two"
 
@@ -371,8 +371,7 @@ flowchart TD
         Chunk(Chunk):::input
         PII[[PII Redactor]]:::process
         Embed[[Batch Embeddings]]:::process
-        Entity[[Entity Extraction]]:::process
-        Constraint[[Constraint Extraction]]:::process
+        Unified[[Unified Extraction\n(Entities, Facts, Constraints)]]:::process
         Dense[/"Dense Vector"/]:::data
         Sparse[/"Entities + Relations"/]:::data
         Meta[/"Constraint Metadata"/]:::data
@@ -380,11 +379,10 @@ flowchart TD
 
         Chunk --> PII
         PII --> Embed
-        PII --> Entity
-        PII --> Constraint
+        PII --> Unified
         Embed --> Dense
-        Entity --> Sparse
-        Constraint --> Meta
+        Unified --> Sparse
+        Unified --> Meta
         Dense & Sparse & Meta ==> Record
     end
 ```
@@ -393,9 +391,9 @@ flowchart TD
 | :--- | :--- | :--- |
 | One-shot encoding | `HippocampalStore.encode_batch()` &mdash; gate+redact, batch embed, upsert | `src/memory/hippocampal/store.py` |
 | Pattern separation | Content-based stable keys (SHA256) + unique embeddings | `PostgresMemoryStore` |
-| Write-time facts | `WriteTimeFactExtractor` populates semantic store at write time | `src/extraction/write_time_facts.py` |
-| Constraint extraction | `ConstraintExtractor` detects goals/values/policies/states/causal at encode time | `src/extraction/constraint_extractor.py` |
-| Batch entity/relation extraction | `RelationExtractor.extract_batch()` in `encode_batch()` reduces per-chunk LLM calls | `src/extraction/relation_extractor.py` |
+| Write-time facts | `UnifiedWritePathExtractor` populates semantic store at write time | `src/extraction/unified_write_extractor.py` |
+| Constraint extraction | `UnifiedWritePathExtractor` detects goals/values/policies/states/causal at encode time | `src/extraction/unified_write_extractor.py` |
+| Batch entity/relation extraction | `UnifiedWritePathExtractor.extract()` in `encode_batch()` reduces per-chunk LLM calls | `src/extraction/unified_write_extractor.py` |
 | Contextual binding | Metadata: time, agent, turn, speaker, constraints | `MemoryRecord` schema |
 
 **Reference**: HippoRAG (2024) &mdash; "Neurobiologically Inspired Long-Term Memory for LLMs"
@@ -506,7 +504,7 @@ flowchart TD
 | Retrieval planning | `RetrievalPlanner` generates multi-step plans with priorities | `src/retrieval/planner.py` |
 | Hybrid search | `HybridRetriever` with per-step timeouts, cross-group skip-if-found | `src/retrieval/retriever.py` |
 | Constraint retrieval | Vector search (MemoryType.CONSTRAINT) + fact lookup across cognitive categories | `src/retrieval/retriever.py` |
-| Reranking | Type-dependent recency weights (stable=0.05, semi-stable=0.15, volatile=0.2) | `src/retrieval/reranker.py` |
+| Reranking | Configurable weights (`recency_weight=0.1`, `relevance_weight=0.5`, `confidence_weight=0.2`) | `src/retrieval/reranker.py` |
 | Packet building | Facts, preferences, episodes, constraints with provenance and formatting | `src/retrieval/packet_builder.py` |
 | Temporal queries | Timezone-aware "today"/"yesterday" via `user_timezone` | `src/retrieval/planner.py` |
 
@@ -720,7 +718,7 @@ CML supports 15 memory types reflecting different cognitive functions:
 | Cache / Queue | **Redis** | Embedding cache (MGET/pipeline), Celery broker, rate limiting, session store |
 | Workers | **Redis + Celery** | Background consolidation and forgetting, optional async storage pipeline |
 | Embeddings | **OpenAI / sentence-transformers** | Configurable; batched + cached with Redis |
-| LLM | **OpenAI / Ollama / compatible** | Extraction, summarization, chunking; optional `LLM_INTERNAL__*` for chunking/extraction/consolidation (bulk ingestion) |
+| LLM | **OpenAI / Ollama / Gemini / Claude** | Extraction, chunking; optional `llm_internal` for extraction/consolidation tasks |
 | Observability | **Prometheus + structlog** | Per-step retrieval metrics, structured logging |
 
 ---
@@ -749,7 +747,7 @@ flowchart LR
     classDef retrieve fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46
 
     subgraph Extract ["EXTRACTION"]
-        E1["Constraint\nExtractor"]:::extract
+        E1["Unified\nExtractor"]:::extract
         E2["5 Types:\nGoal | Value |\nPolicy | State |\nCausal"]:::extract
         E1 --> E2
     end
@@ -772,8 +770,8 @@ flowchart LR
 
 | Component | What it does |
 | :--- | :--- |
-| **Constraint Extraction** | Rule-based `ConstraintExtractor` detects goal/value/state/causal/policy patterns; `ConstraintObject` schema with subject, scope, activation, confidence |
-| **Chunker awareness** | `SemanticChunker` and `RuleBasedChunker` classify constraint cue phrases as `ChunkType.CONSTRAINT` with salience boost (0.85+) |
+| **Constraint Extraction** | `UnifiedWritePathExtractor` detects goal/value/state/causal/policy patterns; `ConstraintObject` schema with subject, scope, activation, confidence |
+| **Chunker** | `SemchunkChunker` uses semchunk with configurable Hugging Face tokenizer, chunk size, and overlap via `CHUNKER__*` |
 | **Write gate** | `ChunkType.CONSTRAINT` &rarr; `MemoryType.CONSTRAINT` with importance boost; hippocampal store attaches structured constraints to metadata |
 | **Semantic storage** | Constraints stored as `FactCategory.GOAL / VALUE / STATE / CAUSAL / POLICY` in the neocortical fact store |
 | **Constraint-aware retrieval** | `CONSTRAINT_CHECK` intent detection; highest-priority retrieval step combining vector search + fact lookup |
@@ -782,7 +780,7 @@ flowchart LR
 | **Supersession** | `ConstraintExtractor.detect_supersession()` for belief revision of same-type constraints |
 | **API** | `ReadMemoryResponse.constraints` field; SDK `ReadResponse.constraints` |
 
-Toggle: `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` (default: true). See [evaluation/deep-research-report.md](evaluation/deep-research-report.md) for analysis.
+Toggle: `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` (default: true).
 
 ---
 
@@ -792,8 +790,8 @@ All features can be toggled via environment variables. See [.env.example](.env.e
 
 | Flag | Description | Default |
 | :--- | :--- | :---: |
-| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | Extract and store cognitive constraints at write time | On |
-| `FEATURES__USE_LLM_*` (8 flags) | LLM-based extractors (constraint, facts, salience, importance, PII, classifier, conflict) | On |
+| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | Extract and store latent cognitive constraints at write time | On |
+| `FEATURES__USE_LLM_*` (7 flags) | LLM extractors (constraint, facts, classifier, salience, PII, write gate, conflict) | On |
 | `FEATURES__STABLE_KEYS_ENABLED` | SHA256-based fact/memory keys (no process-random `hash()`) | On |
 | `FEATURES__WRITE_TIME_FACTS_ENABLED` | Populate semantic store at write time (preference/identity) | On |
 | `FEATURES__BATCH_EMBEDDINGS_ENABLED` | Single `embed_batch()` call per turn instead of N per-chunk calls | On |
@@ -804,6 +802,9 @@ All features can be toggled via environment variables. See [.env.example](.env.e
 | `FEATURES__DB_DEPENDENCY_COUNTS` | DB-side aggregation for forgetting | On |
 | `FEATURES__BOUNDED_STATE_ENABLED` | LRU+TTL state maps for working/sensory memory | On |
 | `FEATURES__HNSW_EF_SEARCH_TUNING` | Query-time HNSW ef_search for pgvector recall/latency trade-off | On |
+| `CHUNKER__TOKENIZER` | Hugging Face tokenizer model ID (e.g. google/flan-t5-base) | google/flan-t5-base |
+| `CHUNKER__CHUNK_SIZE` | Max tokens per chunk (align with embedding model max input) | 500 |
+| `CHUNKER__OVERLAP_PERCENT` | Overlap ratio 0-1 (e.g. 0.15 = 15%) | 0.15 |
 
 Prometheus metrics: `cml_retrieval_step_duration_seconds`, `cml_retrieval_step_result_count`, `cml_retrieval_timeout_total`, `cml_fact_hit_rate`.
 
@@ -886,20 +887,20 @@ pip install cognitive-memory-layer
 ```
 
 ```python
-from cml import CMLClient
+from cml import CognitiveMemoryLayer
 
-client = CMLClient(base_url="http://localhost:8000", api_key="your-key")
+memory = CognitiveMemoryLayer(base_url="http://localhost:8000", api_key="your-key")
 
 # Write
-client.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
+memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
 
 # Read (returns facts, preferences, episodes, and constraints)
-response = client.read(query="What should I avoid ordering?", tenant_id="demo")
+response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
 for constraint in response.constraints:
     print(f"Constraint: {constraint.text}")
 
 # Seamless turn
-turn = client.turn(user_message="Recommend a restaurant", tenant_id="demo")
+turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
 ```
 
 The SDK supports **sync**, **async**, and **embedded (SQLite) modes**. Embedded mode runs the memory engine in-process without a server (`storage_mode="lite"`).
@@ -974,10 +975,12 @@ Full documentation: [UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md)
 CML includes a LoCoMo-Plus evaluation harness for benchmarking Level-2 cognitive memory performance.
 
 ```bash
-# Run full evaluation
+# Run full evaluation (from project root)
+python evaluation/scripts/run_full_eval.py
+
+# Or, for finer control:
 cd evaluation
 python scripts/eval_locomo_plus.py --verbose
-python scripts/run_full_eval.py
 ```
 
 The evaluation pipeline:
@@ -1007,14 +1010,14 @@ See also [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEva
 
 ```
 CognitiveMemoryLayer/
-├── src/                          # Server engine (85 Python modules)
+├── src/                          # Server engine (90 Python modules)
 │   ├── api/                      # REST API: routes, auth, middleware, dashboard routes
-│   ├── core/                     # Schemas, enums (15 memory types), config (11 feature flags)
+│   ├── core/                     # Schemas, enums (15 memory types), config (20+ feature flags)
 │   ├── dashboard/                # Web dashboard (monitoring + management SPA)
 │   │   └── static/               # HTML, CSS, JS
 │   ├── memory/
 │   │   ├── sensory/              # Sensory buffer (token-ID storage via tiktoken)
-│   │   ├── working/              # Working memory + chunker (8 chunk types, BoundedStateMap)
+│   │   ├── working/              # Working memory + SemchunkChunker (BoundedStateMap)
 │   │   ├── hippocampal/          # Episodic store (pgvector, batch embed, write gate, PII redactor)
 │   │   ├── neocortical/          # Semantic store (Neo4j, fact schemas, schema manager)
 │   │   └── orchestrator.py       # Main coordinator
@@ -1030,7 +1033,7 @@ CognitiveMemoryLayer/
 │       ├── src/cml/              # Client, models, transport, converters
 │       ├── tests/                # 175 tests (unit, integration, embedded, e2e)
 │       └── docs/                 # SDK documentation
-├── tests/                        # 492 tests (unit, integration, e2e)
+├── tests/                        # 529 tests (unit, integration, e2e)
 ├── evaluation/                   # LoCoMo-Plus evaluation harness + scripts
 ├── examples/                     # 14 example scripts (quickstart, chatbot, embedded, integrations)
 ├── migrations/                   # Alembic database migrations
@@ -1065,16 +1068,16 @@ pytest packages/py-cml/tests -v
 
 | Suite | Count | Description |
 | :--- | ---: | :--- |
-| Server unit | 413 | Core models, write gate, chunker, extraction, constraint layer, retrieval, forgetting, API |
-| Server integration | 76 | Hippocampal encode, neocortical store, retrieval flow, consolidation, forgetting, dashboard |
+| Server unit | 438 | Core models, write gate, chunker, extraction, constraint layer, retrieval, forgetting, API |
+| Server integration | 88 | Hippocampal encode, neocortical store, retrieval flow, consolidation, forgetting, dashboard |
 | Server e2e | 3 | Full API flows |
-| **Server total** | **492** | `pytest tests/unit tests/integration tests/e2e` |
+| **Server total** | **529** | `pytest tests/unit tests/integration tests/e2e` |
 | SDK unit | 149 | Client, models, transport, serialization, config, enums, retry, logging |
 | SDK integration | 18 | Write/read, sessions, admin, batch, stats, namespaces |
 | SDK embedded | 6 | Lite mode, lifecycle |
 | SDK e2e | 2 | Chat flow, migration |
 | **SDK total** | **175** | `pytest packages/py-cml/tests` |
-| **Combined** | **667** | Server + SDK |
+| **Combined** | **704** | Server + SDK |
 
 To refresh version and test-count badges: `python scripts/update_readme_badges.py`
 

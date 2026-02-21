@@ -64,6 +64,36 @@ class ReconsolidationService:
         self.revision_engine = BeliefRevisionEngine()
         self.fact_extractor = fact_extractor
 
+    # Maximum memories to run LLM conflict detection against per new fact.
+    # Memories are ranked by word-overlap similarity to the new fact before
+    # the cap is applied, so the most likely conflicts are always checked.
+    _CONFLICT_TOP_K: int = 5
+
+    @staticmethod
+    def _word_overlap(a: str, b: str) -> float:
+        """Jaccard word-overlap between two strings (case-insensitive)."""
+        wa = set(a.lower().split())
+        wb = set(b.lower().split())
+        if not wa or not wb:
+            return 0.0
+        return len(wa & wb) / len(wa | wb)
+
+    def _top_k_similar_memories(
+        self,
+        fact_text: str,
+        memories: list[MemoryRecord],
+        k: int,
+    ) -> list[MemoryRecord]:
+        """Return the k memories most similar (by word overlap) to fact_text."""
+        if len(memories) <= k:
+            return memories
+        scored = sorted(
+            memories,
+            key=lambda m: self._word_overlap(fact_text, m.text),
+            reverse=True,
+        )
+        return scored[:k]
+
     async def process_turn(
         self,
         tenant_id: str,
@@ -73,7 +103,11 @@ class ReconsolidationService:
         assistant_response: str,
         retrieved_memories: list[MemoryRecord],
     ) -> ReconsolidationResult:
-        """Process a conversation turn for reconsolidation."""
+        """Process a conversation turn for reconsolidation.
+
+        To avoid O(N_facts x N_memories) LLM calls, each new fact is compared
+        only against the top-_CONFLICT_TOP_K most text-similar memories.
+        """
         start = datetime.now(UTC)
         operations_applied: list[dict[str, Any]] = []
         conflicts_found = 0
@@ -104,7 +138,12 @@ class ReconsolidationService:
             )
 
         for new_fact in new_facts:
-            for memory in retrieved_memories:
+            # Only compare against the most similar memories to avoid an
+            # O(N_facts x N_memories) explosion of LLM conflict-detection calls.
+            candidate_memories = self._top_k_similar_memories(
+                new_fact["text"], retrieved_memories, self._CONFLICT_TOP_K
+            )
+            for memory in candidate_memories:
                 conflict = await self.conflict_detector.detect(memory, new_fact["text"])
                 if conflict.conflict_type.value != "none":
                     conflicts_found += 1

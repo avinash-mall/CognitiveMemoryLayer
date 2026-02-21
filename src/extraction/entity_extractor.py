@@ -70,6 +70,54 @@ class EntityExtractor:
             return []
 
     async def extract_batch(self, texts: list[str]) -> list[list[EntityMention]]:
-        import asyncio
+        """Extract entities from multiple texts in a single LLM call.
 
-        return await asyncio.gather(*[self.extract(t) for t in texts])
+        Each text is labelled [0], [1], ... in the prompt so results can be
+        reassembled in order.  Falls back to individual calls if the batch
+        response cannot be parsed.
+        """
+        if not texts:
+            return []
+        if len(texts) == 1:
+            return [await self.extract(texts[0])]
+
+        # Build a single prompt with all texts
+        sections = "\n\n".join(f"[{i}] {text.strip()}" for i, text in enumerate(texts))
+        batch_prompt = (
+            "Extract named entities from each of the following numbered texts.\n\n"
+            + sections
+            + "\n\nReturn a JSON object mapping each index (as a string key) to an array "
+            'of entities.  Each entity: {"text": ..., "normalized": ..., "type": ...}.\n'
+            'Example: {"0": [{"text": "Paris", "normalized": "Paris, France", '
+            '"type": "LOCATION"}], "1": []}\n'
+            "Return ONLY valid JSON, no other text."
+        )
+
+        try:
+            raw = await self.llm.complete(batch_prompt, temperature=0.0, max_tokens=2000)
+            data = json.loads(_strip_markdown_fences(raw))
+            if not isinstance(data, dict):
+                raise ValueError("Expected dict")
+
+            results: list[list[EntityMention]] = []
+            for i in range(len(texts)):
+                entries = data.get(str(i), [])
+                if not isinstance(entries, list):
+                    entries = []
+                results.append(
+                    [
+                        EntityMention(
+                            text=e.get("text", ""),
+                            normalized=e.get("normalized", e.get("text", "")),
+                            entity_type=e.get("type", "CONCEPT"),
+                        )
+                        for e in entries
+                        if isinstance(e, dict) and e.get("text")
+                    ]
+                )
+            return results
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+            # Fallback: individual calls (original behaviour)
+            import asyncio
+
+            return list(await asyncio.gather(*[self.extract(t) for t in texts]))

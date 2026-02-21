@@ -3,19 +3,9 @@
 import asyncio
 from datetime import datetime
 
-import structlog
-
 from ...utils.bounded_state import BoundedStateMap
-from ...utils.llm import LLMClient
-from .chunker import (
-    ChonkieChunkerAdapter,
-    ChonkieUnavailableError,
-    RuleBasedChunker,
-    SemanticChunker,
-)
+from .chunker import SemchunkChunker
 from .models import SemanticChunk, WorkingMemoryState
-
-logger = structlog.get_logger(__name__)
 
 
 class WorkingMemoryManager:
@@ -33,14 +23,9 @@ class WorkingMemoryManager:
 
     def __init__(
         self,
-        llm_client: LLMClient | None = None,
         max_chunks_per_user: int = 10,
-        use_fast_chunker: bool = False,
         max_scopes: int = 1000,
         scope_ttl_seconds: float = 1800.0,
-        use_chonkie_for_large_text: bool = False,
-        large_text_threshold_chars: int | None = None,
-        chunker_require_llm: bool | None = None,
     ) -> None:
         self._states: BoundedStateMap[WorkingMemoryState] = BoundedStateMap(
             max_size=max_scopes,
@@ -48,30 +33,15 @@ class WorkingMemoryManager:
         )
         self._lock = asyncio.Lock()
         self.max_chunks = max_chunks_per_user
-        self._use_chonkie_for_large_text = use_chonkie_for_large_text
-        self._large_text_threshold_chars = large_text_threshold_chars
-        self._chonkie_adapter: ChonkieChunkerAdapter | None = None
-        self._chonkie_unavailable_logged = False
 
         from ...core.config import get_settings
 
-        _chunker_require_llm = (
-            chunker_require_llm
-            if chunker_require_llm is not None
-            else get_settings().features.chunker_require_llm
+        cfg = get_settings().chunker
+        self.chunker = SemchunkChunker(
+            tokenizer_id=cfg.tokenizer,
+            chunk_size=cfg.chunk_size,
+            overlap_percent=cfg.overlap_percent,
         )
-        if not use_fast_chunker and _chunker_require_llm and not llm_client:
-            raise ValueError(
-                "chunker_require_llm is true and use_fast_chunker is false but no llm_client "
-                "provided. Set FEATURES__CHUNKER_REQUIRE_LLM=false to fall back to rule-based "
-                "chunker, or configure LLM__* or LLM_INTERNAL__* and use_fast_chunker=false."
-            )
-        if llm_client and not use_fast_chunker:
-            self.chunker: SemanticChunker | RuleBasedChunker = SemanticChunker(llm_client)
-            self._use_llm = True
-        else:
-            self.chunker = RuleBasedChunker()
-            self._use_llm = False
 
     def _get_key(self, tenant_id: str, scope_id: str) -> str:
         return f"{tenant_id}:{scope_id}"
@@ -87,21 +57,6 @@ class WorkingMemoryManager:
                 max_chunks=self.max_chunks,
             ),
         )
-
-    def _get_chonkie_adapter(self) -> ChonkieChunkerAdapter | None:
-        if self._chonkie_adapter is not None:
-            return self._chonkie_adapter
-        try:
-            self._chonkie_adapter = ChonkieChunkerAdapter()
-            return self._chonkie_adapter
-        except ChonkieUnavailableError:
-            if not self._chonkie_unavailable_logged:
-                logger.warning(
-                    "Chonkie semantic chunking requested but chonkie[semantic] not installed; "
-                    "falling back to default chunker for large text. Install with: pip install 'chonkie[semantic]'"
-                )
-                self._chonkie_unavailable_logged = True
-            return None
 
     async def process_input(
         self,
@@ -119,47 +74,8 @@ class WorkingMemoryManager:
             New chunks added to working memory
         """
         state = await self.get_state(tenant_id, scope_id)
-        context = state.chunks[-5:] if state.chunks else None
 
-        # Chonkie is embedding-based (non-LLM) semantic chunking. When enabled and
-        # text meets threshold, try it first; fall back to default chunker if unavailable.
-        use_chonkie = (
-            self._use_chonkie_for_large_text
-            and self._large_text_threshold_chars is not None
-            and len(text) >= self._large_text_threshold_chars
-        )
-        if use_chonkie:
-            adapter = self._get_chonkie_adapter()
-            if adapter is not None:
-                try:
-                    new_chunks = adapter.chunk(
-                        text, turn_id=turn_id, role=role, timestamp=timestamp
-                    )
-                    for chunk in new_chunks:
-                        state.add_chunk(chunk)
-                    state.turn_count += 1
-                    return new_chunks
-                except ChonkieUnavailableError:
-                    self._chonkie_adapter = None
-                    if not self._chonkie_unavailable_logged:
-                        logger.warning(
-                            "Chonkie semantic chunking failed (not installed); "
-                            "falling back to default chunker. Install with: pip install 'chonkie[semantic]'"
-                        )
-                        self._chonkie_unavailable_logged = True
-            # Fall back to default chunker (LLM or rule-based) when Chonkie not installed
-
-        if self._use_llm:
-            new_chunks = await self.chunker.chunk(
-                text,
-                context_chunks=context,
-                turn_id=turn_id,
-                role=role,
-                timestamp=timestamp,
-            )
-        else:
-            new_chunks = self.chunker.chunk(text, turn_id=turn_id, role=role, timestamp=timestamp)
-
+        new_chunks = self.chunker.chunk(text, turn_id=turn_id, role=role, timestamp=timestamp)
         for chunk in new_chunks:
             state.add_chunk(chunk)
         state.turn_count += 1
