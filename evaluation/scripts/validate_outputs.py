@@ -19,7 +19,14 @@ import json
 import sys
 from pathlib import Path
 
-REQUIRED_PREDICTION_KEYS = {"question_input", "evidence", "category", "ground_truth", "prediction", "model"}
+REQUIRED_PREDICTION_KEYS = {
+    "question_input",
+    "evidence",
+    "category",
+    "ground_truth",
+    "prediction",
+    "model",
+}
 REQUIRED_JUDGED_KEYS = REQUIRED_PREDICTION_KEYS | {"judge_label", "judge_reason", "judge_score"}
 VALID_JUDGE_LABELS = {"correct", "partial", "wrong", ""}
 VALID_JUDGE_SCORES = {0.0, 0.5, 1.0}
@@ -81,7 +88,9 @@ def validate_judged(path: Path, predictions_path: Path) -> list[str]:
         try:
             score = float(rec.get("judge_score", 0))
         except (TypeError, ValueError):
-            errors.append(f"{path}: Record[{i}] judge_score not numeric: {rec.get('judge_score')!r}")
+            errors.append(
+                f"{path}: Record[{i}] judge_score not numeric: {rec.get('judge_score')!r}"
+            )
         else:
             if not any(abs(score - v) < 0.001 for v in VALID_JUDGE_SCORES):
                 errors.append(f"{path}: Record[{i}] judge_score={score} not in {{0, 0.5, 1.0}}")
@@ -98,7 +107,9 @@ def validate_judged(path: Path, predictions_path: Path) -> list[str]:
                 for i in range(len(data)):
                     p, j = preds[i], data[i]
                     if p.get("question_input") != j.get("question_input"):
-                        errors.append(f"{path}: Record[{i}] question_input mismatch with predictions")
+                        errors.append(
+                            f"{path}: Record[{i}] question_input mismatch with predictions"
+                        )
                         break
                     if p.get("prediction") != j.get("prediction"):
                         errors.append(f"{path}: Record[{i}] prediction mismatch with predictions")
@@ -173,7 +184,9 @@ def validate_summary(path: Path, judged_path: Path) -> list[str]:
             pass
         else:
             if isinstance(judged, list):
-                if summary.get("total_samples") is not None and summary["total_samples"] != len(judged):
+                if summary.get("total_samples") is not None and summary["total_samples"] != len(
+                    judged
+                ):
                     errors.append(
                         f"{path}: total_samples={summary['total_samples']} != judged length {len(judged)}"
                     )
@@ -245,7 +258,9 @@ def main() -> None:
         try:
             st = load_json(state_file)
             if isinstance(st, dict):
-                stats.append(f"full_eval_state: pipeline_step={st.get('pipeline_step')}, eval_phase={st.get('eval_phase')}")
+                stats.append(
+                    f"full_eval_state: pipeline_step={st.get('pipeline_step')}, eval_phase={st.get('eval_phase')}"
+                )
         except Exception:
             pass
 
