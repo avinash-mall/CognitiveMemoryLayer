@@ -139,12 +139,12 @@ class TestTimestampBackwardCompatibility:
             params = sig.parameters
 
             # timestamp should exist and be optional
-            assert (
-                "timestamp" in params
-            ), f"{cls.__name__}.{method_name} missing timestamp parameter"
-            assert (
-                params["timestamp"].default is not inspect.Parameter.empty
-            ), f"{cls.__name__}.{method_name} timestamp should be optional"
+            assert "timestamp" in params, (
+                f"{cls.__name__}.{method_name} missing timestamp parameter"
+            )
+            assert params["timestamp"].default is not inspect.Parameter.empty, (
+                f"{cls.__name__}.{method_name} timestamp should be optional"
+            )
 
 
 class TestTimestampTemporalFidelity:
