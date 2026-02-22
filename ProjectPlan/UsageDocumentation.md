@@ -96,26 +96,23 @@ flowchart TB
 | PII | `USE_LLM_PII_REDACTION` | Gate uses `unified_result.pii_spans` | Regex `_check_pii` |
 | Constraints | `USE_LLM_CONSTRAINT_EXTRACTOR` | Hippocampal + supersession use unified constraints | `ConstraintExtractor.extract()` |
 | Facts | `USE_LLM_WRITE_TIME_FACTS` | Use unified facts | `WriteTimeFactExtractor` |
+| Entities & Relations (Neo4j) | Any write-path LLM flag | Graph sync uses `unified_result.entities` and `unified_result.relations` | `EntityExtractor` and `RelationExtractor` for graph |
 
 ---
 
 ## Quick Start
 
+For a minimal quick start, see [README — Basic Usage](../README.md#basic-usage). Below is the extended flow with full options.
+
 ### 1. Start the Infrastructure
 
 ```bash
-# Start all services (Postgres, Neo4j, Redis, API)
 docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
 docker compose -f docker/docker-compose.yml up api
+# Verify: curl http://localhost:8000/api/v1/health
 ```
 
-### 2. Test the Health Endpoint
-
-```bash
-curl http://localhost:8000/api/v1/health
-```
-
-### 3. Store Your First Memory
+### 2. Store Your First Memory
 
 Memory is **holistic** per tenant (no scopes). Use optional `context_tags` and `session_id` for categorization and origin tracking.
 
@@ -132,7 +129,7 @@ curl -X POST http://localhost:8000/api/v1/memory/write \
 ```
 (Set `AUTH__API_KEY` in your environment or use a key you configured.)
 
-### 4. Retrieve Memories
+### 3. Retrieve Memories
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/memory/read \
@@ -145,7 +142,7 @@ curl -X POST http://localhost:8000/api/v1/memory/read \
   }'
 ```
 
-### 5. Seamless Memory (per turn)
+### 4. Seamless Memory (per turn)
 
 For chat integrations, use **Seamless Memory**: one call per turn to auto-retrieve context and optionally auto-store.
 
@@ -686,7 +683,7 @@ A web-based dashboard provides comprehensive monitoring and management of the me
 | **Memory Explorer** | Paginated, filterable table of memory records. Filter by type, status, search text; sort by timestamp, confidence, importance, access count. Click a row to open the memory detail view. **Bulk actions**: select memories via checkboxes and apply Archive, Silence, or Delete in bulk. **Export**: download memories as JSON. |
 | **Sessions** | Active sessions from Redis with TTL, creation/expiry timestamps, and metadata. Displays TTL badges (green/yellow/red based on time remaining). Also shows memory counts per `source_session_id` from the database. Click a session ID to filter the Memory Explorer by that session. |
 | **Memory Detail** | Full record view: content, key, namespace, context tags, entities/relations, metadata, confidence/importance gauges, access count, decay rate, provenance, version/supersedes, related events. |
-| **Knowledge Graph** | Interactive graph visualization powered by vis-network. Shows graph stats (nodes, edges, entity types, tenants with graph data). Search for entities by name, select a tenant, adjust exploration depth (1-5 hops), and render an interactive network. Click nodes/edges to see details in a side panel. Entity type distribution table. |
+| **Knowledge Graph** | Interactive graph visualization powered by [neovis.js](https://github.com/neo4j-contrib/neovis.js). Connects directly from the browser to Neo4j (bolt/WebSocket). Shows graph stats (nodes, edges, entity types, tenants with graph data). Search for entities by name, select a tenant, adjust exploration depth (1-5 hops), and render an interactive network. Click nodes/edges to see details in a side panel. Entity type distribution table. Works offline (neovis.js bundled; no CDN). |
 | **API Usage** | Current rate-limit buckets from Redis with key type, identifier (masked for API keys), current count, limit, utilization progress bar, and TTL. KPI cards for active keys, avg utilization, configured RPM, and 24h request count. Chart.js line chart of hourly request volume. |
 | **Components** | Health status for PostgreSQL, Neo4j, and Redis (connection, latency, row/key counts). Short architecture description of sensory buffer, working memory, hippocampal/neocortical stores, consolidation, and forgetting. |
 | **Configuration** | Read-only config snapshot showing all settings grouped by section (Application, Database, Embedding, LLM, Auth). Secret values (API keys, passwords) are masked. Each setting shows its current value, default, source (env/override/default), and description. Editable settings (e.g. rate limit RPM, embedding model, debug mode) can be changed inline; overrides are stored in Redis. |
@@ -733,6 +730,7 @@ All dashboard endpoints live under `/api/v1/dashboard` and require **admin** per
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/dashboard/graph/stats` | Node/edge counts, entity type distribution, tenants with graph data. |
+| GET | `/api/v1/dashboard/graph/neo4j-config` | Neo4j connection config for browser (neovis.js). Returns `serverUrl`, `serverUser`, `serverPassword`. Use `DATABASE__NEO4J_BROWSER_URL` when Neo4j is not reachable at `DATABASE__NEO4J_URL` from the browser (e.g. Docker). |
 | GET | `/api/v1/dashboard/graph/explore` | Explore entity neighborhood. Query params: `tenant_id`, `entity`, `scope_id`, `depth`. |
 | GET | `/api/v1/dashboard/graph/search` | Search entities by name pattern. Query params: `query`, `tenant_id`, `limit`. |
 
@@ -773,7 +771,7 @@ All dashboard endpoints live under `/api/v1/dashboard` and require **admin** per
 
 ### Implementation Notes
 
-- **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/` (no build step). Chart.js for charts; vis-network for knowledge graph visualization. Both loaded via CDN.
+- **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/`. Chart.js for charts (CDN); knowledge graph uses [neovis.js](https://github.com/neo4j-contrib/neovis.js) bundled via Vite (no CDN, offline-capable). Build: `cd src/dashboard && npm install && npm run build` (Docker builds the bundle at image build time).
 - **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`, `SessionInfo`, `GraphExploreResponse`, `ConfigSection`, `DashboardJobItem`, `DashboardRetrievalRequest`).
 - **Job tracking**: Consolidation, forgetting, and reconsolidation runs are recorded in the `dashboard_jobs` PostgreSQL table (migration: `002_dashboard_jobs.py`). Job status, result, errors, and duration are tracked.
 - **Request counting**: The `RequestLoggingMiddleware` increments hourly counters in Redis (`dashboard:reqcount:{YYYY-MM-DD-HH}`) with 48-hour TTL for the API Usage page.
@@ -1257,7 +1255,8 @@ All configuration uses nested environment variables with `__` delimiter.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE__POSTGRES_URL` | `postgresql+asyncpg://memory:memory@localhost/memory` | PostgreSQL connection URL (must use asyncpg driver) |
-| `DATABASE__NEO4J_URL` | `bolt://localhost:7687` | Neo4j connection URL |
+| `DATABASE__NEO4J_URL` | `bolt://localhost:7687` | Neo4j connection URL (backend) |
+| `DATABASE__NEO4J_BROWSER_URL` | *(same as NEO4J_URL)* | Neo4j bolt URL for dashboard graph (browser). Set to `bolt://localhost:7687` when API runs in Docker (backend uses `bolt://neo4j:7687`). |
 | `DATABASE__NEO4J_USER` | `neo4j` | Neo4j username |
 | `DATABASE__NEO4J_PASSWORD` | *(empty)* | Neo4j password (set for remote/secured instances) |
 | `DATABASE__REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
@@ -1349,7 +1348,7 @@ All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
 | `CHUNKER__CHUNK_SIZE` | `500` | Max tokens per chunk (align with embedding model max input). |
 | `CHUNKER__OVERLAP_PERCENT` | `0.15` | Overlap ratio 0-1 (e.g. 0.15 = 15%). |
 
-When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, importance, and PII spans in one LLM request. For each flag that is on, the corresponding rule-based logic is skipped (LLM gating). See the Write Path LLM Gating table in the Overview section.
+When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, importance, PII spans, **entities**, and **relations** in one LLM request. Entities use typed objects (`text`, `normalized`, `type`) with allowed types (PERSON, LOCATION, ORGANIZATION, etc.); relations use `subject`, `predicate`, `object` (snake_case predicates). The prompt includes exclusion rules (no system prompts, role instructions, or non-conversational content) and few-shot examples for cross-model consistency. For each flag that is on, the corresponding rule-based logic is skipped (LLM gating). When the unified path is enabled, graph sync to Neo4j uses unified entities and relations instead of separate `EntityExtractor`/`RelationExtractor`. See the Write Path LLM Gating table in the Overview section. Use `scripts/verify_neo4j_graph.py` to run Neo4j diagnostics.
 
 #### Retrieval Settings
 
