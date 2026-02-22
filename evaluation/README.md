@@ -54,7 +54,7 @@ From the **project root**:
 python evaluation/scripts/run_full_eval.py
 ```
 
-This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, consolidation + reconsolidation, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json` with the failed step and message (and, for step 4, the last completed sample index). Use **`--resume`** to continue from the failed step (and from the next sample for step 4); **`--resume` implies `--skip-docker`** (no need to pass both).
+This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, consolidation + reconsolidation, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json` with the failed step and message (and, for step 4, the last completed sample index). Use **`--resume`** to continue from the failed step (and from the next sample for step 4); **`--resume` implies `--skip-docker`** (no need to pass both). Progress bars for each phase display even in subprocess or non-TTY environments (IDE terminals, Windows).
 
 ### Options
 

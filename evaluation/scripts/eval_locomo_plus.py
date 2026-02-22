@@ -375,7 +375,9 @@ def phase_a_ingestion(
     )
 
     if ingestion_workers <= 1:
-        for i, sample in enumerate(tqdm(samples_to_ingest, desc="Ingestion", unit="sample")):
+        for i, sample in enumerate(
+            tqdm(samples_to_ingest, desc="Ingestion", unit="sample", disable=False)
+        ):
             _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay)
     else:
         with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
@@ -384,7 +386,11 @@ def phase_a_ingestion(
                 for i, sample in enumerate(samples_to_ingest)
             }
             for future in tqdm(
-                as_completed(futures), total=len(futures), desc="Ingestion", unit="sample"
+                as_completed(futures),
+                total=len(futures),
+                desc="Ingestion",
+                unit="sample",
+                disable=False,
             ):
                 future.result()  # Propagate any exception
 
@@ -404,7 +410,7 @@ def phase_ab_consolidation(
         f"\n[Phase A-B] Consolidation and reconsolidation for {n} tenants...",
         flush=True,
     )
-    for i in tqdm(range(n), desc="Phase A-B", unit="tenant"):
+    for i in tqdm(range(n), desc="Phase A-B", unit="tenant", disable=False):
         tenant_id = f"lp-{i}"
         body = {"tenant_id": tenant_id, "user_id": None}
         try:
@@ -477,7 +483,7 @@ def phase_b_qa(
         print(
             f"\n[Phase B] Running QA on {len(samples_qa)} samples (LLM: {qa_model})...", flush=True
         )
-    for i in tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample"):
+    for i in tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False):
         sample = samples_qa[i]
         tenant_id = f"lp-{i}"
         trigger = (sample.get("trigger") or "").strip()

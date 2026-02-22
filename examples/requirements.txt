@@ -20,3 +20,6 @@ anthropic>=0.18.0
 langchain>=0.3.0,<0.4.0
 langchain-core>=0.3.0,<0.4.0
 langchain-openai>=0.3.0,<0.4.0
+
+# UI/Interactive examples
+streamlit>=1.41.0

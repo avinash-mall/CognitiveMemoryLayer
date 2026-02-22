@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Evaluation progress display in non-TTY contexts** — Progress bars (Phase A ingestion, Phase A-B consolidation, Phase B QA, Phase C judge) now display when `eval_locomo_plus.py` is run as a subprocess from `run_full_eval.py`, e.g. in Cursor/IDE terminals or on Windows where stderr is not a TTY. tqdm calls now use `disable=False` in `eval_locomo_plus.py` and `llm_as_judge.py`; `run_full_eval.py` invokes the eval script with Python `-u` (unbuffered) for responsive output.
+
+### Added
+
+- **LLM memory type in Unified Extractor** — When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the Unified Write Path Extractor outputs `memory_type` per chunk in the same LLM call used for constraints, facts, salience, importance, and PII. The Hippocampal Store uses this LLM-classified type when valid; otherwise falls back to constraint extraction heuristic and Write Gate ChunkType mapping. API `memory_type` override continues to take precedence. No extra LLM call; `memory_type` is an additional field in the existing unified extraction response. See `ProjectPlan/UsageDocumentation.md` § Write Path LLM Gating and Memory Types.
+
 ## [1.3.3] - 2026-02-22
 
 ### Documentation

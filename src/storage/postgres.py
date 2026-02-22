@@ -98,6 +98,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 written_at=now_naive,
                 confidence=record.confidence,
                 importance=record.importance,
+                decay_rate=record.decay_rate if record.decay_rate is not None else 0.01,
                 provenance=record.provenance.model_dump(),
                 content_hash=content_hash,
             )
