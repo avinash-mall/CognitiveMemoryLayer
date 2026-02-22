@@ -1,3 +1,7 @@
+---
+name: cml-memory
+description: Structured long-term memory powered by the Cognitive Memory Layer (CML) API. Store facts, preferences, constraints, and episodes across conversations.
+---
 # CML Memory -- Cognitive Memory Layer for OpenClaw
 
 > Structured long-term memory powered by the Cognitive Memory Layer (CML) API.
@@ -44,7 +48,7 @@ The simplest way to use CML. Sends the user's message, retrieves relevant contex
 
 ```bash
 curl -s -X POST "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/turn" \
-  -H "Authorization: Bearer ${CML_API_KEY}" \
+  -H "X-API-Key: ${CML_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "user_message": "I just got promoted to senior engineer at Acme Corp!",
@@ -61,7 +65,7 @@ Use when you learn something specific and want to store it with a particular typ
 
 ```bash
 curl -s -X POST "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/write" \
-  -H "Authorization: Bearer ${CML_API_KEY}" \
+  -H "X-API-Key: ${CML_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "content": "User is allergic to shellfish",
@@ -78,7 +82,7 @@ Query for relevant memories before answering questions about the user.
 
 ```bash
 curl -s -X POST "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/read" \
-  -H "Authorization: Bearer ${CML_API_KEY}" \
+  -H "X-API-Key: ${CML_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "dietary restrictions and food preferences",
@@ -93,7 +97,7 @@ You can filter by memory type:
 
 ```bash
 curl -s -X POST "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/read" \
-  -H "Authorization: Bearer ${CML_API_KEY}" \
+  -H "X-API-Key: ${CML_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "user restrictions",
@@ -108,7 +112,7 @@ Provide feedback when a memory is confirmed correct, found incorrect, or outdate
 
 ```bash
 curl -s -X POST "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/update" \
-  -H "Authorization: Bearer ${CML_API_KEY}" \
+  -H "X-API-Key: ${CML_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "memory_id": "<uuid-from-read-response>",
@@ -124,7 +128,7 @@ When the user asks you to forget something.
 
 ```bash
 curl -s -X POST "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/forget" \
-  -H "Authorization: Bearer ${CML_API_KEY}" \
+  -H "X-API-Key: ${CML_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "old home address",
@@ -140,7 +144,7 @@ Check what you have stored.
 
 ```bash
 curl -s "${CML_BASE_URL:-http://localhost:8000}/api/v1/memory/stats" \
-  -H "Authorization: Bearer ${CML_API_KEY}"
+  -H "X-API-Key: ${CML_API_KEY}"
 ```
 
 ## Behavioral Guidelines
@@ -186,12 +190,12 @@ Agent thinking:
   2. Store constraint via /memory/write with type "constraint"
 
 [bash] curl -s -X POST "$CML_BASE_URL/api/v1/memory/write" \
-  -H "Authorization: Bearer $CML_API_KEY" \
+  -H "X-API-Key: $CML_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"content":"User is vegetarian","memory_type":"preference","session_id":"openclaw-main","context_tags":["dietary"]}'
 
 [bash] curl -s -X POST "$CML_BASE_URL/api/v1/memory/write" \
-  -H "Authorization: Bearer $CML_API_KEY" \
+  -H "X-API-Key: $CML_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"content":"User dislikes spicy food","memory_type":"constraint","session_id":"openclaw-main","context_tags":["dietary"]}'
 
@@ -207,7 +211,7 @@ Agent thinking:
   1. Retrieve dietary preferences and constraints from CML
 
 [bash] curl -s -X POST "$CML_BASE_URL/api/v1/memory/read" \
-  -H "Authorization: Bearer $CML_API_KEY" \
+  -H "X-API-Key: $CML_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"query":"food preferences dietary restrictions","format":"llm_context"}'
 
@@ -226,9 +230,9 @@ Agent thinking:
   1. Use /memory/turn to store this and retrieve any related context
 
 [bash] curl -s -X POST "$CML_BASE_URL/api/v1/memory/turn" \
-  -H "Authorization: Bearer $CML_API_KEY" \
+  -H "X-API-Key: $CML_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"user_message":"I just accepted the offer at Google! Starting March 1st.","session_id":"openclaw-main"}'
+  -d '{"user_message":"I just accepted the offer at Google! Starting March 1st.","session_id":"openclaw-main", "max_context_tokens": 1500}'
 
   -> Returns memory_context with any prior job-search memories
   -> Automatically stores this as a new memory

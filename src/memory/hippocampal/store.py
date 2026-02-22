@@ -340,13 +340,19 @@ class HippocampalStore:
             _oi, chunk, gate_result, _ = surviving[idx]
             text = final_texts[idx]
             embedding_result = embedding_results[idx]
-            entities = entities_batch[idx]
-            relations = relations_batch[idx]
             unified_res = unified_results[idx] if idx < len(unified_results) else None
 
             from ...core.config import get_settings as _gs
 
             settings = _gs().features
+
+            # Use unified entities/relations for graph sync when unified path enabled
+            if self._use_unified_write_path() and unified_res is not None:
+                entities = unified_res.entities if unified_res.entities else entities_batch[idx]
+                relations = unified_res.relations if unified_res.relations else relations_batch[idx]
+            else:
+                entities = entities_batch[idx]
+                relations = relations_batch[idx]
             # text from surviving is already redacted (incl. LLM spans applied above)
 
             memory_type = memory_type_override or (
@@ -420,6 +426,9 @@ class HippocampalStore:
 
         for res in stored_results:
             if isinstance(res, Exception):
+                import structlog
+
+                structlog.get_logger(__name__).error("encode_batch_upsert_failed", error=str(res))
                 continue
             if res is not None:
                 results.append(res)

@@ -33,7 +33,7 @@ echo -e "\n"
 echo "# Process Turn"
 curl -s -X POST "$API_URL/memory/turn" \
   -H "Content-Type: application/json" -H "X-API-Key: $KEY" \
-  -d '{"user_message": "What do I like?", "session_id": "curl-demo"}'
+  -d '{"user_message": "What do I like?", "session_id": "curl-demo", "max_context_tokens": 1500}'
 echo -e "\n"
 
 echo "# Forget Memory"

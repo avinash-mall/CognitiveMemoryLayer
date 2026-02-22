@@ -51,6 +51,7 @@ pytest tests/unit tests/integration tests/e2e packages/py-cml/tests -v
 | `test_api_request_logging_rate_limit.py` | Request logging and rate-limit middleware |
 | `test_dashboard_routes.py` | Dashboard API routes (mocked DB) |
 | `test_extraction_entity_relation_fact.py` | Entity, relation, and fact extraction |
+| `test_unified_write_extractor.py` | Unified extractor: typed entities, relations, exclusion rules, graph sync |
 | `test_orchestrator_seamless_provider.py` | Memory orchestrator and seamless provider |
 | `test_memory_modules_conversation_scratch_tool.py` | ConversationMemory, ScratchPad, ToolMemory, KnowledgeBase |
 | `test_chunker_chonkie_adapter.py` | Chonkie chunker adapter |
@@ -77,7 +78,7 @@ pytest tests/unit tests/integration tests/e2e packages/py-cml/tests -v
 | `test_dashboard_flow.py` | Dashboard API with real DB |
 | `test_memory_type_storage_retrieval.py` | Memory types round-trip |
 
-Key test areas: constraint layer, deep research improvements (stable keys, batch embeddings, write-time facts), **batch extraction** (`RelationExtractor.extract_batch` in `test_extraction_entity_relation_fact.py`; orchestrator uses `get_internal_llm_client` in `test_orchestrator_seamless_provider.py`, `test_api_flows.py`), evaluation (timestamp parsing, verbose diagnostics).
+Key test areas: constraint layer, deep research improvements (stable keys, batch embeddings, write-time facts), **batch extraction** (`RelationExtractor.extract_batch` in `test_extraction_entity_relation_fact.py`; `UnifiedWritePathExtractor` in `test_unified_write_extractor.py`; orchestrator uses `get_internal_llm_client` in `test_orchestrator_seamless_provider.py`), evaluation (timestamp parsing, verbose diagnostics). Use `python scripts/verify_neo4j_graph.py` to run Neo4j diagnostics (relationship types, entity types, long/suspicious entities).
 
 ## Running subsets
 
