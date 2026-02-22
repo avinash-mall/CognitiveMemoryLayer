@@ -60,7 +60,6 @@ Set these environment variables for the OpenClaw process (in your shell profile,
 ```bash
 export CML_BASE_URL="http://localhost:8000"
 export CML_API_KEY="your-api-key-here"
-export CML_TENANT_ID="openclaw"           # optional, defaults to "openclaw"
 ```
 
 Or add them to your OpenClaw configuration file (`~/.openclaw/openclaw.json`):
@@ -152,7 +151,7 @@ OpenClaw Agent
 |---------|----------|
 | "Connection refused" errors | Verify CML server is running: `curl http://localhost:8000/api/v1/health` |
 | "401 Unauthorized" | Check `CML_API_KEY` matches `AUTH__API_KEY` in your CML `.env` |
-| Skill not appearing | Verify SKILL.md is at `~/.openclaw/workspace/skills/cml-memory/SKILL.md` |
+| Skill not appearing | Verify `SKILL.md` has the required YAML frontmatter and is at `~/.openclaw/workspace/skills/cml-memory/SKILL.md` |
 | No memories returned | Ensure you have written memories first; try a broader query |
 | Slow responses | CML needs embedding generation on write; first write may be slower |
 

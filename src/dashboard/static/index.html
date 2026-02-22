@@ -6,7 +6,6 @@
     <title>Cognitive Memory Layer - Dashboard</title>
     <link rel="stylesheet" href="/dashboard/static/css/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
     <!-- Login overlay -->
@@ -133,7 +132,7 @@
         </main>
     </div>
 
-    <!-- Scripts (ES modules) -->
-    <script type="module" src="/dashboard/static/js/app.js"></script>
+    <!-- Scripts: bundle includes neovis.js for offline graph (run: cd src/dashboard && npm install && npm run build) -->
+    <script type="module" src="/dashboard/static/js/bundle.js"></script>
 </body>
 </html>

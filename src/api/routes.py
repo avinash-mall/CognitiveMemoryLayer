@@ -380,10 +380,12 @@ async def session_read(
             facts = []
             preferences = []
             episodes = []
+            constraints = []
         else:
             facts = [_to_memory_item(m) for m in packet.facts]
             preferences = [_to_memory_item(m) for m in packet.preferences]
             episodes = [_to_memory_item(m) for m in packet.recent_episodes]
+            constraints = [_to_memory_item(m) for m in packet.constraints]
 
         llm_context = None
         if body.format == "llm_context":
@@ -398,6 +400,7 @@ async def session_read(
             facts=facts,
             preferences=preferences,
             episodes=episodes,
+            constraints=constraints,
             llm_context=llm_context,
             total_count=len(all_memories),
             elapsed_ms=elapsed_ms,

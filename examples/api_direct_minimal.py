@@ -97,6 +97,12 @@ def main():
         s = r.json()
         print(f"Stats: {s.get('total_memories')} total, {s.get('active_memories')} active")
 
+        # Set API_KEY as user_id for testing admin routes (tenant isolation)
+        r = client.post(
+            f"{BASE_URL.rstrip('/')}/api/v1/admin/consolidate/default_user", headers=HEADERS
+        )
+        print("Consolidate:", r.status_code, r.text)
+
     print("Done.")
     return 0
 

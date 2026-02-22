@@ -62,6 +62,9 @@ htmlcov/
 # uv
 .uv/
 
+# Dashboard (Node)
+src/dashboard/node_modules/
+
 # Evaluation (outputs, logs; large generated file)
 evaluation/locomo_plus/data/unified_input_samples_v2.json
 evaluation/outputs/

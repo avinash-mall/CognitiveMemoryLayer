@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Server Neo4j graph improvements** — The CML server's `UnifiedWritePathExtractor` now produces typed entities and relations for the Neo4j knowledge graph with improved prompts (schema-first, few-shot, exclusion rules). When the unified path is enabled, graph sync uses these entities/relations, improving relation names and entity types. Run `scripts/verify_neo4j_graph.py` on the server project to diagnose graph state.
+
 ## [1.3.2] - 2026-02-21
 
 ### Documentation

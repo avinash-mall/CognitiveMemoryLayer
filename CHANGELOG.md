@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Dashboard Knowledge Graph: neovis.js (offline)** — Replaced vis-network CDN with [neovis.js](https://github.com/neo4j-contrib/neovis.js) for the Knowledge Graph page. The graph connects directly from the browser to Neo4j (bolt/WebSocket) for visualization. Requires `npm run build` in `src/dashboard/` for local dev; Docker builds the bundle at image build time. New endpoint `GET /api/v1/dashboard/graph/neo4j-config` returns Neo4j connection config for the browser (admin-only). New env var `DATABASE__NEO4J_BROWSER_URL` for when Neo4j is not reachable at `DATABASE__NEO4J_URL` from the browser (e.g. Docker: set to `bolt://localhost:7687`). Cypher updated for Neo4j 5 (`COUNT {}` instead of deprecated `size()`). See `.env.example`, `ProjectPlan/UsageDocumentation.md`.
+
+- **Neo4j graph: Unified Extractor prompt engineering and graph sync** — Fixes incorrect relation names, wrong entity text (e.g. system prompts), and entity_type issues in the knowledge graph. Unified Extractor prompts redesigned with schema-first, few-shot, and explicit exclusion rules (cross-model techniques: Reintech, PromptPort, PromptNER). Entities now use typed objects `{text, normalized, type}` with allowed types (PERSON, LOCATION, ORGANIZATION, etc.); relations use `{subject, predicate, object}` with snake_case predicates. Exclusion rule instructs the LLM to omit system prompts, role instructions, and non-conversational content. Relation schema bug fixed (`subject`/`predicate`/`object` instead of `source`/`target`/`type`). Hippocampal store uses unified entities and relations for graph sync when the unified path is enabled. Fallbacks removed (no regex JSON recovery, no batch-to-per-chunk fallback). New: `tests/unit/test_unified_write_extractor.py` (12 tests), `scripts/verify_neo4j_graph.py` (diagnostic script for Neo4j). See plan: `neo4j_graph_troubleshooting_b3afb682.plan.md`.
+
 ### Changed
 
 - **LLM feature flags gating** — When `FEATURES__USE_LLM_*` flags are on (default), only the LLM path updates salience, importance, constraints, PII, and facts; rule-based logic for those fields is skipped. WriteGate accepts optional `unified_result` and uses `unified_result.importance`/`unified_result.salience`/`unified_result.pii_spans` when the respective flags are on. Orchestrator constraint supersession gates on `use_llm_constraint_extractor`. `encode_chunk` runs unified extraction before the gate when the LLM path is enabled. `encode_batch` Phase 1 passes `unified_result` to the gate; Phase 1 regex redaction skipped when PII comes from LLM. See UsageDocumentation § Write Path LLM Gating, BaseCMLStatus.
@@ -77,7 +83,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Dashboard expansion** — Major enhancement of the admin dashboard with 6 new pages and multiple new features:
   - **Tenants page** — Lists all tenants with memory/fact/event counts, active memory counts, last activity timestamps, and quick-link buttons to filter Overview/Memories/Events by tenant.
   - **Sessions page** — Shows active sessions from Redis (with TTL badges and metadata) and memory counts per `source_session_id` from the database. Click a session to filter Memory Explorer.
-  - **Knowledge Graph page** — Interactive vis-network visualization of entities and relations from Neo4j. Search entities by name, explore neighborhoods with configurable depth (1-5 hops), view node/edge details.
+  - **Knowledge Graph page** — Interactive neovis.js visualization of entities and relations from Neo4j. Connects directly from the browser to Neo4j. Search entities by name, explore neighborhoods with configurable depth (1-5 hops), view node/edge details. Bundled for offline use.
   - **API Usage page** — Current rate-limit buckets with utilization bars, hourly request volume chart (Chart.js). KPI cards for active keys, avg utilization, configured RPM, and 24h request count.
   - **Configuration page** — Read-only config snapshot showing all settings grouped by section (Application, Database, Embedding, LLM, Auth) with secrets masked. Editable settings can be changed inline at runtime (stored in Redis).
   - **Retrieval Test page** — Interactive query tool for debugging memory retrieval. Input tenant + query with optional filters; returns scored memories with relevance bars, type badges, and metadata.
@@ -132,6 +138,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Read API `session_read` constraints** — The `/session/{session_id}/read` endpoint now correctly maps and includes constraint memories in the `ReadMemoryResponse` object (previously they were silently dropped from the response).
+- **Silent database errors in `encode_batch`** — The phase 4 `upsert` loop in `HippocampalStore.encode_batch` now catches and logs (`logger.error`) underlying database exceptions rather than silently swallowing them and losing data.
+- **Unsafe async initialization** — `DatabaseManager.__init__` exception cleanup fallback now avoids calling `asyncio.run()` in a synchronous constructor when no event loop is running, logging the error safely instead of crashing.
 - **Retrieval fact typing** — Semantic-fact text search results from the neocortical store are now correctly typed as `semantic_fact` (and appear under `packet.facts`) instead of falling back to episodic.
 - **API contract: write** — Request `metadata` is now merged into memory records (user keys override system defaults). Optional `memory_type` is respected as an override for the write gate classification.
 - **API contract: read** — Request fields `memory_types`, `since`, and `until` are now applied: they are forwarded from the API through the orchestrator into the retriever and used to filter vector/search steps.
