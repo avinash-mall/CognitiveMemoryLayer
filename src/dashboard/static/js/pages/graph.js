@@ -11,6 +11,7 @@ const container = () => document.getElementById('page-graph');
 
 let neoViz = null;
 let currentTenants = [];
+let lastGraphParams = null;
 
 const TYPE_COLORS = {
     person: '#6c8cff', location: '#34d399', organization: '#fbbf24',
@@ -20,6 +21,11 @@ const TYPE_COLORS = {
 
 function colorForType(t) {
     return TYPE_COLORS[(t || '').toLowerCase()] || TYPE_COLORS.unknown;
+}
+
+function getDepth(pageEl) {
+    const raw = parseInt(pageEl?.querySelector('#graph-depth')?.value || '2', 10);
+    return Math.min(5, Math.max(1, isNaN(raw) ? 2 : raw));
 }
 
 function errToMessage(err) {
@@ -48,7 +54,7 @@ RETURN sn, r, en
 const OVERVIEW_CYPHER = `
 MATCH (n:Entity {tenant_id: $tenant_id, scope_id: $scope_id})
 WITH n ORDER BY COUNT { (n)--() } DESC LIMIT 1
-MATCH path = (n)-[*1..2]-(m:Entity)
+MATCH path = (n)-[*1..$depth]-(m:Entity)
 WHERE m.tenant_id = $tenant_id AND m.scope_id = $scope_id
 WITH path LIMIT 500
 UNWIND relationships(path) AS r
@@ -76,7 +82,10 @@ function buildNeovisConfig(neo4jConfig, pageEl) {
                             const props = node.properties || {};
                             const ent = props.entity || node.id;
                             const typ = props.entity_type || 'unknown';
-                            return `<div style="padding:8px;max-width:240px"><strong>${escapeHtml(String(ent))}</strong><br/><span style="color:#94a3b8">${escapeHtml(String(typ))}</span></div>`;
+                            const html = `<div style="padding:8px;max-width:240px"><strong>${escapeHtml(String(ent))}</strong><br/><span style="color:#94a3b8">${escapeHtml(String(typ))}</span></div>`;
+                            const div = document.createElement('div');
+                            div.innerHTML = html;
+                            return div;
                         },
                     },
                 },
@@ -216,11 +225,14 @@ export async function renderGraph({ tenantId } = {}) {
         });
 
         const scopeId = selectedTenant;
+        const depth = getDepth(el);
         try {
             neoViz.renderWithCypher(OVERVIEW_CYPHER, {
                 tenant_id: selectedTenant,
                 scope_id: scopeId,
+                depth,
             });
+            lastGraphParams = { type: 'overview', tenant_id: selectedTenant, scope_id: scopeId };
         } catch (e) {
             graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Failed to load graph: ${escapeHtml(errToMessage(e))}</div>`;
         }
@@ -299,6 +311,29 @@ function attachListeners(el, initialTenantId) {
     const depthLabel = el.querySelector('#graph-depth-label');
     depthSlider?.addEventListener('input', () => {
         depthLabel.textContent = `Depth: ${depthSlider.value}`;
+        if (!lastGraphParams || !neoViz) return;
+        const graphContainer = el.querySelector('#graph-container');
+        if (!graphContainer?.querySelector('#graph-viz')) return;
+        const depth = getDepth(el);
+        try {
+            neoViz.clearNetwork();
+            if (lastGraphParams.type === 'overview') {
+                neoViz.renderWithCypher(OVERVIEW_CYPHER, {
+                    tenant_id: lastGraphParams.tenant_id,
+                    scope_id: lastGraphParams.scope_id,
+                    depth,
+                });
+            } else {
+                neoViz.renderWithCypher(EXPLORE_CYPHER, {
+                    tenant_id: lastGraphParams.tenant_id,
+                    scope_id: lastGraphParams.scope_id,
+                    entity: lastGraphParams.entity,
+                    depth,
+                });
+            }
+        } catch (e) {
+            graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(String(e?.message || e))}</div>`;
+        }
     });
 
     el.querySelector('#graph-tenant')?.addEventListener('change', () => {
@@ -306,9 +341,11 @@ function attachListeners(el, initialTenantId) {
         if (!tid || !neoViz) return;
         const graphContainer = el.querySelector('#graph-container');
         if (!graphContainer?.querySelector('#graph-viz')) return;
+        const depth = getDepth(el);
         try {
             neoViz.clearNetwork();
-            neoViz.renderWithCypher(OVERVIEW_CYPHER, { tenant_id: tid, scope_id: tid });
+            neoViz.renderWithCypher(OVERVIEW_CYPHER, { tenant_id: tid, scope_id: tid, depth });
+            lastGraphParams = { type: 'overview', tenant_id: tid, scope_id: tid };
         } catch (e) {
             graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(String(e?.message || e))}</div>`;
         }
@@ -362,7 +399,7 @@ function attachListeners(el, initialTenantId) {
 
 async function doExplore(el, tenantId, entity, scopeId) {
     const graphContainer = el.querySelector('#graph-container');
-    const depth = parseInt(el.querySelector('#graph-depth')?.value || '2', 10);
+    const depth = getDepth(el);
     const scope = scopeId || tenantId;
 
     if (!neoViz || !graphContainer?.querySelector('#graph-viz')) {
@@ -378,6 +415,7 @@ async function doExplore(el, tenantId, entity, scopeId) {
             entity,
             depth,
         });
+        lastGraphParams = { type: 'explore', tenant_id: tenantId, scope_id: scope, entity };
     } catch (err) {
         graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(errToMessage(err))}</div>`;
     }
