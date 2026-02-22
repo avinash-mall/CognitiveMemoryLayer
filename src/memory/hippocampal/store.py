@@ -484,7 +484,7 @@ class HippocampalStore:
                 entities=entities,
                 relations=relations,
                 metadata=merged_metadata,
-                timestamp=timestamp or chunk.timestamp,
+                timestamp=chunk.timestamp,
                 confidence=conf,
                 importance=importance,
                 decay_rate=decay_rate_val,

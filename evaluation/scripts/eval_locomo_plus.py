@@ -328,6 +328,7 @@ def _ingest_sample(
     sample_idx: int,
     sample: dict,
     ingestion_delay_sec: float,
+    pbar: tqdm | None = None,
 ) -> None:
     """Ingest one sample: write all turns sequentially for tenant lp-{sample_idx}."""
     tenant_id = f"lp-{sample_idx}"
@@ -354,6 +355,8 @@ def _ingest_sample(
             f"turn_{j}",
             timestamp=ts_iso,
         )
+        if pbar is not None:
+            pbar.update(1)
         if ingestion_delay_sec > 0:
             time.sleep(ingestion_delay_sec)
 
@@ -369,30 +372,30 @@ def phase_a_ingestion(
     # Apply per-turn delay only when single-threaded (rate limiting)
     ingestion_delay = INGESTION_DELAY_SEC if ingestion_workers == 1 else 0.0
 
+    print(f"\n[Phase A] Parsing {len(samples_to_ingest)} samples to count turns...", flush=True)
+    total_turns = 0
+    for sample in samples_to_ingest:
+        input_prompt = sample.get("input_prompt", "")
+        turns = _parse_input_prompt_into_turns(input_prompt)
+        total_turns += len(turns)
+
     print(
-        f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples into CML ({ingestion_workers} workers)...",
+        f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples ({total_turns} turns total) into CML ({ingestion_workers} workers)...",
         flush=True,
     )
 
-    if ingestion_workers <= 1:
-        for i, sample in enumerate(
-            tqdm(samples_to_ingest, desc="Ingestion", unit="sample", disable=False)
-        ):
-            _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay)
-    else:
-        with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
-            futures = {
-                executor.submit(_ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay): i
-                for i, sample in enumerate(samples_to_ingest)
-            }
-            for future in tqdm(
-                as_completed(futures),
-                total=len(futures),
-                desc="Ingestion",
-                unit="sample",
-                disable=False,
-            ):
-                future.result()  # Propagate any exception
+    with tqdm(total=total_turns, desc="Ingestion", unit="turn", disable=False) as pbar:
+        if ingestion_workers <= 1:
+            for i, sample in enumerate(samples_to_ingest):
+                _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay, pbar)
+        else:
+            with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
+                futures = {
+                    executor.submit(_ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay, pbar): i
+                    for i, sample in enumerate(samples_to_ingest)
+                }
+                for future in as_completed(futures):
+                    future.result()  # Propagate any exception
 
 
 def phase_ab_consolidation(
