@@ -109,6 +109,15 @@ EXAMPLES = [
         "non_interactive_env": "CML_STANDALONE_NON_INTERACTIVE",
     },
     {
+        "name": "streamlit_app",
+        "path": "examples/streamlit_app.py",
+        "needs_api": True,
+        "needs_llm_openai": False,
+        "needs_llm_anthropic": False,
+        "interactive": False,
+        "timeout_sec": 60,
+    },
+    {
         "name": "chat_with_memory",
         "path": "examples/chat_with_memory.py",
         "needs_api": True,
@@ -294,8 +303,11 @@ def main() -> int:
         )
 
     results = []
+    print("\nStarting example runs...")
     for ex in to_run:
+        print(f"Running {ex['name']}...", flush=True)
         status, detail, elapsed, _ = _run_one(ex, include_llm, args.no_skip)
+        print(f"  -> {status} ({elapsed:.1f}s)")
         results.append((ex["name"], status, detail, elapsed))
 
     ok_count = sum(1 for _, s, _, _ in results if s == "ok")

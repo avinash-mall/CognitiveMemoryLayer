@@ -98,6 +98,7 @@ Key server-side flags that affect SDK responses:
 | `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `true` | When on, salience/importance come from unified extractor; rule-based boosts skipped. |
 | `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `true` | When on, gate importance comes from unified extractor; rule-based `_compute_importance` skipped. |
 | `FEATURES__USE_LLM_PII_REDACTION` | `true` | When on, PII redaction uses unified extractor spans; regex PII detection skipped. |
+| `FEATURES__USE_LLM_MEMORY_TYPE` | `true` | When on, memory type is classified by the LLM in the unified extraction call; when omitted in `write()`, the LLM's classification is used. API override still takes precedence. |
 | `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populates `ReadResponse.facts` with write-time facts (LLM or rule-based per `USE_LLM_WRITE_TIME_FACTS`). |
 | `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | `true` | Per-step and total retrieval timeouts; may affect result count if a step times out. |
 

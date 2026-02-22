@@ -81,3 +81,50 @@ class CreateSessionRequest(BaseModel):
     name: str | None = None
     ttl_hours: int = 24
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardConsolidateRequest(BaseModel):
+    """Request to trigger consolidation."""
+
+    tenant_id: str
+    user_id: str | None = None
+
+
+class DashboardForgetRequest(BaseModel):
+    """Request to trigger forgetting."""
+
+    tenant_id: str
+    user_id: str | None = None
+    dry_run: bool = True
+    max_memories: int = 5000
+
+
+class DashboardReconsolidateRequest(BaseModel):
+    """Request to trigger reconsolidation."""
+
+    tenant_id: str
+    user_id: str | None = None
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request to update config settings."""
+
+    updates: dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardRetrievalRequest(BaseModel):
+    """Request to test memory retrieval."""
+
+    tenant_id: str
+    query: str
+    max_results: int = Field(default=10, le=50)
+    context_filter: list[str] | None = None
+    memory_types: list[str] | None = None
+    format: Literal["packet", "list", "llm_context"] = "list"
+
+
+class BulkActionRequest(BaseModel):
+    """Request for bulk memory actions."""
+
+    memory_ids: list[UUID]
+    action: Literal["archive", "silence", "delete"]

@@ -187,8 +187,11 @@ flowchart LR
         W3["Semantic Chunker"]:::write
         W4["Write Gate"]:::process
         W5["PII Redactor"]:::process
-        W6["Unified Extract + Embed"]:::process
-        W1 --> W2 --> W3 --> W4 --> W5 --> W6
+        W6["Batch Embedder"]:::process
+        W7["Unified Extractor"]:::process
+        W1 --> W2 --> W3 --> W4 --> W5
+        W5 --> W6
+        W5 --> W7
     end
 
     subgraph Store ["STORAGE"]
@@ -210,8 +213,9 @@ flowchart LR
     end
 
     W6 --> S1
-    W6 --> S2
-    W6 --> S3
+    W7 --> S1
+    W7 --> S2
+    W7 --> S3
     S1 --> R4
     S2 --> R4
     S3 --> R4
@@ -352,8 +356,8 @@ flowchart TD
         direction TB
         Chunk(Chunk):::input
         PII[[PII Redactor]]:::process
-        Embed[[Batch Embeddings]]:::process
-        Unified[["Unified Extraction (Entities, Facts, Constraints)"]]:::process
+        Embed[[Batch Embedder]]:::process
+        Unified[["Unified Extractor\n(Entities, Facts, Constraints)"]]:::process
         Dense[/"Dense Vector"/]:::data
         Sparse[/"Entities + Relations"/]:::data
         Meta[/"Constraint Metadata"/]:::data
@@ -371,7 +375,7 @@ flowchart TD
 
 | Concept | Implementation | Location |
 | :--- | :--- | :--- |
-| One-shot encoding | `HippocampalStore.encode_batch()` &mdash; gate+redact, batch embed, upsert | `src/memory/hippocampal/store.py` |
+| One-shot encoding | `HippocampalStore.encode_batch()` &mdash; gate+redact, batch embed, unified extract, upsert | `src/memory/hippocampal/store.py` |
 | Pattern separation | Content-based stable keys (SHA256) + unique embeddings | `PostgresMemoryStore` |
 | Write-time facts | `UnifiedWritePathExtractor` populates semantic store at write time | `src/extraction/unified_write_extractor.py` |
 | Constraint extraction | `UnifiedWritePathExtractor` detects goals/values/policies/states/causal at encode time | `src/extraction/unified_write_extractor.py` |
@@ -668,7 +672,7 @@ flowchart TD
 
 ## Memory Types
 
-CML supports 15 memory types reflecting different cognitive functions:
+CML supports 15 memory types reflecting different cognitive functions. When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the LLM classifies each chunk into one of these types in the unified extraction call; you can override via the `memory_type` parameter on write.
 
 | Type | Description | Biological Analog | Decay |
 | :--- | :--- | :--- | :--- |

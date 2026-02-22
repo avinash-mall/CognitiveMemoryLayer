@@ -140,24 +140,39 @@ class HippocampalStore:
             entity_texts = [e.normalized for e in entities]
             relations = await self.relation_extractor.extract(text, entities=entity_texts)
 
-        # Use caller-provided memory_type override, else fall back to gate classification
-        memory_type = memory_type_override or (
-            gate_result.memory_types[0] if gate_result.memory_types else MemoryType.EPISODIC_EVENT
-        )
-
-        # Constraint extraction: unified or rule-based
+        # Use caller-provided memory_type override, else LLM memory_type, else gate/constraint
         from ...core.config import get_settings as _get_settings
 
         settings = _get_settings().features
+        memory_type = memory_type_override
+        if (
+            memory_type is None
+            and unified_result
+            and settings.use_llm_memory_type
+            and unified_result.memory_type
+        ):
+            try:
+                memory_type = MemoryType(unified_result.memory_type)
+            except ValueError:
+                pass
+        if memory_type is None:
+            memory_type = (
+                gate_result.memory_types[0]
+                if gate_result.memory_types
+                else MemoryType.EPISODIC_EVENT
+            )
+
+        # Constraint extraction: unified or rule-based
         if unified_result and settings.use_llm_constraint_extractor:
             extracted_constraints = unified_result.constraints
         else:
             extracted_constraints = self.constraint_extractor.extract(chunk)
         constraint_dicts = [c.to_dict() for c in extracted_constraints]
 
-        # If high-confidence constraint extracted, override memory type
+        # If high-confidence constraint extracted and no API/LLM override, override memory type
         if (
-            not memory_type_override
+            memory_type_override is None
+            and not (unified_result and settings.use_llm_memory_type and unified_result.memory_type)
             and extracted_constraints
             and any(c.confidence >= 0.7 for c in extracted_constraints)
         ):
@@ -188,9 +203,32 @@ class HippocampalStore:
         else:
             merged_metadata = system_metadata
 
+        effective_context_tags = context_tags or []
+        if (
+            not effective_context_tags
+            and unified_result
+            and settings.use_llm_context_tags
+            and hasattr(unified_result, "context_tags")
+            and unified_result.context_tags
+        ):
+            effective_context_tags = unified_result.context_tags
+
+        conf = chunk.confidence
+        if unified_result and settings.use_llm_confidence and hasattr(unified_result, "confidence"):
+            conf = unified_result.confidence
+
+        decay_rate_val: float | None = None
+        if (
+            unified_result
+            and settings.use_llm_decay_rate
+            and getattr(unified_result, "decay_rate", None) is not None
+            and 0.01 <= unified_result.decay_rate <= 0.5
+        ):
+            decay_rate_val = unified_result.decay_rate
+
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
-            context_tags=context_tags or [],
+            context_tags=effective_context_tags,
             source_session_id=source_session_id,
             agent_id=agent_id,
             namespace=namespace,
@@ -202,8 +240,9 @@ class HippocampalStore:
             relations=relations,
             metadata=merged_metadata,
             timestamp=timestamp or chunk.timestamp,
-            confidence=chunk.confidence,
+            confidence=conf,
             importance=importance,
+            decay_rate=decay_rate_val,
             provenance=Provenance(
                 source=MemorySource.AGENT_INFERRED,
                 evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
@@ -355,11 +394,23 @@ class HippocampalStore:
                 relations = relations_batch[idx]
             # text from surviving is already redacted (incl. LLM spans applied above)
 
-            memory_type = memory_type_override or (
-                gate_result.memory_types[0]
-                if gate_result.memory_types
-                else MemoryType.EPISODIC_EVENT
-            )
+            memory_type = memory_type_override
+            if (
+                memory_type is None
+                and unified_res
+                and settings.use_llm_memory_type
+                and unified_res.memory_type
+            ):
+                try:
+                    memory_type = MemoryType(unified_res.memory_type)
+                except ValueError:
+                    pass
+            if memory_type is None:
+                memory_type = (
+                    gate_result.memory_types[0]
+                    if gate_result.memory_types
+                    else MemoryType.EPISODIC_EVENT
+                )
 
             # Constraint extraction: unified or rule-based
             if unified_res and settings.use_llm_constraint_extractor:
@@ -368,9 +419,10 @@ class HippocampalStore:
                 extracted_constraints = self.constraint_extractor.extract(chunk)
             constraint_dicts = [c.to_dict() for c in extracted_constraints]
 
-            # If high-confidence constraint extracted, override memory type
+            # If high-confidence constraint extracted and no API/LLM override, override memory type
             if (
-                not memory_type_override
+                memory_type_override is None
+                and not (unified_res and settings.use_llm_memory_type and unified_res.memory_type)
                 and extracted_constraints
                 and any(c.confidence >= 0.7 for c in extracted_constraints)
             ):
@@ -396,9 +448,32 @@ class HippocampalStore:
                 system_metadata["constraints"] = constraint_dicts
             merged_metadata = {**system_metadata, **(request_metadata or {})}
 
+            effective_ct = context_tags or []
+            if (
+                not effective_ct
+                and unified_res
+                and settings.use_llm_context_tags
+                and hasattr(unified_res, "context_tags")
+                and unified_res.context_tags
+            ):
+                effective_ct = unified_res.context_tags
+
+            conf = chunk.confidence
+            if unified_res and settings.use_llm_confidence and hasattr(unified_res, "confidence"):
+                conf = unified_res.confidence
+
+            decay_rate_val: float | None = None
+            if (
+                unified_res
+                and settings.use_llm_decay_rate
+                and getattr(unified_res, "decay_rate", None) is not None
+                and 0.01 <= unified_res.decay_rate <= 0.5
+            ):
+                decay_rate_val = unified_res.decay_rate
+
             record_create = MemoryRecordCreate(
                 tenant_id=tenant_id,
-                context_tags=context_tags or [],
+                context_tags=effective_ct,
                 source_session_id=source_session_id,
                 agent_id=agent_id,
                 namespace=namespace,
@@ -410,8 +485,9 @@ class HippocampalStore:
                 relations=relations,
                 metadata=merged_metadata,
                 timestamp=timestamp or chunk.timestamp,
-                confidence=chunk.confidence,
+                confidence=conf,
                 importance=importance,
+                decay_rate=decay_rate_val,
                 provenance=Provenance(
                     source=MemorySource.AGENT_INFERRED,
                     evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),

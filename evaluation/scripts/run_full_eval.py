@@ -324,6 +324,7 @@ def main() -> None:
         env["PYTHONPATH"] = str(_LOCOMO_PLUS_ROOT)
         cmd = [
             sys.executable,
+            "-u",
             str(_EVAL_LOCOMO_PLUS),
             "--unified-file",
             str(_UNIFIED_FILE),

@@ -91,6 +91,7 @@ flowchart TB
 
 | Field | Flag | When flag on | Rule-based skipped |
 |-------|------|--------------|--------------------|
+| Memory type | `USE_LLM_MEMORY_TYPE` | Hippocampal uses `unified_result.memory_type` | ChunkType mapping, constraint heuristic |
 | Salience | `USE_LLM_SALIENCE_REFINEMENT` | Gate uses `unified_result.salience` | `_compute_importance` salience boosts |
 | Importance | `USE_LLM_WRITE_GATE_IMPORTANCE` | Gate uses `unified_result.importance` | `_compute_importance` entirely |
 | PII | `USE_LLM_PII_REDACTION` | Gate uses `unified_result.pii_spans` | Regex `_check_pii` |
@@ -434,7 +435,7 @@ Store new information in memory.
 - `eval_outcome` and `eval_reason` are present only when the request included `X-Eval-Mode: true`. `eval_outcome` is `"stored"` or `"skipped"`; `eval_reason` is a short string (e.g. write-gate skip reason, or "N chunk(s) stored").
 
 **Notes:**
-- Request metadata is merged into the stored record; optional memory_type overrides automatic classification when provided.
+- Request metadata is merged into the stored record; optional `memory_type` overrides automatic classification when provided. When omitted and `FEATURES__USE_LLM_MEMORY_TYPE` is true, the LLM classifies the type in the unified extraction call.
 - The Write Gate automatically filters low-importance content
 - PII is automatically redacted before storage
 - Content is chunked semantically if too long
@@ -805,6 +806,8 @@ Memory access is **holistic per tenant**: there are no scopes or partitions. All
 ---
 
 ## Memory Types
+
+When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the LLM classifies each chunk into one of the 15 memory types in the same unified extraction call. The priority is: (1) API `memory_type` override, (2) LLM `memory_type`, (3) high-confidence constraint extraction, (4) Write Gate ChunkType mapping. Invalid or missing LLM output falls back to the existing logic.
 
 | Type | Description | Use Case | Lifecycle |
 |------|-------------|----------|-----------|
@@ -1338,6 +1341,7 @@ All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
 | `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `true` | Use LLM salience from unified extractor for gate importance; when on, rule-based salience boosts in `_compute_importance` are skipped. |
 | `FEATURES__USE_LLM_PII_REDACTION` | `true` | Use LLM PII spans from unified extractor for redaction; when on, regex `_check_pii` is skipped in the gate. |
 | `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `true` | Use LLM importance from unified extractor for gate decision; when on, `_compute_importance` is skipped entirely. |
+| `FEATURES__USE_LLM_MEMORY_TYPE` | `true` | Use LLM `memory_type` from unified extractor when present and valid; when on, Hippocampal Store uses it instead of ChunkType mapping and constraint heuristic. API override still takes precedence. |
 | `FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY` | `true` | Skip fast pattern path, always use LLM for conflict detection. |
 
 #### Chunker (semchunk)
@@ -1348,7 +1352,7 @@ All default to `true` unless noted. Set via `FEATURES__<NAME>=false` to disable.
 | `CHUNKER__CHUNK_SIZE` | `500` | Max tokens per chunk (align with embedding model max input). |
 | `CHUNKER__OVERLAP_PERCENT` | `0.15` | Overlap ratio 0-1 (e.g. 0.15 = 15%). |
 
-When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, importance, PII spans, **entities**, and **relations** in one LLM request. Entities use typed objects (`text`, `normalized`, `type`) with allowed types (PERSON, LOCATION, ORGANIZATION, etc.); relations use `subject`, `predicate`, `object` (snake_case predicates). The prompt includes exclusion rules (no system prompts, role instructions, or non-conversational content) and few-shot examples for cross-model consistency. For each flag that is on, the corresponding rule-based logic is skipped (LLM gating). When the unified path is enabled, graph sync to Neo4j uses unified entities and relations instead of separate `EntityExtractor`/`RelationExtractor`. See the Write Path LLM Gating table in the Overview section. Use `scripts/verify_neo4j_graph.py` to run Neo4j diagnostics.
+When any write-path LLM flag is enabled, a single unified extraction call returns constraints, facts, salience, importance, **memory_type**, PII spans, **entities**, and **relations** in one LLM request. Entities use typed objects (`text`, `normalized`, `type`) with allowed types (PERSON, LOCATION, ORGANIZATION, etc.); relations use `subject`, `predicate`, `object` (snake_case predicates). The prompt includes exclusion rules (no system prompts, role instructions, or non-conversational content) and few-shot examples for cross-model consistency. For each flag that is on, the corresponding rule-based logic is skipped (LLM gating). When the unified path is enabled, graph sync to Neo4j uses unified entities and relations instead of separate `EntityExtractor`/`RelationExtractor`. See the Write Path LLM Gating table in the Overview section. Use `scripts/verify_neo4j_graph.py` to run Neo4j diagnostics.
 
 #### Retrieval Settings
 

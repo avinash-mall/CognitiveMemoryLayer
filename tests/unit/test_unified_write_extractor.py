@@ -268,3 +268,120 @@ class TestUnifiedExtractorEmptyAndBatch:
         assert results[0].relations[0].predicate == "lives_in"
         assert results[1].entities == []
         assert results[1].relations == []
+
+
+class TestUnifiedExtractorConfidenceContextTagsDecayRate:
+    """Unified extractor parses confidence, context_tags, decay_rate from LLM output."""
+
+    @pytest.mark.asyncio
+    async def test_extract_returns_confidence_context_tags_decay_rate(self, mock_llm):
+        mock_llm.complete_json.return_value = {
+            "entities": [],
+            "relations": [],
+            "constraints": [],
+            "facts": [],
+            "salience": 0.6,
+            "importance": 0.7,
+            "confidence": 0.9,
+            "context_tags": ["personal", "dietary", "work"],
+            "decay_rate": 0.1,
+        }
+        extractor = UnifiedWritePathExtractor(mock_llm)
+        chunk = _chunk("I prefer vegan food")
+        result = await extractor.extract(chunk)
+        assert result.confidence == 0.9
+        assert result.context_tags == ["personal", "dietary", "work"]
+        assert result.decay_rate == 0.1
+
+    def test_parse_result_clamps_confidence(self):
+        extractor = UnifiedWritePathExtractor(None)
+        chunk = _chunk("Test")
+        result = extractor._parse_result(
+            {
+                "entities": [],
+                "relations": [],
+                "constraints": [],
+                "facts": [],
+                "salience": 0.5,
+                "importance": 0.5,
+                "confidence": 1.5,
+            },
+            chunk,
+        )
+        assert result.confidence == 1.0
+        result2 = extractor._parse_result(
+            {
+                "entities": [],
+                "relations": [],
+                "constraints": [],
+                "facts": [],
+                "salience": 0.5,
+                "importance": 0.5,
+                "confidence": -0.1,
+            },
+            chunk,
+        )
+        assert result2.confidence == 0.0
+
+    def test_parse_result_default_confidence(self):
+        extractor = UnifiedWritePathExtractor(None)
+        chunk = _chunk("Test")
+        result = extractor._parse_result(
+            {
+                "entities": [],
+                "relations": [],
+                "constraints": [],
+                "facts": [],
+                "salience": 0.5,
+                "importance": 0.5,
+            },
+            chunk,
+        )
+        assert result.confidence == 0.5
+
+    def test_parse_result_validates_decay_rate_range(self):
+        extractor = UnifiedWritePathExtractor(None)
+        chunk = _chunk("Test")
+        result = extractor._parse_result(
+            {
+                "entities": [],
+                "relations": [],
+                "constraints": [],
+                "facts": [],
+                "salience": 0.5,
+                "importance": 0.5,
+                "decay_rate": 2.0,
+            },
+            chunk,
+        )
+        assert result.decay_rate is None
+        result2 = extractor._parse_result(
+            {
+                "entities": [],
+                "relations": [],
+                "constraints": [],
+                "facts": [],
+                "salience": 0.5,
+                "importance": 0.5,
+                "decay_rate": 0.05,
+            },
+            chunk,
+        )
+        assert result2.decay_rate == 0.05
+
+    def test_parse_result_context_tags_filters_non_strings(self):
+        extractor = UnifiedWritePathExtractor(None)
+        chunk = _chunk("Test")
+        result = extractor._parse_result(
+            {
+                "entities": [],
+                "relations": [],
+                "constraints": [],
+                "facts": [],
+                "salience": 0.5,
+                "importance": 0.5,
+                "context_tags": ["a", 42, "b", "", "  ", "c"],
+            },
+            chunk,
+        )
+        assert result.context_tags == ["a", "b", "c"]
