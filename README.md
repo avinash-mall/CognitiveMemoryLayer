@@ -222,7 +222,7 @@ flowchart LR
 ## Neuroscience-to-Implementation Mapping
 
 <details>
-<summary><h3>1. Sensory and Working Memory (Prefrontal Cortex)</h3></summary>
+<summary><strong>1. Sensory and Working Memory (Prefrontal Cortex)</strong></summary>
 
 **Biological Basis**: Sensory memory holds high-fidelity input for seconds. Working memory acts as a temporary workspace with limited capacity (~7+/-2 items).
 
@@ -269,7 +269,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>2. Encoding: Write Gate and Salience (CREB/Npas4)</h3></summary>
+<summary><strong>2. Encoding: Write Gate and Salience (CREB/Npas4)</strong></summary>
 
 **Biological Basis**: Not all experiences become memories. The proteins **CREB** and **Npas4** regulate which neurons are recruited into memory engrams based on excitability.
 
@@ -324,7 +324,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>3. Hippocampal Store (Episodic Memory)</h3></summary>
+<summary><strong>3. Hippocampal Store (Episodic Memory)</strong></summary>
 
 **Biological Basis**: The hippocampus rapidly encodes detailed, context-rich episodes with a single exposure using **pattern separation**.
 
@@ -353,7 +353,7 @@ flowchart TD
         Chunk(Chunk):::input
         PII[[PII Redactor]]:::process
         Embed[[Batch Embeddings]]:::process
-        Unified[[Unified Extraction\n(Entities, Facts, Constraints)]]:::process
+        Unified[["Unified Extraction (Entities, Facts, Constraints)"]]:::process
         Dense[/"Dense Vector"/]:::data
         Sparse[/"Entities + Relations"/]:::data
         Meta[/"Constraint Metadata"/]:::data
@@ -383,7 +383,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>4. Neocortical Store (Semantic Memory)</h3></summary>
+<summary><strong>4. Neocortical Store (Semantic Memory)</strong></summary>
 
 **Biological Basis**: The neocortex gradually encodes generalized, semantic knowledge through slow learning, supporting **pattern completion** via associative networks.
 
@@ -435,7 +435,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>5. Retrieval: Ecphory and Constructive Memory</h3></summary>
+<summary><strong>5. Retrieval: Ecphory and Constructive Memory</strong></summary>
 
 **Biological Basis**: Memory retrieval is **ecphory**&mdash;the interaction between a retrieval cue and a stored engram that reconstructs the memory.
 
@@ -465,10 +465,10 @@ flowchart TD
         direction TB
         Query([User Query]):::input
         Class{{Query Classifier\n10 Intents}}:::logic
-        Vector[("Vector Search\n(Hippocampal)")]:::hippo
-        Graph[("Graph Search\n(Neocortical)")]:::neo
+        Vector[("Vector Search (Hippocampal)")]:::hippo
+        Graph[("Graph Search (Neocortical)")]:::neo
         Constraints[("Constraint\nLookup")]:::constraint
-        Rerank[[Reranker +\nFusion]]:::logic
+        Rerank[["Reranker + Fusion"]]:::logic
         Packet(Memory Packet):::result
 
         Query --> Class
@@ -495,7 +495,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>6. Reconsolidation and Belief Revision</h3></summary>
+<summary><strong>6. Reconsolidation and Belief Revision</strong></summary>
 
 **Biological Basis**: When a memory is retrieved, it enters a **labile state** and can be modified before being restabilized (reconsolidation).
 
@@ -526,7 +526,7 @@ flowchart TD
         Mark[[Mark Labile: 5 min]]:::process
         Detect{{Conflict Detection}}:::process
         Types[\"Conflict Types:\n* Contradiction\n* Refinement\n* Supersede"/]:::list
-        Belief[[Belief Revision\nEngine]]:::engine
+        Belief[["Belief Revision Engine"]]:::engine
         Reinforce(REINFORCE):::result
         Slice(TIME_SLICE):::result
         Correct(CORRECT):::result
@@ -553,7 +553,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>7. Consolidation: The "Sleep Cycle"</h3></summary>
+<summary><strong>7. Consolidation: The "Sleep Cycle"</strong></summary>
 
 **Biological Basis**: During NREM sleep, the hippocampus "replays" recent experiences via **sharp-wave ripples**, training the neocortex to extract semantic structures.
 
@@ -606,7 +606,7 @@ flowchart TD
 </details>
 
 <details>
-<summary><h3>8. Active Forgetting (Rac1/Cofilin)</h3></summary>
+<summary><strong>8. Active Forgetting (Rac1/Cofilin)</strong></summary>
 
 **Biological Basis**: Forgetting is an **active process**. The proteins **Rac1** and **Cofilin** actively degrade memory traces by pruning synaptic connections.
 
