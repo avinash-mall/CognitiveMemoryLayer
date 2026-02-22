@@ -110,6 +110,7 @@ class MemoryRecordCreate(BaseModel):
     timestamp: datetime | None = None
     confidence: float = 0.5
     importance: float = 0.5
+    decay_rate: float | None = None
     provenance: Provenance
 
 

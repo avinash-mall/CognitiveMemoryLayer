@@ -14,13 +14,31 @@ from cml.config import CMLConfig
 from cml.exceptions import ConnectionError, TimeoutError
 from cml.models import (
     CreateSessionRequest,
+    DashboardComponentsResponse,
+    DashboardConfigResponse,
+    DashboardEventListResponse,
+    DashboardJobsResponse,
+    DashboardLabileResponse,
+    DashboardMemoryDetail,
+    DashboardMemoryListResponse,
+    DashboardOverview,
+    DashboardRateLimitsResponse,
+    DashboardRetrievalResponse,
+    DashboardSessionsResponse,
+    DashboardTenantsResponse,
+    DashboardTimelineResponse,
     ForgetRequest,
     ForgetResponse,
+    GraphExploreResponse,
+    GraphNeo4jConfigResponse,
+    GraphSearchResponse,
+    GraphStatsResponse,
     HealthResponse,
     MemoryItem,
     MemoryType,
     ReadRequest,
     ReadResponse,
+    RequestStatsResponse,
     SessionContextResponse,
     SessionResponse,
     StatsResponse,
@@ -681,18 +699,79 @@ class CognitiveMemoryLayer:
         """Current active tenant ID."""
         return self._config.tenant_id
 
-    def list_tenants(self) -> list[dict[str, Any]]:
+    def list_tenants(self) -> DashboardTenantsResponse:
         """List all tenants and their memory counts (admin only).
 
         Returns:
-            List of dicts with tenant_id, memory_count, fact_count, event_count.
+            DashboardTenantsResponse with list of tenants.
         """
         data = self._transport.request(
             "GET",
             "/dashboard/tenants",
             use_admin_key=True,
         )
-        return cast("list[dict[str, Any]]", data.get("tenants", []))
+        return DashboardTenantsResponse(**data)
+
+    # ---- Dashboard: Overview & Memories ----
+
+    def dashboard_overview(self, *, tenant_id: str | None = None) -> DashboardOverview:
+        """Get comprehensive dashboard overview stats (admin only)."""
+        params: dict[str, Any] = {}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        data = self._transport.request(
+            "GET", "/dashboard/overview", params=params, use_admin_key=True
+        )
+        return DashboardOverview(**data)
+
+    def dashboard_memories(
+        self,
+        *,
+        tenant_id: str | None = None,
+        page: int = 1,
+        per_page: int = 25,
+        type: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        sort_by: str = "written_at",
+        order: str = "desc",
+    ) -> DashboardMemoryListResponse:
+        """Get a paginated list of memories across the system (admin only)."""
+        params: dict[str, Any] = {
+            "page": page,
+            "per_page": per_page,
+            "sort_by": sort_by,
+            "order": order,
+        }
+        if tenant_id:
+            params["tenant_id"] = tenant_id
+        if type:
+            params["type"] = type
+        if status:
+            params["status"] = status
+        if search:
+            params["search"] = search
+
+        data = self._transport.request(
+            "GET", "/dashboard/memories", params=params, use_admin_key=True
+        )
+        return DashboardMemoryListResponse(**data)
+
+    def dashboard_memory_detail(self, memory_id: UUID) -> DashboardMemoryDetail:
+        """Get full detail for a single memory record (admin only)."""
+        data = self._transport.request(
+            "GET", f"/dashboard/memories/{memory_id}", use_admin_key=True
+        )
+        return DashboardMemoryDetail(**data)
+
+    def bulk_memory_action(
+        self, memory_ids: list[UUID], action: Literal["archive", "silence", "delete"]
+    ) -> dict[str, Any]:
+        """Perform bulk actions on memories (admin only)."""
+        payload = {"memory_ids": [str(m) for m in memory_ids], "action": action}
+        return self._transport.request(
+            "POST", "/dashboard/memories/bulk-action", json=payload, use_admin_key=True
+        )
 
     # ---- Phase 5: Event log ----
 
@@ -703,108 +782,94 @@ class CognitiveMemoryLayer:
         page: int = 1,
         event_type: str | None = None,
         since: datetime | None = None,
-    ) -> dict[str, Any]:
-        """Query the event log (admin only).
-
-        Args:
-            limit: Results per page.
-            page: Page number.
-            event_type: Filter by event type.
-            since: Only events after this time (if server supports it).
-
-        Returns:
-            Paginated dict with items, total, page, per_page, total_pages.
-        """
+    ) -> DashboardEventListResponse:
+        """Query the event log (admin only)."""
         params: dict[str, Any] = {"per_page": limit, "page": page}
         if event_type is not None:
             params["event_type"] = event_type
         if since is not None:
             params["since"] = since.isoformat()
-        return self._transport.request(
+        data = self._transport.request(
             "GET",
             "/dashboard/events",
             params=params,
             use_admin_key=True,
         )
+        return DashboardEventListResponse(**data)
+
+    def dashboard_timeline(
+        self,
+        *,
+        tenant_id: str | None = None,
+        days: int = 30,
+        metric: str = "memories",
+    ) -> DashboardTimelineResponse:
+        """Get timeline data for charts (admin only)."""
+        params: dict[str, Any] = {"days": days, "metric": metric}
+        if tenant_id:
+            params["tenant_id"] = tenant_id
+        data = self._transport.request(
+            "GET", "/dashboard/timeline", params=params, use_admin_key=True
+        )
+        return DashboardTimelineResponse(**data)
 
     # ---- Phase 5: Component health ----
 
-    def component_health(self) -> dict[str, Any]:
-        """Get detailed health status of all CML components (admin only).
-
-        Returns:
-            Dict with components: [{name, status, latency_ms, error, ...}].
-        """
-        return self._transport.request(
+    def component_health(self) -> DashboardComponentsResponse:
+        """Get detailed health status of all CML components (admin only)."""
+        data = self._transport.request(
             "GET",
             "/dashboard/components",
             use_admin_key=True,
         )
+        return DashboardComponentsResponse(**data)
 
     # ---- Dashboard: Sessions ----
 
-    def get_sessions(self, *, tenant_id: str | None = None) -> dict[str, Any]:
-        """List active sessions from Redis and memory counts per session (admin only).
-
-        Args:
-            tenant_id: Optional tenant filter.
-
-        Returns:
-            Dict with sessions[], total_active, total_memories_with_session.
-        """
+    def get_sessions(self, *, tenant_id: str | None = None) -> DashboardSessionsResponse:
+        """List active sessions from Redis and memory counts per session (admin only)."""
         params: dict[str, Any] = {}
         if tenant_id is not None:
             params["tenant_id"] = tenant_id
-        return self._transport.request(
+        data = self._transport.request(
             "GET",
             "/dashboard/sessions",
             params=params,
             use_admin_key=True,
         )
+        return DashboardSessionsResponse(**data)
 
     # ---- Dashboard: Rate limits & request stats ----
 
-    def get_rate_limits(self) -> dict[str, Any]:
-        """Get current rate-limit usage per key (admin only).
-
-        Returns:
-            Dict with entries[], configured_rpm.
-        """
-        return self._transport.request(
+    def get_rate_limits(self) -> DashboardRateLimitsResponse:
+        """Get current rate-limit usage per key (admin only)."""
+        data = self._transport.request(
             "GET",
             "/dashboard/ratelimits",
             use_admin_key=True,
         )
+        return DashboardRateLimitsResponse(**data)
 
-    def get_request_stats(self, *, hours: int = 24) -> dict[str, Any]:
-        """Get hourly request counts (admin only).
-
-        Args:
-            hours: Number of hours to retrieve (1-48, default 24).
-
-        Returns:
-            Dict with points[] and total_last_24h.
-        """
-        return self._transport.request(
+    def get_request_stats(self, *, hours: int = 24) -> RequestStatsResponse:
+        """Get hourly request counts (admin only)."""
+        data = self._transport.request(
             "GET",
             "/dashboard/request-stats",
             params={"hours": hours},
             use_admin_key=True,
         )
+        return RequestStatsResponse(**data)
 
     # ---- Dashboard: Knowledge graph ----
 
-    def get_graph_stats(self) -> dict[str, Any]:
-        """Get knowledge graph statistics from Neo4j (admin only).
-
-        Returns:
-            Dict with total_nodes, total_edges, entity_types, tenants_with_graph.
-        """
-        return self._transport.request(
+    def get_graph_stats(self) -> GraphStatsResponse:
+        """Get knowledge graph statistics from Neo4j (admin only)."""
+        data = self._transport.request(
             "GET",
             "/dashboard/graph/stats",
             use_admin_key=True,
         )
+        return GraphStatsResponse(**data)
 
     def explore_graph(
         self,
@@ -813,19 +878,9 @@ class CognitiveMemoryLayer:
         entity: str,
         scope_id: str = "default",
         depth: int = 2,
-    ) -> dict[str, Any]:
-        """Explore the neighborhood of an entity in the knowledge graph (admin only).
-
-        Args:
-            tenant_id: Target tenant (defaults to configured tenant).
-            entity: Center entity name.
-            scope_id: Scope identifier (default "default").
-            depth: Exploration depth (1-5 hops).
-
-        Returns:
-            Dict with nodes[], edges[], center_entity.
-        """
-        return self._transport.request(
+    ) -> GraphExploreResponse:
+        """Explore the neighborhood of an entity in the knowledge graph (admin only)."""
+        data = self._transport.request(
             "GET",
             "/dashboard/graph/explore",
             params={
@@ -836,6 +891,7 @@ class CognitiveMemoryLayer:
             },
             use_admin_key=True,
         )
+        return GraphExploreResponse(**data)
 
     def search_graph(
         self,
@@ -843,50 +899,41 @@ class CognitiveMemoryLayer:
         *,
         tenant_id: str | None = None,
         limit: int = 25,
-    ) -> dict[str, Any]:
-        """Search entities by name pattern in the knowledge graph (admin only).
-
-        Args:
-            query: Entity name pattern.
-            tenant_id: Optional tenant filter.
-            limit: Max results.
-
-        Returns:
-            Dict with results[].
-        """
+    ) -> GraphSearchResponse:
+        """Search entities by name pattern in the knowledge graph (admin only)."""
         params: dict[str, Any] = {"query": query, "limit": limit}
         if tenant_id is not None:
             params["tenant_id"] = tenant_id
-        return self._transport.request(
+        data = self._transport.request(
             "GET",
             "/dashboard/graph/search",
             params=params,
             use_admin_key=True,
         )
+        return GraphSearchResponse(**data)
+
+    def dashboard_neo4j_config(self) -> GraphNeo4jConfigResponse:
+        """Get Neo4j connection configuration for the frontend graph visualizer (admin only)."""
+        data = self._transport.request(
+            "GET",
+            "/dashboard/graph/neo4j-config",
+            use_admin_key=True,
+        )
+        return GraphNeo4jConfigResponse(**data)
 
     # ---- Dashboard: Configuration ----
 
-    def get_config(self) -> dict[str, Any]:
-        """Get application configuration snapshot with secrets masked (admin only).
-
-        Returns:
-            Dict with sections[], each containing items[].
-        """
-        return self._transport.request(
+    def get_config(self) -> DashboardConfigResponse:
+        """Get application configuration snapshot with secrets masked (admin only)."""
+        data = self._transport.request(
             "GET",
             "/dashboard/config",
             use_admin_key=True,
         )
+        return DashboardConfigResponse(**data)
 
     def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
-        """Update editable config settings at runtime (admin only).
-
-        Args:
-            updates: Dict of setting key -> new value.
-
-        Returns:
-            Dict with success and current overrides.
-        """
+        """Update editable config settings at runtime (admin only)."""
         return self._transport.request(
             "PUT",
             "/dashboard/config",
@@ -896,24 +943,18 @@ class CognitiveMemoryLayer:
 
     # ---- Dashboard: Labile / Reconsolidation ----
 
-    def get_labile_status(self, *, tenant_id: str | None = None) -> dict[str, Any]:
-        """Get labile memory / reconsolidation status (admin only).
-
-        Args:
-            tenant_id: Optional tenant filter.
-
-        Returns:
-            Dict with tenants[], total_db_labile, total_redis_scopes, etc.
-        """
+    def get_labile_status(self, *, tenant_id: str | None = None) -> DashboardLabileResponse:
+        """Get labile memory / reconsolidation status (admin only)."""
         params: dict[str, Any] = {}
         if tenant_id is not None:
             params["tenant_id"] = tenant_id
-        return self._transport.request(
+        data = self._transport.request(
             "GET",
             "/dashboard/labile",
             params=params,
             use_admin_key=True,
         )
+        return DashboardLabileResponse(**data)
 
     # ---- Dashboard: Retrieval test ----
 
@@ -926,20 +967,8 @@ class CognitiveMemoryLayer:
         context_filter: list[str] | None = None,
         memory_types: list[str] | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "list",
-    ) -> dict[str, Any]:
-        """Test memory retrieval via the dashboard API (admin only).
-
-        Args:
-            query: Search query.
-            tenant_id: Target tenant (defaults to configured tenant).
-            max_results: Max results (1-50).
-            context_filter: Optional context tags.
-            memory_types: Optional memory type filter.
-            response_format: Response format.
-
-        Returns:
-            Dict with query, results[], total_count, elapsed_ms, llm_context.
-        """
+    ) -> DashboardRetrievalResponse:
+        """Test memory retrieval via the dashboard API (admin only)."""
         payload: dict[str, Any] = {
             "tenant_id": tenant_id or self._config.tenant_id,
             "query": query,
@@ -950,12 +979,13 @@ class CognitiveMemoryLayer:
             payload["context_filter"] = context_filter
         if memory_types is not None:
             payload["memory_types"] = memory_types
-        return self._transport.request(
+        data = self._transport.request(
             "POST",
             "/dashboard/retrieval",
             json=payload,
             use_admin_key=True,
         )
+        return DashboardRetrievalResponse(**data)
 
     # ---- Dashboard: Job history ----
 
@@ -965,52 +995,33 @@ class CognitiveMemoryLayer:
         tenant_id: str | None = None,
         job_type: str | None = None,
         limit: int = 50,
-    ) -> dict[str, Any]:
-        """List recent consolidation/forgetting job history (admin only).
-
-        Args:
-            tenant_id: Optional tenant filter.
-            job_type: Optional type filter ("consolidate", "forget", or "reconsolidate").
-            limit: Max results.
-
-        Returns:
-            Dict with items[] and total.
-        """
+    ) -> DashboardJobsResponse:
+        """List recent consolidation/forgetting job history (admin only)."""
         params: dict[str, Any] = {"limit": limit}
         if tenant_id is not None:
             params["tenant_id"] = tenant_id
         if job_type is not None:
             params["job_type"] = job_type
-        return self._transport.request(
+        data = self._transport.request(
             "GET",
             "/dashboard/jobs",
             params=params,
             use_admin_key=True,
         )
+        return DashboardJobsResponse(**data)
 
-    # ---- Dashboard: Bulk memory actions ----
-
-    def bulk_memory_action(
-        self,
-        memory_ids: list[UUID],
-        action: Literal["archive", "silence", "delete"],
-    ) -> dict[str, Any]:
-        """Apply a bulk action to multiple memories (admin only).
+    def reset_database(self, confirm: bool = False) -> dict[str, Any]:
+        """Reset the entire database, dropping all content (admin only).
 
         Args:
-            memory_ids: List of memory UUIDs to act on.
-            action: "archive", "silence", or "delete".
-
-        Returns:
-            Dict with success, affected count, action.
+            confirm: Must be True to proceed.
         """
+        if not confirm:
+            raise ValueError("You must pass confirm=True to reset the database.")
         return self._transport.request(
             "POST",
-            "/dashboard/memories/bulk-action",
-            json={
-                "memory_ids": [str(mid) for mid in memory_ids],
-                "action": action,
-            },
+            "/dashboard/database/reset",
+            json={"confirm": True},
             use_admin_key=True,
         )
 
@@ -1429,8 +1440,37 @@ class NamespacedClient:
     def tenant_id(self) -> str:
         return self._parent.tenant_id
 
-    def list_tenants(self) -> list[dict[str, Any]]:
+    def list_tenants(self) -> DashboardTenantsResponse:
         return self._parent.list_tenants()
+
+    def dashboard_overview(self, *, tenant_id: str | None = None) -> DashboardOverview:
+        return self._parent.dashboard_overview(tenant_id=tenant_id)
+
+    def dashboard_memories(
+        self,
+        *,
+        tenant_id: str | None = None,
+        page: int = 1,
+        per_page: int = 25,
+        type: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        sort_by: str = "written_at",
+        order: str = "desc",
+    ) -> DashboardMemoryListResponse:
+        return self._parent.dashboard_memories(
+            tenant_id=tenant_id,
+            page=page,
+            per_page=per_page,
+            type=type,
+            status=status,
+            search=search,
+            sort_by=sort_by,
+            order=order,
+        )
+
+    def dashboard_memory_detail(self, memory_id: UUID) -> DashboardMemoryDetail:
+        return self._parent.dashboard_memory_detail(memory_id)
 
     def get_events(
         self,
@@ -1439,7 +1479,7 @@ class NamespacedClient:
         page: int = 1,
         event_type: str | None = None,
         since: datetime | None = None,
-    ) -> dict[str, Any]:
+    ) -> DashboardEventListResponse:
         return self._parent.get_events(
             limit=limit,
             page=page,
@@ -1447,7 +1487,16 @@ class NamespacedClient:
             since=since,
         )
 
-    def component_health(self) -> dict[str, Any]:
+    def dashboard_timeline(
+        self,
+        *,
+        tenant_id: str | None = None,
+        days: int = 30,
+        metric: str = "memories",
+    ) -> DashboardTimelineResponse:
+        return self._parent.dashboard_timeline(tenant_id=tenant_id, days=days, metric=metric)
+
+    def component_health(self) -> DashboardComponentsResponse:
         return self._parent.component_health()
 
     def iter_memories(
@@ -1463,16 +1512,16 @@ class NamespacedClient:
             batch_size=batch_size,
         )
 
-    def get_sessions(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+    def get_sessions(self, *, tenant_id: str | None = None) -> DashboardSessionsResponse:
         return self._parent.get_sessions(tenant_id=tenant_id)
 
-    def get_rate_limits(self) -> dict[str, Any]:
+    def get_rate_limits(self) -> DashboardRateLimitsResponse:
         return self._parent.get_rate_limits()
 
-    def get_request_stats(self, *, hours: int = 24) -> dict[str, Any]:
+    def get_request_stats(self, *, hours: int = 24) -> RequestStatsResponse:
         return self._parent.get_request_stats(hours=hours)
 
-    def get_graph_stats(self) -> dict[str, Any]:
+    def get_graph_stats(self) -> GraphStatsResponse:
         return self._parent.get_graph_stats()
 
     def explore_graph(
@@ -1482,23 +1531,26 @@ class NamespacedClient:
         entity: str,
         scope_id: str = "default",
         depth: int = 2,
-    ) -> dict[str, Any]:
+    ) -> GraphExploreResponse:
         return self._parent.explore_graph(
             tenant_id=tenant_id, entity=entity, scope_id=scope_id, depth=depth
         )
 
     def search_graph(
         self, query: str, *, tenant_id: str | None = None, limit: int = 25
-    ) -> dict[str, Any]:
+    ) -> GraphSearchResponse:
         return self._parent.search_graph(query, tenant_id=tenant_id, limit=limit)
 
-    def get_config(self) -> dict[str, Any]:
+    def dashboard_neo4j_config(self) -> GraphNeo4jConfigResponse:
+        return self._parent.dashboard_neo4j_config()
+
+    def get_config(self) -> DashboardConfigResponse:
         return self._parent.get_config()
 
     def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
         return self._parent.update_config(updates)
 
-    def get_labile_status(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+    def get_labile_status(self, *, tenant_id: str | None = None) -> DashboardLabileResponse:
         return self._parent.get_labile_status(tenant_id=tenant_id)
 
     def test_retrieval(
@@ -1510,7 +1562,7 @@ class NamespacedClient:
         context_filter: list[str] | None = None,
         memory_types: list[str] | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "list",
-    ) -> dict[str, Any]:
+    ) -> DashboardRetrievalResponse:
         return self._parent.test_retrieval(
             query,
             tenant_id=tenant_id,
@@ -1522,8 +1574,11 @@ class NamespacedClient:
 
     def get_jobs(
         self, *, tenant_id: str | None = None, job_type: str | None = None, limit: int = 50
-    ) -> dict[str, Any]:
+    ) -> DashboardJobsResponse:
         return self._parent.get_jobs(tenant_id=tenant_id, job_type=job_type, limit=limit)
+
+    def reset_database(self, confirm: bool = False) -> dict[str, Any]:
+        return self._parent.reset_database(confirm=confirm)
 
     def bulk_memory_action(
         self, memory_ids: list[UUID], action: Literal["archive", "silence", "delete"]

@@ -22,7 +22,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 ### Methods
 
-- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. Optional `timestamp` (datetime) for event time; defaults to now. When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason)—useful for benchmark scripts to aggregate gating statistics. Server-side: ~1 internal LLM call per chunk (default settings).
+- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False)** → `WriteResponse` — Store new memory. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. When omitted and `FEATURES__USE_LLM_MEMORY_TYPE` is true (server default), the LLM classifies the type in the unified extraction call. Optional `timestamp` (datetime) for event time; defaults to now. When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason)—useful for benchmark scripts to aggregate gating statistics. Server-side: ~1 internal LLM call per chunk (default settings).
 - **read(query, \*, max_results=10, context_filter, memory_types, since, until, response_format, user_timezone=None)** → `ReadResponse` — Retrieve memories. The server applies `memory_types`, `since`, and `until`. `response_format`: "packet" (categorized), "list" (flat), "llm_context" (markdown string). Optional `user_timezone` (IANA string, e.g. `"America/New_York"`) for timezone-aware "today"/"yesterday" filters in retrieval. Server-side: 1–2 internal LLM calls (query classification + optional constraint reranking).
 - **read_safe(query, \*\*kwargs)** → `ReadResponse` — Like read; returns empty result on connection/timeout. Accepts same kwargs as read (including `user_timezone`).
 - **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp, user_timezone=None)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now. Optional `user_timezone` for retrieval "today"/"yesterday" (e.g. `"America/New_York"`). Server-side: ~5–10 internal LLM calls (retrieve + 2 writes + reconsolidation). See [Configuration](configuration.md) for breakdown.
@@ -52,20 +52,26 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **with_namespace(namespace)** → `NamespacedClient` — Create a namespace-scoped view.
 - **iter_memories(\*, memory_types, status, batch_size)** → `Iterator[MemoryItem]` — Paginated iteration over memories.
 
-**New dashboard admin methods (v1.1.0):**
+**New dashboard admin methods:**
 
-- **get_sessions(\*, tenant_id)** → `dict` — List active sessions from Redis with TTL and memory counts per session.
-- **get_rate_limits()** → `dict` — Current rate-limit bucket usage per API key with remaining capacity and TTL.
-- **get_request_stats(\*, hours=24)** → `dict` — Hourly request volume over the last N hours (1–48).
-- **get_graph_stats()** → `dict` — Knowledge graph statistics from Neo4j (total nodes, edges, entity types).
-- **explore_graph(\*, tenant_id, entity, scope_id="default", depth=2)** → `dict` — Explore the neighborhood of an entity in the knowledge graph (1–5 hops).
-- **search_graph(query, \*, tenant_id, limit=25)** → `dict` — Search entities by name pattern.
-- **get_config()** → `dict` — Read-only application configuration snapshot with secrets masked.
+- **dashboard_overview(\*, tenant_id)** → `DashboardOverview` — Get comprehensive dashboard overview stats.
+- **dashboard_memories(\*, tenant_id, page=1, per_page=25, type, status, search, sort_by="written_at", order="desc")** → `DashboardMemoryListResponse` — Paginated memories list.
+- **dashboard_memory_detail(memory_id)** → `DashboardMemoryDetail` — Full detail for a single memory record.
+- **dashboard_timeline(\*, tenant_id, days=30, metric="memories")** → `DashboardTimelineResponse` — Timeline data for charts.
+- **dashboard_neo4j_config()** → `GraphNeo4jConfigResponse` — Neo4j connection configuration for frontend graph visualizer.
+- **get_sessions(\*, tenant_id)** → `DashboardSessionsResponse` — List active sessions from Redis with TTL and counts.
+- **get_rate_limits()** → `DashboardRateLimitsResponse` — Current rate-limit bucket usage per API key.
+- **get_request_stats(\*, hours=24)** → `RequestStatsResponse` — Hourly request volume over the last N hours.
+- **get_graph_stats()** → `GraphStatsResponse` — Knowledge graph statistics from Neo4j.
+- **explore_graph(\*, tenant_id, entity, scope_id="default", depth=2)** → `GraphExploreResponse` — Explore knowledge graph neighborhood.
+- **search_graph(query, \*, tenant_id, limit=25)** → `GraphSearchResponse` — Search entities by name pattern.
+- **get_config()** → `DashboardConfigResponse` — Application configuration snapshot.
 - **update_config(updates)** → `dict` — Set runtime configuration overrides stored in Redis.
-- **get_labile_status(\*, tenant_id)** → `dict` — Reconsolidation / labile memory status per tenant.
-- **test_retrieval(query, \*, tenant_id, max_results=10, context_filter, memory_types, response_format="list")** → `dict` — Test retrieval via the dashboard API; returns scored memories and optional LLM context.
-- **get_jobs(\*, tenant_id, job_type, limit=50)** → `dict` — List recent consolidation/forgetting/reconsolidation job history with status and results.
-- **bulk_memory_action(memory_ids, action)** → `dict` — Apply "archive", "silence", or "delete" to multiple memories in bulk.
+- **get_labile_status(\*, tenant_id)** → `DashboardLabileResponse` — Reconsolidation / labile memory status.
+- **test_retrieval(query, \*, tenant_id, max_results=10, context_filter, memory_types, response_format="list")** → `DashboardRetrievalResponse` — Test retrieval via dashboard API.
+- **get_jobs(\*, tenant_id, job_type, limit=50)** → `DashboardJobsResponse` — List recent job history.
+- **reset_database(\*, confirm=False)** → `dict` — Reset database.
+- **bulk_memory_action(memory_ids, action)** → `dict` — Apply bulk actions to memories.
 
 All admin methods require `CML_ADMIN_API_KEY` to be configured. They are available on both `CognitiveMemoryLayer` / `AsyncCognitiveMemoryLayer` and their `NamespacedClient` / `AsyncNamespacedClient` wrappers.
 
