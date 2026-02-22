@@ -139,7 +139,7 @@ def run_judge(args):
 
     if concurrency <= 1:
         results = []
-        for r in tqdm(records, desc="Judge"):
+        for r in tqdm(records, desc="Judge", disable=False):
             results.append(_judge_one_record(r, args))
     else:
         results = [None] * len(records)
@@ -147,7 +147,9 @@ def run_judge(args):
             future_to_idx = {
                 executor.submit(_judge_one_record, r, args): i for i, r in enumerate(records)
             }
-            for future in tqdm(as_completed(future_to_idx), total=len(records), desc="Judge"):
+            for future in tqdm(
+                as_completed(future_to_idx), total=len(records), desc="Judge", disable=False
+            ):
                 idx = future_to_idx[future]
                 results[idx] = future.result()
 

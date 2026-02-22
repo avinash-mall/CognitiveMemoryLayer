@@ -133,7 +133,7 @@ From **project root**:
 python evaluation/scripts/run_full_eval.py
 ```
 
-This runs: (1) Docker down -v, (2) Docker up, (3) API health wait, (4) eval_locomo_plus (ingest, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json`. Use **`--resume`** to continue from the failed step (and from the next sample if step 4 failed during QA). **`--resume` implies `--skip-docker`** (no need to pass both).
+This runs: (1) Docker down -v, (2) Docker up, (3) API health wait, (4) eval_locomo_plus (ingest, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json`. Use **`--resume`** to continue from the failed step (and from the next sample if step 4 failed during QA). **`--resume` implies `--skip-docker`** (no need to pass both). Progress bars for each phase display even in IDE terminals and Windows (non-TTY).
 
 **If API is already running:**
 

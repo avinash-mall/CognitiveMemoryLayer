@@ -38,5 +38,8 @@ class QueryAnalysis:
     metadata: dict[str, Any] = field(default_factory=dict)
     user_timezone: str | None = None  # IANA timezone (e.g. "America/New_York")
     # Cognitive constraint dimensions detected in the query
-    constraint_dimensions: list[str] = field(default_factory=list)  # e.g. ["goal", "value"]
+    constraint_dimensions: list[str] | None = field(default_factory=list)  # e.g. ["goal", "value"]
+    constraint_dimensions_from_llm: bool = (
+        False  # True if LLM explicitly provided constraint_dimensions
+    )
     is_decision_query: bool = False  # True if query implies a decision/temptation/recommendation
