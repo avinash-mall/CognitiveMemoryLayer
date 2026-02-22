@@ -362,6 +362,29 @@ def demo_forget_memory():
         print(f"Failed: {response.text}")
 
 
+def demo_consolidate():
+    """Demonstrate episodic to semantic consolidation."""
+    print_section("Consolidate Memories")
+
+    user_id = API_KEY  # Usually a user_id or tenant
+    print(f"Triggering consolidation for user {user_id}...")
+
+    response = httpx.post(
+        f"{BASE_URL.replace('/api/v1', '')}/api/v1/admin/consolidate/{user_id}",
+        headers=HEADERS,
+        timeout=HTTP_TIMEOUT,
+    )
+
+    if response.status_code == 200:
+        data = response.json()
+        print("Consolidation triggered:")
+        print(f"  Episodes sampled: {data.get('episodes_sampled', 0)}")
+        print(f"  Clusters formed: {data.get('clusters_formed', 0)}")
+        print(f"  Gists extracted: {data.get('gists_extracted', 0)}")
+    else:
+        print(f"Failed: {response.status_code} - {response.text}")
+
+
 def demo_curl_examples():
     """Print curl command examples."""
     print_section("Curl Command Examples")
@@ -441,6 +464,9 @@ def main():
 
         _pause("Press Enter to continue with forget demo...")
         demo_forget_memory()
+
+        _pause("Press Enter to continue with consolidate demo...")
+        demo_consolidate()
 
         _pause("Press Enter to see curl examples...")
         demo_curl_examples()

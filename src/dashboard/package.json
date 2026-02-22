@@ -1,0 +1,16 @@
+{
+  "name": "cml-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "neovis.js": "^2.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

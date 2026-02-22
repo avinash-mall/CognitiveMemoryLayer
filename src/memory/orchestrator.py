@@ -302,11 +302,11 @@ class MemoryOrchestrator:
             and hasattr(self.hippocampal, "unified_extractor")
             and self.hippocampal.unified_extractor
         ):
-            import asyncio
-
-            _tasks = [self.hippocampal.unified_extractor.extract(c) for c in chunks_for_encoding]
-            _raw = await asyncio.gather(*_tasks, return_exceptions=True)
-            _unified_results = [r if not isinstance(r, Exception) else None for r in _raw]
+            # Use extract_batch for a single LLM call covering all chunks instead of
+            # N parallel extract() calls (1 LLM call regardless of chunk count).
+            _unified_results = await self.hippocampal.unified_extractor.extract_batch(
+                chunks_for_encoding
+            )
 
         # Deactivate previous episodic constraints by fact key before writing (supersession)
         if _settings.features.constraint_extraction_enabled and chunks_for_encoding:

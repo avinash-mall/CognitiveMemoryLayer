@@ -481,6 +481,14 @@ class GraphSearchResponse(BaseModel):
     results: list[GraphSearchResult] = Field(default_factory=list)
 
 
+class GraphNeo4jConfigResponse(BaseModel):
+    """Neo4j connection config for browser (neovis.js). Admin-only."""
+
+    server_url: str
+    server_user: str
+    server_password: str
+
+
 # ---- Config Schemas ----
 
 
@@ -494,6 +502,10 @@ class ConfigItem(BaseModel):
     is_editable: bool = False
     source: str = "default"  # "default", "env", "override"
     description: str = ""
+    requires_restart: bool = True
+    is_required: bool = False
+    env_var: str = ""
+    options: list[str] | None = None  # If set, UI shows dropdown with these values
 
 
 class ConfigSection(BaseModel):
