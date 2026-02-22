@@ -104,15 +104,29 @@ class WriteGate:
             else:
                 redaction_required = False
 
+        effective_chunk_type: ChunkType | None = None
+        if (
+            unified_result is not None
+            and settings.use_llm_memory_type
+            and unified_result.memory_type
+        ):
+            effective_chunk_type = _MEMORY_TYPE_TO_CHUNK_TYPE.get(
+                unified_result.memory_type, ChunkType.STATEMENT
+            )
+
         importance: float
         if settings.use_llm_write_gate_importance and unified_result is not None:
             importance = unified_result.importance
         elif settings.use_llm_salience_refinement and unified_result is not None:
             importance = unified_result.salience
         else:
-            importance = self._compute_importance(chunk, context)
+            importance = self._compute_importance(
+                chunk, context, effective_chunk_type=effective_chunk_type
+            )
         novelty = self._compute_novelty(chunk, existing_memories)
-        memory_types = self._determine_memory_types(chunk)
+        memory_types = self._determine_memory_types(
+            chunk, effective_chunk_type=effective_chunk_type
+        )
 
         # Skip if novelty alone is below minimum threshold (MED-17)
         if novelty < self.config.min_novelty:
@@ -158,7 +172,10 @@ class WriteGate:
         return any(pattern.search(text) for pattern in self._secret_patterns)
 
     def _compute_importance(
-        self, chunk: SemanticChunk, context: dict[str, Any] | None = None
+        self,
+        chunk: SemanticChunk,
+        context: dict[str, Any] | None = None,
+        effective_chunk_type: ChunkType | None = None,
     ) -> float:
         score = chunk.salience
         type_boosts = {
@@ -168,7 +185,8 @@ class WriteGate:
             ChunkType.INSTRUCTION: 0.1,
             ChunkType.EVENT: 0.1,
         }
-        score += type_boosts.get(chunk.chunk_type, 0.0)
+        ct = effective_chunk_type if effective_chunk_type is not None else chunk.chunk_type
+        score += type_boosts.get(ct, 0.0)
         text_lower = chunk.text.lower()
         if any(m in text_lower for m in ["always", "never", "important", "remember"]):
             score += 0.2
@@ -221,7 +239,9 @@ class WriteGate:
                     return 0.5
         return 1.0
 
-    def _determine_memory_types(self, chunk: SemanticChunk) -> list[MemoryType]:
+    def _determine_memory_types(
+        self, chunk: SemanticChunk, effective_chunk_type: ChunkType | None = None
+    ) -> list[MemoryType]:
         mapping = {
             ChunkType.PREFERENCE: [MemoryType.PREFERENCE],
             ChunkType.CONSTRAINT: [MemoryType.CONSTRAINT],
@@ -232,7 +252,21 @@ class WriteGate:
             ChunkType.QUESTION: [MemoryType.EPISODIC_EVENT],
             ChunkType.OPINION: [MemoryType.HYPOTHESIS],
         }
-        return mapping.get(chunk.chunk_type, [MemoryType.EPISODIC_EVENT])
+        ct = effective_chunk_type if effective_chunk_type is not None else chunk.chunk_type
+        return mapping.get(ct, [MemoryType.EPISODIC_EVENT])
 
     def add_known_fact(self, fact_key: str) -> None:
         self._known_facts.add(fact_key)
+
+
+_MEMORY_TYPE_TO_CHUNK_TYPE: dict[str, ChunkType] = {
+    "preference": ChunkType.PREFERENCE,
+    "constraint": ChunkType.CONSTRAINT,
+    "semantic_fact": ChunkType.FACT,
+    "episodic_event": ChunkType.EVENT,
+    "task_state": ChunkType.INSTRUCTION,
+    "hypothesis": ChunkType.OPINION,
+    "procedure": ChunkType.INSTRUCTION,
+    "conversation": ChunkType.EVENT,
+    "message": ChunkType.EVENT,
+}

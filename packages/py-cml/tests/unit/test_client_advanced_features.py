@@ -184,9 +184,9 @@ def test_list_tenants_calls_dashboard_tenants(cml_config: CMLConfig) -> None:
         }
     )
     tenants = client.list_tenants()
-    assert len(tenants) == 1
-    assert tenants[0]["tenant_id"] == "t1"
-    assert tenants[0]["memory_count"] == 10
+    assert len(tenants.tenants) == 1
+    assert tenants.tenants[0].tenant_id == "t1"
+    assert tenants.tenants[0].memory_count == 10
     call = client._transport.request.call_args
     assert call[0] == ("GET", "/dashboard/tenants")
     assert call[1]["use_admin_key"] is True
@@ -208,8 +208,8 @@ def test_get_events_calls_dashboard_events(cml_config: CMLConfig) -> None:
         }
     )
     out = client.get_events(limit=25, page=2, event_type="memory_op")
-    assert out["page"] == 2
-    assert out["per_page"] == 25
+    assert out.page == 2
+    assert out.per_page == 25
     call = client._transport.request.call_args
     assert call[0] == ("GET", "/dashboard/events")
     assert call[1]["params"]["per_page"] == 25
@@ -244,8 +244,8 @@ def test_component_health_calls_dashboard_components(cml_config: CMLConfig) -> N
         }
     )
     out = client.component_health()
-    assert "components" in out
-    assert out["components"][0]["name"] == "PostgreSQL"
+    assert out.components
+    assert out.components[0].name == "PostgreSQL"
     call = client._transport.request.call_args
     assert call[0] == ("GET", "/dashboard/components")
     assert call[1]["use_admin_key"] is True

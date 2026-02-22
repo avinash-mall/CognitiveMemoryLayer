@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Client API Synchronization** — `py-cml` (sync and async clients) is now fully synchronized with the CML server API. Added missing dashboard and admin endpoints (e.g., `dashboard_overview`, `dashboard_memories`, `dashboard_timeline`, `dashboard_neo4j_config`, `reset_database`). Updated all new and existing methods to use properly typed Pydantic models from `cml.models` instead of generic dictionaries, providing better typing and autocomplete support. Added missing Pydantic models to `requests.py` and `responses.py`. Update documentation in `api-reference.md`.
+
+### Documentation
+
+- **Server LLM memory type** — The CML server's unified extractor now outputs `memory_type` per chunk when `FEATURES__USE_LLM_MEMORY_TYPE` is true (default). The optional `memory_type` parameter on `write()` overrides this; when omitted, the LLM classifies the type in the same extraction call. No SDK API changes.
+
 ## [1.3.3] - 2026-02-22
 
 ### Documentation

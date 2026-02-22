@@ -163,6 +163,22 @@ class FeatureFlags(PydanticBaseModel):
         default=True,
         description="Use LLM importance from unified extractor instead of rule-based _compute_importance",
     )
+    use_llm_memory_type: bool = Field(
+        default=True,
+        description="Use LLM memory_type from unified extractor when present and valid",
+    )
+    use_llm_confidence: bool = Field(
+        default=True,
+        description="Use LLM confidence from unified extractor when present",
+    )
+    use_llm_context_tags: bool = Field(
+        default=True,
+        description="Use LLM context_tags from unified extractor when caller does not provide tags",
+    )
+    use_llm_decay_rate: bool = Field(
+        default=True,
+        description="Use LLM decay_rate from unified extractor when valid",
+    )
     use_llm_conflict_detection_only: bool = Field(
         default=False,
         description="Skip fast pattern path, always use LLM for conflict detection",
@@ -205,7 +221,7 @@ class RetrievalSettings(PydanticBaseModel):
     default_step_timeout_ms: int = Field(default=500, description="Per-step timeout (ms)")
     total_timeout_ms: int = Field(default=2000, description="Total retrieval budget (ms)")
     graph_timeout_ms: int = Field(default=1000, description="Graph step timeout (ms)")
-    fact_timeout_ms: int = Field(default=200, description="Fact lookup timeout (ms)")
+    fact_timeout_ms: int = Field(default=500, description="Fact lookup timeout (ms)")
     hnsw_ef_search: int = Field(default=64, description="pgvector HNSW ef_search override")
     reranker: RerankerSettings = Field(default_factory=RerankerSettings)
 

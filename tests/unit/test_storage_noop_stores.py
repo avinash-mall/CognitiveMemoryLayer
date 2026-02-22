@@ -98,6 +98,17 @@ class TestNoOpFactStore:
         )
         assert out == []
 
+    async def test_get_facts_by_category_accepts_limit(self):
+        """NoOpFactStore.get_facts_by_category accepts limit for API compatibility with SemanticFactStore."""
+        store = NoOpFactStore()
+        out = await store.get_facts_by_category(
+            tenant_id="t1",
+            category=FactCategory.POLICY,
+            current_only=True,
+            limit=10,
+        )
+        assert out == []
+
     async def test_get_tenant_profile_returns_empty_dict(self):
         store = NoOpFactStore()
         out = await store.get_tenant_profile(tenant_id="t1")
