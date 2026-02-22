@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-02-22
+
+### Documentation
+
+- **Documentation consolidation** — README restructured to focus on architecture, research, basic usage, and eval highlights; consolidated and deduplicated documentation across the repo.
+
 ### Added
 
 - **Dashboard Knowledge Graph: neovis.js (offline)** — Replaced vis-network CDN with [neovis.js](https://github.com/neo4j-contrib/neovis.js) for the Knowledge Graph page. The graph connects directly from the browser to Neo4j (bolt/WebSocket) for visualization. Requires `npm run build` in `src/dashboard/` for local dev; Docker builds the bundle at image build time. New endpoint `GET /api/v1/dashboard/graph/neo4j-config` returns Neo4j connection config for the browser (admin-only). New env var `DATABASE__NEO4J_BROWSER_URL` for when Neo4j is not reachable at `DATABASE__NEO4J_URL` from the browser (e.g. Docker: set to `bolt://localhost:7687`). Cypher updated for Neo4j 5 (`COUNT {}` instead of deprecated `size()`). See `.env.example`, `ProjectPlan/UsageDocumentation.md`.
