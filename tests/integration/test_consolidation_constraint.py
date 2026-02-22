@@ -95,6 +95,6 @@ async def test_consolidation_preserves_constraint_policy(pg_session_factory):
     constraint_found = any(
         "shellfish" in str(v).lower() or "allergy" in str(v).lower() for v in values
     )
-    assert constraint_found, (
-        f"Policy facts should retain shellfish/allergy constraint. Got: {values}"
-    )
+    assert (
+        constraint_found
+    ), f"Policy facts should retain shellfish/allergy constraint. Got: {values}"

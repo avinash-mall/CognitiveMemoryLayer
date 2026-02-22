@@ -113,6 +113,7 @@ class NoOpFactStore:
         tenant_id: str,
         category: FactCategory,
         current_only: bool = True,
+        limit: int = 50,
     ) -> list[SemanticFact]:
         return []
 

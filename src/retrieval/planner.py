@@ -279,9 +279,9 @@ class RetrievalPlanner:
                     step.timeout_ms = r.default_step_timeout_ms
                 elif step.source == RetrievalSource.GRAPH:
                     step.timeout_ms = r.graph_timeout_ms
-                elif step.source == RetrievalSource.FACTS and step.timeout_ms == 100:
+                elif step.source == RetrievalSource.FACTS and step.timeout_ms in (100, 200):
                     step.timeout_ms = r.fact_timeout_ms
-                elif step.source == RetrievalSource.CONSTRAINTS and step.timeout_ms == 100:
+                elif step.source == RetrievalSource.CONSTRAINTS and step.timeout_ms in (100, 200):
                     step.timeout_ms = r.default_step_timeout_ms
         except Exception as e:
             import logging

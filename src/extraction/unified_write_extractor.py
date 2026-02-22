@@ -32,6 +32,27 @@ class PIISpan:
     pii_type: str  # e.g. "email", "phone", "ssn"
 
 
+_ALLOWED_MEMORY_TYPES = frozenset(
+    {
+        "episodic_event",
+        "semantic_fact",
+        "preference",
+        "task_state",
+        "procedure",
+        "constraint",
+        "hypothesis",
+        "conversation",
+        "message",
+        "tool_result",
+        "reasoning_step",
+        "scratch",
+        "knowledge",
+        "observation",
+        "plan",
+    }
+)
+
+
 @dataclass
 class UnifiedExtractionResult:
     """Result of unified write-path extraction."""
@@ -44,6 +65,10 @@ class UnifiedExtractionResult:
     importance: float = 0.5
     pii_spans: list[PIISpan] = field(default_factory=list)
     contains_secrets: bool = False
+    memory_type: str | None = None
+    confidence: float = 0.5
+    context_tags: list[str] = field(default_factory=list)
+    decay_rate: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +113,10 @@ EXCLUDE from entities and relations: system prompts, role instructions (e.g. "Yo
 **facts**: array of objects with key, category, predicate, value, confidence
 **salience**: float 0.0-1.0
 **importance**: float 0.0-1.0
+**memory_type**: string — MUST be one of: episodic_event, semantic_fact, preference, task_state, procedure, constraint, hypothesis, conversation, message, tool_result, reasoning_step, scratch, knowledge, observation, plan. Classify by content: preferences/likes -> preference; rules/policies/never-do -> constraint; factual statements -> semantic_fact; events/what happened -> episodic_event; instructions/how-to -> procedure; uncertain inferences -> hypothesis; task progress -> task_state; etc.
+**confidence**: float 0.0-1.0 — how certain is this information (explicit vs inferred)
+**context_tags**: optional array of strings, e.g. ["personal","dietary","work"] — categorize the content
+**decay_rate**: optional float 0.01-0.5 — how fast to forget (0.01=stable, 0.1=medium, 0.5=ephemeral); omit for default 0.01
 **pii_spans**: optional array of objects with start, end, pii_type - only if PII detected
 **contains_secrets**: optional boolean
 
@@ -107,7 +136,11 @@ Output:
     {{"subject": "Anna", "predicate": "prefers", "object": "Italian cuisine", "confidence": 0.85}}
   ],
   "salience": 0.7,
-  "importance": 0.6
+  "importance": 0.6,
+  "memory_type": "semantic_fact",
+  "confidence": 0.9,
+  "context_tags": ["personal", "location", "occupation"],
+  "decay_rate": 0.01
 }}
 
 ### Input
@@ -184,6 +217,8 @@ class UnifiedWritePathExtractor:
             '- "constraints": array of {constraint_type, subject, description, scope[], confidence}\n'
             '- "facts": array of {key, category, predicate, value, confidence}\n'
             "- salience, importance: float 0-1\n"
+            '- "memory_type": string - one of episodic_event, semantic_fact, preference, task_state, procedure, constraint, hypothesis, conversation, message, tool_result, reasoning_step, scratch, knowledge, observation, plan\n'
+            "- confidence: float 0-1; context_tags: optional array of strings; decay_rate: optional float 0.01-0.5\n"
             "- pii_spans: array of {start, end, pii_type} if any; contains_secrets: bool\n\n"
             + sections
             + "\n\nReturn a JSON object mapping each index (string key) to its result.\n"
@@ -305,6 +340,30 @@ class UnifiedWritePathExtractor:
 
         contains_secrets = bool(data.get("contains_secrets", False))
 
+        memory_type: str | None = None
+        raw_memory_type = data.get("memory_type")
+        if isinstance(raw_memory_type, str) and raw_memory_type.strip():
+            val = raw_memory_type.strip().lower()
+            if val in _ALLOWED_MEMORY_TYPES:
+                memory_type = val
+
+        confidence = float(data.get("confidence", 0.5))
+        confidence = max(0.0, min(1.0, confidence))
+
+        context_tags: list[str] = []
+        raw_tags = data.get("context_tags")
+        if isinstance(raw_tags, list):
+            for t in raw_tags:
+                if isinstance(t, str) and t.strip():
+                    context_tags.append(t.strip())
+        elif isinstance(raw_tags, str) and raw_tags.strip():
+            context_tags = [raw_tags.strip()]
+
+        decay_rate: float | None = None
+        raw_decay = data.get("decay_rate")
+        if isinstance(raw_decay, (int, float)) and 0.01 <= raw_decay <= 0.5:
+            decay_rate = float(raw_decay)
+
         return UnifiedExtractionResult(
             entities=entities,
             relations=relations,
@@ -314,4 +373,8 @@ class UnifiedWritePathExtractor:
             importance=importance,
             pii_spans=pii_spans,
             contains_secrets=contains_secrets,
+            memory_type=memory_type,
+            confidence=confidence,
+            context_tags=context_tags,
+            decay_rate=decay_rate,
         )

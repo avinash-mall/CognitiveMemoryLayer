@@ -75,7 +75,7 @@ Determine:
 4. Confidence (0.0-1.0)
 
 Return JSON only:
-{{"intent": "preference_lookup", "entities": ["cuisine"], "time_reference": null, "confidence": 0.9}}
+{{"intent": "preference_lookup", "entities": ["cuisine"], "time_reference": null, "confidence": 0.9, "constraint_dimensions": ["dietary"], "suggested_top_k": 10}}
 
 Rules:
 - preference_lookup: asking about likes/dislikes/preferences
@@ -86,7 +86,10 @@ Rules:
 - multi_hop: questions requiring connecting multiple pieces of info
 - temporal_query: questions with specific time references
 - procedural: how-to questions
-- constraint_check: checking rules/policies"""
+- constraint_check: checking rules/policies
+
+5. constraint_dimensions (optional): array of strings when query implies checking constraints, e.g. ["goal","value","dietary","state","causal","policy"]
+6. suggested_top_k (optional): integer 5-20, how many memories to retrieve for this query"""
 
 
 class QueryClassifier:
@@ -182,6 +185,9 @@ class QueryClassifier:
         # Check if this is a decision/temptation query
         if any(p.search(q) for p in self._DECISION_PATTERNS):
             analysis.is_decision_query = True
+        # Skip constraint_dimensions if LLM already provided them
+        if analysis.constraint_dimensions_from_llm:
+            return
         # BUG-03: When confidence low, retrieve all categories (constraint_dimensions=None)
         if analysis.confidence < 0.8:
             analysis.constraint_dimensions = None
@@ -250,15 +256,34 @@ class QueryClassifier:
                 intent = QueryIntent(intent_str)
             except ValueError:
                 intent = QueryIntent.UNKNOWN
-            return QueryAnalysis(
+
+            constraint_dimensions: list[str] | None = None
+            raw_cd = data.get("constraint_dimensions")
+            if isinstance(raw_cd, list) and all(isinstance(x, str) for x in raw_cd):
+                constraint_dimensions = [s for s in raw_cd if s.strip()]
+
+            suggested_top_k: int | None = None
+            raw_tk = data.get("suggested_top_k")
+            if isinstance(raw_tk, int) and 5 <= raw_tk <= 20:
+                suggested_top_k = raw_tk
+
+            analysis = QueryAnalysis(
                 original_query=query,
                 intent=intent,
                 confidence=float(data.get("confidence", 0.7)),
                 entities=data.get("entities", []),
                 time_reference=data.get("time_reference"),
                 suggested_sources=self._get_sources_for_intent(intent),
-                suggested_top_k=self._get_top_k_for_intent(intent),
+                suggested_top_k=(
+                    suggested_top_k
+                    if suggested_top_k is not None
+                    else self._get_top_k_for_intent(intent)
+                ),
             )
+            if constraint_dimensions is not None:
+                analysis.constraint_dimensions = constraint_dimensions
+                analysis.constraint_dimensions_from_llm = True
+            return analysis
         except (json.JSONDecodeError, ValueError, TypeError, Exception) as e:
             # Catch all errors including LLM network failures, rate limits, etc. (MED-26)
             import logging
