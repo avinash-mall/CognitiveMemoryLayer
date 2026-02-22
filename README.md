@@ -12,7 +12,7 @@
   <a href="#basic-usage"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
   <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-704-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/version-1.3.3-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.4-blue?style=for-the-badge" alt="Version">
 </p>
 
 <p align="center">
