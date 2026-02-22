@@ -18,7 +18,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Tests](https://img.shields.io/badge/Tests-175-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
-[![Version](https://img.shields.io/badge/version-1.3.2-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
+[![Version](https://img.shields.io/badge/version-1.3.3-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
 **What's new (1.3.x):** `ReadResponse.constraints`, `user_timezone` on read/turn, `reconsolidate()`, eval_mode for write, embedded read filter passthrough. Dashboard admin methods (1.1.0): sessions, rate limits, knowledge graph, config, retrieval test, bulk actions. See [CHANGELOG](CHANGELOG.md).
 
