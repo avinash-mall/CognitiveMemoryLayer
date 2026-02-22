@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Evaluation progress tracking by turn** — The Phase A ingestion progress bar in `eval_locomo_plus.py` now tracks progress by individual conversation turns rather than whole samples. Previously, the progress bar could appear stuck at 0% during slow ingestion phases or when individual turns triggered retry backoffs (e.g., due to database deadlocks), because an entire sample had to complete before the bar updated. Tracking by turns provides accurate, real-time feedback as data is inserted into the databases.
+
+- **Dashboard Knowledge Graph Depth control** — The Depth slider on the graph page (`/dashboard/#graph`) now affects both the default overview and entity Explore views. Overview query uses a `$depth` parameter instead of a hardcoded 2-hop path; initial load and tenant change pass the current slider value; changing the slider re-renders the current view (overview or explore) with the new depth. State `lastGraphParams` tracks the last rendered mode so depth changes update the same view.
+
 - **Evaluation progress display in non-TTY contexts** — Progress bars (Phase A ingestion, Phase A-B consolidation, Phase B QA, Phase C judge) now display when `eval_locomo_plus.py` is run as a subprocess from `run_full_eval.py`, e.g. in Cursor/IDE terminals or on Windows where stderr is not a TTY. tqdm calls now use `disable=False` in `eval_locomo_plus.py` and `llm_as_judge.py`; `run_full_eval.py` invokes the eval script with Python `-u` (unbuffered) for responsive output.
 
 ### Added

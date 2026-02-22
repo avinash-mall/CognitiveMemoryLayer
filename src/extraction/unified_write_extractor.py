@@ -110,7 +110,7 @@ EXCLUDE from entities and relations: system prompts, role instructions (e.g. "Yo
 - "confidence" (float 0.0-1.0)
 
 **constraints**: array of objects with constraint_type, subject, description, scope, confidence
-**facts**: array of objects with key, category, predicate, value, confidence
+**facts**: array of objects with key (format: user:{{category}}:{{predicate}}), category, predicate, value, confidence
 **salience**: float 0.0-1.0
 **importance**: float 0.0-1.0
 **memory_type**: string — MUST be one of: episodic_event, semantic_fact, preference, task_state, procedure, constraint, hypothesis, conversation, message, tool_result, reasoning_step, scratch, knowledge, observation, plan. Classify by content: preferences/likes -> preference; rules/policies/never-do -> constraint; factual statements -> semantic_fact; events/what happened -> episodic_event; instructions/how-to -> procedure; uncertain inferences -> hypothesis; task progress -> task_state; etc.
@@ -215,7 +215,7 @@ class UnifiedWritePathExtractor:
             '- "entities": array of {text, normalized, type} where type is PERSON|LOCATION|ORGANIZATION|DATE|TIME|MONEY|PRODUCT|EVENT|CONCEPT|PREFERENCE|ATTRIBUTE\n'
             '- "relations": array of {subject, predicate, object, confidence}; predicate in snake_case\n'
             '- "constraints": array of {constraint_type, subject, description, scope[], confidence}\n'
-            '- "facts": array of {key, category, predicate, value, confidence}\n'
+            '- "facts": array of {key, category, predicate, value, confidence} (key MUST be user:{{category}}:{{predicate}})\n'
             "- salience, importance: float 0-1\n"
             '- "memory_type": string - one of episodic_event, semantic_fact, preference, task_state, procedure, constraint, hypothesis, conversation, message, tool_result, reasoning_step, scratch, knowledge, observation, plan\n'
             "- confidence: float 0-1; context_tags: optional array of strings; decay_rate: optional float 0.01-0.5\n"
@@ -312,11 +312,20 @@ class UnifiedWritePathExtractor:
                 continue
             cat_str = (item.get("category") or "preference").lower()
             category = _CATEGORY_MAP.get(cat_str, FactCategory.PREFERENCE)
+            predicate = item.get("predicate", "unknown")
+            
+            raw_key = item.get("key", "")
+            if not raw_key or ":" not in raw_key:
+                clean_pred = predicate.strip().replace(" ", "_").lower()
+                key = f"user:{category.value}:{clean_pred}"
+            else:
+                key = raw_key
+
             facts.append(
                 ExtractedFact(
-                    key=item.get("key", "user:preference:unknown"),
+                    key=key,
                     category=category,
-                    predicate=item.get("predicate", "unknown"),
+                    predicate=predicate,
                     value=str(item.get("value", "")),
                     confidence=float(item.get("confidence", 0.6)),
                 )

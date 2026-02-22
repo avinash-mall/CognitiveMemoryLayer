@@ -1,6 +1,7 @@
 """Integration tests: admin endpoints (consolidate, run_forgetting, list_tenants, component_health)."""
 
 import pytest
+from cml.models import DashboardTenantsResponse, DashboardComponentsResponse
 
 
 @pytest.mark.integration
@@ -31,7 +32,7 @@ async def test_list_tenants(live_client):
     """List tenants (admin). Skip if 404/403."""
     try:
         tenants = await live_client.list_tenants()
-        assert isinstance(tenants, list)
+        assert isinstance(tenants, DashboardTenantsResponse)
     except Exception:
         raise
 
@@ -42,6 +43,6 @@ async def test_component_health(live_client):
     """Component health (dashboard). Skip if 404."""
     try:
         health = await live_client.component_health()
-        assert isinstance(health, dict)
+        assert isinstance(health, DashboardComponentsResponse)
     except Exception:
         raise
