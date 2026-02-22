@@ -417,6 +417,7 @@ class MemoryOrchestrator:
                                         value=fact.value,
                                         confidence=fact.confidence,
                                         evidence_ids=evidence,
+                                        valid_from=timestamp,
                                     )
                                 except Exception:
                                     logger.warning(
@@ -438,6 +439,7 @@ class MemoryOrchestrator:
                                     value=fact.value,
                                     confidence=fact.confidence,
                                     evidence_ids=evidence,
+                                    valid_from=timestamp,
                                 )
                             except Exception:
                                 logger.warning(
@@ -470,6 +472,7 @@ class MemoryOrchestrator:
                                         confidence=constraint.confidence,
                                         evidence_ids=evidence_c,
                                         context_tags=constraint.scope,  # BUG-05: persist scope for supersession
+                                        valid_from=timestamp,
                                     )
                                     constraints_stored += 1
                                 except Exception:
@@ -495,6 +498,7 @@ class MemoryOrchestrator:
                                     confidence=constraint.confidence,
                                     evidence_ids=evidence_c,
                                     context_tags=constraint.scope,  # BUG-05: persist scope for supersession
+                                    valid_from=timestamp,
                                 )
                                 constraints_stored += 1
                             except Exception:
