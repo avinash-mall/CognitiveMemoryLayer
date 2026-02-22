@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select, text, update
 
 from ..core.config import get_settings
+from ..core.env_file import get_env_path, update_env
 from ..storage.connection import DatabaseManager
 from ..storage.models import (
     DashboardJobModel,
@@ -52,6 +53,7 @@ from .schemas import (
     DashboardTimelineResponse,
     GraphEdgeInfo,
     GraphExploreResponse,
+    GraphNeo4jConfigResponse,
     GraphNodeInfo,
     GraphSearchResponse,
     GraphSearchResult,
@@ -71,20 +73,132 @@ logger = structlog.get_logger()
 dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 _REQUEST_COUNT_PREFIX = "dashboard:reqcount:"
-_CONFIG_OVERRIDES_KEY = "dashboard:config:overrides"
 
-# Settings that admins may change at runtime (non-secret, non-connection).
-_EDITABLE_SETTINGS = {
-    "auth.rate_limit_requests_per_minute",
-    "debug",
-    "app_name",
-    "embedding.provider",
-    "embedding.model",
-    "embedding.dimensions",
-    "embedding.local_model",
-    "llm.provider",
-    "llm.model",
+# Settings that admins may edit (non-secret). Persisted to .env.
+_EDITABLE_SETTINGS = frozenset(
+    {
+        "app_name",
+        "debug",
+        "cors_origins",
+        "embedding.provider",
+        "embedding.model",
+        "embedding.dimensions",
+        "embedding.local_model",
+        "embedding.base_url",
+        "llm.provider",
+        "llm.model",
+        "llm.base_url",
+        "llm_internal.provider",
+        "llm_internal.model",
+        "llm_internal.base_url",
+        "auth.default_tenant_id",
+        "auth.rate_limit_requests_per_minute",
+        "chunker.tokenizer",
+        "chunker.chunk_size",
+        "chunker.overlap_percent",
+        "retrieval.episode_relevance_threshold",
+        "retrieval.max_episodes_when_constraints",
+        "retrieval.max_episodes_default",
+        "retrieval.max_constraint_tokens",
+        "retrieval.default_step_timeout_ms",
+        "retrieval.total_timeout_ms",
+        "retrieval.graph_timeout_ms",
+        "retrieval.fact_timeout_ms",
+        "retrieval.hnsw_ef_search",
+        "retrieval.reranker.recency_weight",
+        "retrieval.reranker.relevance_weight",
+        "retrieval.reranker.confidence_weight",
+        "retrieval.reranker.active_constraint_bonus",
+        "features.stable_keys_enabled",
+        "features.write_time_facts_enabled",
+        "features.batch_embeddings_enabled",
+        "features.store_async",
+        "features.cached_embeddings_enabled",
+        "features.retrieval_timeouts_enabled",
+        "features.skip_if_found_cross_group",
+        "features.db_dependency_counts",
+        "features.bounded_state_enabled",
+        "features.hnsw_ef_search_tuning",
+        "features.constraint_extraction_enabled",
+        "features.use_llm_constraint_extractor",
+        "features.use_llm_write_time_facts",
+        "features.use_llm_query_classifier_only",
+        "features.use_llm_salience_refinement",
+        "features.use_llm_pii_redaction",
+        "features.use_llm_write_gate_importance",
+        "features.use_llm_conflict_detection_only",
+        "features.use_llm_constraint_reranker",
+    }
+)
+
+# Config key -> env var for .env persistence
+_CONFIG_KEY_TO_ENV: dict[str, str] = {
+    "app_name": "APP_NAME",
+    "debug": "DEBUG",
+    "cors_origins": "CORS_ORIGINS",
+    "database.postgres_url": "DATABASE__POSTGRES_URL",
+    "database.neo4j_url": "DATABASE__NEO4J_URL",
+    "database.neo4j_browser_url": "DATABASE__NEO4J_BROWSER_URL",
+    "database.neo4j_user": "DATABASE__NEO4J_USER",
+    "database.neo4j_password": "DATABASE__NEO4J_PASSWORD",
+    "database.redis_url": "DATABASE__REDIS_URL",
+    "embedding.provider": "EMBEDDING__PROVIDER",
+    "embedding.model": "EMBEDDING__MODEL",
+    "embedding.dimensions": "EMBEDDING__DIMENSIONS",
+    "embedding.local_model": "EMBEDDING__LOCAL_MODEL",
+    "embedding.api_key": "EMBEDDING__API_KEY",
+    "embedding.base_url": "EMBEDDING__BASE_URL",
+    "llm.provider": "LLM__PROVIDER",
+    "llm.model": "LLM__MODEL",
+    "llm.api_key": "LLM__API_KEY",
+    "llm.base_url": "LLM__BASE_URL",
+    "llm_internal.provider": "LLM_INTERNAL__PROVIDER",
+    "llm_internal.model": "LLM_INTERNAL__MODEL",
+    "llm_internal.base_url": "LLM_INTERNAL__BASE_URL",
+    "llm_internal.api_key": "LLM_INTERNAL__API_KEY",
+    "auth.api_key": "AUTH__API_KEY",
+    "auth.admin_api_key": "AUTH__ADMIN_API_KEY",
+    "auth.default_tenant_id": "AUTH__DEFAULT_TENANT_ID",
+    "auth.rate_limit_requests_per_minute": "AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE",
+    "chunker.tokenizer": "CHUNKER__TOKENIZER",
+    "chunker.chunk_size": "CHUNKER__CHUNK_SIZE",
+    "chunker.overlap_percent": "CHUNKER__OVERLAP_PERCENT",
+    "retrieval.episode_relevance_threshold": "RETRIEVAL__EPISODE_RELEVANCE_THRESHOLD",
+    "retrieval.max_episodes_when_constraints": "RETRIEVAL__MAX_EPISODES_WHEN_CONSTRAINTS",
+    "retrieval.max_episodes_default": "RETRIEVAL__MAX_EPISODES_DEFAULT",
+    "retrieval.max_constraint_tokens": "RETRIEVAL__MAX_CONSTRAINT_TOKENS",
+    "retrieval.default_step_timeout_ms": "RETRIEVAL__DEFAULT_STEP_TIMEOUT_MS",
+    "retrieval.total_timeout_ms": "RETRIEVAL__TOTAL_TIMEOUT_MS",
+    "retrieval.graph_timeout_ms": "RETRIEVAL__GRAPH_TIMEOUT_MS",
+    "retrieval.fact_timeout_ms": "RETRIEVAL__FACT_TIMEOUT_MS",
+    "retrieval.hnsw_ef_search": "RETRIEVAL__HNSW_EF_SEARCH",
+    "retrieval.reranker.recency_weight": "RETRIEVAL__RERANKER__RECENCY_WEIGHT",
+    "retrieval.reranker.relevance_weight": "RETRIEVAL__RERANKER__RELEVANCE_WEIGHT",
+    "retrieval.reranker.confidence_weight": "RETRIEVAL__RERANKER__CONFIDENCE_WEIGHT",
+    "retrieval.reranker.active_constraint_bonus": "RETRIEVAL__RERANKER__ACTIVE_CONSTRAINT_BONUS",
 }
+for _fk in (
+    "stable_keys_enabled",
+    "write_time_facts_enabled",
+    "batch_embeddings_enabled",
+    "store_async",
+    "cached_embeddings_enabled",
+    "retrieval_timeouts_enabled",
+    "skip_if_found_cross_group",
+    "db_dependency_counts",
+    "bounded_state_enabled",
+    "hnsw_ef_search_tuning",
+    "constraint_extraction_enabled",
+    "use_llm_constraint_extractor",
+    "use_llm_write_time_facts",
+    "use_llm_query_classifier_only",
+    "use_llm_salience_refinement",
+    "use_llm_pii_redaction",
+    "use_llm_write_gate_importance",
+    "use_llm_conflict_detection_only",
+    "use_llm_constraint_reranker",
+):
+    _CONFIG_KEY_TO_ENV[f"features.{_fk}"] = f"FEATURES__{_fk.upper()}"
 
 # Fields whose values must be masked in the config output.
 _SECRET_FIELD_TOKENS = {"key", "password", "secret", "token"}
@@ -1170,6 +1284,21 @@ async def dashboard_graph_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@dashboard_router.get("/graph/neo4j-config", response_model=GraphNeo4jConfigResponse)
+async def dashboard_graph_neo4j_config(
+    auth: AuthContext = Depends(require_admin_permission),
+):
+    """Return Neo4j connection config for browser (neovis.js). Admin-only. Use DATABASE__NEO4J_BROWSER_URL when Neo4j is not reachable at DATABASE__NEO4J_URL from the browser (e.g. Docker: bolt://localhost:7687)."""
+    settings = get_settings()
+    db = settings.database
+    server_url = db.neo4j_browser_url or db.neo4j_url
+    return GraphNeo4jConfigResponse(
+        server_url=server_url,
+        server_user=db.neo4j_user,
+        server_password=db.neo4j_password or "",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -1184,50 +1313,55 @@ def _mask_value(value: Any) -> str:
     return "****" if value else ""
 
 
+def _config_source(env_var: str) -> str:
+    """Return 'env' if env var is set, else 'default'."""
+    return "env" if os.environ.get(env_var) is not None else "default"
+
+
 @dashboard_router.get("/config", response_model=DashboardConfigResponse)
 async def dashboard_config(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Read-only configuration snapshot. Secrets are masked. Includes app, embedding, LLM, and storage settings."""
+    """Configuration snapshot. Secrets are masked. Changes persist to .env; restart required for most settings."""
     settings = get_settings()
-
-    # Load overrides from Redis
-    overrides: dict[str, Any] = {}
-    if db.redis:
-        try:
-            raw = await db.redis.get(_CONFIG_OVERRIDES_KEY)
-            if raw:
-                overrides = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-        except Exception:
-            pass
-
     sections: list[ConfigSection] = []
 
     # Application
     app_items = [
         ConfigItem(
-            key="app_name",
+            key="debug",
             value=settings.app_name,
             default_value="CognitiveMemoryLayer",
             is_editable=True,
-            source="env" if os.environ.get("APP_NAME") else "default",
-            description="Application name",
+            source=_config_source("APP_NAME"),
+            description="Application name. Used in responses and UI.",
+            requires_restart=True,
+            is_required=False,
+            env_var="APP_NAME",
         ),
         ConfigItem(
             key="debug",
             value=settings.debug,
             default_value=False,
             is_editable=True,
-            source="env" if os.environ.get("DEBUG") else "default",
-            description="Debug mode",
+            source=_config_source("DEBUG"),
+            description="Enable debug mode. Exposes verbose 500 error details. Use false in production.",
+            requires_restart=True,
+            is_required=False,
+            env_var="DEBUG",
+            options=["true", "false"],
         ),
         ConfigItem(
             key="cors_origins",
             value=settings.cors_origins,
             default_value=None,
-            is_editable=False,
-            description="CORS allowed origins",
+            is_editable=True,
+            source=_config_source("CORS_ORIGINS"),
+            description="Comma-separated CORS allowed origins. Unset uses default list; DEBUG=true allows '*'.",
+            requires_restart=True,
+            is_required=False,
+            env_var="CORS_ORIGINS",
         ),
     ]
     sections.append(ConfigSection(name="Application", items=app_items))
@@ -1237,37 +1371,59 @@ async def dashboard_config(
     db_items = [
         ConfigItem(
             key="database.postgres_url",
-            value=(
-                _mask_value(db_s.postgres_url) if _is_secret("postgres_url") else db_s.postgres_url
-            ),
+            value=db_s.postgres_url,
             default_value="postgresql+asyncpg://memory:memory@localhost/memory",
-            is_secret=False,
-            description="PostgreSQL connection URL",
+            is_editable=False,
+            source=_config_source("DATABASE__POSTGRES_URL"),
+            description="PostgreSQL connection URL. Required. Format: postgresql+asyncpg://user:pass@host:port/db",
+            requires_restart=True,
+            is_required=True,
+            env_var="DATABASE__POSTGRES_URL",
         ),
         ConfigItem(
             key="database.neo4j_url",
             value=db_s.neo4j_url,
             default_value="bolt://localhost:7687",
-            description="Neo4j connection URL",
+            is_editable=False,
+            source=_config_source("DATABASE__NEO4J_URL"),
+            description="Neo4j Bolt URL for knowledge graph. Optional.",
+            requires_restart=True,
+            is_required=False,
+            env_var="DATABASE__NEO4J_URL",
         ),
         ConfigItem(
             key="database.neo4j_user",
             value=db_s.neo4j_user,
             default_value="neo4j",
-            description="Neo4j username",
+            is_editable=False,
+            source=_config_source("DATABASE__NEO4J_USER"),
+            description="Neo4j username. Optional.",
+            requires_restart=True,
+            is_required=False,
+            env_var="DATABASE__NEO4J_USER",
         ),
         ConfigItem(
             key="database.neo4j_password",
             value="****" if db_s.neo4j_password else "",
             default_value="",
             is_secret=True,
-            description="Neo4j password",
+            is_editable=False,
+            source=_config_source("DATABASE__NEO4J_PASSWORD"),
+            description="Neo4j password. Set when Neo4j is secured.",
+            requires_restart=True,
+            is_required=False,
+            env_var="DATABASE__NEO4J_PASSWORD",
         ),
         ConfigItem(
             key="database.redis_url",
             value=db_s.redis_url,
             default_value="redis://localhost:6379",
-            description="Redis connection URL",
+            is_editable=False,
+            source=_config_source("DATABASE__REDIS_URL"),
+            description="Redis URL for cache, Celery broker, rate limits.",
+            requires_restart=True,
+            is_required=False,
+            env_var="DATABASE__REDIS_URL",
         ),
     ]
     sections.append(ConfigSection(name="Database", items=db_items))
@@ -1280,41 +1436,68 @@ async def dashboard_config(
             value=emb.provider,
             default_value="openai",
             is_editable=True,
-            description="Embedding provider (openai, local, openai_compatible, ollama)",
+            source=_config_source("EMBEDDING__PROVIDER"),
+            description="Provider: openai | local | openai_compatible | ollama. Affects vector generation.",
+            requires_restart=True,
+            is_required=False,
+            env_var="EMBEDDING__PROVIDER",
+            options=["openai", "local", "openai_compatible", "ollama"],
         ),
         ConfigItem(
             key="embedding.model",
             value=emb.model,
             default_value="text-embedding-3-small",
             is_editable=True,
-            description="Embedding model name",
+            source=_config_source("EMBEDDING__MODEL"),
+            description="Model name. Must match provider. Changing impacts all new embeddings.",
+            requires_restart=True,
+            is_required=False,
+            env_var="EMBEDDING__MODEL",
         ),
         ConfigItem(
             key="embedding.dimensions",
             value=emb.dimensions,
             default_value=1536,
             is_editable=True,
-            description="Embedding vector dimensions",
+            source=_config_source("EMBEDDING__DIMENSIONS"),
+            description="Vector dimension. Must match model and DB schema. Changing requires migration.",
+            requires_restart=True,
+            is_required=False,
+            env_var="EMBEDDING__DIMENSIONS",
         ),
         ConfigItem(
             key="embedding.local_model",
             value=emb.local_model,
             default_value="all-MiniLM-L6-v2",
             is_editable=True,
-            description="Local embedding model name",
+            source=_config_source("EMBEDDING__LOCAL_MODEL"),
+            description="Model for provider=local (sentence-transformers).",
+            requires_restart=True,
+            is_required=False,
+            env_var="EMBEDDING__LOCAL_MODEL",
         ),
         ConfigItem(
             key="embedding.api_key",
             value="****" if emb.api_key else "",
             default_value="",
             is_secret=True,
-            description="Embedding API key",
+            is_editable=False,
+            source=_config_source("EMBEDDING__API_KEY"),
+            description="API key for embedding provider. Fallback: OPENAI_API_KEY.",
+            requires_restart=True,
+            is_required=False,
+            env_var="EMBEDDING__API_KEY",
         ),
         ConfigItem(
             key="embedding.base_url",
             value=emb.base_url or "",
             default_value="",
-            description="Custom embedding endpoint URL",
+            is_editable=True,
+            source=_config_source("EMBEDDING__BASE_URL"),
+            description="OpenAI-compatible endpoint URL. For ollama/openai_compatible.",
+            requires_restart=True,
+            is_required=False,
+            env_var="EMBEDDING__BASE_URL",
         ),
     ]
     sections.append(ConfigSection(name="Embedding", items=emb_items))
@@ -1327,30 +1510,101 @@ async def dashboard_config(
             value=llm.provider,
             default_value="openai",
             is_editable=True,
-            description="LLM provider (openai, openai_compatible, ollama, gemini, claude)",
+            source=_config_source("LLM__PROVIDER"),
+            description="Provider: openai | openai_compatible | ollama | gemini | claude.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM__PROVIDER",
+            options=["openai", "openai_compatible", "ollama", "gemini", "claude"],
         ),
         ConfigItem(
             key="llm.model",
             value=llm.model,
             default_value="gpt-4o-mini",
             is_editable=True,
-            description="LLM model name",
+            source=_config_source("LLM__MODEL"),
+            description="Model name. Used for consolidation, classifier, conflict detection.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM__MODEL",
         ),
         ConfigItem(
             key="llm.api_key",
             value="****" if llm.api_key else "",
             default_value="",
             is_secret=True,
-            description="LLM API key",
+            is_editable=False,
+            source=_config_source("LLM__API_KEY"),
+            description="LLM API key. Fallback: OPENAI_API_KEY.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM__API_KEY",
         ),
         ConfigItem(
             key="llm.base_url",
             value=llm.base_url or "",
             default_value="",
-            description="Custom LLM endpoint URL",
+            is_editable=True,
+            source=_config_source("LLM__BASE_URL"),
+            description="OpenAI-compatible endpoint. For ollama/openai_compatible.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM__BASE_URL",
         ),
     ]
     sections.append(ConfigSection(name="LLM", items=llm_items))
+
+    # LLM Internal
+    llmi = settings.llm_internal
+    llmi_items = [
+        ConfigItem(
+            key="llm_internal.provider",
+            value=llmi.provider or "(uses llm)",
+            default_value=None,
+            is_editable=True,
+            source=_config_source("LLM_INTERNAL__PROVIDER"),
+            description="Separate LLM for internal tasks (~1-10 calls/turn). Unset uses LLM__*.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_INTERNAL__PROVIDER",
+            options=["(uses llm)", "openai", "openai_compatible", "ollama", "gemini", "claude"],
+        ),
+        ConfigItem(
+            key="llm_internal.model",
+            value=llmi.model or "(uses llm)",
+            default_value=None,
+            is_editable=True,
+            source=_config_source("LLM_INTERNAL__MODEL"),
+            description="Model for internal LLM.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_INTERNAL__MODEL",
+        ),
+        ConfigItem(
+            key="llm_internal.base_url",
+            value=llmi.base_url or "",
+            default_value="",
+            is_editable=True,
+            source=_config_source("LLM_INTERNAL__BASE_URL"),
+            description="Base URL for internal LLM.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_INTERNAL__BASE_URL",
+        ),
+        ConfigItem(
+            key="llm_internal.api_key",
+            value="****" if llmi.api_key else "",
+            default_value="",
+            is_secret=True,
+            is_editable=False,
+            source=_config_source("LLM_INTERNAL__API_KEY"),
+            description="API key for internal LLM.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_INTERNAL__API_KEY",
+        ),
+    ]
+    sections.append(ConfigSection(name="LLM Internal", items=llmi_items))
 
     # Auth
     auth_s = settings.auth
@@ -1360,69 +1614,550 @@ async def dashboard_config(
             value="****" if auth_s.api_key else "",
             default_value="",
             is_secret=True,
-            description="Standard API key",
+            is_editable=False,
+            source=_config_source("AUTH__API_KEY"),
+            description="API key for memory operations (X-API-Key). Required.",
+            requires_restart=True,
+            is_required=True,
+            env_var="AUTH__API_KEY",
         ),
         ConfigItem(
             key="auth.admin_api_key",
             value="****" if auth_s.admin_api_key else "",
             default_value="",
             is_secret=True,
-            description="Admin API key",
+            is_editable=False,
+            source=_config_source("AUTH__ADMIN_API_KEY"),
+            description="Admin API key for dashboard, consolidate, run_forgetting.",
+            requires_restart=True,
+            is_required=False,
+            env_var="AUTH__ADMIN_API_KEY",
         ),
         ConfigItem(
             key="auth.default_tenant_id",
             value=auth_s.default_tenant_id,
             default_value="default",
-            description="Default tenant ID",
+            is_editable=True,
+            source=_config_source("AUTH__DEFAULT_TENANT_ID"),
+            description="Default tenant when X-Tenant-ID not sent.",
+            requires_restart=True,
+            is_required=False,
+            env_var="AUTH__DEFAULT_TENANT_ID",
         ),
         ConfigItem(
             key="auth.rate_limit_requests_per_minute",
             value=auth_s.rate_limit_requests_per_minute,
             default_value=60,
             is_editable=True,
-            description="Rate limit (requests per minute, 0=disabled)",
+            source=_config_source("AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE"),
+            description="Per-tenant rate limit. 0=disabled. Increase for bulk eval.",
+            requires_restart=False,
+            is_required=False,
+            env_var="AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE",
         ),
     ]
     sections.append(ConfigSection(name="Auth", items=auth_items))
 
-    # Apply override source labels
-    for section in sections:
-        for item in section.items:
-            if item.key in overrides:
-                item.source = "override"
-                if not item.is_secret:
-                    item.value = overrides[item.key]
+    # Chunker
+    chk = settings.chunker
+    chk_items = [
+        ConfigItem(
+            key="chunker.tokenizer",
+            value=chk.tokenizer,
+            default_value="google/flan-t5-base",
+            is_editable=True,
+            source=_config_source("CHUNKER__TOKENIZER"),
+            description="Hugging Face tokenizer ID for semchunk.",
+            requires_restart=True,
+            is_required=False,
+            env_var="CHUNKER__TOKENIZER",
+        ),
+        ConfigItem(
+            key="chunker.chunk_size",
+            value=chk.chunk_size,
+            default_value=500,
+            is_editable=True,
+            source=_config_source("CHUNKER__CHUNK_SIZE"),
+            description="Max tokens per chunk. Align with embedding model max input.",
+            requires_restart=True,
+            is_required=False,
+            env_var="CHUNKER__CHUNK_SIZE",
+        ),
+        ConfigItem(
+            key="chunker.overlap_percent",
+            value=chk.overlap_percent,
+            default_value=0.15,
+            is_editable=True,
+            source=_config_source("CHUNKER__OVERLAP_PERCENT"),
+            description="Chunk overlap ratio 0-1 (e.g. 0.15 = 15%).",
+            requires_restart=True,
+            is_required=False,
+            env_var="CHUNKER__OVERLAP_PERCENT",
+        ),
+    ]
+    sections.append(ConfigSection(name="Chunker", items=chk_items))
+
+    # Retrieval
+    ret = settings.retrieval
+    rer = ret.reranker
+    ret_items = [
+        ConfigItem(
+            key="retrieval.episode_relevance_threshold",
+            value=ret.episode_relevance_threshold,
+            default_value=0.5,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__EPISODE_RELEVANCE_THRESHOLD"),
+            description="Min relevance for episodes in context.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__EPISODE_RELEVANCE_THRESHOLD",
+        ),
+        ConfigItem(
+            key="retrieval.max_episodes_when_constraints",
+            value=ret.max_episodes_when_constraints,
+            default_value=3,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__MAX_EPISODES_WHEN_CONSTRAINTS"),
+            description="Max episodes when constraints exist.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__MAX_EPISODES_WHEN_CONSTRAINTS",
+        ),
+        ConfigItem(
+            key="retrieval.max_episodes_default",
+            value=ret.max_episodes_default,
+            default_value=5,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__MAX_EPISODES_DEFAULT"),
+            description="Max episodes when no constraints.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__MAX_EPISODES_DEFAULT",
+        ),
+        ConfigItem(
+            key="retrieval.max_constraint_tokens",
+            value=ret.max_constraint_tokens,
+            default_value=400,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__MAX_CONSTRAINT_TOKENS"),
+            description="Token budget for active constraints.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__MAX_CONSTRAINT_TOKENS",
+        ),
+        ConfigItem(
+            key="retrieval.default_step_timeout_ms",
+            value=ret.default_step_timeout_ms,
+            default_value=500,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__DEFAULT_STEP_TIMEOUT_MS"),
+            description="Per-step timeout (ms).",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__DEFAULT_STEP_TIMEOUT_MS",
+        ),
+        ConfigItem(
+            key="retrieval.total_timeout_ms",
+            value=ret.total_timeout_ms,
+            default_value=2000,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__TOTAL_TIMEOUT_MS"),
+            description="Total retrieval budget (ms).",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__TOTAL_TIMEOUT_MS",
+        ),
+        ConfigItem(
+            key="retrieval.graph_timeout_ms",
+            value=ret.graph_timeout_ms,
+            default_value=1000,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__GRAPH_TIMEOUT_MS"),
+            description="Graph step timeout (ms).",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__GRAPH_TIMEOUT_MS",
+        ),
+        ConfigItem(
+            key="retrieval.fact_timeout_ms",
+            value=ret.fact_timeout_ms,
+            default_value=200,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__FACT_TIMEOUT_MS"),
+            description="Fact lookup timeout (ms).",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__FACT_TIMEOUT_MS",
+        ),
+        ConfigItem(
+            key="retrieval.hnsw_ef_search",
+            value=ret.hnsw_ef_search,
+            default_value=64,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__HNSW_EF_SEARCH"),
+            description="pgvector HNSW ef_search. Higher = recall, slower.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__HNSW_EF_SEARCH",
+        ),
+        ConfigItem(
+            key="retrieval.reranker.recency_weight",
+            value=rer.recency_weight,
+            default_value=0.1,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__RERANKER__RECENCY_WEIGHT"),
+            description="Recency weight in reranking.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__RERANKER__RECENCY_WEIGHT",
+        ),
+        ConfigItem(
+            key="retrieval.reranker.relevance_weight",
+            value=rer.relevance_weight,
+            default_value=0.5,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__RERANKER__RELEVANCE_WEIGHT"),
+            description="Relevance weight in reranking.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__RERANKER__RELEVANCE_WEIGHT",
+        ),
+        ConfigItem(
+            key="retrieval.reranker.confidence_weight",
+            value=rer.confidence_weight,
+            default_value=0.2,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__RERANKER__CONFIDENCE_WEIGHT"),
+            description="Confidence weight in reranking.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__RERANKER__CONFIDENCE_WEIGHT",
+        ),
+        ConfigItem(
+            key="retrieval.reranker.active_constraint_bonus",
+            value=rer.active_constraint_bonus,
+            default_value=0.2,
+            is_editable=True,
+            source=_config_source("RETRIEVAL__RERANKER__ACTIVE_CONSTRAINT_BONUS"),
+            description="Bonus for active constraints.",
+            requires_restart=True,
+            is_required=False,
+            env_var="RETRIEVAL__RERANKER__ACTIVE_CONSTRAINT_BONUS",
+        ),
+    ]
+    sections.append(ConfigSection(name="Retrieval", items=ret_items))
+
+    # Features
+    feat = settings.features
+    feat_items = [
+        ConfigItem(
+            key="features.stable_keys_enabled",
+            value=feat.stable_keys_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__STABLE_KEYS_ENABLED"),
+            description="SHA256-based stable keys for consolidation.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__STABLE_KEYS_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.write_time_facts_enabled",
+            value=feat.write_time_facts_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__WRITE_TIME_FACTS_ENABLED"),
+            description="Populate semantic store at write time.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__WRITE_TIME_FACTS_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.batch_embeddings_enabled",
+            value=feat.batch_embeddings_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__BATCH_EMBEDDINGS_ENABLED"),
+            description="Single embed_batch() per turn.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__BATCH_EMBEDDINGS_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.store_async",
+            value=feat.store_async,
+            default_value=False,
+            is_editable=True,
+            source=_config_source("FEATURES__STORE_ASYNC"),
+            description="Enqueue turn writes to Redis. Reduces latency; requires Redis.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__STORE_ASYNC",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.cached_embeddings_enabled",
+            value=feat.cached_embeddings_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__CACHED_EMBEDDINGS_ENABLED"),
+            description="Cache embeddings in Redis.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__CACHED_EMBEDDINGS_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.retrieval_timeouts_enabled",
+            value=feat.retrieval_timeouts_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__RETRIEVAL_TIMEOUTS_ENABLED"),
+            description="Per-step asyncio.wait_for timeouts.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__RETRIEVAL_TIMEOUTS_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.skip_if_found_cross_group",
+            value=feat.skip_if_found_cross_group,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__SKIP_IF_FOUND_CROSS_GROUP"),
+            description="Skip remaining steps on fact hit.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__SKIP_IF_FOUND_CROSS_GROUP",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.db_dependency_counts",
+            value=feat.db_dependency_counts,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__DB_DEPENDENCY_COUNTS"),
+            description="DB-side aggregation for forgetting.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__DB_DEPENDENCY_COUNTS",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.bounded_state_enabled",
+            value=feat.bounded_state_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__BOUNDED_STATE_ENABLED"),
+            description="LRU+TTL state maps in working memory.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__BOUNDED_STATE_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.hnsw_ef_search_tuning",
+            value=feat.hnsw_ef_search_tuning,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__HNSW_EF_SEARCH_TUNING"),
+            description="Query-time HNSW ef_search tuning.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__HNSW_EF_SEARCH_TUNING",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.constraint_extraction_enabled",
+            value=feat.constraint_extraction_enabled,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__CONSTRAINT_EXTRACTION_ENABLED"),
+            description="Extract goals, values, policies at write time.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__CONSTRAINT_EXTRACTION_ENABLED",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_constraint_extractor",
+            value=feat.use_llm_constraint_extractor,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR"),
+            description="LLM for constraint extraction (vs rule-based).",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_write_time_facts",
+            value=feat.use_llm_write_time_facts,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_WRITE_TIME_FACTS"),
+            description="LLM for write-time fact extraction.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_WRITE_TIME_FACTS",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_query_classifier_only",
+            value=feat.use_llm_query_classifier_only,
+            default_value=False,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY"),
+            description="Always use LLM for query classification; skip fast pattern.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_salience_refinement",
+            value=feat.use_llm_salience_refinement,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_SALIENCE_REFINEMENT"),
+            description="LLM salience in unified extractor.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_SALIENCE_REFINEMENT",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_pii_redaction",
+            value=feat.use_llm_pii_redaction,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_PII_REDACTION"),
+            description="LLM PII spans in unified extractor.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_PII_REDACTION",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_write_gate_importance",
+            value=feat.use_llm_write_gate_importance,
+            default_value=True,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE"),
+            description="LLM importance in write gate.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_conflict_detection_only",
+            value=feat.use_llm_conflict_detection_only,
+            default_value=False,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY"),
+            description="Always use LLM for conflict detection.",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY",
+            options=["true", "false"],
+        ),
+        ConfigItem(
+            key="features.use_llm_constraint_reranker",
+            value=feat.use_llm_constraint_reranker,
+            default_value=False,
+            is_editable=True,
+            source=_config_source("FEATURES__USE_LLM_CONSTRAINT_RERANKER"),
+            description="LLM for constraint reranking (1 call per read).",
+            requires_restart=True,
+            is_required=False,
+            env_var="FEATURES__USE_LLM_CONSTRAINT_RERANKER",
+            options=["true", "false"],
+        ),
+    ]
+    sections.append(ConfigSection(name="Features", items=feat_items))
 
     return DashboardConfigResponse(sections=sections)
+
+
+def _validate_config_updates(updates: dict[str, Any]) -> list[str]:
+    """Validate config updates. Returns list of error messages."""
+    errors: list[str] = []
+    for key, val in updates.items():
+        if key == "embedding.dimensions":
+            if not isinstance(val, (int, float)) or val <= 0:
+                errors.append("embedding.dimensions must be a positive integer")
+        elif key == "chunker.chunk_size":
+            if not isinstance(val, (int, float)) or val <= 0:
+                errors.append("chunker.chunk_size must be a positive integer")
+        elif key == "chunker.overlap_percent":
+            if not isinstance(val, (int, float)) or val < 0 or val > 1:
+                errors.append("chunker.overlap_percent must be between 0 and 1")
+        elif key == "auth.rate_limit_requests_per_minute":
+            if not isinstance(val, (int, float)) or val < 0:
+                errors.append("auth.rate_limit_requests_per_minute must be non-negative")
+        elif key.startswith("retrieval.") and "timeout" in key:
+            if not isinstance(val, (int, float)) or val <= 0:
+                errors.append(f"{key} must be a positive number")
+        elif key.startswith("retrieval.reranker."):
+            if not isinstance(val, (int, float)) or val < 0 or val > 1:
+                errors.append(f"{key} must be between 0 and 1")
+    return errors
 
 
 @dashboard_router.put("/config")
 async def dashboard_config_update(
     body: ConfigUpdateRequest,
     auth: AuthContext = Depends(require_admin_permission),
-    db: DatabaseManager = Depends(_get_db),
 ):
-    """Update editable config settings at runtime. Stored in Redis (non-persistent across restarts). Only non-secret, non-connection fields."""
-    if not db.redis:
-        raise HTTPException(
-            status_code=503, detail="Redis not available; cannot store config overrides"
-        )
-
-    # Validate only editable keys
+    """Update editable config settings. Persisted to .env. Restart required for most changes."""
     for key in body.updates:
         if key not in _EDITABLE_SETTINGS:
             raise HTTPException(status_code=400, detail=f"Setting '{key}' is not editable")
 
-    # Load existing overrides
-    try:
-        raw = await db.redis.get(_CONFIG_OVERRIDES_KEY)
-        overrides = json.loads(raw.decode() if isinstance(raw, bytes) else raw) if raw else {}
-    except Exception:
-        overrides = {}
+    errors = _validate_config_updates(body.updates)
+    if errors:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
 
-    overrides.update(body.updates)
-    await db.redis.set(_CONFIG_OVERRIDES_KEY, json.dumps(overrides))
-    return {"success": True, "overrides": overrides}
+    env_updates: dict[str, Any] = {}
+    for key, val in body.updates.items():
+        env_var = _CONFIG_KEY_TO_ENV.get(key)
+        if env_var:
+            if key == "embedding.dimensions":
+                env_updates[env_var] = int(val)
+            elif key == "cors_origins":
+                if isinstance(val, list):
+                    env_updates[env_var] = ",".join(str(v) for v in val)
+                elif val is None or val == "":
+                    env_updates[env_var] = ""
+                else:
+                    env_updates[env_var] = str(val)
+            else:
+                env_updates[env_var] = val
+
+    try:
+        env_path = get_env_path()
+        if not env_path.parent.exists():
+            raise HTTPException(
+                status_code=503,
+                detail="Project root not found; cannot persist to .env",
+            )
+        update_env(env_updates)
+    except OSError as e:
+        logger.warning("config_persist_env_failed", path=str(get_env_path()), error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot write to .env: {e}",
+        ) from e
+
+    return {
+        "success": True,
+        "message": "Settings saved to .env. Restart the server for changes to take effect.",
+    }
 
 
 # ---------------------------------------------------------------------------

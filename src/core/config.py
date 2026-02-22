@@ -26,6 +26,10 @@ class DatabaseSettings(PydanticBaseModel):
 
     postgres_url: str = Field(default="postgresql+asyncpg://memory:memory@localhost/memory")
     neo4j_url: str = Field(default="bolt://localhost:7687")
+    neo4j_browser_url: str | None = Field(
+        default=None,
+        description="Neo4j bolt URL for browser (neovis.js). When set, used by dashboard; else neo4j_url.",
+    )
     neo4j_user: str = Field(default="neo4j")
     neo4j_password: str = Field(default="")
     redis_url: str = Field(default="redis://localhost:6379")

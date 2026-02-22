@@ -73,6 +73,7 @@ services:
     environment:
       DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
       DATABASE__NEO4J_URL: bolt://neo4j:7687
+      DATABASE__NEO4J_BROWSER_URL: bolt://localhost:7687
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379

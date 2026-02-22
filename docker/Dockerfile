@@ -26,6 +26,13 @@ COPY requirements-docker.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements-docker.txt
 
+# Stage 2b: Dashboard frontend build (neovis.js bundle for offline graph)
+FROM node:20-alpine AS dashboard
+WORKDIR /build
+COPY src/dashboard/package.json src/dashboard/vite.config.js ./
+COPY src/dashboard/static ./static
+RUN npm install && npm run build
+
 # Stage 3: Production image
 FROM base AS production
 
@@ -34,6 +41,7 @@ COPY --from=dependencies /usr/local/bin /usr/local/bin
 
 COPY pyproject.toml README.md hatch_build.py ./
 COPY src ./src
+COPY --from=dashboard /build/static/js/bundle.js ./src/dashboard/static/js/bundle.js
 COPY tests ./tests
 COPY packages ./packages
 COPY scripts ./scripts

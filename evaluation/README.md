@@ -2,6 +2,8 @@
 
 This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus) benchmark setup and CML-backed evaluation scripts. Locomo-Plus unifies LoCoMo (five factual categories) with a sixth **Cognitive** category for long-context memory evaluation.
 
+For a step-by-step runbook (Ollama setup, env vars, DB setup), see [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md).
+
 ## Layout
 
 | Path | Description |
@@ -19,8 +21,6 @@ This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 2. **Embedding** (for CML): project root `.env` — `EMBEDDING__MODEL`, `EMBEDDING__DIMENSIONS`. If using Ollama embeddings, pull the model and set dimensions; then drop DBs and re-run migrations if changed.
 3. **QA model**: Phase B uses the **LLM** from project root `.env` (`LLM__PROVIDER`, `LLM__MODEL`, `LLM__BASE_URL`, `LLM__API_KEY`). Same as [.env.example lines 45–49](../.env.example) — e.g. `openai`, `openai_compatible`, or `ollama` (with `LLM__BASE_URL=http://localhost:11434/v1`).
 4. **Python deps**: `requests`, `tqdm`, `openai`; for LLM-as-judge, set `OPENAI_API_KEY` (or `OPENAI_BASE_URL` / `LLM__BASE_URL` for compatible endpoints).
-
-For a step-by-step runbook, see [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md).
 
 ## Configuration
 
