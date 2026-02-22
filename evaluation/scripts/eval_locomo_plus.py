@@ -35,7 +35,7 @@ except ImportError:
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 
-import requests  # type: ignore[import-untyped]
+import requests
 from tqdm import tqdm
 
 INGESTION_DELAY_SEC = 0.2

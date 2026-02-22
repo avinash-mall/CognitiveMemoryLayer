@@ -44,7 +44,7 @@ class SemchunkChunker:
         role: str | None = None,
         timestamp: datetime | None = None,
     ) -> list[SemanticChunk]:
-        """Chunk text with semchunk and map to SemanticChunk list."""
+        """Chunk text with semchunk and map to SemanticChunk list (synchronous)."""
         if not text.strip():
             return []
 
@@ -84,3 +84,30 @@ class SemchunkChunker:
                 )
             )
         return chunks
+
+    async def chunk_async(
+        self,
+        text: str,
+        turn_id: str | None = None,
+        role: str | None = None,
+        timestamp: datetime | None = None,
+    ) -> list[SemanticChunk]:
+        """Async wrapper: runs the synchronous HuggingFace tokenizer in a thread
+        pool executor so it does not block the asyncio event loop during the
+        cold-start load (~30 s) or for CPU-intensive chunking of large texts.
+        """
+        import functools
+
+        import anyio
+
+        return await anyio.to_thread.run_sync(
+            functools.partial(self.chunk, text, turn_id=turn_id, role=role, timestamp=timestamp)
+        )
+
+    async def preload_async(self) -> None:
+        """Warm the tokenizer in a background thread without blocking the event loop.
+        Call once at server startup so the first real write is not penalised.
+        """
+        import anyio
+
+        await anyio.to_thread.run_sync(self._get_chunker)

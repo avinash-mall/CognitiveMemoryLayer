@@ -63,8 +63,13 @@ async function request(method, path, { body = null, params = null } = {}) {
     }
 
     if (!resp.ok) {
-        const detail = await resp.text();
-        throw new Error(`HTTP ${resp.status}: ${detail}`);
+        const raw = await resp.text();
+        let msg = raw;
+        try {
+            const j = JSON.parse(raw);
+            if (j.detail) msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+        } catch (_) {}
+        throw new Error(msg);
     }
 
     return resp.json();
@@ -189,6 +194,10 @@ export function getRequestStats(hours = 24) {
 
 export function getGraphStats() {
     return request('GET', '/graph/stats');
+}
+
+export function getGraphNeo4jConfig() {
+    return request('GET', '/graph/neo4j-config');
 }
 
 export function getGraphOverview(tenantId, scopeId = null) {

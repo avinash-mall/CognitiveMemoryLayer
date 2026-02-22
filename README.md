@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
+  <a href="#basic-usage"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
   <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-704-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
   <img src="https://img.shields.io/badge/version-1.3.2-blue?style=for-the-badge" alt="Version">
@@ -38,18 +38,14 @@
 - [Architecture Overview](#architecture-overview)
 - [Neuroscience-to-Implementation Mapping](#neuroscience-to-implementation-mapping)
 - [Memory Types](#memory-types)
+- [Basic Usage](#basic-usage)
+- [Evaluation Highlights](#evaluation-highlights)
+- [Documentation](#documentation)
 - [Technology Stack](#technology-stack)
-- [Cognitive Constraint Layer](#cognitive-constraint-layer-level-2-memory)
-- [Feature Flags](#feature-flags)
-- [Quick Start](#quick-start)
 - [Python SDK](#python-sdk)
-- [Monitoring Dashboard](#monitoring-dashboard)
-- [API Reference](#api-reference)
-- [Evaluation](#evaluation)
-- [Project Structure](#project-structure)
 - [Testing](#testing)
 - [References](#references)
-- [Future Roadmap](#future-roadmap-llm-intrinsic-memory-integration)
+- [Future Roadmap](#future-roadmap)
 
 </details>
 
@@ -73,21 +69,7 @@ The **Cognitive Memory Layer (CML)** solves this by implementing the Multi-Store
 
 ## Key Features
 
-| Category | Capabilities |
-| :--- | :--- |
-| **Dual-Store Architecture** | Hippocampal (episodic, pgvector) + Neocortical (semantic, Neo4j) stores following CLS theory |
-| **Semantic Chunking** | LLM-based and rule-based chunking with 8 chunk types including constraints |
-| **Write Gate (CREB/Npas4)** | Salience scoring, novelty check, PII redaction, risk assessment |
-| **Extraction Pipeline** | Entity, fact, relation, and cognitive constraint extraction at write time; batch entity/relation extraction in `encode_batch()` |
-| **Hybrid Retrieval** | Query classification (10 intents) &rarr; parallel vector + graph search &rarr; reranking &rarr; memory packets |
-| **Cognitive Constraints** | Goal/value/policy/state/causal extraction, constraint-aware retrieval, supersession |
-| **Reconsolidation** | Labile state tracking, conflict detection, 6 belief revision strategies |
-| **Consolidation** | Episodic-to-semantic migration via clustering, gist extraction, schema alignment |
-| **Active Forgetting** | Rac1/Cofilin-inspired decay, silence, compression, and deletion |
-| **Monitoring Dashboard** | 11-page admin dashboard: memories, graph explorer, sessions, retrieval tester, management |
-| **Python SDK** | `pip install cognitive-memory-layer` with sync, async, and embedded (SQLite) modes |
-| **Evaluation** | LoCoMo-Plus benchmark harness with LLM-as-judge scoring |
-| **Internal LLM usage** | ~1 call per write, 1–2 per read, ~5–10 per process turn (default settings). See [UsageDocumentation — Internal LLM Call Counts](ProjectPlan/UsageDocumentation.md#internal-llm-call-counts-default-settings) for details. |
+Dual-store (hippocampal + neocortical), hybrid retrieval, cognitive constraints, consolidation, reconsolidation, active forgetting, Python SDK, LoCoMo-Plus evaluation. See [Usage & API](ProjectPlan/UsageDocumentation.md#overview) for details.
 
 ---
 
@@ -393,7 +375,7 @@ flowchart TD
 | Pattern separation | Content-based stable keys (SHA256) + unique embeddings | `PostgresMemoryStore` |
 | Write-time facts | `UnifiedWritePathExtractor` populates semantic store at write time | `src/extraction/unified_write_extractor.py` |
 | Constraint extraction | `UnifiedWritePathExtractor` detects goals/values/policies/states/causal at encode time | `src/extraction/unified_write_extractor.py` |
-| Batch entity/relation extraction | `UnifiedWritePathExtractor.extract()` in `encode_batch()` reduces per-chunk LLM calls | `src/extraction/unified_write_extractor.py` |
+| Batch entity/relation extraction | `UnifiedWritePathExtractor` returns typed entities and relations; when unified path enabled, graph sync uses them for Neo4j (schema-first, few-shot prompts; excludes system prompts) | `src/extraction/unified_write_extractor.py` |
 | Contextual binding | Metadata: time, agent, turn, speaker, constraints | `MemoryRecord` schema |
 
 **Reference**: HippoRAG (2024) &mdash; "Neurobiologically Inspired Long-Term Memory for LLMs"
@@ -708,24 +690,9 @@ CML supports 15 memory types reflecting different cognitive functions:
 
 ---
 
-## Technology Stack
-
-| Component | Technology | Rationale |
-| :--- | :--- | :--- |
-| API | **FastAPI** | Async, auto-generated OpenAPI docs |
-| Episodic Store | **PostgreSQL + pgvector** | ACID, HNSW vector search with tunable `ef_search` |
-| Semantic Store | **Neo4j** | Graph algorithms (PPR), batched entity lookups, multi-hop queries |
-| Cache / Queue | **Redis** | Embedding cache (MGET/pipeline), Celery broker, rate limiting, session store |
-| Workers | **Redis + Celery** | Background consolidation and forgetting, optional async storage pipeline |
-| Embeddings | **OpenAI / sentence-transformers** | Configurable; batched + cached with Redis |
-| LLM | **OpenAI / Ollama / Gemini / Claude** | Extraction, chunking; optional `llm_internal` for extraction/consolidation tasks |
-| Observability | **Prometheus + structlog** | Per-step retrieval metrics, structured logging |
-
----
-
 ## Cognitive Constraint Layer (Level-2 Memory)
 
-The system extracts, stores, and retrieves **cognitive constraints** &mdash; goals, values, policies, states, and causal rules &mdash; as first-class memory objects. This enables **LoCoMo-Plus Level-2** performance where latent constraints (e.g. "I'm vegetarian", "We should save money for the trip") are surfaced at decision time even when the query has no lexical overlap with the original statement.
+Goals, values, policies, states, and causal rules extracted at write time and surfaced at retrieval. Enables LoCoMo-Plus Level-2 performance. See [UsageDocumentation](ProjectPlan/UsageDocumentation.md) for constraint extraction and retrieval details.
 
 ```mermaid
 %%{
@@ -768,119 +735,72 @@ flowchart LR
     end
 ```
 
-| Component | What it does |
-| :--- | :--- |
-| **Constraint Extraction** | `UnifiedWritePathExtractor` detects goal/value/state/causal/policy patterns; `ConstraintObject` schema with subject, scope, activation, confidence |
-| **Chunker** | `SemchunkChunker` uses semchunk with configurable Hugging Face tokenizer, chunk size, and overlap via `CHUNKER__*` |
-| **Write gate** | `ChunkType.CONSTRAINT` &rarr; `MemoryType.CONSTRAINT` with importance boost; hippocampal store attaches structured constraints to metadata |
-| **Semantic storage** | Constraints stored as `FactCategory.GOAL / VALUE / STATE / CAUSAL / POLICY` in the neocortical fact store |
-| **Constraint-aware retrieval** | `CONSTRAINT_CHECK` intent detection; highest-priority retrieval step combining vector search + fact lookup |
-| **Packet builder** | "Active Constraints (Must Follow)" section with provenance; up to 6 constraints displayed |
-| **Consolidation** | 90-day window for constraint memories (vs 7 days for episodes); cognitive gist types in schema aligner |
-| **Supersession** | `ConstraintExtractor.detect_supersession()` for belief revision of same-type constraints |
-| **API** | `ReadMemoryResponse.constraints` field; SDK `ReadResponse.constraints` |
-
-Toggle: `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` (default: true).
+---
 
 ---
 
-## Feature Flags
+## Basic Usage
 
-All features can be toggled via environment variables. See [.env.example](.env.example) and [UsageDocumentation.md](ProjectPlan/UsageDocumentation.md#configuration-reference).
-
-| Flag | Description | Default |
-| :--- | :--- | :---: |
-| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | Extract and store latent cognitive constraints at write time | On |
-| `FEATURES__USE_LLM_*` (7 flags) | LLM extractors (constraint, facts, classifier, salience, PII, write gate, conflict) | On |
-| `FEATURES__STABLE_KEYS_ENABLED` | SHA256-based fact/memory keys (no process-random `hash()`) | On |
-| `FEATURES__WRITE_TIME_FACTS_ENABLED` | Populate semantic store at write time (preference/identity) | On |
-| `FEATURES__BATCH_EMBEDDINGS_ENABLED` | Single `embed_batch()` call per turn instead of N per-chunk calls | On |
-| `FEATURES__STORE_ASYNC` | Enqueue turn writes to Redis; process in background | Off |
-| `FEATURES__CACHED_EMBEDDINGS_ENABLED` | Redis cache for embeddings | On |
-| `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | Per-step and total timeouts for retrieval | On |
-| `FEATURES__SKIP_IF_FOUND_CROSS_GROUP` | Cross-group skip on fact hit during retrieval | On |
-| `FEATURES__DB_DEPENDENCY_COUNTS` | DB-side aggregation for forgetting | On |
-| `FEATURES__BOUNDED_STATE_ENABLED` | LRU+TTL state maps for working/sensory memory | On |
-| `FEATURES__HNSW_EF_SEARCH_TUNING` | Query-time HNSW ef_search for pgvector recall/latency trade-off | On |
-| `CHUNKER__TOKENIZER` | Hugging Face tokenizer model ID (e.g. google/flan-t5-base) | google/flan-t5-base |
-| `CHUNKER__CHUNK_SIZE` | Max tokens per chunk (align with embedding model max input) | 500 |
-| `CHUNKER__OVERLAP_PERCENT` | Overlap ratio 0-1 (e.g. 0.15 = 15%) | 0.15 |
-
-Prometheus metrics: `cml_retrieval_step_duration_seconds`, `cml_retrieval_step_result_count`, `cml_retrieval_timeout_total`, `cml_fact_hit_rate`.
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose
-- (Optional) API keys for OpenAI or an Ollama instance for LLM/embeddings
-
-### 1. Start Services
+**Prerequisites:** Docker, Docker Compose; optionally API keys for OpenAI or Ollama.
 
 ```bash
-cd CognitiveMemoryLayer
-cp .env.example .env    # Edit .env with your API keys
-
-# Start infrastructure
-docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-
-# Start API server
+cp .env.example .env && docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
 docker compose -f docker/docker-compose.yml up api
-
-# Verify
-curl http://localhost:8000/api/v1/health
+# Verify: curl http://localhost:8000/api/v1/health
 ```
 
-### 2. Store a Memory
-
 ```bash
-export AUTH__API_KEY=your-secret-key
+# Write
+curl -X POST http://localhost:8000/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+  -d '{"content": "User prefers vegetarian food and lives in Paris."}'
 
-curl -X POST http://localhost:8000/api/v1/memory/write \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $AUTH__API_KEY" \
-  -H "X-Tenant-ID: demo" \
-  -d '{
-    "content": "User prefers vegetarian food and lives in Paris.",
-    "context_tags": ["preference", "personal"]
-  }'
-```
-
-For evaluation scripts, add `-H "X-Eval-Mode: true"` to receive `eval_outcome` and `eval_reason` in the response.
-
-### 3. Retrieve Memories
-
-```bash
-curl -X POST http://localhost:8000/api/v1/memory/read \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $AUTH__API_KEY" \
-  -H "X-Tenant-ID: demo" \
+# Read
+curl -X POST http://localhost:8000/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"query": "dietary preferences", "format": "packet"}'
-```
 
-Response formats: `packet` (categorized into facts, preferences, episodes, constraints), `llm_context` (formatted text), or `list` (flat list).
-
-Optional: include `"user_timezone": "America/New_York"` for timezone-aware "today"/"yesterday" retrieval.
-
-### 4. Seamless Turn (Chat Integration)
-
-```bash
-curl -X POST http://localhost:8000/api/v1/memory/turn \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $AUTH__API_KEY" \
-  -H "X-Tenant-ID: demo" \
+# Seamless turn (retrieve + store in one call)
+curl -X POST http://localhost:8000/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
-The turn endpoint automatically retrieves relevant memories and stores the interaction in a single call.
+For full API usage, SDK, sessions, and response formats, see [UsageDocumentation](ProjectPlan/UsageDocumentation.md).
+
+---
+
+## Evaluation Highlights
+
+LoCoMo-Plus harness benchmarks Level-2 cognitive memory: `python evaluation/scripts/run_full_eval.py`. CML achieves **21.45%** on Cognitive (above Mem0, SeCom, RAG baselines) with a **10.04%** gap (factual − cognitive), smaller than most baselines. Full comparison: [evaluation/COMPARISON.md](evaluation/COMPARISON.md).
+
+| Aspect | CML (gpt-oss:20b + CML) |
+| :--- | :--- |
+| **Cognitive (LoCoMo-Plus)** | 21.45% (above Mem0 15.80%, SeCom 14.90%) |
+| **Gap** (factual − cognitive) | 10.04% (smaller than paper ~18–45%) |
+
+See [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/RunEvaluation.md](ProjectPlan/LocomoEval/RunEvaluation.md).
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Usage & API](ProjectPlan/UsageDocumentation.md) | Full API reference, SDK usage, config, dashboard |
+| [Python SDK](packages/py-cml/docs/) | Getting started, API reference, configuration, examples |
+| [Tests](tests/README.md) | Test layout, how to run, coverage |
+| [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
+| [Examples](examples/README.md) | Example scripts and integrations |
+| [Contributing](CONTRIBUTING.md) | Dev setup, code standards, PR process |
+| [Future Roadmap](ProjectPlan/ActiveCML/) | Intrinsic memory phase plans |
+
+---
+
+## Technology Stack
+
+FastAPI, PostgreSQL+pgvector, Neo4j, Redis, Celery. Feature flags and config: [.env.example](.env.example), [UsageDocumentation — Configuration](ProjectPlan/UsageDocumentation.md#configuration-reference).
 
 ---
 
 ## Python SDK
-
-Install the SDK for Python integration:
 
 ```bash
 pip install cognitive-memory-layer
@@ -888,200 +808,27 @@ pip install cognitive-memory-layer
 
 ```python
 from cml import CognitiveMemoryLayer
-
 memory = CognitiveMemoryLayer(base_url="http://localhost:8000", api_key="your-key")
-
-# Write
 memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
-
-# Read (returns facts, preferences, episodes, and constraints)
 response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
-for constraint in response.constraints:
-    print(f"Constraint: {constraint.text}")
-
-# Seamless turn
 turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
 ```
 
-The SDK supports **sync**, **async**, and **embedded (SQLite) modes**. Embedded mode runs the memory engine in-process without a server (`storage_mode="lite"`).
+Sync, async, and embedded (SQLite) modes. See [packages/py-cml/docs](packages/py-cml/docs/).
 
-See [packages/py-cml](packages/py-cml/) and [packages/py-cml/docs](packages/py-cml/docs/) for full documentation.
+**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `http://localhost:8000/docs` | Dashboard: `http://localhost:8000/dashboard` (requires `AUTH__ADMIN_API_KEY`)
 
----
-
-## Monitoring Dashboard
-
-Access the dashboard at `http://localhost:8000/dashboard` (requires `AUTH__ADMIN_API_KEY`).
-
-| Page | Description |
-| :--- | :--- |
-| **Overview** | KPIs, memory type/status charts, activity timeline, system health, reconsolidation queue, request sparkline |
-| **Tenants** | All tenants with memory/fact/event counts, last activity, quick-link filters |
-| **Memory Explorer** | Filterable, sortable, paginated table with bulk actions (archive/silence/delete) and JSON export |
-| **Sessions** | Active sessions from Redis with TTL badges and per-session memory counts |
-| **Memory Detail** | Full record: content, metrics, provenance, entities/relations, related events |
-| **Knowledge Graph** | Interactive vis-network visualization of Neo4j entities/relations; search, depth control, detail panel |
-| **API Usage** | Rate-limit buckets with utilization bars, hourly request volume chart |
-| **Components** | Health status and metrics for each storage backend |
-| **Configuration** | Read-only config snapshot (secrets masked); inline editing for safe runtime settings |
-| **Retrieval Test** | Interactive query tool: tenant + query &rarr; scored memories with relevance bars |
-| **Events** | Paginated event log with expandable payloads; auto-refresh option |
-| **Management** | Trigger consolidation/forgetting per tenant (with dry-run); job history; labile status |
-
-See [UsageDocumentation.md &mdash; Dashboard](./ProjectPlan/UsageDocumentation.md#dashboard-monitoring--management) for full details.
-
----
-
-## API Reference
-
-Full documentation: [UsageDocumentation.md](./ProjectPlan/UsageDocumentation.md) | Interactive docs: `http://localhost:8000/docs`
-
-### Memory Endpoints
-
-| Endpoint | Method | Description |
-| :--- | :---: | :--- |
-| `/api/v1/memory/write` | POST | Store new information (with optional `X-Eval-Mode` header) |
-| `/api/v1/memory/read` | POST | Retrieve relevant memories (supports `user_timezone`) |
-| `/api/v1/memory/turn` | POST | Seamless: auto-retrieve + store in one call |
-| `/api/v1/memory/update` | POST | Update memory or provide feedback |
-| `/api/v1/memory/forget` | POST | Forget specific memories |
-| `/api/v1/memory/stats` | GET | Get memory statistics by type and status |
-| `/api/v1/memory/all` | DELETE | Delete all memories for a tenant (admin only) |
-
-### Session Endpoints
-
-| Endpoint | Method | Description |
-| :--- | :---: | :--- |
-| `/api/v1/session/create` | POST | Create a new session |
-| `/api/v1/session/{id}/write` | POST | Write memory within a session |
-| `/api/v1/session/{id}/read` | POST | Read memories within session scope |
-| `/api/v1/session/{id}/context` | GET | Get session context |
-
-### Admin and System
-
-| Endpoint | Method | Description |
-| :--- | :---: | :--- |
-| `/api/v1/admin/consolidate/{user_id}` | POST | Trigger consolidation for a user |
-| `/api/v1/admin/forget/{user_id}` | POST | Trigger active forgetting for a user |
-| `/api/v1/health` | GET | Health check |
-| `/dashboard` | GET | Admin dashboard (requires admin API key) |
-
-> **Authentication**: Set `AUTH__API_KEY` and pass via `X-API-Key` header. The dashboard and admin endpoints require `AUTH__ADMIN_API_KEY`.
-
----
-
-## Evaluation
-
-CML includes a LoCoMo-Plus evaluation harness for benchmarking Level-2 cognitive memory performance.
-
-```bash
-# Run full evaluation (from project root)
-python evaluation/scripts/run_full_eval.py
-
-# Or, for finer control:
-cd evaluation
-python scripts/eval_locomo_plus.py --verbose
-```
-
-The evaluation pipeline:
-1. Parses LoCoMo conversation data with `DATE:` lines into UTC timestamps
-2. Writes each utterance to CML with temporal fidelity and speaker metadata
-3. Runs consolidation and reconsolidation (release labile) for each eval tenant via the dashboard API, unless `--skip-consolidation` is set
-4. Queries CML with benchmark questions using neutral prompting
-5. Scores responses using LLM-as-judge
-
-Use `--ingestion-workers N` (default 10) for concurrent Phase A ingestion; optional `LLM_INTERNAL__*` in `.env` for faster extraction.
-
-### LoCoMo-Plus comparison highlights (CML vs paper baselines)
-
-| Aspect | CML (gpt-oss:20b + CML) | Lead |
-| :--- | :--- | :--- |
-| **Cognitive (LoCoMo-Plus)** | **21.45%** | **Above** Mem0 (15.80%), SeCom (14.90%), RAG (12–15%), smaller Qwen (9–19%) |
-| **Gap** (factual − cognitive) | **10.04%** | **Smaller** than most baselines (paper: ~18–45%); CML keeps cognitive performance closer to factual |
-| **Setup** | Local 20B QA + CML backend | Paper baselines use GPT-4o, Gemini, or Qwen; CML achieves strong cognitive scores with a smaller model |
-
-Full numbers, breakdown by category, and script: **[evaluation/COMPARISON.md](evaluation/COMPARISON.md)**.
-
-See also [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/RunEvaluation.md](ProjectPlan/LocomoEval/RunEvaluation.md).
-
----
-
-## Project Structure
-
-```
-CognitiveMemoryLayer/
-├── src/                          # Server engine (90 Python modules)
-│   ├── api/                      # REST API: routes, auth, middleware, dashboard routes
-│   ├── core/                     # Schemas, enums (15 memory types), config (20+ feature flags)
-│   ├── dashboard/                # Web dashboard (monitoring + management SPA)
-│   │   └── static/               # HTML, CSS, JS
-│   ├── memory/
-│   │   ├── sensory/              # Sensory buffer (token-ID storage via tiktoken)
-│   │   ├── working/              # Working memory + SemchunkChunker (BoundedStateMap)
-│   │   ├── hippocampal/          # Episodic store (pgvector, batch embed, write gate, PII redactor)
-│   │   ├── neocortical/          # Semantic store (Neo4j, fact schemas, schema manager)
-│   │   └── orchestrator.py       # Main coordinator
-│   ├── retrieval/                # Query classifier, planner, hybrid retriever, reranker, packet builder
-│   ├── consolidation/            # Sampler, clusterer, summarizer, schema aligner, migrator
-│   ├── reconsolidation/          # Labile tracker, conflict detector, belief revision
-│   ├── forgetting/               # Scorer, interference, actions, compression, executor
-│   ├── extraction/               # Entity, fact, relation, constraint, write-time fact extractors
-│   ├── storage/                  # Postgres, Neo4j, Redis, event log, async pipeline
-│   └── utils/                    # LLM, embeddings, metrics, timing, bounded state
-├── packages/
-│   └── py-cml/                   # Python SDK (pip install cognitive-memory-layer)
-│       ├── src/cml/              # Client, models, transport, converters
-│       ├── tests/                # 175 tests (unit, integration, embedded, e2e)
-│       └── docs/                 # SDK documentation
-├── tests/                        # 529 tests (unit, integration, e2e)
-├── evaluation/                   # LoCoMo-Plus evaluation harness + scripts
-├── examples/                     # 14 example scripts (quickstart, chatbot, embedded, integrations)
-├── migrations/                   # Alembic database migrations
-├── docker/                       # Docker Compose + Dockerfile
-├── scripts/                      # Dev scripts (badge updater, init structure)
-└── ProjectPlan/                  # Documentation, phase plans, status docs
-```
+**Project structure:** `src/` (engine), `packages/py-cml/` (SDK), `tests/`, `evaluation/`, `examples/`. See [CONTRIBUTING](CONTRIBUTING.md).
 
 ---
 
 ## Testing
 
-Tests read configuration from the project root `.env`; copy `.env.example` to `.env` and set values. See [tests/README.md](tests/README.md) for full layout and [packages/py-cml/README.md#testing](packages/py-cml/README.md#testing) for SDK tests.
-
 ```bash
-# Run all server tests (unit + integration + e2e)
 pytest tests/unit tests/integration tests/e2e -v --tb=short
-
-# Run in Docker (with DB)
-docker compose -f docker/docker-compose.yml build app
-docker compose -f docker/docker-compose.yml run --rm app sh -c "alembic upgrade head && pytest tests -v --tb=short"
-
-# Run unit tests only (no DB required for most)
-pytest tests/unit -v
-
-# Run SDK tests (unit, integration, embedded, e2e)
-pytest packages/py-cml/tests -v
 ```
 
-<details>
-<summary><strong>Test suite summary</strong></summary>
-
-| Suite | Count | Description |
-| :--- | ---: | :--- |
-| Server unit | 438 | Core models, write gate, chunker, extraction, constraint layer, retrieval, forgetting, API |
-| Server integration | 88 | Hippocampal encode, neocortical store, retrieval flow, consolidation, forgetting, dashboard |
-| Server e2e | 3 | Full API flows |
-| **Server total** | **529** | `pytest tests/unit tests/integration tests/e2e` |
-| SDK unit | 149 | Client, models, transport, serialization, config, enums, retry, logging |
-| SDK integration | 18 | Write/read, sessions, admin, batch, stats, namespaces |
-| SDK embedded | 6 | Lite mode, lifecycle |
-| SDK e2e | 2 | Chat flow, migration |
-| **SDK total** | **175** | `pytest packages/py-cml/tests` |
-| **Combined** | **704** | Server + SDK |
-
-To refresh version and test-count badges: `python scripts/update_readme_badges.py`
-
-</details>
+See [tests/README.md](tests/README.md) for layout, coverage, and SDK tests.
 
 ---
 
@@ -1118,266 +865,11 @@ To refresh version and test-count badges: `python scripts/update_readme_badges.p
 
 </details>
 
-<details>
-<summary><strong>Additional Readings and Resources</strong></summary>
-
-### Academic Journals
-
-* [Cellular and molecular mechanisms of memory: the LTP connection](https://pubmed.ncbi.nlm.nih.gov/10377283/)
-* [Cognitive neuroscience perspective on memory: overview and summary](https://pmc.ncbi.nlm.nih.gov/articles/PMC10410470/)
-* [Comprehensive exploration of visual working memory mechanisms](https://pmc.ncbi.nlm.nih.gov/articles/PMC11799313/)
-* [Destabilization of fear memory by Rac1-driven engram-microglia communication](https://pubmed.ncbi.nlm.nih.gov/38670239/)
-* [From Structure to Behavior in Basolateral Amygdala-Hippocampus Circuits](https://pmc.ncbi.nlm.nih.gov/articles/PMC5671506/)
-* [Function and mechanisms of memory destabilization and reconsolidation](https://pmc.ncbi.nlm.nih.gov/articles/PMC7167366/)
-* [Learning and memory (PMC)](https://pmc.ncbi.nlm.nih.gov/articles/PMC4248571/)
-* [Memory Consolidation](https://pmc.ncbi.nlm.nih.gov/articles/PMC4526749/)
-* [Memory Part 1: Overview](https://pmc.ncbi.nlm.nih.gov/articles/PMC7965175/)
-* [Memory processes during sleep: beyond standard consolidation](https://pmc.ncbi.nlm.nih.gov/articles/PMC11115869/)
-* [Memory Reconsolidation or Updating Consolidation?](https://www.ncbi.nlm.nih.gov/books/NBK3905/)
-* [Memory Retrieval and the Passage of Time](https://pmc.ncbi.nlm.nih.gov/articles/PMC3069643/)
-* [Memory: Neurobiological mechanisms and assessment](https://pmc.ncbi.nlm.nih.gov/articles/PMC8611531/)
-* [Molecular Mechanisms of Synaptic Plasticity](https://www.ncbi.nlm.nih.gov/books/NBK3913/)
-* [Molecular Mechanisms of the Memory Trace](https://pmc.ncbi.nlm.nih.gov/articles/PMC6312491/)
-* [Neurobiology of systems memory consolidation](https://pubmed.ncbi.nlm.nih.gov/32027423/)
-* [Perspectives on: Information coding in mammalian sensory physiology](https://pmc.ncbi.nlm.nih.gov/articles/PMC3171078/)
-* [Reconstructing a new hippocampal engram for systems reconsolidation](https://pubmed.ncbi.nlm.nih.gov/39689709/)
-* [Roles of Rac1-Dependent Intrinsic Forgetting in Memory-Related Disorders](https://pmc.ncbi.nlm.nih.gov/articles/PMC10341513/)
-* [Shift from Hippocampal to Neocortical Centered Retrieval Network](https://www.jneurosci.org/content/29/32/10087)
-* [Simultaneous encoding of sensory features](https://pmc.ncbi.nlm.nih.gov/articles/PMC12783435/)
-* [Systems consolidation reorganizes hippocampal engram circuitry](https://pubmed.ncbi.nlm.nih.gov/40369077/)
-* [The Biology of Forgetting -- A Perspective](https://pmc.ncbi.nlm.nih.gov/articles/PMC5657245/)
-* [The neurobiological foundation of memory retrieval](https://pmc.ncbi.nlm.nih.gov/articles/PMC6903648/)
-
-### Frontiers Journals
-
-* [Advancements in Neural Coding](https://www.frontiersin.org/research-topics/61027/advancements-in-neural-coding-sensory-perception-and-multiplexed-encoding-strategies)
-* [Memory consolidation from a reinforcement learning perspective](https://www.frontiersin.org/journals/computational-neuroscience/articles/10.3389/fncom.2024.1538741/full)
-* [Molecular Mechanisms of Memory Consolidation Including Sleep](https://www.frontiersin.org/journals/molecular-neuroscience/articles/10.3389/fnmol.2021.767384/full)
-* [Neural, Cellular and Molecular Mechanisms of Active Forgetting](https://www.frontiersin.org/journals/systems-neuroscience/articles/10.3389/fnsys.2018.00003/full)
-
-### University and Educational Resources
-
-* [Synaptic Mechanisms of Long-Term Memory (OpenStax)](https://openstax.org/books/introduction-behavioral-neuroscience/pages/18-4-synaptic-mechanisms-of-long-term-memory)
-* [Memories as Types and Stages (OpenTextBC)](https://opentextbc.ca/introductiontopsychology/chapter/8-1-memories-as-types-and-stages/)
-* [Engrams: Memory Consolidation and Retrieval (PDF)](https://sowmyamanojna.github.io/reports/engrams-termpaper.pdf)
-* [Learning and Memory (Neuroscience Online)](https://nba.uth.tmc.edu/neuroscience/m/s4/chapter07.html)
-* [Memory in Psychology: Definition, Types and Stages](https://study.com/academy/lesson/three-stages-of-memory-in-psychology-explanation-lesson-quiz.html)
-* [Memory Retrieval: Mechanisms and Disorders](https://www.studysmarter.co.uk/explanations/medicine/neuroscience/memory-retrieval/)
-* [Molecular and systems mechanisms of memory consolidation](https://augusta.elsevierpure.com/en/publications/molecular-and-systems-mechanisms-of-memory-consolidation-and-stor/)
-* [Parts of the Brain Involved with Memory](https://courses.lumenlearning.com/waymaker-psychology/chapter/parts-of-the-brain-involved-with-memory/)
-
-### News and General Information
-
-* [Brain Anatomy (Mayfield Clinic)](https://mayfieldclinic.com/pe-anatbrain.htm)
-* [Dynamic memory engrams reveal how the brain forms memories](https://www.eurekalert.org/news-releases/1084413)
-* [How we recall the past (MIT News)](https://news.mit.edu/2017/neuroscientists-discover-brain-circuit-retrieving-memories-0817)
-* [Introduction to Brain Anatomy](https://www.buildingbrains.ca/blog/kfsmzpicacg0e47rv0574k8jzk4adc)
-* [Types of memory](https://www.medicalnewstoday.com/articles/types-of-memory)
-* [Memory: What It Is, How It Works and Types](https://my.clevelandclinic.org/health/articles/memory)
-* [Molecular mechanisms of memory formation revealed](https://www.sciencedaily.com/releases/2018/02/180208120925.htm)
-* [Research into the nature of memory (UB News)](https://www.buffalo.edu/news/releases/2024/01/How-memory-cells-engrams-stabilize.html)
-* [Sensory transduction](https://taylorandfrancis.com/knowledge/Medicine_and_healthcare/Physiology/Sensory_transduction/)
-
-### Preprints
-
-* [Autophagy in DG engrams mediates Rac1-dependent forgetting](https://www.biorxiv.org/content/10.1101/2021.08.26.457763.full)
-
-</details>
-
 ---
 
-## Future Roadmap: LLM Intrinsic Memory Integration
+## Future Roadmap
 
-> The following describes a **planned** evolution; the current release provides the external (RAG) memory system.
-
-The current CML operates as an advanced external memory system via REST APIs. The next evolution is **intrinsic memory integration** &mdash; injecting memories directly into the LLM's computational graph rather than context-stuffing prompts.
-
-| Approach | How Memory Works | Privacy |
-| :--- | :--- | :--- |
-| **RAG** (Current) | Text concatenated to prompt | Raw text in prompt |
-| **CML Intrinsic** (Target) | Steering vectors / KV-cache / logit biases | Latent vector obfuscation |
-
-<details>
-<summary><h3>The Three Injection Interfaces</h3></summary>
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#FAFAFA',
-      'primaryTextColor': '#262626',
-      'primaryBorderColor': '#525252',
-      'lineColor': '#a3a3a3',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef shallow fill:#ecfccb,stroke:#4d7c0f,stroke-width:2px,color:#1a2e05
-    classDef mid fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#431407
-    classDef deep fill:#fce7f3,stroke:#be185d,stroke-width:2px,color:#500724
-
-    subgraph Interfaces ["Memory Injection Interfaces"]
-        direction TB
-        Logit["LOGIT INTERFACE\nToken probability bias\nAPI-compatible"]:::shallow
-        Activation["ACTIVATION INTERFACE\nSteering vectors\nSemantic control"]:::mid
-        Synaptic["SYNAPTIC INTERFACE\nKV-Cache injection\nVirtual context"]:::deep
-    end
-
-    subgraph Depth ["Integration Depth"]
-        direction TB
-        L1(Shallow: Output Layer):::shallow
-        L2(Mid: Hidden States):::mid
-        L3(Deep: Attention Memory):::deep
-    end
-
-    Logit ==> L1
-    Activation ==> L2
-    Synaptic ==> L3
-```
-
-**1. Logit Interface** (Universal Compatibility)
-- kNN-LM interpolation: Blend model predictions with memory-based token distributions
-- Logit bias: Boost probability of memory-relevant tokens
-- Works with any provider supporting `logit_bias`
-
-**2. Activation Interface** (Semantic Steering)
-- Steering Vectors: Inject concepts as directions in activation space
-- Contrastive Direction Discovery from positive/negative prompt pairs
-- Layer targeting: Early (syntactic) &rarr; Middle (semantic) &rarr; Late (formatting)
-
-**3. Synaptic Interface** (Virtual Context)
-- KV-Cache Injection: Pre-compute Key-Value pairs for memories
-- Temporal Decay: Memories fade like biological synapses (SynapticRAG-inspired)
-- Privacy via latent obfuscation &mdash; vectors, not plaintext
-
-</details>
-
-<details>
-<summary><h3>Technical Architecture (Planned)</h3></summary>
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#F0F9FF',
-      'primaryTextColor': '#0369a1',
-      'primaryBorderColor': '#0ea5e9',
-      'lineColor': '#38bdf8',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef mal fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0c4a6e
-    classDef bus fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12
-    classDef interface fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#581c87
-    classDef cache fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#14532d
-
-    subgraph MAL ["Model Access Layer"]
-        direction TB
-        Registry[[Model Registry]]:::mal
-        Hooks[[Hook Manager]]:::mal
-        Inspect[[Model Inspector]]:::mal
-    end
-
-    subgraph Bus ["Intrinsic Memory Bus"]
-        direction TB
-        Channels{{"logit_bias | steering | kv_inject"}}:::bus
-    end
-
-    subgraph IF ["Injection Interfaces"]
-        direction TB
-        Logit["Logit Interface\n(kNN-LM + Bias)"]:::interface
-        Activation["Activation Interface\n(Steering Vectors)"]:::interface
-        Synaptic["Synaptic Interface\n(KV Encoder)"]:::interface
-    end
-
-    subgraph Cache ["Memory Cache Hierarchy"]
-        direction TB
-        L1[("L1: GPU HBM\nWorking Memory")]:::cache
-        L2[("L2: CPU DRAM\nShort-term")]:::cache
-        L3[("L3: NVMe SSD\nLong-term")]:::cache
-    end
-
-    Registry & Hooks & Inspect --> Channels
-    Channels ==> Logit
-    Channels ==> Activation
-    Channels ==> Synaptic
-    Logit & Activation & Synaptic --> L1
-    L1 --> L2
-    L2 --> L3
-```
-
-| Component | Function | Implementation |
-| :--- | :--- | :--- |
-| **Model Backend** | Abstract LLM internals | PyTorch hooks, OpenAI |
-| **Hook Manager** | Hook lifecycle + safety | Norm/NaN detection |
-| **Memory Encoder** | Text to vectors/KV pairs | Contrastive learning, PCA |
-| **Injection Scaler** | Numerical stability | Norm preservation, adaptive alpha |
-
-</details>
-
-<details>
-<summary><h3>Research Foundations</h3></summary>
-
-#### Core Architectures
-
-| Paper | Contribution | Link |
-| :--- | :--- | :--- |
-| **Prometheus Mind** | Identity V: memory via unembedding matrix | [ResearchGate][pm] |
-| **SynapticRAG** | Temporal memory decay (synaptic plasticity) | [ACL Findings][sr] |
-| **Titans** (Google) | Learning to memorize at test time | [arXiv][titans] |
-| **Cognitive Workspace** | Active memory for infinite context | [arXiv][cw] |
-| **LongMem** | Decoupled long-term memory networks | [arXiv][lm] |
-
-[pm]: https://www.researchgate.net/publication/400002993_Prometheus_Mind_Retrofitting_Memory_to_Frozen_Language_Models
-[sr]: https://aclanthology.org/2025.findings-acl.1048.pdf
-[titans]: https://arxiv.org/abs/2501.00663
-[cw]: https://arxiv.org/abs/2508.13171
-[lm]: https://arxiv.org/abs/2306.07174
-
-#### Techniques
-
-| Paper | Contribution | Link |
-| :--- | :--- | :--- |
-| **kNN-LM** | Nearest-neighbor memory interpolation | [arXiv][knn] |
-| **Shadow in the Cache** | KV-cache privacy via latent obfuscation | [arXiv][sitc] |
-| **Steering Vector Fields** | Context-aware LLM control | [arXiv][svf] |
-| **Activation Addition** | Steering via bias terms in activations | [OpenReview][aa] |
-| **LMCache** | Efficient KV-cache storage and retrieval | [GitHub][lmc] |
-
-[knn]: https://arxiv.org/abs/1911.00172
-[sitc]: https://arxiv.org/abs/2508.09442
-[svf]: https://arxiv.org/html/2602.01654v1
-[aa]: https://openreview.net/forum?id=2XBPdPIcFK
-[lmc]: https://github.com/LMCache/LMCache
-
-</details>
-
-<details>
-<summary><h3>Development Phases</h3></summary>
-
-| Phase | Focus | Status |
-| :--- | :--- | :--- |
-| **Phase 1** | Model Access Layer and Hook System | Planned |
-| **Phase 2** | Logit Interface (kNN-LM, Bias Engine) | Planned |
-| **Phase 3** | Activation Interface (Steering Vectors) | Planned |
-| **Phase 4** | Synaptic Interface (KV-Cache Injection) | Planned |
-| **Phase 5** | Controller and Gating Unit | Planned |
-| **Phase 6** | Memory Encoding Pipeline | Planned |
-| **Phase 7** | Cache Hierarchy (L1/L2/L3) | Planned |
-| **Phase 8** | Weight Adaptation (Dynamic LoRA) | Planned |
-| **Phase 9** | Integration and Migration | Planned |
-| **Phase 10** | Observability and Benchmarking | Planned |
-
-See [ProjectPlan/ActiveCML/](./ProjectPlan/ActiveCML/) for detailed specifications.
-
-</details>
+Planned evolution: **intrinsic memory integration** &mdash; injecting memories into the LLM computational graph (steering vectors, KV-cache, logit biases) instead of context-stuffing. See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for phase specifications.
 
 ---
 

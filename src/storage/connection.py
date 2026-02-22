@@ -67,7 +67,12 @@ class DatabaseManager:
                 loop = asyncio.get_running_loop()
                 loop.create_task(_cleanup())
             except RuntimeError:
-                asyncio.run(_cleanup())
+                import structlog
+
+                structlog.get_logger(__name__).error(
+                    "db_manager_init_failed",
+                    msg="Initialization failed without active event loop; cleanup not performed automatically.",
+                )
             raise
 
     @classmethod

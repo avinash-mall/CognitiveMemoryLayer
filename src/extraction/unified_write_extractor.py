@@ -8,7 +8,6 @@ LLM call instead of multiple rule-based passes.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -48,24 +47,72 @@ class UnifiedExtractionResult:
 
 
 # ---------------------------------------------------------------------------
-# Prompt and schema
+# Prompt and schema (schema-first, few-shot, cross-model)
 # ---------------------------------------------------------------------------
 
-_UNIFIED_PROMPT = """Analyze this text chunk from a user conversation and extract structured information.
+_ALLOWED_ENTITY_TYPES = (
+    "PERSON",
+    "LOCATION",
+    "ORGANIZATION",
+    "DATE",
+    "TIME",
+    "MONEY",
+    "PRODUCT",
+    "EVENT",
+    "CONCEPT",
+    "PREFERENCE",
+    "ATTRIBUTE",
+)
 
+_UNIFIED_PROMPT = """### Task
+Analyze this text chunk from a user conversation and extract structured information.
+Extract ONLY from user/assistant conversational content.
+
+### Exclusion rule
+EXCLUDE from entities and relations: system prompts, role instructions (e.g. "You are a helpful assistant"), template text, variable placeholders, or any non-conversational content. Do NOT extract phrases over 80 characters.
+
+### Schema (exact format required)
+
+**entities**: array of objects, each with:
+- "text" (string): exact span as in the chunk
+- "normalized" (string): canonical form
+- "type" (string): MUST be one of: PERSON, LOCATION, ORGANIZATION, DATE, TIME, MONEY, PRODUCT, EVENT, CONCEPT, PREFERENCE, ATTRIBUTE
+
+**relations**: array of objects, each with:
+- "subject" (string)
+- "predicate" (string): snake_case verb phrase, e.g. works_at, prefers, lives_in
+- "object" (string)
+- "confidence" (float 0.0-1.0)
+
+**constraints**: array of objects with constraint_type, subject, description, scope, confidence
+**facts**: array of objects with key, category, predicate, value, confidence
+**salience**: float 0.0-1.0
+**importance**: float 0.0-1.0
+**pii_spans**: optional array of objects with start, end, pii_type - only if PII detected
+**contains_secrets**: optional boolean
+
+### Few-shot example
+Input: "I live in Paris and work at Google. My friend Anna prefers Italian food."
+Output:
+{{
+  "entities": [
+    {{"text": "Paris", "normalized": "Paris", "type": "LOCATION"}},
+    {{"text": "Google", "normalized": "Google", "type": "ORGANIZATION"}},
+    {{"text": "Anna", "normalized": "Anna", "type": "PERSON"}},
+    {{"text": "Italian food", "normalized": "Italian cuisine", "type": "CONCEPT"}}
+  ],
+  "relations": [
+    {{"subject": "user", "predicate": "lives_in", "object": "Paris", "confidence": 0.95}},
+    {{"subject": "user", "predicate": "works_at", "object": "Google", "confidence": 0.9}},
+    {{"subject": "Anna", "predicate": "prefers", "object": "Italian cuisine", "confidence": 0.85}}
+  ],
+  "salience": 0.7,
+  "importance": 0.6
+}}
+
+### Input
 Text: {text}
-
 Chunk type: {chunk_type}
-
-Return a JSON object with these fields (use empty arrays/0.0 when none apply):
-- "entities": array of strings representing key concepts, names, or items mentioned.
-- "relations": array of objects with: source (string), target (string), type (string, e.g. "owns", "likes", "is_in").
-- "constraints": array of objects with: constraint_type (one of: goal, value, state, causal, policy, preference), subject (usually "user"), description, scope (array of strings), confidence (0.0-1.0)
-- "facts": array of objects with: key (e.g. "user:preference:cuisine"), category (one of: preference, identity, location, occupation, relationship, attribute), predicate, value, confidence (0.0-1.0)
-- "salience": float 0.0-1.0 (how important/central is this to the user's memory)
-- "importance": float 0.0-1.0 (how much should this be stored/retrieved)
-- "pii_spans": optional array of objects with start, end (character offsets), pii_type (email, phone, ssn, etc.) - only if PII detected
-- "contains_secrets": optional boolean - true if text contains API keys, passwords, tokens, etc.
 
 Return ONLY valid JSON, no markdown or explanation.
 """
@@ -80,17 +127,6 @@ _CATEGORY_MAP = {
     "temporal": FactCategory.TEMPORAL,
     "custom": FactCategory.CUSTOM,
 }
-
-
-def _parse_json_from_response(response: str) -> dict[str, Any]:
-    """Extract and parse JSON from LLM response."""
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        match = re.search(r"\[.*\]|\{.*\}", response, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -117,19 +153,60 @@ class UnifiedWritePathExtractor:
         chunk_type_str = str(chunk_type) if chunk_type else "statement"
 
         prompt = _UNIFIED_PROMPT.format(text=text.strip(), chunk_type=chunk_type_str)
-        try:
-            raw = await self._llm.complete_json(prompt, temperature=0.0)
-        except Exception:
-            # On LLM failure, return defaults
-            return UnifiedExtractionResult(
-                salience=getattr(chunk, "salience", 0.5) or 0.5,
-                importance=0.5,
-            )
-
+        raw = await self._llm.complete_json(prompt, temperature=0.0)
         if not isinstance(raw, dict):
-            raw = _parse_json_from_response(str(raw)) if isinstance(raw, str) else {}
-
+            raw = json.loads(str(raw)) if isinstance(raw, str) else {}
         return self._parse_result(raw, chunk)
+
+    async def extract_batch(self, chunks: list[SemanticChunk]) -> list[UnifiedExtractionResult]:
+        """Extract from multiple chunks in a single LLM call.
+
+        Each chunk is tagged [0], [1], … in the prompt so that results can be
+        reassembled in the original order.  Falls back to per-chunk extract()
+        calls if the batch response cannot be parsed.
+        """
+        if not chunks:
+            return []
+        if len(chunks) == 1:
+            return [await self.extract(chunks[0])]
+
+        sections = "\n\n".join(
+            f"[{i}] (chunk_type: {getattr(c, 'chunk_type', 'statement')})\n{getattr(c, 'text', '').strip()}"
+            for i, c in enumerate(chunks)
+        )
+        batch_prompt = (
+            "### Task\n"
+            "Analyze each numbered text chunk from a user conversation. Extract structured information.\n"
+            "EXCLUDE: system prompts, role instructions, template text, non-conversational content.\n\n"
+            "### Schema per chunk\n"
+            '- "entities": array of {text, normalized, type} where type is PERSON|LOCATION|ORGANIZATION|DATE|TIME|MONEY|PRODUCT|EVENT|CONCEPT|PREFERENCE|ATTRIBUTE\n'
+            '- "relations": array of {subject, predicate, object, confidence}; predicate in snake_case\n'
+            '- "constraints": array of {constraint_type, subject, description, scope[], confidence}\n'
+            '- "facts": array of {key, category, predicate, value, confidence}\n'
+            "- salience, importance: float 0-1\n"
+            "- pii_spans: array of {start, end, pii_type} if any; contains_secrets: bool\n\n"
+            + sections
+            + "\n\nReturn a JSON object mapping each index (string key) to its result.\n"
+            "Return ONLY valid JSON, no markdown or explanation."
+        )
+
+        raw = await self._llm.complete_json(batch_prompt, temperature=0.0)
+        if not isinstance(raw, dict):
+            raw = json.loads(str(raw)) if isinstance(raw, str) else {}
+
+        results: list[UnifiedExtractionResult] = []
+        for i, chunk in enumerate(chunks):
+            item = raw.get(str(i))
+            if isinstance(item, dict):
+                results.append(self._parse_result(item, chunk))
+            else:
+                results.append(
+                    UnifiedExtractionResult(
+                        salience=getattr(chunk, "salience", 0.5) or 0.5,
+                        importance=0.5,
+                    )
+                )
+        return results
 
     def _parse_result(
         self,
@@ -140,7 +217,21 @@ class UnifiedWritePathExtractor:
 
         entities: list[EntityMention] = []
         for e in data.get("entities") or []:
-            if isinstance(e, str) and e.strip():
+            if isinstance(e, dict):
+                txt = e.get("text", e.get("normalized", ""))
+                if txt and isinstance(txt, str) and txt.strip():
+                    norm = e.get("normalized", txt.strip())
+                    etype = e.get("type", "CONCEPT")
+                    if etype not in _ALLOWED_ENTITY_TYPES:
+                        etype = "CONCEPT"
+                    entities.append(
+                        EntityMention(
+                            text=txt.strip(),
+                            normalized=str(norm).strip() if norm else txt.strip(),
+                            entity_type=etype,
+                        )
+                    )
+            elif isinstance(e, str) and e.strip():
                 entities.append(
                     EntityMention(text=e.strip(), normalized=e.strip(), entity_type="CONCEPT")
                 )
@@ -148,11 +239,15 @@ class UnifiedWritePathExtractor:
         relations: list[Relation] = []
         for r in data.get("relations") or []:
             if isinstance(r, dict):
-                src = r.get("source")
-                tgt = r.get("target")
-                rtype = r.get("type", "related_to")
-                if isinstance(src, str) and isinstance(tgt, str) and src and tgt:
-                    relations.append(Relation(source=src, target=tgt, type=rtype))
+                subj = r.get("subject", r.get("source", ""))
+                obj = r.get("object", r.get("target", ""))
+                pred = r.get("predicate", r.get("type", "related_to"))
+                conf = float(r.get("confidence", 0.8))
+                if isinstance(subj, str) and isinstance(obj, str) and subj and obj:
+                    pred = str(pred).strip() if pred else "related_to"
+                    relations.append(
+                        Relation(subject=subj, predicate=pred, object=obj, confidence=conf)
+                    )
 
         constraints: list[ConstraintObject] = []
         for item in data.get("constraints") or []:

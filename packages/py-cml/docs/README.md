@@ -12,5 +12,6 @@ Documentation for the Python SDK for the Cognitive Memory Layer.
 
 ## Quick links
 
-- [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues, server setup
+- [Usage & API](../../ProjectPlan/UsageDocumentation.md) — server setup, API reference, config
+- [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues
 - [CHANGELOG](../CHANGELOG.md) — version history
