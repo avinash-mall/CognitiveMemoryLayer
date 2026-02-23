@@ -2,7 +2,7 @@
 
 Working examples using the **py-cml** package. See [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) for server setup and [packages/py-cml/docs](../packages/py-cml/docs/) for SDK docs.
 
-**Prerequisites:** Start API (`docker compose -f docker/docker-compose.yml up api`), copy `.env.example` to `.env`, set `AUTH__API_KEY`. For LLM examples: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Install: `pip install -r examples/requirements.txt` or `pip install -e packages/py-cml`.
+**Prerequisites:** Start API (`docker compose -f docker/docker-compose.yml up api`, or with test keys without changing `.env`: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up api`), copy `.env.example` to `.env`, set `AUTH__API_KEY`. For LLM examples: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Install: `pip install -r examples/requirements.txt` or `pip install -e packages/py-cml`.
 
 ## Examples Overview
 
@@ -46,4 +46,4 @@ Prerequisites: API up for API-dependent examples; embedded needs `pip install -e
 
 **Quick runs:** `python examples/quickstart.py` | `python examples/chat_with_memory.py` | `python examples/embedded_mode.py` (no server). Direct API: `python examples/api_direct_minimal.py` or `bash examples/api_curl_examples.sh`.
 
-**Troubleshooting:** Could not connect → start API. API key required → set `AUTH__API_KEY` in `.env`. No memories → broaden query. See [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) and [py-cml docs](../packages/py-cml/docs/).
+**Troubleshooting:** Could not connect → start API. API key required → set `AUTH__API_KEY` in `.env` (or start API with `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up api` to use test keys). No memories → broaden query. See [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) and [py-cml docs](../packages/py-cml/docs/).

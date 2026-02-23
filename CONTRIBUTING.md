@@ -42,10 +42,10 @@ Thank you for your interest in contributing. This document outlines how to get s
 
 ## Project structure
 
-- `src/` — Application code: `core`, `api`, `memory`, `storage`, `retrieval`, `consolidation`, `forgetting`, `reconsolidation`, `extraction`, `utils`.
+- `src/` — Application code: `core`, `api`, `dashboard`, `memory`, `storage`, `retrieval`, `consolidation`, `forgetting`, `reconsolidation`, `extraction`, `utils`.
 - `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
 - `tests/` — Pytest tests (unit, integration, e2e); see [tests/README.md](tests/README.md).
-- `scripts/` — Dev scripts (e.g. `update_readme_badges.py` to refresh version and test count in README badges).
+- `scripts/` — Dev scripts: `update_readme_badges.py` (refresh version and test count in README badges), `run_examples.py` (run examples; see script docstring or examples/README), `init_structure.py` (bootstrap directory structure; optional for new contributors).
 - `ProjectPlan/` — Design docs and phase plans (e.g. [ActiveCML/Issues.md](ProjectPlan/ActiveCML/Issues.md), [CreatePackage/CreatePackageStatus.md](ProjectPlan/CreatePackage/CreatePackageStatus.md)).
 
 For full architecture and API details, see [README](README.md) and [Usage Documentation](ProjectPlan/UsageDocumentation.md).

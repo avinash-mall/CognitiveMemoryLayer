@@ -1,6 +1,6 @@
 """Async usage of py-cml with asyncio.
 
-Set AUTH__API_KEY (or CML_API_KEY) and CML_BASE_URL (or MEMORY_API_URL) in .env.
+Set CML_API_KEY and CML_BASE_URL in .env (same value as server AUTH__API_KEY for local dev).
 """
 
 import asyncio
@@ -18,11 +18,9 @@ from cml import AsyncCognitiveMemoryLayer
 
 
 def _memory_config():
-    base_url = (
-        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-    ).strip() or "http://localhost:8000"
+    base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
     return {
-        "api_key": os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        "api_key": os.environ.get("CML_API_KEY"),
         "base_url": base_url,
     }
 

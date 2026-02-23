@@ -1,5 +1,6 @@
 # Override to run the API with test keys so py-cml integration/e2e tests pass
-# without changing your .env. Usage:
+# without changing your .env. When used with -f docker/docker-compose.test-key.yml, this file
+# overrides .env for AUTH__API_KEY and AUTH__ADMIN_API_KEY only. Usage:
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api
 # Then from packages/py-cml: pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"
 services:
