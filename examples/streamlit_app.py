@@ -30,7 +30,7 @@ except ImportError:
 if "base_url" not in st.session_state:
     st.session_state.base_url = os.environ.get("CML_BASE_URL", "http://localhost:8000/api/v1")
 if "api_key" not in st.session_state:
-    st.session_state.api_key = os.environ.get("AUTH__API_KEY", "")
+    st.session_state.api_key = os.environ.get("CML_API_KEY", "")
 if "active_session_id" not in st.session_state:
     st.session_state.active_session_id = "streamlit-demo-session"
 if "chat_history" not in st.session_state:

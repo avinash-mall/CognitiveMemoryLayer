@@ -82,12 +82,10 @@ class ClaudeMemoryAssistant:
     def __init__(self, session_id: str, model: str = "claude-sonnet-4-20250514"):
         self.session_id = session_id
         self.model = model
-        base_url = (
-            os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-        ).strip() or "http://localhost:8000"
+        base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
         self.anthropic = Anthropic()
         self.memory = CognitiveMemoryLayer(
-            api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+            api_key=os.environ.get("CML_API_KEY"),
             base_url=base_url,
         )
         self.messages: list[dict[str, Any]] = []
@@ -129,8 +127,8 @@ class ClaudeMemoryAssistant:
                 model=self.model,
                 max_tokens=4096,
                 system=self.system,
-                tools=MEMORY_TOOLS,  # type: ignore[arg-type]
-                messages=self.messages,  # type: ignore[arg-type]
+                tools=MEMORY_TOOLS,
+                messages=self.messages,
             )
             if resp.stop_reason == "tool_use":
                 self.messages.append({"role": "assistant", "content": resp.content})

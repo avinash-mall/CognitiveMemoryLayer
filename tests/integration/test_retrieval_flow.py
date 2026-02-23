@@ -198,17 +198,16 @@ async def test_retrieval_embedding_called_once(pg_session_factory):
     from src.utils.embeddings import EmbeddingResult
 
     pg_store = PostgresMemoryStore(pg_session_factory)
+    dims = get_settings().embedding_internal.dimensions or 768
     mock_embed = AsyncMock(
         return_value=EmbeddingResult(
-            embedding=[0.1] * get_settings().embedding_internal.dimensions or 768,
+            embedding=[0.1] * dims,
             model="test",
-            dimensions=get_settings().embedding_internal.dimensions or 768,
+            dimensions=dims,
             tokens_used=10,
         )
     )
-    embedding_client = MockEmbeddingClient(
-        dimensions=get_settings().embedding_internal.dimensions or 768
-    )
+    embedding_client = MockEmbeddingClient(dimensions=dims)
     embedding_client.embed = mock_embed
 
     hippocampal = HippocampalStore(

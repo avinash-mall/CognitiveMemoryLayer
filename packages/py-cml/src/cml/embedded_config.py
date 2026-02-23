@@ -46,7 +46,9 @@ def _env_int(key: str, default: int = 0) -> int:
 class EmbeddedEmbeddingConfig(BaseModel):
     """Embedding configuration for embedded mode. Read from .env: EMBEDDING_INTERNAL__*."""
 
-    provider: Literal["openai", "local", "openai_compatible", "vllm", "ollama"] = Field(default="local")
+    provider: Literal["openai", "local", "openai_compatible", "vllm", "ollama"] = Field(
+        default="local"
+    )
     model: str = Field(
         default="",
         description="Set EMBEDDING_INTERNAL__MODEL or EMBEDDING_INTERNAL__LOCAL_MODEL in .env",

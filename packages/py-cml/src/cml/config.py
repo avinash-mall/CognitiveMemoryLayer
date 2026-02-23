@@ -59,8 +59,8 @@ class CMLConfig(BaseModel):
         if not isinstance(values, dict):
             return values
         env_map = {
-            "api_key": ("CML_API_KEY", "AUTH__API_KEY"),  # AUTH__API_KEY for monorepo consistency
-            "base_url": ("CML_BASE_URL", "MEMORY_API_URL"),
+            "api_key": "CML_API_KEY",
+            "base_url": "CML_BASE_URL",
             "tenant_id": "CML_TENANT_ID",
             "timeout": "CML_TIMEOUT",
             "max_retries": "CML_MAX_RETRIES",

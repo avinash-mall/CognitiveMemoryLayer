@@ -9,7 +9,7 @@ This is particularly useful for:
 - Data migration from other systems with preserved timestamps
 - Testing temporal reasoning and memory consolidation over time
 
-Set AUTH__API_KEY (or CML_API_KEY) and CML_BASE_URL (or MEMORY_API_URL) in .env.
+Set CML_API_KEY and CML_BASE_URL in .env.
 """
 
 import os
@@ -27,11 +27,9 @@ from cml import CognitiveMemoryLayer
 
 
 def main():
-    base_url = (
-        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-    ).strip() or "http://localhost:8000"
+    base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
     with CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        api_key=os.environ.get("CML_API_KEY"),
         base_url=base_url,
     ) as memory:
         _run_temporal_fidelity(memory)

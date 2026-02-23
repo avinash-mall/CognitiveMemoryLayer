@@ -25,10 +25,10 @@ jobs:
           pip install ruff
 
       - name: Run ruff
-        run: ruff check src tests
+        run: ruff check src tests packages/py-cml/src packages/py-cml/tests
 
       - name: Run ruff format
-        run: ruff format --check src tests
+        run: ruff format --check src tests packages/py-cml/src packages/py-cml/tests
 
   test:
     runs-on: ubuntu-latest
@@ -74,6 +74,11 @@ jobs:
           --health-retries 5
 
     env:
+      POSTGRES_USER: memory
+      POSTGRES_PASSWORD: memory
+      POSTGRES_DB: memory
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
       DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@localhost:5432/memory
       DATABASE__NEO4J_URL: bolt://localhost:7687
       DATABASE__NEO4J_USER: neo4j
