@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.config import get_settings
+from src.core.config import get_embedding_dimensions
 from src.core.enums import MemoryType
 from src.extraction.unified_write_extractor import UnifiedWritePathExtractor
 from src.memory.hippocampal.redactor import PIIRedactor
@@ -20,7 +20,7 @@ from src.utils.embeddings import MockEmbeddingClient
 def _make_store_with_unified(session_factory):
     """Create HippocampalStore with mock UnifiedWritePathExtractor."""
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     embeddings = MockEmbeddingClient(dimensions=dims)
     mock_llm = AsyncMock()
     mock_llm.complete_json = AsyncMock(
@@ -117,7 +117,7 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
 def _make_store_with_llm_fields_mock(session_factory, confidence, context_tags, decay_rate):
     """Create HippocampalStore with mock returning confidence, context_tags, decay_rate."""
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     embeddings = MockEmbeddingClient(dimensions=dims)
     mock_llm = AsyncMock()
     mock_llm.complete_json = AsyncMock(
@@ -205,7 +205,7 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
 def _make_store_with_memory_type_mock(session_factory, memory_type: str):
     """Create HippocampalStore with mock that returns specific memory_type."""
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     embeddings = MockEmbeddingClient(dimensions=dims)
     mock_llm = AsyncMock()
     mock_llm.complete_json = AsyncMock(

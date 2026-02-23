@@ -216,14 +216,14 @@ Constraints:
                 )
                 for item in items:
                     if isinstance(item, dict):
-                        idx = item.get("index")
+                        idx_raw = item.get("index")
                         score = item.get("score")
                         if (
-                            isinstance(idx, int)
-                            and 0 <= idx < len(batch)
+                            isinstance(idx_raw, int)
+                            and 0 <= idx_raw < len(batch)
                             and isinstance(score, (int, float))
                         ):
-                            results[i + idx] = min(1.0, max(0.0, float(score)))
+                            results[i + idx_raw] = min(1.0, max(0.0, float(score)))
             except Exception:
                 pass
 

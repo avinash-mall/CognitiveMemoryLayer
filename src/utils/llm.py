@@ -120,7 +120,7 @@ class OpenAICompatibleClient(LLMClient):
 
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -140,7 +140,7 @@ class OpenAICompatibleClient(LLMClient):
             {"role": "user", "content": prompt},
         ]
         try:
-            response = await self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(  # type: ignore[call-overload]
                 model=self.model,
                 messages=messages,
                 temperature=temperature,
@@ -151,7 +151,7 @@ class OpenAICompatibleClient(LLMClient):
             # Fallback for models/endpoints that don't support strict response_format
             response = await self.client.chat.completions.create(
                 model=self.model,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]
                 temperature=temperature,
             )
             text = response.choices[0].message.content or "{}"

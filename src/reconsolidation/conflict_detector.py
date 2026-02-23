@@ -193,6 +193,13 @@ class ConflictDetector:
         if context:
             prompt = f"CONTEXT:\n{context}\n\n{prompt}"
         try:
+            if self.llm is None:
+                return ConflictResult(
+                    conflict_type=ConflictType.AMBIGUITY,
+                    confidence=0.0,
+                    old_statement=old_statement,
+                    new_statement=new_statement,
+                )
             data = await self.llm.complete_json(prompt, temperature=0.0)
             raw_type = data.get("conflict_type", "none")
             try:
