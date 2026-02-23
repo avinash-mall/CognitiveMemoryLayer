@@ -465,12 +465,12 @@ class TestSensoryBufferTokenStorage:
 
 class TestBoundedStateMap:
     @pytest.mark.asyncio
-    async def test_get_returns_none_for_missing(self):
+    async def test_get_returns_none_for_missing(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(max_size=10)
         assert await m.get("nonexistent") is None
 
     @pytest.mark.asyncio
-    async def test_get_or_create_creates_and_returns(self):
+    async def test_get_or_create_creates_and_returns(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(max_size=10)
         val = await m.get_or_create("k1", factory=lambda: "hello")
         assert val == "hello"
@@ -479,7 +479,7 @@ class TestBoundedStateMap:
         assert val2 == "hello"
 
     @pytest.mark.asyncio
-    async def test_lru_eviction(self):
+    async def test_lru_eviction(self) -> None:
         m: BoundedStateMap[int] = BoundedStateMap(max_size=3, ttl_seconds=999)
         await m.set("a", 1)
         await m.set("b", 2)
@@ -493,14 +493,14 @@ class TestBoundedStateMap:
         assert await m.get("d") == 4
 
     @pytest.mark.asyncio
-    async def test_ttl_expiry(self):
+    async def test_ttl_expiry(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(max_size=100, ttl_seconds=0.01)
         await m.set("k", "v")
         await asyncio.sleep(0.05)
         assert await m.get("k") is None
 
     @pytest.mark.asyncio
-    async def test_delete(self):
+    async def test_delete(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap()
         await m.set("k", "v")
         assert await m.delete("k") is True
@@ -508,7 +508,7 @@ class TestBoundedStateMap:
         assert await m.get("k") is None
 
     @pytest.mark.asyncio
-    async def test_cleanup_expired(self):
+    async def test_cleanup_expired(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(ttl_seconds=0.01)
         await m.set("a", "1")
         await m.set("b", "2")

@@ -180,10 +180,11 @@ class MemoryReranker:
         if not query.strip():
             return [self._text_similarity(query, text) for text in constraint_texts]
 
-        # Gate behind feature flag (default: off to avoid one LLM call per read)
+        # Gate behind feature flags (use_llm_enabled and use_llm_constraint_reranker)
         from ..core.config import get_settings
 
-        if not get_settings().features.use_llm_constraint_reranker:
+        feat = get_settings().features
+        if not (feat.use_llm_enabled and feat.use_llm_constraint_reranker):
             return [self._text_similarity(query, text) for text in constraint_texts]
 
         import asyncio
@@ -211,9 +212,7 @@ Constraints:
                 items = (
                     resp
                     if isinstance(resp, list)
-                    else resp.get("results", [])
-                    if isinstance(resp, dict)
-                    else []
+                    else resp.get("results", []) if isinstance(resp, dict) else []
                 )
                 for item in items:
                     if isinstance(item, dict):

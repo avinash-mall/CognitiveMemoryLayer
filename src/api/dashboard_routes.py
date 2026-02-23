@@ -80,17 +80,17 @@ _EDITABLE_SETTINGS = frozenset(
         "app_name",
         "debug",
         "cors_origins",
-        "embedding.provider",
-        "embedding.model",
-        "embedding.dimensions",
-        "embedding.local_model",
-        "embedding.base_url",
-        "llm.provider",
-        "llm.model",
-        "llm.base_url",
+        "embedding_internal.provider",
+        "embedding_internal.model",
+        "embedding_internal.dimensions",
+        "embedding_internal.local_model",
+        "embedding_internal.base_url",
         "llm_internal.provider",
         "llm_internal.model",
         "llm_internal.base_url",
+        "llm_eval.provider",
+        "llm_eval.model",
+        "llm_eval.base_url",
         "auth.default_tenant_id",
         "auth.rate_limit_requests_per_minute",
         "chunker.tokenizer",
@@ -146,20 +146,20 @@ _CONFIG_KEY_TO_ENV: dict[str, str] = {
     "database.neo4j_user": "DATABASE__NEO4J_USER",
     "database.neo4j_password": "DATABASE__NEO4J_PASSWORD",
     "database.redis_url": "DATABASE__REDIS_URL",
-    "embedding.provider": "EMBEDDING__PROVIDER",
-    "embedding.model": "EMBEDDING__MODEL",
-    "embedding.dimensions": "EMBEDDING__DIMENSIONS",
-    "embedding.local_model": "EMBEDDING__LOCAL_MODEL",
-    "embedding.api_key": "EMBEDDING__API_KEY",
-    "embedding.base_url": "EMBEDDING__BASE_URL",
-    "llm.provider": "LLM__PROVIDER",
-    "llm.model": "LLM__MODEL",
-    "llm.api_key": "LLM__API_KEY",
-    "llm.base_url": "LLM__BASE_URL",
+    "embedding_internal.provider": "EMBEDDING_INTERNAL__PROVIDER",
+    "embedding_internal.model": "EMBEDDING_INTERNAL__MODEL",
+    "embedding_internal.dimensions": "EMBEDDING_INTERNAL__DIMENSIONS",
+    "embedding_internal.local_model": "EMBEDDING_INTERNAL__LOCAL_MODEL",
+    "embedding_internal.api_key": "EMBEDDING_INTERNAL__API_KEY",
+    "embedding_internal.base_url": "EMBEDDING_INTERNAL__BASE_URL",
     "llm_internal.provider": "LLM_INTERNAL__PROVIDER",
     "llm_internal.model": "LLM_INTERNAL__MODEL",
     "llm_internal.base_url": "LLM_INTERNAL__BASE_URL",
     "llm_internal.api_key": "LLM_INTERNAL__API_KEY",
+    "llm_eval.provider": "LLM_EVAL__PROVIDER",
+    "llm_eval.model": "LLM_EVAL__MODEL",
+    "llm_eval.base_url": "LLM_EVAL__BASE_URL",
+    "llm_eval.api_key": "LLM_EVAL__API_KEY",
     "auth.api_key": "AUTH__API_KEY",
     "auth.admin_api_key": "AUTH__ADMIN_API_KEY",
     "auth.default_tenant_id": "AUTH__DEFAULT_TENANT_ID",
@@ -722,7 +722,7 @@ async def dashboard_components(
                     "memory_records": mem_count,
                     "semantic_facts": fact_count,
                     "events": event_count,
-                    "embedding_dimensions": settings.embedding.dimensions,
+                    "embedding_dimensions": settings.embedding_internal.dimensions or 768,
                 },
             )
         )
@@ -1436,154 +1436,111 @@ async def dashboard_config(
     ]
     sections.append(ConfigSection(name="Database", items=db_items))
 
-    # Embedding
-    emb = settings.embedding
+    # Embedding (internal memory tasks)
+    emb = settings.embedding_internal
     emb_items = [
         ConfigItem(
-            key="embedding.provider",
-            value=emb.provider,
-            default_value="openai",
+            key="embedding_internal.provider",
+            value=emb.provider or "(default)",
+            default_value=None,
             is_editable=True,
-            source=_config_source("EMBEDDING__PROVIDER"),
-            description="Provider: openai | local | openai_compatible | ollama. Affects vector generation.",
+            source=_config_source("EMBEDDING_INTERNAL__PROVIDER"),
+            description="Provider: openai | local | openai_compatible | ollama. Unset uses nomic-embed-text-v2-moe.",
             requires_restart=True,
             is_required=False,
-            env_var="EMBEDDING__PROVIDER",
+            env_var="EMBEDDING_INTERNAL__PROVIDER",
             options=["openai", "local", "openai_compatible", "ollama"],
         ),
         ConfigItem(
-            key="embedding.model",
-            value=emb.model,
-            default_value="text-embedding-3-small",
+            key="embedding_internal.model",
+            value=emb.model or "(default)",
+            default_value=None,
             is_editable=True,
-            source=_config_source("EMBEDDING__MODEL"),
+            source=_config_source("EMBEDDING_INTERNAL__MODEL"),
             description="Model name. Must match provider. Changing impacts all new embeddings.",
             requires_restart=True,
             is_required=False,
-            env_var="EMBEDDING__MODEL",
+            env_var="EMBEDDING_INTERNAL__MODEL",
         ),
         ConfigItem(
-            key="embedding.dimensions",
-            value=emb.dimensions,
-            default_value=1536,
+            key="embedding_internal.dimensions",
+            value=emb.dimensions or 768,
+            default_value=768,
             is_editable=True,
-            source=_config_source("EMBEDDING__DIMENSIONS"),
-            description="Vector dimension. Must match model and DB schema. Changing requires migration.",
+            source=_config_source("EMBEDDING_INTERNAL__DIMENSIONS"),
+            description="Vector dimension. Must match model and DB schema. Default 768 for nomic.",
             requires_restart=True,
             is_required=False,
-            env_var="EMBEDDING__DIMENSIONS",
+            env_var="EMBEDDING_INTERNAL__DIMENSIONS",
         ),
         ConfigItem(
-            key="embedding.local_model",
-            value=emb.local_model,
-            default_value="all-MiniLM-L6-v2",
+            key="embedding_internal.local_model",
+            value=emb.local_model or "(default)",
+            default_value=None,
             is_editable=True,
-            source=_config_source("EMBEDDING__LOCAL_MODEL"),
-            description="Model for provider=local (sentence-transformers).",
+            source=_config_source("EMBEDDING_INTERNAL__LOCAL_MODEL"),
+            description="Model for provider=local. Default: nomic-embed-text-v2-moe.",
             requires_restart=True,
             is_required=False,
-            env_var="EMBEDDING__LOCAL_MODEL",
+            env_var="EMBEDDING_INTERNAL__LOCAL_MODEL",
         ),
         ConfigItem(
-            key="embedding.api_key",
+            key="embedding_internal.api_key",
             value="****" if emb.api_key else "",
             default_value="",
             is_secret=True,
             is_editable=False,
-            source=_config_source("EMBEDDING__API_KEY"),
+            source=_config_source("EMBEDDING_INTERNAL__API_KEY"),
             description="API key for embedding provider. Fallback: OPENAI_API_KEY.",
             requires_restart=True,
             is_required=False,
-            env_var="EMBEDDING__API_KEY",
+            env_var="EMBEDDING_INTERNAL__API_KEY",
         ),
         ConfigItem(
-            key="embedding.base_url",
+            key="embedding_internal.base_url",
             value=emb.base_url or "",
             default_value="",
             is_editable=True,
-            source=_config_source("EMBEDDING__BASE_URL"),
+            source=_config_source("EMBEDDING_INTERNAL__BASE_URL"),
             description="OpenAI-compatible endpoint URL. For ollama/openai_compatible.",
             requires_restart=True,
             is_required=False,
-            env_var="EMBEDDING__BASE_URL",
+            env_var="EMBEDDING_INTERNAL__BASE_URL",
         ),
     ]
-    sections.append(ConfigSection(name="Embedding", items=emb_items))
+    sections.append(ConfigSection(name="Embedding (Internal)", items=emb_items))
 
-    # LLM
-    llm = settings.llm
-    llm_items = [
-        ConfigItem(
-            key="llm.provider",
-            value=llm.provider,
-            default_value="openai",
-            is_editable=True,
-            source=_config_source("LLM__PROVIDER"),
-            description="Provider: openai | openai_compatible | ollama | gemini | claude.",
-            requires_restart=True,
-            is_required=False,
-            env_var="LLM__PROVIDER",
-            options=["openai", "openai_compatible", "ollama", "gemini", "claude"],
-        ),
-        ConfigItem(
-            key="llm.model",
-            value=llm.model,
-            default_value="gpt-4o-mini",
-            is_editable=True,
-            source=_config_source("LLM__MODEL"),
-            description="Model name. Used for consolidation, classifier, conflict detection.",
-            requires_restart=True,
-            is_required=False,
-            env_var="LLM__MODEL",
-        ),
-        ConfigItem(
-            key="llm.api_key",
-            value="****" if llm.api_key else "",
-            default_value="",
-            is_secret=True,
-            is_editable=False,
-            source=_config_source("LLM__API_KEY"),
-            description="LLM API key. Fallback: OPENAI_API_KEY.",
-            requires_restart=True,
-            is_required=False,
-            env_var="LLM__API_KEY",
-        ),
-        ConfigItem(
-            key="llm.base_url",
-            value=llm.base_url or "",
-            default_value="",
-            is_editable=True,
-            source=_config_source("LLM__BASE_URL"),
-            description="OpenAI-compatible endpoint. For ollama/openai_compatible.",
-            requires_restart=True,
-            is_required=False,
-            env_var="LLM__BASE_URL",
-        ),
-    ]
-    sections.append(ConfigSection(name="LLM", items=llm_items))
-
-    # LLM Internal
+    # LLM Internal (extraction, consolidation, retrieval)
     llmi = settings.llm_internal
     llmi_items = [
         ConfigItem(
             key="llm_internal.provider",
-            value=llmi.provider or "(uses llm)",
-            default_value=None,
+            value=llmi.provider,
+            default_value="openai",
             is_editable=True,
             source=_config_source("LLM_INTERNAL__PROVIDER"),
-            description="Separate LLM for internal tasks (~1-10 calls/turn). Unset uses LLM__*.",
+            description="Provider: openai | ollama | anthropic | gemini | vllm | sglang | openai_compatible.",
             requires_restart=True,
             is_required=False,
             env_var="LLM_INTERNAL__PROVIDER",
-            options=["(uses llm)", "openai", "openai_compatible", "ollama", "gemini", "claude"],
+            options=[
+                "openai",
+                "openai_compatible",
+                "ollama",
+                "gemini",
+                "claude",
+                "anthropic",
+                "vllm",
+                "sglang",
+            ],
         ),
         ConfigItem(
             key="llm_internal.model",
-            value=llmi.model or "(uses llm)",
-            default_value=None,
+            value=llmi.model,
+            default_value="gpt-4o-mini",
             is_editable=True,
             source=_config_source("LLM_INTERNAL__MODEL"),
-            description="Model for internal LLM.",
+            description="Model for internal tasks (extraction, consolidation, classifier).",
             requires_restart=True,
             is_required=False,
             env_var="LLM_INTERNAL__MODEL",
@@ -1594,7 +1551,7 @@ async def dashboard_config(
             default_value="",
             is_editable=True,
             source=_config_source("LLM_INTERNAL__BASE_URL"),
-            description="Base URL for internal LLM.",
+            description="Base URL for internal LLM. Required for ollama/openai_compatible.",
             requires_restart=True,
             is_required=False,
             env_var="LLM_INTERNAL__BASE_URL",
@@ -1606,13 +1563,52 @@ async def dashboard_config(
             is_secret=True,
             is_editable=False,
             source=_config_source("LLM_INTERNAL__API_KEY"),
-            description="API key for internal LLM.",
+            description="API key for internal LLM. Fallback: OPENAI_API_KEY.",
             requires_restart=True,
             is_required=False,
             env_var="LLM_INTERNAL__API_KEY",
         ),
     ]
     sections.append(ConfigSection(name="LLM Internal", items=llmi_items))
+
+    # LLM Eval (QA, judge; fallback to LLM Internal when unset)
+    llme = settings.llm_eval
+    llme_items = [
+        ConfigItem(
+            key="llm_eval.provider",
+            value=llme.provider or "(uses llm_internal)",
+            default_value=None,
+            is_editable=True,
+            source=_config_source("LLM_EVAL__PROVIDER"),
+            description="Provider for evaluation (QA, judge). Unset uses LLM_INTERNAL__*.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_EVAL__PROVIDER",
+        ),
+        ConfigItem(
+            key="llm_eval.model",
+            value=llme.model or "(uses llm_internal)",
+            default_value=None,
+            is_editable=True,
+            source=_config_source("LLM_EVAL__MODEL"),
+            description="Model for evaluation. Unset uses LLM_INTERNAL__MODEL.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_EVAL__MODEL",
+        ),
+        ConfigItem(
+            key="llm_eval.base_url",
+            value=llme.base_url or "",
+            default_value="",
+            is_editable=True,
+            source=_config_source("LLM_EVAL__BASE_URL"),
+            description="Base URL for eval LLM. Unset uses LLM_INTERNAL__BASE_URL.",
+            requires_restart=True,
+            is_required=False,
+            env_var="LLM_EVAL__BASE_URL",
+        ),
+    ]
+    sections.append(ConfigSection(name="LLM Eval", items=llme_items))
 
     # Auth
     auth_s = settings.auth
@@ -2144,9 +2140,9 @@ def _validate_config_updates(updates: dict[str, Any]) -> list[str]:
     """Validate config updates. Returns list of error messages."""
     errors: list[str] = []
     for key, val in updates.items():
-        if key == "embedding.dimensions":
+        if key == "embedding_internal.dimensions":
             if not isinstance(val, (int, float)) or val <= 0:
-                errors.append("embedding.dimensions must be a positive integer")
+                errors.append("embedding_internal.dimensions must be a positive integer")
         elif key == "chunker.chunk_size":
             if not isinstance(val, (int, float)) or val <= 0:
                 errors.append("chunker.chunk_size must be a positive integer")
@@ -2183,7 +2179,7 @@ async def dashboard_config_update(
     for key, val in body.updates.items():
         env_var = _CONFIG_KEY_TO_ENV.get(key)
         if env_var:
-            if key == "embedding.dimensions":
+            if key == "embedding_internal.dimensions":
                 env_updates[env_var] = int(val)
             elif key == "cors_origins":
                 if isinstance(val, list):

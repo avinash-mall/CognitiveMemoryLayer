@@ -39,14 +39,14 @@ class FactExtractor:
 
 
 class LLMFactExtractor(FactExtractor):
-    """LLM-based fact extraction using the same client as summarization (e.g. default LLM)."""
+    """LLM-based fact extraction. Returns [] when llm_client is None (heuristic: no facts)."""
 
-    def __init__(self, llm_client: LLMClient) -> None:
+    def __init__(self, llm_client: LLMClient | None) -> None:
         self.llm = llm_client
 
     async def extract(self, text: str) -> list[ExtractedFact]:
-        """Extract facts from text using LLM."""
-        if not text or not text.strip():
+        """Extract facts from text using LLM. Returns [] when LLM disabled."""
+        if not text or not text.strip() or self.llm is None:
             return []
         prompt = FACT_EXTRACTION_PROMPT.format(text=text.strip())
         try:

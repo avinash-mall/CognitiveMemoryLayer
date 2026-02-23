@@ -90,15 +90,46 @@ class ExtractedGist:
 
 
 class GistExtractor:
-    """Extracts semantic gist from episode clusters."""
+    """Extracts semantic gist from episode clusters. Uses heuristic when llm_client is None."""
 
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient | None):
         self.llm = llm_client
 
-    async def extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
-        """Extract gists from a single cluster."""
+    def _heuristic_extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
+        """Heuristic fallback: truncation + keyword-based gist_type when LLM disabled."""
         if not cluster.episodes:
             return []
+        combined = " ".join(ep.text for ep in cluster.episodes).lower()
+        gist_text = combined[:100].strip()
+        if len(combined) > 100:
+            gist_text = (
+                gist_text.rsplit(maxsplit=1)[0] + "..." if " " in gist_text else gist_text + "..."
+            )
+        gist_type = "summary"
+        if any(w in combined for w in ("prefer", "like", "love", "enjoy", "hate", "dislike")):
+            gist_type = "preference"
+        elif any(w in combined for w in ("never", "always", "must", "should")):
+            gist_type = "policy"
+        elif any(w in combined for w in ("goal", "trying", "working toward")):
+            gist_type = "goal"
+        elif any(w in combined for w in ("value", "important", "believe")):
+            gist_type = "value"
+        return [
+            ExtractedGist(
+                text=gist_text or "Cluster summary",
+                gist_type=gist_type,
+                confidence=0.5,
+                supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
+            )
+        ]
+
+    async def extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
+        """Extract gists from a single cluster. Uses heuristic when LLM is None."""
+        if not cluster.episodes:
+            return []
+
+        if self.llm is None:
+            return self._heuristic_extract_gist(cluster)
 
         memory_texts = []
         for i, ep in enumerate(cluster.episodes[:10], 1):

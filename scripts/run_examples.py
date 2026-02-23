@@ -167,7 +167,7 @@ def _has_api_key() -> bool:
 def _has_openai() -> bool:
     return bool(
         os.environ.get("OPENAI_API_KEY")
-        and (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL"))
+        and (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL"))
     )
 
 
@@ -183,7 +183,7 @@ def _should_skip(ex: dict, include_llm: bool, no_skip: bool) -> str | None:
     if ex.get("needs_llm_openai") and not _has_openai():
         if not include_llm:
             return "LLM example (use --include-llm)"
-        return "missing OPENAI_API_KEY or OPENAI_MODEL/LLM__MODEL"
+        return "missing OPENAI_API_KEY or OPENAI_MODEL/LLM_INTERNAL__MODEL"
     if ex.get("needs_llm_anthropic") and not _has_anthropic():
         if not include_llm:
             return "LLM example (use --include-llm)"
