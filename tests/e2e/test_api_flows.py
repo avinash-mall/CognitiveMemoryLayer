@@ -136,9 +136,9 @@ def test_unauthorized_access(monkeypatch):
                 "X-Tenant-ID": "e2e-unauth"
             },  # distinct tenant so rate limit bucket is separate
         )
-        assert resp.status_code == 401, (
-            f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
-        )
+        assert (
+            resp.status_code == 401
+        ), f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
 
 
 def test_health_response_structure(client):
