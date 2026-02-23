@@ -53,9 +53,11 @@ class ForgettingExecutor:
                     result.operations_applied += 1
                 else:
                     msg = skip_reason or f"Failed to execute {op.action} on {op.memory_id}"
-                    result.errors.append(msg)
+                    if result.errors is not None:
+                        result.errors.append(msg)
             except Exception as e:
-                result.errors.append(f"Error executing {op.action} on {op.memory_id}: {e}")
+                if result.errors is not None:
+                    result.errors.append(f"Error executing {op.action} on {op.memory_id}: {e}")
 
         return result
 
@@ -88,7 +90,7 @@ class ForgettingExecutor:
             **(record.metadata or {}),
             "last_decay": datetime.now(UTC).isoformat(),
         }
-        patch = {"confidence": op.new_confidence, "metadata": merged_meta}
+        patch: dict[str, object] = {"confidence": op.new_confidence, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch, increment_version=False)
         return result is not None
 
@@ -101,7 +103,7 @@ class ForgettingExecutor:
             **(record.metadata or {}),
             "silenced_at": datetime.now(UTC).isoformat(),
         }
-        patch = {"status": MemoryStatus.SILENT.value, "metadata": merged_meta}
+        patch: dict[str, object] = {"status": MemoryStatus.SILENT.value, "metadata": merged_meta}
         result = await self.store.update(op.memory_id, patch)
         return result is not None
 
@@ -125,7 +127,7 @@ class ForgettingExecutor:
         meta = dict(record.metadata)
         meta["compressed_at"] = datetime.now(UTC).isoformat()
         meta["original_length"] = len(record.text)
-        patch = {
+        patch: dict[str, object] = {
             "text": compressed,
             "status": MemoryStatus.COMPRESSED.value,
             "embedding": None,

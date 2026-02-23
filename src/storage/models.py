@@ -8,10 +8,10 @@ from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String,
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import DeclarativeBase
 
-from ..core.config import get_settings
+from ..core.config import get_embedding_dimensions
 
 # Embedding vector dimension driven by EMBEDDING_INTERNAL__DIMENSIONS in .env / config.
-_EMBEDDING_DIM = get_settings().embedding_internal.dimensions or 768
+_EMBEDDING_DIM = get_embedding_dimensions()
 
 
 class Base(DeclarativeBase):
@@ -34,7 +34,7 @@ class EventLogModel(Base):
     operation = Column(String(20), nullable=True)
 
     payload = Column(JSON, nullable=False)
-    memory_ids = Column(ARRAY(UUID(as_uuid=True)), default=list)
+    memory_ids = Column(ARRAY(UUID(as_uuid=True)), default=list)  # type: ignore[var-annotated]
     parent_event_id = Column(UUID(as_uuid=True), nullable=True)
 
     created_at = Column(
@@ -60,7 +60,7 @@ class MemoryRecordModel(Base):
     tenant_id = Column(String(100), nullable=False, index=True)
     agent_id = Column(String(100), nullable=True)
 
-    context_tags = Column(ARRAY(String), default=list, nullable=False)
+    context_tags = Column(ARRAY(String), default=list, nullable=False)  # type: ignore[var-annotated]
     source_session_id = Column(String(100), nullable=True)
     namespace = Column(String(100), nullable=True, index=True)
 
@@ -109,7 +109,7 @@ class SemanticFactModel(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(String(100), nullable=False, index=True)
-    context_tags = Column(ARRAY(String), default=list, nullable=False)
+    context_tags = Column(ARRAY(String), default=list, nullable=False)  # type: ignore[var-annotated]
     category = Column(String(30), nullable=False, index=True)
     key = Column(String(200), nullable=False, index=True)
     subject = Column(String(200), nullable=False)
@@ -118,7 +118,7 @@ class SemanticFactModel(Base):
     value_type = Column(String(50), nullable=False)
     confidence = Column(Float, default=0.8)
     evidence_count = Column(Integer, default=1)
-    evidence_ids = Column(ARRAY(String), default=list)
+    evidence_ids = Column(ARRAY(String), default=list)  # type: ignore[var-annotated]
     valid_from = Column(DateTime, nullable=True)
     valid_to = Column(DateTime, nullable=True)
     is_current = Column(Boolean, default=True, index=True)

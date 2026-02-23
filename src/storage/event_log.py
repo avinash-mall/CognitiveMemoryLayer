@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from datetime import datetime
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -113,16 +114,16 @@ class EventLogRepository:
     def _to_schema(model: EventLogModel) -> EventLog:
         """Convert ORM model to EventLog schema."""
         return EventLog(
-            id=model.id,
-            tenant_id=model.tenant_id,
-            scope_id=model.scope_id,
-            agent_id=model.agent_id,
-            event_type=model.event_type,
-            operation=OperationType(model.operation) if model.operation else None,
-            payload=model.payload,
-            memory_ids=model.memory_ids or [],
-            parent_event_id=model.parent_event_id,
-            created_at=model.created_at,
-            ip_address=model.ip_address,
-            user_agent=model.user_agent,
+            id=cast(UUID, model.id),
+            tenant_id=cast(str, model.tenant_id),
+            scope_id=cast(str, model.scope_id),
+            agent_id=cast(str | None, model.agent_id),
+            event_type=cast(str, model.event_type),
+            operation=OperationType(cast(str, model.operation)) if model.operation else None,
+            payload=cast(dict[str, Any], model.payload),
+            memory_ids=list(cast(list, model.memory_ids) or []),
+            parent_event_id=cast(UUID | None, model.parent_event_id),
+            created_at=cast(datetime, model.created_at),
+            ip_address=cast(str | None, model.ip_address),
+            user_agent=cast(str | None, model.user_agent),
         )

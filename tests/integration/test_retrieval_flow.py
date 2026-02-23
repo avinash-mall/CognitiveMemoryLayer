@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import and_, update
 
-from src.core.config import get_settings
+from src.core.config import get_embedding_dimensions
 from src.core.enums import MemoryType
 from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.store import HippocampalStore
@@ -38,7 +38,7 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
         entity_extractor=None,
         relation_extractor=None,
@@ -74,7 +74,7 @@ async def test_retrieve_for_llm_returns_string(pg_session_factory):
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
         entity_extractor=None,
         relation_extractor=None,
@@ -99,7 +99,7 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
         entity_extractor=None,
         relation_extractor=None,
@@ -152,7 +152,7 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
         entity_extractor=None,
         relation_extractor=None,
@@ -198,7 +198,7 @@ async def test_retrieval_embedding_called_once(pg_session_factory):
     from src.utils.embeddings import EmbeddingResult
 
     pg_store = PostgresMemoryStore(pg_session_factory)
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     mock_embed = AsyncMock(
         return_value=EmbeddingResult(
             embedding=[0.1] * dims,
@@ -240,7 +240,7 @@ async def test_retrieval_validity_filtering(pg_session_factory):
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
         entity_extractor=None,
         relation_extractor=None,

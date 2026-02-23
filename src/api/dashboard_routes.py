@@ -8,14 +8,14 @@ import time
 import uuid as uuid_mod
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select, text, update
 
-from ..core.config import get_settings
+from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
 from ..core.env_file import get_env_path, update_env
 from ..storage.connection import DatabaseManager
 from ..storage.models import (
@@ -436,23 +436,23 @@ async def dashboard_memories(
 
             items = [
                 DashboardMemoryListItem(
-                    id=r.id,
-                    tenant_id=r.tenant_id,
-                    agent_id=r.agent_id,
-                    type=r.type,
-                    status=r.status,
-                    text=r.text[:300] if r.text else "",
-                    key=r.key,
-                    namespace=r.namespace,
-                    context_tags=r.context_tags or [],
-                    confidence=r.confidence or 0.5,
-                    importance=r.importance or 0.5,
-                    access_count=r.access_count or 0,
-                    decay_rate=r.decay_rate or 0.01,
-                    labile=r.labile or False,
-                    version=r.version or 1,
-                    timestamp=r.timestamp,
-                    written_at=r.written_at,
+                    id=cast(UUID, r.id),
+                    tenant_id=cast(str, r.tenant_id),
+                    agent_id=cast(str | None, r.agent_id),
+                    type=cast(str, r.type),
+                    status=cast(str, r.status),
+                    text=(cast(str, r.text))[:300] if r.text else "",
+                    key=cast(str | None, r.key),
+                    namespace=cast(str | None, r.namespace),
+                    context_tags=list(cast(list, r.context_tags) or []),
+                    confidence=cast(float, r.confidence or 0.5),
+                    importance=cast(float, r.importance or 0.5),
+                    access_count=cast(int, r.access_count or 0),
+                    decay_rate=cast(float, r.decay_rate or 0.01),
+                    labile=cast(bool, r.labile or False),
+                    version=cast(int, r.version or 1),
+                    timestamp=cast(datetime, r.timestamp),
+                    written_at=cast(datetime, r.written_at),
                 )
                 for r in rows
             ]
@@ -504,33 +504,33 @@ async def dashboard_memory_detail(
                 for e in events
             ]
             return DashboardMemoryDetail(
-                id=record.id,
-                tenant_id=record.tenant_id,
-                agent_id=record.agent_id,
-                type=record.type,
-                status=record.status,
-                text=record.text,
-                key=record.key,
-                namespace=record.namespace,
-                context_tags=record.context_tags or [],
-                source_session_id=record.source_session_id,
-                entities=record.entities,
-                relations=record.relations,
-                metadata=record.meta,
-                confidence=record.confidence or 0.5,
-                importance=record.importance or 0.5,
-                access_count=record.access_count or 0,
-                last_accessed_at=record.last_accessed_at,
-                decay_rate=record.decay_rate or 0.01,
-                labile=record.labile or False,
-                provenance=record.provenance,
-                version=record.version or 1,
-                supersedes_id=record.supersedes_id,
-                content_hash=record.content_hash,
-                timestamp=record.timestamp,
-                written_at=record.written_at,
-                valid_from=record.valid_from,
-                valid_to=record.valid_to,
+                id=cast(UUID, record.id),
+                tenant_id=cast(str, record.tenant_id),
+                agent_id=cast(str | None, record.agent_id),
+                type=cast(str, record.type),
+                status=cast(str, record.status),
+                text=cast(str, record.text),
+                key=cast(str | None, record.key),
+                namespace=cast(str | None, record.namespace),
+                context_tags=list(cast(list, record.context_tags) or []),
+                source_session_id=cast(str | None, record.source_session_id),
+                entities=cast(list, record.entities),
+                relations=cast(list, record.relations),
+                metadata=cast(dict, record.meta),
+                confidence=cast(float, record.confidence or 0.5),
+                importance=cast(float, record.importance or 0.5),
+                access_count=cast(int, record.access_count or 0),
+                last_accessed_at=cast(datetime | None, record.last_accessed_at),
+                decay_rate=cast(float, record.decay_rate or 0.01),
+                labile=cast(bool, record.labile or False),
+                provenance=cast(dict, record.provenance),
+                version=cast(int, record.version or 1),
+                supersedes_id=cast(UUID | None, record.supersedes_id),
+                content_hash=cast(str | None, record.content_hash),
+                timestamp=cast(datetime, record.timestamp),
+                written_at=cast(datetime, record.written_at),
+                valid_from=cast(datetime | None, record.valid_from),
+                valid_to=cast(datetime | None, record.valid_to),
                 related_events=related_events,
             )
     except HTTPException:
@@ -570,7 +570,8 @@ async def dashboard_bulk_action(
             )
             result = await session.execute(stmt)
             await session.commit()
-            return {"success": True, "affected": result.rowcount, "action": body.action}
+            affected = getattr(result, "rowcount", 0) or 0
+            return {"success": True, "affected": affected, "action": body.action}
     except HTTPException:
         raise
     except Exception as e:
@@ -620,16 +621,16 @@ async def dashboard_events(
             rows = (await session.execute(q)).scalars().all()
             items = [
                 DashboardEventItem(
-                    id=e.id,
-                    tenant_id=e.tenant_id,
-                    scope_id=e.scope_id,
-                    agent_id=e.agent_id,
-                    event_type=e.event_type,
-                    operation=e.operation,
-                    payload=e.payload,
-                    memory_ids=[mid for mid in (e.memory_ids or [])],
-                    parent_event_id=e.parent_event_id,
-                    created_at=e.created_at,
+                    id=cast(UUID, e.id),
+                    tenant_id=cast(str, e.tenant_id),
+                    scope_id=cast(str, e.scope_id),
+                    agent_id=cast(str | None, e.agent_id),
+                    event_type=cast(str, e.event_type),
+                    operation=cast(str | None, e.operation),
+                    payload=cast(dict, e.payload),
+                    memory_ids=list(cast(list, e.memory_ids) or []),
+                    parent_event_id=cast(UUID | None, e.parent_event_id),
+                    created_at=cast(datetime, e.created_at),
                 )
                 for e in rows
             ]
@@ -722,7 +723,7 @@ async def dashboard_components(
                     "memory_records": mem_count,
                     "semantic_facts": fact_count,
                     "events": event_count,
-                    "embedding_dimensions": settings.embedding_internal.dimensions or 768,
+                    "embedding_dimensions": get_embedding_dimensions(),
                 },
             )
         )
@@ -823,7 +824,7 @@ async def dashboard_tenants(
             ).group_by(EventLogModel.tenant_id)
             event_rows = (await session.execute(event_q)).all()
             event_map: dict[str, dict] = {}
-            for r in event_rows:
+            for r in event_rows:  # type: ignore[assignment]
                 event_map[r[0]] = {"count": r[1], "last_evt": r[2]}
 
             all_tenants = sorted(set(mem_map.keys()) | set(fact_map.keys()) | set(event_map.keys()))
@@ -1448,7 +1449,7 @@ async def dashboard_config(
     sections.append(ConfigSection(name="Database", items=db_items))
 
     # Embedding (internal memory tasks)
-    emb = settings.embedding_internal
+    emb = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
     emb_items = [
         ConfigItem(
             key="embedding_internal.provider",
@@ -2408,16 +2409,16 @@ async def dashboard_jobs(
                     duration = round((j.completed_at - j.started_at).total_seconds(), 2)
                 items.append(
                     DashboardJobItem(
-                        id=j.id,
-                        job_type=j.job_type,
-                        tenant_id=j.tenant_id,
-                        user_id=j.user_id,
-                        dry_run=j.dry_run or False,
-                        status=j.status,
-                        result=j.result,
-                        error=j.error,
-                        started_at=j.started_at,
-                        completed_at=j.completed_at,
+                        id=cast(UUID, j.id),
+                        job_type=cast(str, j.job_type),
+                        tenant_id=cast(str, j.tenant_id),
+                        user_id=cast(str | None, j.user_id),
+                        dry_run=cast(bool, j.dry_run or False),
+                        status=cast(str, j.status),
+                        result=cast(dict[str, Any] | None, j.result),
+                        error=cast(str | None, j.error),
+                        started_at=cast(datetime | None, j.started_at),
+                        completed_at=cast(datetime | None, j.completed_at),
                         duration_seconds=duration,
                     )
                 )

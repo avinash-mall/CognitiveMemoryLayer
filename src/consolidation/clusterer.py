@@ -165,7 +165,7 @@ class SemanticClusterer:
         for ep in episodes:
             t = ep.type.value if hasattr(ep.type, "value") else str(ep.type)
             type_counts[t] = type_counts.get(t, 0) + 1
-        return max(type_counts, key=type_counts.get) if type_counts else "unknown"
+        return max(type_counts, key=lambda k: type_counts.get(k, 0)) if type_counts else "unknown"
 
     def _find_nearest(
         self, episode: MemoryRecord, clusters: list[EpisodeCluster]

@@ -247,7 +247,7 @@ class ReconsolidationService:
                     await self.store.delete(op.target_id, hard=False)
                 return True
             # BUG-14: unknown operation type — do not report success
-            logger.warning("revision_unknown_operation_type", op_type=op.op_type.value)
+            logger.warning("revision_unknown_operation_type op_type=%s", op.op_type.value)
             return False
         except Exception as e:
             logger.error(
