@@ -46,9 +46,8 @@ def client(monkeypatch):
         lambda: mock_llm,
     )
     if not os.environ.get("OPENAI_API_KEY"):
-        from src.utils.embeddings import MockEmbeddingClient
-
         from src.core.config import get_embedding_dimensions
+        from src.utils.embeddings import MockEmbeddingClient
 
         dims = get_embedding_dimensions()
         mock_emb = MockEmbeddingClient(dimensions=dims)
@@ -117,8 +116,18 @@ def test_full_memory_lifecycle(client):
     assert forget_resp.status_code == 200
 
 
-def test_unauthorized_access():
+def test_unauthorized_access(monkeypatch):
     """Test that unauthorized requests are rejected (401). Use a distinct tenant so rate limit doesn't apply."""
+    from src.core.config import get_embedding_dimensions
+    from src.utils.embeddings import MockEmbeddingClient
+
+    monkeypatch.setenv("AUTH__API_KEY", "demo-key-123")
+    monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-456")
+    get_settings.cache_clear()
+    dims = get_embedding_dimensions()
+    mock_emb = MockEmbeddingClient(dimensions=dims)
+    monkeypatch.setattr("src.memory.orchestrator.get_embedding_client", lambda: mock_emb)
+    monkeypatch.setattr("src.utils.embeddings.get_embedding_client", lambda: mock_emb)
     with TestClient(app) as client_no_auth:
         resp = client_no_auth.post(
             "/api/v1/memory/write",
@@ -140,6 +149,18 @@ def test_health_response_structure(client):
     assert "status" in data
     assert data["status"] == "healthy"
     assert "timestamp" in data
+
+
+def test_write_content_exceeds_100k_returns_400(client):
+    """POST /memory/write with content exceeding 100,000 characters returns 4xx (validation error)."""
+    resp = client.post(
+        "/api/v1/memory/write",
+        json={"content": "x" * 100_001},
+    )
+    assert resp.status_code in (
+        400,
+        422,
+    ), f"Expected 400 or 422, got {resp.status_code}: {resp.json()}"
 
 
 def test_write_eval_mode_returns_outcome_and_reason(client):

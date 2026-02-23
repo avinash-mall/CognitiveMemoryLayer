@@ -17,7 +17,59 @@ from cml.exceptions import (
     TimeoutError,
     ValidationError,
 )
-from cml.transport.http import API_PREFIX, HTTPTransport
+from cml.transport.http import (
+    API_PREFIX,
+    HTTPTransport,
+    _add_dashboard_csrf_if_needed,
+)
+
+
+def test_add_dashboard_csrf_adds_header_for_dashboard_post() -> None:
+    """Dashboard POST/PUT/DELETE/PATCH requests get X-Requested-With header."""
+    headers = {"X-API-Key": "k", "X-Tenant-ID": "t"}
+    result = _add_dashboard_csrf_if_needed("/dashboard/reconsolidate", "POST", headers)
+    assert result["X-Requested-With"] == "XMLHttpRequest"
+    result = _add_dashboard_csrf_if_needed("/dashboard/config", "PUT", headers)
+    assert result["X-Requested-With"] == "XMLHttpRequest"
+
+
+def test_add_dashboard_csrf_skips_for_dashboard_get() -> None:
+    """Dashboard GET requests do not get X-Requested-With."""
+    headers = {"X-API-Key": "k"}
+    result = _add_dashboard_csrf_if_needed("/dashboard/overview", "GET", headers)
+    assert "X-Requested-With" not in result
+
+
+def test_add_dashboard_csrf_skips_for_memory_routes() -> None:
+    """Non-dashboard routes do not get X-Requested-With."""
+    headers = {"X-API-Key": "k"}
+    result = _add_dashboard_csrf_if_needed("/memory/write", "POST", headers)
+    assert "X-Requested-With" not in result
+
+
+def test_transport_sends_csrf_for_dashboard_post(cml_config: CMLConfig) -> None:
+    """Transport includes X-Requested-With when posting to dashboard."""
+    config = CMLConfig(
+        api_key=cml_config.api_key,
+        base_url=cml_config.base_url,
+        tenant_id="t",
+        admin_api_key="admin-k",
+    )
+    transport = HTTPTransport(config)
+    mock_response = MagicMock()
+    mock_response.is_success = True
+    mock_response.json.return_value = {"status": "completed", "sessions_released": 0}
+    mock_client = MagicMock()
+    mock_client.request.return_value = mock_response
+    mock_client.is_closed = False
+    transport._client = mock_client
+
+    transport._do_request(
+        "POST", "/dashboard/reconsolidate", json={"tenant_id": "t"}, use_admin_key=True
+    )
+
+    call_kwargs = transport._client.request.call_args[1]
+    assert call_kwargs["headers"]["X-Requested-With"] == "XMLHttpRequest"
 
 
 def test_transport_builds_correct_url_and_headers(cml_config: CMLConfig) -> None:

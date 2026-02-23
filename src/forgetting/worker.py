@@ -2,14 +2,14 @@
 
 import asyncio
 import contextlib
-import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..core.enums import MemoryStatus
-from ..storage.postgres import PostgresMemoryStore
+from ..storage.base import MemoryStoreBase
 from ..utils.llm import LLMClient
+from ..utils.logging_config import get_logger
 from .actions import (
     ForgettingAction,
     ForgettingOperation,
@@ -20,7 +20,7 @@ from .executor import ForgettingExecutor
 from .interference import InterferenceDetector, InterferenceResult
 from .scorer import RelevanceScorer, ScorerConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -44,9 +44,9 @@ class ForgettingWorker:
 
     def __init__(
         self,
-        store: PostgresMemoryStore,
+        store: MemoryStoreBase,
         scorer_config: ScorerConfig | None = None,
-        archive_store: PostgresMemoryStore | None = None,
+        archive_store: MemoryStoreBase | None = None,
         compression_llm_client: LLMClient | None = None,
         compression_max_chars: int = 100,
     ) -> None:

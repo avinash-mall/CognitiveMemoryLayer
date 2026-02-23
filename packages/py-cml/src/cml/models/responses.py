@@ -75,6 +75,9 @@ class ReadResponse(BaseModel):
     llm_context: str | None = None
     total_count: int
     elapsed_ms: float
+    retrieval_meta: dict | None = (
+        None  # Server: sources_completed, sources_timed_out, total_elapsed_ms
+    )
 
     @property
     def context(self) -> str:

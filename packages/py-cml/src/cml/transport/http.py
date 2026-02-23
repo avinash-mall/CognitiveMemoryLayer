@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import time
+from collections.abc import AsyncIterator, Iterator
 from typing import Any, cast
 
 import httpx
@@ -34,6 +36,18 @@ from cml.utils.logging import logger
 from cml.utils.serialization import serialize_for_api
 
 API_PREFIX = "/api/v1"
+
+# CSRF: server requires this for dashboard POST/PUT/DELETE/PATCH
+_DASHBOARD_CSRF_HEADER = {"X-Requested-With": "XMLHttpRequest"}
+
+
+def _add_dashboard_csrf_if_needed(
+    path: str, method: str, headers: dict[str, str]
+) -> dict[str, str]:
+    """Add X-Requested-With for dashboard state-changing requests (server CSRF middleware)."""
+    if path.startswith("/dashboard") and method in ("POST", "PUT", "DELETE", "PATCH"):
+        return {**headers, **_DASHBOARD_CSRF_HEADER}
+    return headers
 
 
 def _raise_for_status(response: httpx.Response) -> None:
@@ -166,6 +180,7 @@ class HTTPTransport:
         headers: dict[str, str] = self._build_headers(use_admin_key=use_admin_key)
         if extra_headers:
             headers = {**headers, **extra_headers}
+        headers = _add_dashboard_csrf_if_needed(path, method, headers)
         if json is not None:
             json = serialize_for_api(json)
         start = time.perf_counter()
@@ -214,6 +229,44 @@ class HTTPTransport:
             use_admin_key=use_admin_key,
             extra_headers=extra_headers,
         )
+
+    def stream_sse(
+        self,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Stream SSE events from an endpoint. Yields parsed JSON data dicts.
+
+        Stops on 'done' or 'error' events. Raises on HTTP/connection errors.
+        """
+        url = API_PREFIX + path
+        headers = self._build_headers()
+        headers["Accept"] = "text/event-stream"
+        body = serialize_for_api(json_body) if json_body else None
+        try:
+            with self.client.stream("POST", url, json=body, headers=headers) as response:
+                _raise_for_status(response)
+                event_type = "message"
+                for line in response.iter_lines():
+                    if line.startswith("event: "):
+                        event_type = line[7:].strip()
+                        continue
+                    if line.startswith("data: "):
+                        data = json.loads(line[6:])
+                        if event_type == "error":
+                            raise ServerError(
+                                data.get("detail", "Stream error"),
+                                status_code=500,
+                            )
+                        if event_type == "done":
+                            return
+                        yield data
+                        event_type = "message"
+        except httpx.ConnectError as e:
+            raise ConnectionError(f"Failed to connect to {self._config.base_url}: {e}") from e
+        except httpx.TimeoutException as e:
+            raise TimeoutError(f"Request timed out after {self._config.timeout}s: {e}") from e
 
     def close(self) -> None:
         if self._client is not None and not self._client.is_closed:
@@ -275,6 +328,7 @@ class AsyncHTTPTransport:
         headers = self._build_headers(use_admin_key=use_admin_key)
         if extra_headers:
             headers = {**headers, **extra_headers}
+        headers = _add_dashboard_csrf_if_needed(path, method, headers)
         if json is not None:
             json = serialize_for_api(json)
         start = time.perf_counter()
@@ -323,6 +377,44 @@ class AsyncHTTPTransport:
             use_admin_key=use_admin_key,
             extra_headers=extra_headers,
         )
+
+    async def stream_sse(
+        self,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream SSE events from an endpoint. Yields parsed JSON data dicts.
+
+        Stops on 'done' or 'error' events. Raises on HTTP/connection errors.
+        """
+        url = API_PREFIX + path
+        headers = self._build_headers()
+        headers["Accept"] = "text/event-stream"
+        body = serialize_for_api(json_body) if json_body else None
+        try:
+            async with self.client.stream("POST", url, json=body, headers=headers) as response:
+                _raise_for_status(response)
+                event_type = "message"
+                async for line in response.aiter_lines():
+                    if line.startswith("event: "):
+                        event_type = line[7:].strip()
+                        continue
+                    if line.startswith("data: "):
+                        data = json.loads(line[6:])
+                        if event_type == "error":
+                            raise ServerError(
+                                data.get("detail", "Stream error"),
+                                status_code=500,
+                            )
+                        if event_type == "done":
+                            return
+                        yield data
+                        event_type = "message"
+        except httpx.ConnectError as e:
+            raise ConnectionError(f"Failed to connect to {self._config.base_url}: {e}") from e
+        except httpx.TimeoutException as e:
+            raise TimeoutError(f"Request timed out after {self._config.timeout}s: {e}") from e
 
     async def close(self) -> None:
         if self._client is not None and not self._client.is_closed:

@@ -293,9 +293,7 @@ class UnifiedWritePathExtractor:
                 ctype = "preference"
             raw_scope = item.get("scope")
             scope_list: list[str] = (
-                [s for s in raw_scope if isinstance(s, str)]
-                if isinstance(raw_scope, list)
-                else []
+                [s for s in raw_scope if isinstance(s, str)] if isinstance(raw_scope, list) else []
             )
             constraints.append(
                 ConstraintObject(

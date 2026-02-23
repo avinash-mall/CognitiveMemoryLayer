@@ -221,7 +221,10 @@ def _gemini_client(api_key: str, model: str) -> LLMClient:
             generation_config = {"temperature": temperature, "max_output_tokens": max_tokens}
             response = await loop.run_in_executor(
                 None,
-                lambda: self._model.generate_content(contents, generation_config=generation_config),
+                lambda: self._model.generate_content(
+                    contents,
+                    generation_config=generation_config,  # type: ignore[arg-type]
+                ),
             )
             if not response or not response.text:
                 return ""

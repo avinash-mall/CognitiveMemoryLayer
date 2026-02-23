@@ -1,8 +1,11 @@
 """API authentication and authorization (config-based, no hardcoded keys)."""
 
+import hashlib
 import hmac
 from dataclasses import dataclass
+from functools import lru_cache
 
+import structlog
 from fastapi import Depends, Header, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
@@ -23,6 +26,7 @@ class AuthContext:
     can_admin: bool = False
 
 
+@lru_cache
 def _build_api_keys() -> dict:
     """Build API key map from settings (env: AUTH__API_KEY, AUTH__ADMIN_API_KEY, AUTH__DEFAULT_TENANT_ID)."""
     settings = get_settings()
@@ -72,6 +76,13 @@ async def get_auth_context(
     # Apply header overrides: X-Tenant-Id only for admin keys (SEC-03)
     tenant_id = (x_tenant_id if (x_tenant_id and context.can_admin) else None) or context.tenant_id
     user_id = x_user_id or context.user_id
+    if x_tenant_id and context.can_admin and x_tenant_id != context.tenant_id:
+        structlog.get_logger(__name__).warning(
+            "tenant_override_used",
+            admin_key_hash=hashlib.sha256(context.api_key.encode()).hexdigest()[:8],
+            original_tenant=context.tenant_id,
+            target_tenant=x_tenant_id,
+        )
     if tenant_id != context.tenant_id or user_id != context.user_id:
         context = AuthContext(
             tenant_id=tenant_id,
