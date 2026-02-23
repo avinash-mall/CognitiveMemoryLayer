@@ -1,0 +1,16 @@
+# pack-refs with: peeled fully-peeled sorted 
+a20706d71f55ae8c0d4c0e2815b58f015fad8662 refs/heads/main
+fcee81d32d793932dddbd9922b6d4c3261b33342 refs/remotes/origin/main
+987b8b95bde7d73c99981b7409330ea24325810e refs/tags/py-cml-v0.1.0
+913910df4355fb54487f21b3f67369f77dc53a76 refs/tags/py-cml-v1.0.0
+8b0a95632dae9198d6e35309ffc98499ad9051ab refs/tags/py-cml-v1.0.1
+3699ea9abad4f220afced25cd1d52a3f3dcb57eb refs/tags/py-cml-v1.0.10
+fc3586c78eee346292acb8e5e75d331f89ab78c6 refs/tags/py-cml-v1.0.11
+e83414a4294ce2c38ff484b7d90950979f8e5162 refs/tags/py-cml-v1.0.2
+987b8b95bde7d73c99981b7409330ea24325810e refs/tags/py-cml-v1.0.3
+98ee6e8706011e51843535ed39a7fd3267379c25 refs/tags/py-cml-v1.0.4
+98ee6e8706011e51843535ed39a7fd3267379c25 refs/tags/py-cml-v1.0.6
+98ee6e8706011e51843535ed39a7fd3267379c25 refs/tags/py-cml-v1.0.7
+98539706da2675f439702df2426cf503717638ae refs/tags/py-cml-v1.0.8
+af5435dee993be2bf27274b28421f46f4564b174 refs/tags/py-cml-v1.0.9
+00f5632530bfa481d9c7aa9f1e6515f6e0cf27e9 refs/tags/py-cml-v1.1.0
