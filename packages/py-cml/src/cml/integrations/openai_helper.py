@@ -1,4 +1,4 @@
-"""OpenAI integration helper for py-cml. Use OPENAI_MODEL or LLM__MODEL in .env for model."""
+"""OpenAI integration helper for py-cml. Use OPENAI_MODEL or LLM_INTERNAL__MODEL in .env for model."""
 
 from __future__ import annotations
 
@@ -54,7 +54,9 @@ class CMLOpenAIHelper:
     ) -> None:
         self.memory = memory_client
         self.openai = openai_client
-        self.model = model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
+        self.model = (
+            model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
+        )
 
     def chat(
         self,
@@ -99,7 +101,7 @@ class CMLOpenAIHelper:
 
         if not self.model:
             raise ValueError(
-                "Model not set; pass model= to CMLOpenAIHelper() or set OPENAI_MODEL or LLM__MODEL in .env"
+                "Model not set; pass model= to CMLOpenAIHelper() or set OPENAI_MODEL or LLM_INTERNAL__MODEL in .env"
             )
         response = self.openai.chat.completions.create(
             model=self.model,

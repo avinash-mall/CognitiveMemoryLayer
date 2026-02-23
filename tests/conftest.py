@@ -22,6 +22,7 @@ except ImportError:
 import os
 
 _llm_flags = (
+    "FEATURES__USE_LLM_ENABLED",
     "FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR",
     "FEATURES__USE_LLM_WRITE_TIME_FACTS",
     "FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY",
@@ -111,10 +112,10 @@ def mock_llm():
 
 @pytest.fixture
 def mock_embeddings():
-    """Mock embedding client for tests. Dimensions from .env (get_settings().embedding.dimensions)."""
+    """Mock embedding client for tests. Dimensions from .env (get_settings().embedding_internal.dimensions)."""
     from src.core.config import get_settings
 
-    dims = get_settings().embedding.dimensions
+    dims = get_settings().embedding_internal.dimensions or 768
     client = MagicMock()
     client.dimensions = dims
     client.embed = AsyncMock(

@@ -90,12 +90,18 @@ _POLICY_PATTERNS: list[tuple[re.Pattern[str], float]] = [
     (re.compile(r"\b(?:i should|i shouldn'?t|i'?m not allowed to)\b", re.I), 0.05),
 ]
 
+_PREFERENCE_PATTERNS: list[tuple[re.Pattern[str], float]] = [
+    (re.compile(r"\b(?:i prefer|i like|i love|i enjoy|i hate|i dislike)\b", re.I), 0.1),
+    (re.compile(r"\b(?:my favorite|my favourite)\b", re.I), 0.08),
+]
+
 _ALL_PATTERNS: dict[str, list[tuple[re.Pattern[str], float]]] = {
     "goal": _GOAL_PATTERNS,
     "value": _VALUE_PATTERNS,
     "state": _STATE_PATTERNS,
     "causal": _CAUSAL_PATTERNS,
     "policy": _POLICY_PATTERNS,
+    "preference": _PREFERENCE_PATTERNS,
 }
 
 # Minimum cumulative confidence boost to consider a constraint detected

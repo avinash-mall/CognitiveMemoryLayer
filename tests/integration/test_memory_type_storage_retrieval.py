@@ -146,7 +146,9 @@ async def test_knowledge_base_store_query(store, tenant_id):
 
     kb = KnowledgeBase(
         store=store,
-        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        embedding_client=MockEmbeddingClient(
+            dimensions=get_settings().embedding_internal.dimensions or 768
+        ),
     )
     await kb.store_fact(
         tenant_id, "general", "Python", "is_a", "language", source="test", confidence=0.9
@@ -188,41 +190,48 @@ async def test_semantic_fact_via_neocortical_store_and_retrieve(pg_session_facto
     assert got.value == value
     assert got.confidence == 0.9
 
+
 @pytest.mark.asyncio
 async def test_historical_timestamp_preservation(pg_session_factory, tenant_id):
     """MemoryOrchestrator: write preserving historic timestamp to Episodic and Semantic facts."""
+    from datetime import UTC, datetime
+
+    from src.memory.neocortical.schemas import FactCategory
     from src.memory.orchestrator import MemoryOrchestrator
     from src.storage.postgres import PostgresMemoryStore
     from src.utils.embeddings import MockEmbeddingClient
-    from src.retrieval.query_classifier import QueryClassifier
-    from src.memory.neocortical.schemas import FactCategory
+
     class MockLLMClient:
         async def generate(self, *args, **kwargs):
             from src.utils.llm import LLMResponse
+
             return LLMResponse(content="", usage={})
-        
+
         async def generate_json(self, *args, **kwargs):
             return {}
 
+    from src.core.config import get_settings
+
+    dims = get_settings().embedding_internal.dimensions or 768
     episodic_store = PostgresMemoryStore(pg_session_factory)
-    embedding_client = MockEmbeddingClient(dimensions=384)
+    embedding_client = MockEmbeddingClient(dimensions=dims)
     llm_client = MockLLMClient()
-    
+
     orchestrator = await MemoryOrchestrator.create_lite(
         episodic_store=episodic_store,
         embedding_client=embedding_client,
         llm_client=llm_client,
     )
-    
+
     historical_date = datetime(2023, 1, 15, 12, 0, 0, tzinfo=UTC)
-    
+
     await orchestrator.write(
         tenant_id=tenant_id,
         content="I moved to New York in January 2023.",
         session_id="test-session",
         timestamp=historical_date,
     )
-    
+
     # Check episodic store
     records = await episodic_store.scan(tenant_id)
     found_historic_episodic = False
@@ -230,17 +239,18 @@ async def test_historical_timestamp_preservation(pg_session_factory, tenant_id):
         if r.timestamp.year == 2023:
             found_historic_episodic = True
     assert found_historic_episodic, "Episodic record did not preserve historic 2023 timestamp"
-    
-    # Check semantic facts
+
+    # Check semantic facts (optional: MockLLMClient may not extract; episodic check is sufficient)
     found_historic_fact = False
     for cat in FactCategory:
         facts = await orchestrator.neocortical.facts.get_facts_by_category(tenant_id, cat)
         for f in facts:
             if f.valid_from and f.valid_from.year == 2023:
                 found_historic_fact = True
-    
-    # The MockLLMClient does not extract facts via unified extractor, and the WriteTimeFactExtractor is RuleBased
-    # WriteTimeFactExtractor extracts facts but we need to verify `store_fact` is called with it. If not found, 
-    # we can fallback and assume the Episodic Record check is sufficient.
-    # We will log it here.
-    assert found_historic_episodic
+                break
+        if found_historic_fact:
+            break
+
+    assert (
+        found_historic_episodic or found_historic_fact
+    ), "Either episodic or semantic store should preserve historic 2023 timestamp"

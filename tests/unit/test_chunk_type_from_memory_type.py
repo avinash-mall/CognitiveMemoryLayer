@@ -22,7 +22,7 @@ def test_preference_memory_type_uses_chunk_type_preference_for_importance(monkey
     from src.extraction.unified_write_extractor import UnifiedExtractionResult
 
     monkeypatch.setattr(
-        "src.core.config.get_settings",
+        "src.memory.hippocampal.write_gate.get_settings",
         lambda: type(
             "S",
             (),
@@ -31,6 +31,7 @@ def test_preference_memory_type_uses_chunk_type_preference_for_importance(monkey
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_memory_type": True,
                         "use_llm_write_gate_importance": False,
                         "use_llm_salience_refinement": False,
@@ -64,7 +65,7 @@ def test_constraint_memory_type_uses_chunk_type_constraint(monkeypatch):
     from src.extraction.unified_write_extractor import UnifiedExtractionResult
 
     monkeypatch.setattr(
-        "src.core.config.get_settings",
+        "src.memory.hippocampal.write_gate.get_settings",
         lambda: type(
             "S",
             (),
@@ -73,6 +74,7 @@ def test_constraint_memory_type_uses_chunk_type_constraint(monkeypatch):
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_memory_type": True,
                         "use_llm_write_gate_importance": False,
                         "use_llm_salience_refinement": False,
@@ -102,7 +104,7 @@ def test_unknown_memory_type_falls_back_to_statement(monkeypatch):
     from src.extraction.unified_write_extractor import UnifiedExtractionResult
 
     monkeypatch.setattr(
-        "src.core.config.get_settings",
+        "src.memory.hippocampal.write_gate.get_settings",
         lambda: type(
             "S",
             (),
@@ -111,6 +113,7 @@ def test_unknown_memory_type_falls_back_to_statement(monkeypatch):
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_memory_type": True,
                         "use_llm_write_gate_importance": False,
                         "use_llm_salience_refinement": False,

@@ -91,7 +91,7 @@ def _load_env_local_sh():
 
 
 def _load_project_dotenv():
-    """Load project .env so LLM__BASE_URL / LLM__MODEL are available for judge (e.g. Ollama)."""
+    """Load project .env so LLM_EVAL__* / LLM_INTERNAL__* are available for judge (e.g. Ollama)."""
     try:
         from dotenv import load_dotenv
     except ImportError:
@@ -106,20 +106,22 @@ def _load_project_dotenv():
 
 
 def _get_openai_client():
-    """Lazy init OpenAI client from OPENAI_API_KEY + OPENAI_BASE_URL, or from .env LLM__* (e.g. Ollama)."""
+    """Lazy init OpenAI client from OPENAI_API_KEY + OPENAI_BASE_URL, or from .env LLM_EVAL__* / LLM_INTERNAL__* (e.g. Ollama)."""
     _load_project_dotenv()
     api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     base_url = (os.environ.get("OPENAI_BASE_URL") or "").strip()
-    # If no OpenAI key but .env has LLM__BASE_URL (e.g. Ollama), use that for judge
+    # If no OpenAI key but .env has LLM_EVAL__* or LLM_INTERNAL__* (e.g. Ollama), use that for judge
     if not api_key:
-        llm_base = (os.environ.get("LLM__BASE_URL") or "").strip()
+        llm_base = (
+            os.environ.get("LLM_EVAL__BASE_URL") or os.environ.get("LLM_INTERNAL__BASE_URL") or ""
+        ).strip()
         if llm_base:
             api_key = "ollama"
             base_url = llm_base
     if not api_key:
         raise ValueError(
-            "OPENAI_API_KEY is not set and LLM__BASE_URL is not set. "
-            "Set OPENAI_API_KEY (or LLM__BASE_URL in .env for Ollama), or use evaluation/locomo_plus/scripts/env.local.sh"
+            "OPENAI_API_KEY is not set and LLM_EVAL__BASE_URL/LLM_INTERNAL__BASE_URL is not set. "
+            "Set OPENAI_API_KEY (or LLM_EVAL__* / LLM_INTERNAL__* in .env for Ollama), or use evaluation/locomo_plus/scripts/env.local.sh"
         )
     from openai import OpenAI
 
