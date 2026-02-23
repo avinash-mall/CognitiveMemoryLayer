@@ -4,15 +4,17 @@ import pathlib
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..core.config import get_settings, validate_embedding_dimensions
+from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
 from ..storage.connection import DatabaseManager
 from .admin_routes import admin_router
-from .dashboard_routes import dashboard_router
+from .dashboard import dashboard_router
 from .middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from .routes import router
 
@@ -28,7 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Validate embedding dimensions match DB schema at startup
     validate_embedding_dimensions(settings)
 
-    db_manager = DatabaseManager.get_instance()
+    db_manager = await DatabaseManager.create()
     app.state.db = db_manager
 
     from ..memory.orchestrator import MemoryOrchestrator
@@ -49,6 +51,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    @app.exception_handler(MemoryNotFoundError)
+    async def memory_not_found_handler(_request: Request, exc: MemoryNotFoundError) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(MemoryAccessDenied)
+    async def memory_access_denied_handler(
+        _request: Request, exc: MemoryAccessDenied
+    ) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+
     settings = get_settings()
     if settings.cors_origins is not None:
         origins = settings.cors_origins
@@ -60,6 +72,22 @@ def create_app() -> FastAPI:
     # CORS spec: credentials are incompatible with wildcard origins
     allow_credentials = "*" not in origins
 
+    class CSRFCheckMiddleware(BaseHTTPMiddleware):
+        """Require X-Requested-With for dashboard state-changing requests."""
+
+        async def dispatch(self, request: Request, call_next):
+            if (
+                request.url.path.startswith("/api/v1/dashboard")
+                and request.method in ("POST", "PUT", "DELETE", "PATCH")
+                and request.headers.get("X-Requested-With") != "XMLHttpRequest"
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Missing CSRF header"},
+                )
+            return await call_next(request)
+
+    app.add_middleware(CSRFCheckMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,

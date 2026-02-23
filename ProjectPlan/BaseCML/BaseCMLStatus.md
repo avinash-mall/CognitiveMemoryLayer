@@ -138,8 +138,14 @@ This enhancement addresses the requirement from [LocomoEval/RunEvaluation.md](..
 4. **Two-Lane Processing**: Sync path for low latency, async for heavy operations
 5. **Belief Revision**: Memories update intelligently, not just overwrite
 6. **Graceful Forgetting**: Decay → Silence → Compress → Delete (not just TTL)
+✅ Fixes coverage gaps in `cml/models.py` and sync/async initialization flows.
 
-## Directory Structure
+### Streaming Read Endpoint (Completed)
+
+- ✅ Added Server-Sent Events (SSE) streaming endpoint `POST /api/v1/memory/read/stream` for progressive memory retrieval and UI rendering.
+- ✅ Supported in `py-cml` via `.read_stream()` on both standard and namespaced clients (sync and async).
+
+## Project Structure
 
 ```
 CognitiveMemoryLayer/
@@ -1763,7 +1769,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
 | Abstract base classes | ✅ | `src/storage/base.py` – `MemoryStoreBase` (upsert, get_by_id, get_by_key, delete, update, vector_search, scan, count), `GraphStoreBase` (merge_node, merge_edge, get_neighbors, personalized_pagerank) |
-| Database connection manager | ✅ | `src/storage/connection.py` – `DatabaseManager` singleton, `pg_session`, `neo4j_session`, `close()` |
+| Database connection manager | ✅ | `src/storage/connection.py` – `DatabaseManager.create()` (async factory), `pg_session`, `neo4j_session`, `close()`, `get_instance()` for Celery |
 | Redis client helper | ✅ | `src/storage/redis.py` – `get_redis_client()` from settings (async client for cache/embedding) |
 
 ### Task 1.5: Database Migrations ✅
@@ -2215,7 +2221,7 @@ This document tracks what has been implemented against the plan in the `ProjectP
 
 | Deliverable | Status | Location / Notes |
 |-------------|--------|------------------|
-| Dashboard API routes (admin-only) | ✅ | `src/api/dashboard_routes.py` – overview, memories list/detail, events, timeline, components health, tenants, consolidate, forget |
+| Dashboard API routes (admin-only) | ✅ | `src/api/dashboard/` – overview_routes, memory_routes, events_routes, graph_routes, config_routes, jobs_routes, fact_routes; overview, memories list/detail, events, timeline, components health, tenants, consolidate, forget |
 | Dashboard Pydantic schemas | ✅ | `src/api/schemas.py` – DashboardOverview, DashboardMemoryListItem/Detail, DashboardEventItem, TimelinePoint, ComponentStatus, TenantInfo, etc. |
 | Static SPA (vanilla HTML/CSS/JS) | ✅ | `src/dashboard/static/` – index.html, css/styles.css, js/app.js, api.js, pages (overview, memories, detail, components, events, management), utils (formatters, charts) |
 | FastAPI integration | ✅ | `src/api/app.py` – dashboard_router at `/api/v1`, static mount at `/dashboard/static`, SPA catch-all at `/dashboard` |

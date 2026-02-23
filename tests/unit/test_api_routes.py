@@ -5,6 +5,7 @@ from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from src.api.app import app
 from src.core.config import get_settings
@@ -96,6 +97,29 @@ class TestAPISchemas:
         assert req.context_tags is None  # Optional, not []
         assert req.session_id is None
         assert req.metadata == {}
+
+    def test_write_memory_request_content_max_length_rejected(self):
+        """WriteMemoryRequest rejects content exceeding 100,000 characters."""
+        from src.api.schemas import WriteMemoryRequest
+
+        with pytest.raises(ValidationError) as exc_info:
+            WriteMemoryRequest(content="x" * 100_001)
+        assert "content" in str(exc_info.value) or "100000" in str(exc_info.value).lower()
+
+    def test_write_memory_request_content_min_length_rejected(self):
+        """WriteMemoryRequest rejects empty content."""
+        from src.api.schemas import WriteMemoryRequest
+
+        with pytest.raises(ValidationError) as exc_info:
+            WriteMemoryRequest(content="")
+        assert "content" in str(exc_info.value)
+
+    def test_write_memory_request_content_at_limit_accepted(self):
+        """WriteMemoryRequest accepts content at exactly 100,000 characters."""
+        from src.api.schemas import WriteMemoryRequest
+
+        req = WriteMemoryRequest(content="x" * 100_000)
+        assert len(req.content) == 100_000
 
     def test_write_memory_request_with_all_fields(self):
         """WriteMemoryRequest accepts all optional fields."""
@@ -196,6 +220,64 @@ class TestAPISchemas:
         req = CreateSessionRequest()
         assert req.metadata == {}
         assert req.ttl_hours == 24  # Default is 24 hours
+
+
+class TestUpdateExceptionHandlers:
+    """Tests for update endpoint 404/403 exception handlers."""
+
+    def test_update_nonexistent_memory_returns_404(self, auth_headers):
+        """POST /memory/update with non-existent memory_id returns 404."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from src.api.routes import get_orchestrator
+        from src.core.exceptions import MemoryNotFoundError
+
+        mock_orch = MagicMock()
+        mock_orch.update = AsyncMock(
+            side_effect=MemoryNotFoundError(memory_id="00000000-0000-0000-0000-000000000001")
+        )
+
+        app.dependency_overrides[get_orchestrator] = lambda _req: mock_orch
+        try:
+            with TestClient(app, headers=auth_headers) as client:
+                resp = client.post(
+                    "/api/v1/memory/update",
+                    json={
+                        "memory_id": "00000000-0000-0000-0000-000000000001",
+                        "feedback": "correct",
+                    },
+                )
+            assert resp.status_code == 404
+            assert "detail" in resp.json()
+        finally:
+            app.dependency_overrides.pop(get_orchestrator, None)
+
+    def test_update_other_tenant_memory_returns_403(self, auth_headers):
+        """POST /memory/update with memory from other tenant returns 403."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from src.api.routes import get_orchestrator
+        from src.core.exceptions import MemoryAccessDenied
+
+        mock_orch = MagicMock()
+        mock_orch.update = AsyncMock(
+            side_effect=MemoryAccessDenied("Memory does not belong to tenant")
+        )
+
+        app.dependency_overrides[get_orchestrator] = lambda _req: mock_orch
+        try:
+            with TestClient(app, headers=auth_headers) as client:
+                resp = client.post(
+                    "/api/v1/memory/update",
+                    json={
+                        "memory_id": "12345678-1234-1234-1234-123456789012",
+                        "feedback": "correct",
+                    },
+                )
+            assert resp.status_code == 403
+            assert "detail" in resp.json()
+        finally:
+            app.dependency_overrides.pop(get_orchestrator, None)
 
 
 class TestMemoryItem:

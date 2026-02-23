@@ -5,7 +5,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
 from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
+
+# Retryable exceptions for embedding API calls (transient network/rate-limit)
+_RETRY_EXCEPTIONS = (TimeoutError, ConnectionError, OSError)
 
 # Default when EMBEDDING_INTERNAL__* not provided: Sentence Transformer
 # nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max sequence length)
@@ -80,6 +85,11 @@ class OpenAIEmbeddings(EmbeddingClient):
     def dimensions(self) -> int:
         return self._dimensions
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=0.5, max=5),
+        retry=retry_if_exception_type(_RETRY_EXCEPTIONS),
+    )
     async def embed(self, text: str) -> EmbeddingResult:
         kwargs: dict = dict(model=self.model, input=text)
         if self._pass_dimensions:
@@ -92,6 +102,11 @@ class OpenAIEmbeddings(EmbeddingClient):
             tokens_used=response.usage.total_tokens,
         )
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=0.5, max=5),
+        retry=retry_if_exception_type(_RETRY_EXCEPTIONS),
+    )
     async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
         kwargs: dict = dict(model=self.model, input=texts)
         if self._pass_dimensions:
@@ -123,7 +138,7 @@ class LocalEmbeddings(EmbeddingClient):
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
             name = name.split(":")[0]
-        self.model = SentenceTransformer(name)
+        self.model = SentenceTransformer(name, trust_remote_code=True)
         self.model_name = name
         self._dimensions = self.model.get_sentence_embedding_dimension()
 

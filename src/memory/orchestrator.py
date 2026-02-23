@@ -1,12 +1,14 @@
 """Memory orchestrator: coordinates all memory operations."""
 
-import logging
+import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from ..consolidation.worker import ConsolidationWorker
 from ..core.enums import MemoryStatus
+from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
 from ..core.schemas import MemoryPacket
 from ..extraction.entity_extractor import EntityExtractor
 from ..extraction.fact_extractor import LLMFactExtractor
@@ -31,13 +33,53 @@ from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
 from ..storage.postgres import PostgresMemoryStore
 from ..utils.embeddings import CachedEmbeddings, EmbeddingClient, get_embedding_client
 from ..utils.llm import LLMClient, get_internal_llm_client
+from ..utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+_SESSION_CONTEXT_LIMIT = 50  # Max memories to return in session context
 
 try:
     from ..core.enums import MemoryType
 except ImportError:
     MemoryType = None  # type: ignore
+
+
+@dataclass(frozen=True)
+class WritePathConfig:
+    """Resolves all write-path feature flags once at the start of write().
+
+    Eliminates repeated get_settings() calls and compound flag checks
+    across phase methods (S-02).
+    """
+
+    use_unified: bool
+    write_time_facts: bool
+    constraint_extraction: bool
+    use_llm_constraints: bool
+    use_llm_facts: bool
+    use_llm_enabled: bool
+
+    @classmethod
+    def from_settings(cls, settings: Any, has_unified_extractor: bool) -> "WritePathConfig":
+        f = settings.features
+        llm = f.use_llm_enabled
+        return cls(
+            use_unified=llm
+            and has_unified_extractor
+            and (
+                f.use_llm_constraint_extractor
+                or f.use_llm_write_time_facts
+                or f.use_llm_salience_refinement
+                or f.use_llm_pii_redaction
+                or f.use_llm_write_gate_importance
+            ),
+            write_time_facts=f.write_time_facts_enabled,
+            constraint_extraction=f.constraint_extraction_enabled,
+            use_llm_constraints=llm and f.use_llm_constraint_extractor,
+            use_llm_facts=llm and f.use_llm_write_time_facts,
+            use_llm_enabled=llm,
+        )
 
 
 class MemoryOrchestrator:
@@ -188,8 +230,8 @@ class MemoryOrchestrator:
         graph_store = NoOpGraphStore()
         fact_store = NoOpFactStore()
         neocortical = NeocorticalStore(
-            cast(Neo4jGraphStore, graph_store),
-            cast(SemanticFactStore, fact_store),
+            cast("Neo4jGraphStore", graph_store),
+            cast("SemanticFactStore", fact_store),
         )
 
         short_term_config = ShortTermMemoryConfig(min_salience_for_encoding=0.0)
@@ -208,20 +250,20 @@ class MemoryOrchestrator:
         )
 
         reconsolidation = ReconsolidationService(
-            memory_store=cast(PostgresMemoryStore, episodic_store),
+            memory_store=episodic_store,
             llm_client=llm_client,
             fact_extractor=LLMFactExtractor(llm_client),
             redis_client=None,
         )
 
         consolidation = ConsolidationWorker(
-            episodic_store=cast(PostgresMemoryStore, episodic_store),
+            episodic_store=episodic_store,
             neocortical_store=neocortical,
             llm_client=llm_client,
         )
 
         forgetting = ForgettingWorker(
-            store=cast(PostgresMemoryStore, episodic_store),
+            store=episodic_store,
             compression_llm_client=llm_client,
         )
 
@@ -259,29 +301,13 @@ class MemoryOrchestrator:
         eval_mode: bool = False,
     ) -> dict[str, Any]:
         """Write new information to memory. Holistic: tenant-only."""
-        stm_result = await self.short_term.ingest_turn(
-            tenant_id=tenant_id,
-            scope_id=session_id or tenant_id,
-            text=content,
-            turn_id=turn_id,
-            role="user",
-            timestamp=timestamp,
+        chunks_for_encoding = await self._phase_ingest(
+            tenant_id, content, session_id, turn_id, timestamp
         )
-
-        chunks_for_encoding = stm_result.get("chunks_for_encoding", [])
-
         if not chunks_for_encoding:
-            out = {
-                "memory_id": None,
-                "chunks_created": 0,
-                "message": "No significant information to store",
-            }
-            if eval_mode:
-                out["eval_outcome"] = "skipped"
-                out["eval_reason"] = "No significant information to store"
-            return out
+            return self._empty_write_response(eval_mode)
 
-        # Resolve memory_type override if provided
+        # Resolve memory_type override if provided (deferred import for circular dep)
         from ..core.enums import MemoryType as _MemoryType
 
         _memory_type_override = None
@@ -296,166 +322,192 @@ class MemoryOrchestrator:
                         else _MemoryType(memory_type.value)
                     )
                 except (ValueError, AttributeError):
-                    pass  # Invalid memory_type; let write gate decide
+                    logger.warning(
+                        "invalid_memory_type_override",
+                        extra={"memory_type": str(memory_type), "tenant_id": tenant_id},
+                    )
 
-        # Run unified extraction first when LLM path enabled (for deactivation + encode_batch)
+        # Resolve all feature flags once (S-02: no repeated get_settings() in phases)
         from ..core.config import get_settings as _get_settings
 
-        _settings = _get_settings()
-        _unified_results: list | None = None
-        _use_unified = (
-            _settings.features.use_llm_enabled
-            and getattr(self.hippocampal, "unified_extractor", None) is not None
-            and (
-                _settings.features.use_llm_constraint_extractor
-                or _settings.features.use_llm_write_time_facts
-                or _settings.features.use_llm_salience_refinement
-                or _settings.features.use_llm_pii_redaction
-                or _settings.features.use_llm_write_gate_importance
-            )
+        wpc = WritePathConfig.from_settings(
+            _get_settings(),
+            has_unified_extractor=getattr(self.hippocampal, "unified_extractor", None) is not None,
         )
-        if (
-            _use_unified
-            and hasattr(self.hippocampal, "unified_extractor")
-            and self.hippocampal.unified_extractor
-        ):
-            # Use extract_batch for a single LLM call covering all chunks instead of
-            # N parallel extract() calls (1 LLM call regardless of chunk count).
-            _unified_results = await self.hippocampal.unified_extractor.extract_batch(
-                chunks_for_encoding
-            )
-
-        # Deactivate previous episodic constraints by fact key before writing (supersession)
-        if _settings.features.constraint_extraction_enabled and chunks_for_encoding:
-            if hasattr(self.hippocampal, "deactivate_constraints_by_key"):
-                from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
-                from ..memory.neocortical.schemas import FactCategory
-
-                _fact_keys = set()
-                _new_constraints: list = []
-                if (
-                    _unified_results
-                    and _settings.features.use_llm_enabled
-                    and _settings.features.use_llm_constraint_extractor
-                ):
-                    for _ur in _unified_results:
-                        if _ur and hasattr(_ur, "constraints"):
-                            for _c in _ur.constraints:
-                                _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
-                                _new_constraints.append(_c)
-                else:
-                    _extractor = ConstraintExtractor()
-                    for _chunk in chunks_for_encoding:
-                        for _c in _extractor.extract(_chunk):
-                            _fact_keys.add(ConstraintExtractor.constraint_fact_key(_c))
-                            _new_constraints.append(_c)
-                for _fk in _fact_keys:
-                    await self.hippocampal.deactivate_constraints_by_key(tenant_id, _fk)
-                # BUG-05: Deactivate overlapping constraints (different scope, same type)
-                _cat_map = {
-                    "goal": FactCategory.GOAL,
-                    "value": FactCategory.VALUE,
-                    "state": FactCategory.STATE,
-                    "causal": FactCategory.CAUSAL,
-                    "policy": FactCategory.POLICY,
-                }
-                for _nc in _new_constraints:
-                    _cat = _cat_map.get((_nc.constraint_type or "").lower())
-                    if not _cat:
-                        continue
-                    try:
-                        _existing = await self.neocortical.facts.get_facts_by_category(
-                            tenant_id, _cat, current_only=True
-                        )
-                        for _old in _existing:
-                            if _old.key in _fact_keys:
-                                continue
-                            _old_obj = ConstraintObject(
-                                constraint_type=_cat.value,
-                                subject="user",
-                                description=str(_old.value),
-                                scope=getattr(_old, "context_tags", None) or [],
-                            )
-                            if await ConstraintExtractor.detect_supersession(
-                                _old_obj,
-                                _nc,
-                                llm_client=getattr(
-                                    getattr(self.hippocampal, "unified_extractor", None),
-                                    "llm_client",
-                                    None,
-                                ),
-                            ):
-                                await self.neocortical.facts.invalidate_fact(
-                                    tenant_id, _old.key, reason="superseded"
-                                )
-                                await self.hippocampal.deactivate_constraints_by_key(
-                                    tenant_id, _old.key
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            "supersession_check_failed",
-                            extra={"constraint_type": _nc.constraint_type, "error": str(e)},
-                            exc_info=True,
-                        )
-
-        result = await self.hippocampal.encode_batch(
+        unified_results = await self._phase_unified_extraction(chunks_for_encoding, wpc)
+        await self._phase_deactivate_constraints(
+            tenant_id, chunks_for_encoding, unified_results, wpc
+        )
+        stored, gate_results, unified_results = await self._phase_encode_and_store(
             tenant_id=tenant_id,
             chunks=chunks_for_encoding,
+            context_tags=context_tags,
+            session_id=session_id,
+            agent_id=agent_id,
+            namespace=namespace,
+            timestamp=timestamp,
+            metadata=metadata,
+            memory_type_override=_memory_type_override,
+            eval_mode=eval_mode,
+            unified_results=unified_results,
+        )
+        if stored:
+            await self._sync_to_graph(tenant_id, stored)
+        await self._phase_write_time_facts(
+            tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
+        )
+        await self._phase_write_constraints(
+            tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
+        )
+        return self._build_write_response(stored, gate_results, eval_mode)
+
+    async def _phase_ingest(
+        self,
+        tenant_id: str,
+        content: str,
+        session_id: str | None,
+        turn_id: str | None,
+        timestamp: datetime | None,
+    ) -> list:
+        """STM ingestion: return chunks for encoding."""
+        stm_result = await self.short_term.ingest_turn(
+            tenant_id=tenant_id,
+            scope_id=session_id or tenant_id,
+            text=content,
+            turn_id=turn_id,
+            role="user",
+            timestamp=timestamp,
+        )
+        return stm_result.get("chunks_for_encoding", [])
+
+    async def _phase_unified_extraction(self, chunks: list, wpc: WritePathConfig) -> list | None:
+        """Run unified extractor when LLM path enabled (single LLM call for all chunks)."""
+        if wpc.use_unified and self.hippocampal.unified_extractor:
+            return await self.hippocampal.unified_extractor.extract_batch(chunks)
+        return None
+
+    async def _phase_deactivate_constraints(
+        self,
+        tenant_id: str,
+        chunks: list,
+        unified_results: list | None,
+        wpc: WritePathConfig,
+    ) -> None:
+        """Deactivate previous episodic constraints by fact key (supersession)."""
+        if not wpc.constraint_extraction or not chunks:
+            return
+        if not hasattr(self.hippocampal, "deactivate_constraints_by_key"):
+            return
+        from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
+        from ..memory.neocortical.schemas import FactCategory
+
+        fact_keys: set[str] = set()
+        new_constraints: list = []
+        if unified_results and wpc.use_llm_constraints:
+            for ur in unified_results:
+                if ur and hasattr(ur, "constraints"):
+                    for c in ur.constraints:
+                        fact_keys.add(ConstraintExtractor.constraint_fact_key(c))
+                        new_constraints.append(c)
+        else:
+            extractor = ConstraintExtractor()
+            for chunk in chunks:
+                for c in extractor.extract(chunk):
+                    fact_keys.add(ConstraintExtractor.constraint_fact_key(c))
+                    new_constraints.append(c)
+        for fk in fact_keys:
+            await self.hippocampal.deactivate_constraints_by_key(tenant_id, fk)
+        # Check existing facts by category: constraints of the same type can supersede
+        # each other (e.g. two goals); we fetch current facts per category to compare.
+        cat_map = {
+            "goal": FactCategory.GOAL,
+            "value": FactCategory.VALUE,
+            "state": FactCategory.STATE,
+            "causal": FactCategory.CAUSAL,
+            "policy": FactCategory.POLICY,
+        }
+        llm_client = getattr(
+            getattr(self.hippocampal, "unified_extractor", None), "llm_client", None
+        )
+        for nc in new_constraints:
+            cat = cat_map.get((nc.constraint_type or "").lower())
+            if not cat:
+                continue
+            try:
+                existing = await self.neocortical.facts.get_facts_by_category(
+                    tenant_id, cat, current_only=True
+                )
+                for old in existing:
+                    if old.key in fact_keys:
+                        continue
+                    old_obj = ConstraintObject(
+                        constraint_type=cat.value,
+                        subject="user",
+                        description=str(old.value),
+                        scope=getattr(old, "context_tags", None) or [],
+                    )
+                    if await ConstraintExtractor.detect_supersession(
+                        old_obj, nc, llm_client=llm_client
+                    ):
+                        await self.neocortical.facts.invalidate_fact(
+                            tenant_id, old.key, reason="superseded"
+                        )
+                        await self.hippocampal.deactivate_constraints_by_key(tenant_id, old.key)
+            except Exception as e:
+                logger.warning(
+                    "supersession_check_failed",
+                    extra={"constraint_type": nc.constraint_type, "error": str(e)},
+                    exc_info=True,
+                )
+
+    async def _phase_encode_and_store(
+        self,
+        tenant_id: str,
+        chunks: list,
+        context_tags: list[str] | None,
+        session_id: str | None,
+        agent_id: str | None,
+        namespace: str | None,
+        timestamp: datetime | None,
+        metadata: dict[str, Any] | None,
+        memory_type_override: Any,
+        eval_mode: bool,
+        unified_results: list | None,
+    ) -> tuple[list, list, list | None]:
+        """Encode chunks and store in hippocampal vector store."""
+        result = await self.hippocampal.encode_batch(
+            tenant_id=tenant_id,
+            chunks=chunks,
             context_tags=context_tags,
             source_session_id=session_id,
             agent_id=agent_id,
             namespace=namespace,
             timestamp=timestamp,
             request_metadata=metadata if metadata else None,
-            memory_type_override=_memory_type_override,
+            memory_type_override=memory_type_override,
             return_gate_results=eval_mode,
-            unified_results=_unified_results,
+            unified_results=unified_results,
         )
+        return result
 
-        stored, gate_results, unified_results = result
-
-        # Sync extracted entities and relations to Neo4j knowledge graph
-        if stored:
-            await self._sync_to_graph(tenant_id, stored)
-
-        # Phase 1.3: Write-time fact extraction — populate semantic store immediately
-        from ..core.config import get_settings
-
-        settings = get_settings()
-        if settings.features.write_time_facts_enabled and chunks_for_encoding:
-            try:
-                evidence = [str(stored[0].id)] if stored else []
-                # Use unified extractor facts when LLM path enabled, else rule-based
-                if (
-                    settings.features.use_llm_enabled
-                    and settings.features.use_llm_write_time_facts
-                    and unified_results
-                ):
-                    for ur in unified_results:
-                        if ur and hasattr(ur, "facts"):
-                            for fact in ur.facts:
-                                try:
-                                    await self.neocortical.store_fact(
-                                        tenant_id=tenant_id,
-                                        key=fact.key,
-                                        value=fact.value,
-                                        confidence=fact.confidence,
-                                        evidence_ids=evidence,
-                                        valid_from=timestamp,
-                                    )
-                                except Exception:
-                                    logger.warning(
-                                        "write_time_fact_store_failed",
-                                        extra={"tenant_id": tenant_id, "fact_key": fact.key},
-                                        exc_info=True,
-                                    )
-                else:
-                    from ..extraction.write_time_facts import WriteTimeFactExtractor
-
-                    extractor = WriteTimeFactExtractor()
-                    for chunk in chunks_for_encoding:
-                        extracted_facts = extractor.extract(chunk)
-                        for fact in extracted_facts:
+    async def _phase_write_time_facts(
+        self,
+        tenant_id: str,
+        chunks: list,
+        stored: list,
+        unified_results: list | None,
+        timestamp: datetime | None,
+        wpc: WritePathConfig,
+    ) -> None:
+        """Write-time fact extraction: populate semantic store immediately."""
+        if not wpc.write_time_facts or not chunks:
+            return
+        try:
+            evidence = [str(stored[0].id)] if stored else []
+            if wpc.use_llm_facts and unified_results:
+                for ur in unified_results:
+                    if ur and hasattr(ur, "facts"):
+                        for fact in ur.facts:
                             try:
                                 await self.neocortical.store_fact(
                                     tenant_id=tenant_id,
@@ -471,53 +523,53 @@ class MemoryOrchestrator:
                                     extra={"tenant_id": tenant_id, "fact_key": fact.key},
                                     exc_info=True,
                                 )
-            except Exception:
-                logger.warning("write_time_facts_skipped", exc_info=True)
+            else:
+                from ..extraction.write_time_facts import WriteTimeFactExtractor
 
-        # Cognitive: Write-time constraint extraction — store constraints as semantic facts
-        if settings.features.constraint_extraction_enabled and chunks_for_encoding:
-            try:
-                from ..extraction.constraint_extractor import ConstraintExtractor
+                extractor = WriteTimeFactExtractor()
+                for chunk in chunks:
+                    for fact in extractor.extract(chunk):
+                        try:
+                            await self.neocortical.store_fact(
+                                tenant_id=tenant_id,
+                                key=fact.key,
+                                value=fact.value,
+                                confidence=fact.confidence,
+                                evidence_ids=evidence,
+                                valid_from=timestamp,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "write_time_fact_store_failed",
+                                extra={"tenant_id": tenant_id, "fact_key": fact.key},
+                                exc_info=True,
+                            )
+        except Exception:
+            logger.warning("write_time_facts_skipped", exc_info=True)
 
-                constraint_extractor = ConstraintExtractor()
-                constraints_stored = 0
-                # Use unified extractor constraints when LLM path enabled, else rule-based
-                if (
-                    settings.features.use_llm_enabled
-                    and settings.features.use_llm_constraint_extractor
-                    and unified_results
-                ):
-                    for ur in unified_results:
-                        if ur and hasattr(ur, "constraints"):
-                            for constraint in ur.constraints:
-                                try:
-                                    evidence_c = [str(stored[0].id)] if stored else []
-                                    fact_key = ConstraintExtractor.constraint_fact_key(constraint)
-                                    await self.neocortical.store_fact(
-                                        tenant_id=tenant_id,
-                                        key=fact_key,
-                                        value=constraint.description,
-                                        confidence=constraint.confidence,
-                                        evidence_ids=evidence_c,
-                                        context_tags=constraint.scope,  # BUG-05: persist scope for supersession
-                                        valid_from=timestamp,
-                                    )
-                                    constraints_stored += 1
-                                except Exception:
-                                    logger.warning(
-                                        "constraint_fact_store_failed",
-                                        extra={
-                                            "tenant_id": tenant_id,
-                                            "constraint_type": constraint.constraint_type,
-                                        },
-                                        exc_info=True,
-                                    )
-                else:
-                    for chunk in chunks_for_encoding:
-                        extracted_constraints = constraint_extractor.extract(chunk)
-                        for constraint in extracted_constraints:
+    async def _phase_write_constraints(
+        self,
+        tenant_id: str,
+        chunks: list,
+        stored: list,
+        unified_results: list | None,
+        timestamp: datetime | None,
+        wpc: WritePathConfig,
+    ) -> None:
+        """Write-time constraint extraction: store constraints as semantic facts."""
+        if not wpc.constraint_extraction or not chunks:
+            return
+        try:
+            from ..extraction.constraint_extractor import ConstraintExtractor
+
+            extractor = ConstraintExtractor()
+            constraints_stored = 0
+            evidence_c = [str(stored[0].id)] if stored else []
+            if wpc.use_llm_constraints and unified_results:
+                for ur in unified_results:
+                    if ur and hasattr(ur, "constraints"):
+                        for constraint in ur.constraints:
                             try:
-                                evidence_c = [str(stored[0].id)] if stored else []
                                 fact_key = ConstraintExtractor.constraint_fact_key(constraint)
                                 await self.neocortical.store_fact(
                                     tenant_id=tenant_id,
@@ -525,7 +577,7 @@ class MemoryOrchestrator:
                                     value=constraint.description,
                                     confidence=constraint.confidence,
                                     evidence_ids=evidence_c,
-                                    context_tags=constraint.scope,  # BUG-05: persist scope for supersession
+                                    context_tags=constraint.scope,
                                     valid_from=timestamp,
                                 )
                                 constraints_stored += 1
@@ -538,19 +590,56 @@ class MemoryOrchestrator:
                                     },
                                     exc_info=True,
                                 )
-                if constraints_stored > 0:
-                    logger.info(
-                        "constraints_extracted",
-                        extra={
-                            "tenant_id": tenant_id,
-                            "count": constraints_stored,
-                        },
-                    )
-            except Exception:
-                logger.warning("constraint_extraction_skipped", exc_info=True)
+            else:
+                for chunk in chunks:
+                    for constraint in extractor.extract(chunk):
+                        try:
+                            fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                            await self.neocortical.store_fact(
+                                tenant_id=tenant_id,
+                                key=fact_key,
+                                value=constraint.description,
+                                confidence=constraint.confidence,
+                                evidence_ids=evidence_c,
+                                context_tags=constraint.scope,
+                                valid_from=timestamp,
+                            )
+                            constraints_stored += 1
+                        except Exception:
+                            logger.warning(
+                                "constraint_fact_store_failed",
+                                extra={
+                                    "tenant_id": tenant_id,
+                                    "constraint_type": constraint.constraint_type,
+                                },
+                                exc_info=True,
+                            )
+            if constraints_stored > 0:
+                logger.info(
+                    "constraints_extracted",
+                    extra={"tenant_id": tenant_id, "count": constraints_stored},
+                )
+        except Exception:
+            logger.warning("constraint_extraction_skipped", exc_info=True)
 
+    def _empty_write_response(self, eval_mode: bool) -> dict[str, Any]:
+        """Build response when no chunks to store."""
+        out: dict[str, Any] = {
+            "memory_id": None,
+            "chunks_created": 0,
+            "message": "No significant information to store",
+        }
         if eval_mode:
-            n_stored = len(stored)
+            out["eval_outcome"] = "skipped"
+            out["eval_reason"] = "No significant information to store"
+        return out
+
+    def _build_write_response(
+        self, stored: list, gate_results: list, eval_mode: bool
+    ) -> dict[str, Any]:
+        """Build write response dict from stored records and gate results."""
+        n_stored = len(stored)
+        if eval_mode:
             n_skipped = sum(1 for g in gate_results if g.get("decision") == "skip")
             if n_stored == 0:
                 eval_outcome = "skipped"
@@ -575,12 +664,11 @@ class MemoryOrchestrator:
                 "eval_outcome": eval_outcome,
                 "eval_reason": eval_reason,
             }
-        else:
-            return {
-                "memory_id": stored[0].id if stored else None,
-                "chunks_created": len(stored),
-                "message": f"Stored {len(stored)} memory chunks",
-            }
+        return {
+            "memory_id": stored[0].id if stored else None,
+            "chunks_created": n_stored,
+            "message": f"Stored {n_stored} memory chunks",
+        }
 
     async def _sync_to_graph(
         self,
@@ -592,46 +680,39 @@ class MemoryOrchestrator:
         Failures are logged but never propagated — the Postgres write has
         already succeeded and must not be rolled back because of a graph issue.
         """
+        tasks = []
         for record in records:
-            # 1. Merge entity nodes so the graph contains discoverable vertices
             for entity in getattr(record, "entities", None) or []:
-                try:
-                    await self.neocortical.graph.merge_node(
-                        tenant_id=tenant_id,
-                        scope_id=tenant_id,
-                        entity=entity.normalized,
-                        entity_type=entity.entity_type,
-                    )
-                except Exception:
-                    logger.warning(
-                        "neo4j_entity_sync_failed",
-                        extra={
-                            "tenant_id": tenant_id,
-                            "entity": getattr(entity, "normalized", "?"),
-                            "memory_id": str(record.id),
-                        },
-                        exc_info=True,
-                    )
-
-            # 2. Merge relation edges
+                tasks.append(self._sync_entity_to_graph(tenant_id, record, entity))
             relations = getattr(record, "relations", None) or []
             if relations:
-                try:
-                    await self.neocortical.store_relations_batch(
-                        tenant_id=tenant_id,
-                        relations=relations,
-                        evidence_ids=[str(record.id)],
-                    )
-                except Exception:
+                tasks.append(self._sync_relations_to_graph(tenant_id, record, relations))
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
                     logger.warning(
-                        "neo4j_relation_sync_failed",
-                        extra={
-                            "tenant_id": tenant_id,
-                            "memory_id": str(record.id),
-                            "relation_count": len(relations),
-                        },
-                        exc_info=True,
+                        "neo4j_sync_task_failed",
+                        extra={"error": str(r)},
+                        exc_info=(type(r), r, r.__traceback__),
                     )
+
+    async def _sync_entity_to_graph(self, tenant_id: str, record: Any, entity: Any) -> None:
+        """Merge a single entity node to Neo4j."""
+        await self.neocortical.graph.merge_node(
+            tenant_id=tenant_id,
+            scope_id=tenant_id,
+            entity=entity.normalized,
+            entity_type=entity.entity_type,
+        )
+
+    async def _sync_relations_to_graph(self, tenant_id: str, record: Any, relations: list) -> None:
+        """Merge relation edges for a record to Neo4j."""
+        await self.neocortical.store_relations_batch(
+            tenant_id=tenant_id,
+            relations=relations,
+            evidence_ids=[str(record.id)],
+        )
 
     async def read(
         self,
@@ -669,9 +750,9 @@ class MemoryOrchestrator:
         """Update an existing memory. Holistic: tenant-only."""
         record = await self.hippocampal.store.get_by_id(memory_id)
         if not record:
-            raise ValueError(f"Memory {memory_id} not found")
+            raise MemoryNotFoundError(memory_id)
         if record.tenant_id != tenant_id:
-            raise ValueError("Memory does not belong to tenant")
+            raise MemoryAccessDenied("Memory does not belong to tenant")
 
         patch: dict[str, Any] = {}
         if text is not None:
@@ -723,30 +804,39 @@ class MemoryOrchestrator:
         def owns(record) -> bool:
             return record.tenant_id == tenant_id
 
-        # Collect IDs from explicit memory_ids
+        # Collect IDs from explicit memory_ids (batch fetch)
         if memory_ids:
-            for mid in memory_ids:
-                record = await self.hippocampal.store.get_by_id(mid)
-                if record and owns(record):
-                    target_ids.add(mid)
+            records = await self.hippocampal.store.get_by_ids_batch(memory_ids)
+            for record in records:
+                if owns(record):
+                    target_ids.add(record.id)
 
-        # Collect IDs from query-based search
+        # Collect IDs from query-based search (batch fetch)
         if query:
             packet = await self.retriever.retrieve(tenant_id, query=query, max_results=100)
-            for mem in packet.all_memories:
-                rid = mem.record.id
-                record = await self.hippocampal.store.get_by_id(rid)
-                if record and owns(record):
-                    target_ids.add(rid)
+            ids_from_query = [mem.record.id for mem in packet.all_memories]
+            if ids_from_query:
+                records = await self.hippocampal.store.get_by_ids_batch(ids_from_query)
+                for record in records:
+                    if owns(record):
+                        target_ids.add(record.id)
 
-        # Collect IDs by time filter
+        # Collect IDs by time filter (cursor-based pagination)
         if before:
-            records = await self.hippocampal.store.scan(
-                tenant_id, filters={"status": MemoryStatus.ACTIVE.value}, limit=500
-            )
-            for r in records:
-                if r.timestamp and r.timestamp < before:
-                    target_ids.add(r.id)
+            offset = 0
+            while True:
+                records = await self.hippocampal.store.scan(
+                    tenant_id,
+                    filters={"status": MemoryStatus.ACTIVE.value},
+                    limit=500,
+                    offset=offset,
+                )
+                if not records:
+                    break
+                for r in records:
+                    if r.timestamp and r.timestamp < before:
+                        target_ids.add(r.id)
+                offset += len(records)
 
         # Delete deduplicated set
         for mid in target_ids:
@@ -775,7 +865,7 @@ class MemoryOrchestrator:
                 tenant_id,
                 filters=filters,
                 order_by="-timestamp",
-                limit=50,
+                limit=_SESSION_CONTEXT_LIMIT,
             )
             # Build items directly from records
             messages = []

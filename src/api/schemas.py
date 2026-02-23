@@ -12,7 +12,7 @@ from ..core.enums import MemoryType
 class WriteMemoryRequest(BaseModel):
     """Request to store a memory. Holistic: tenant-only."""
 
-    content: str
+    content: str = Field(..., min_length=1, max_length=100_000)
     context_tags: list[str] | None = None
     session_id: str | None = None
     memory_type: MemoryType | None = None
@@ -98,6 +98,7 @@ class ReadMemoryResponse(BaseModel):
     episodes: list[MemoryItem] = Field(default_factory=list)
     constraints: list[MemoryItem] = Field(default_factory=list)
     llm_context: str | None = None
+    retrieval_meta: dict | None = None
     total_count: int
     elapsed_ms: float
 

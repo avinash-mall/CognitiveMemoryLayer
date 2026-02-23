@@ -4,7 +4,10 @@ import json
 import re
 
 from ..utils.llm import LLMClient
+from ..utils.logging_config import get_logger
 from .query_types import QueryAnalysis, QueryIntent
+
+logger = get_logger(__name__)
 
 FAST_PATTERNS = {
     QueryIntent.PREFERENCE_LOOKUP: [
@@ -294,9 +297,7 @@ class QueryClassifier:
             return analysis
         except (json.JSONDecodeError, ValueError, TypeError, Exception) as e:
             # Catch all errors including LLM network failures, rate limits, etc. (MED-26)
-            import logging
-
-            logging.getLogger(__name__).warning("llm_classify_failed: %s", str(e))
+            logger.warning("llm_classify_failed", extra={"error": str(e)})
             return QueryAnalysis(
                 original_query=query,
                 intent=QueryIntent.GENERAL_QUESTION,

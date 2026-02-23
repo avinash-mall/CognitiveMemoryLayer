@@ -71,6 +71,27 @@ def test_memory_item_serialize_to_dict() -> None:
     assert d["metadata"] == {}
 
 
+def test_write_request_content_empty_raises() -> None:
+    """WriteRequest rejects empty content."""
+    with pytest.raises(PydanticValidationError) as exc_info:
+        WriteRequest(content="")
+    assert "content" in str(exc_info.value).lower()
+
+
+def test_write_request_content_max_length_raises() -> None:
+    """WriteRequest rejects content exceeding 100,000 characters."""
+    with pytest.raises(PydanticValidationError) as exc_info:
+        WriteRequest(content="x" * 100_001)
+    err_str = str(exc_info.value).lower()
+    assert "content" in err_str or "100000" in err_str or "100" in err_str
+
+
+def test_write_request_content_at_limit_accepted() -> None:
+    """WriteRequest accepts content at exactly 100,000 characters."""
+    req = WriteRequest(content="x" * 100_000)
+    assert len(req.content) == 100_000
+
+
 def test_write_request_model_dump_exclude_none() -> None:
     """WriteRequest model_dump(exclude_none=True) omits optional fields when None."""
     req = WriteRequest(content="hello")
@@ -189,6 +210,22 @@ def test_read_response_parse() -> None:
     assert r.total_count == 1
     assert r.elapsed_ms == 50.0
     assert r.context == "## Preferences\n- Likes pasta"
+    assert r.retrieval_meta is None
+
+
+def test_read_response_parses_retrieval_meta() -> None:
+    """ReadResponse parses optional retrieval_meta from server."""
+    d = {
+        "query": "test",
+        "memories": [],
+        "total_count": 0,
+        "elapsed_ms": 10.0,
+        "retrieval_meta": {"sources_completed": 2, "sources_timed_out": 0, "total_elapsed_ms": 8.5},
+    }
+    r = ReadResponse.model_validate(d)
+    assert r.retrieval_meta is not None
+    assert r.retrieval_meta["sources_completed"] == 2
+    assert r.retrieval_meta["total_elapsed_ms"] == 8.5
 
 
 def test_read_request_max_results_validation() -> None:

@@ -8,7 +8,7 @@ The `examples/` and `packages/py-cml/examples/` directories contain runnable scr
 
 **File:** [examples/quickstart.py](../../../examples/quickstart.py)
 
-Store and retrieve memories in under a minute. Uses the sync client: initialize, write several memories, read by query, call `get_context`, and `stats()`. Run with:
+Store and retrieve memories in under a minute. Uses the sync client: initialize, write several memories, read by query, use `read_stream` for SSE streaming, call `get_context`, and `stats()`. Run with:
 
 ```bash
 python examples/quickstart.py
