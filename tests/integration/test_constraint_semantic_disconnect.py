@@ -78,9 +78,9 @@ async def test_constraint_surfaces_despite_semantic_disconnect(pg_session_factor
         f"despite semantic disconnect. Got: {all_texts}"
     )
     # Should be in constraints section
-    assert len(packet.constraints) >= 1, (
-        "Packet should have at least one constraint from fact lookup"
-    )
+    assert (
+        len(packet.constraints) >= 1
+    ), "Packet should have at least one constraint from fact lookup"
     constraint_mem = next(
         (
             c
@@ -89,6 +89,6 @@ async def test_constraint_surfaces_despite_semantic_disconnect(pg_session_factor
         ),
         None,
     )
-    assert constraint_mem is not None, (
-        f"Constraints should include shellfish allergy. Got: {[c.record.text for c in packet.constraints]}"
-    )
+    assert (
+        constraint_mem is not None
+    ), f"Constraints should include shellfish allergy. Got: {[c.record.text for c in packet.constraints]}"
