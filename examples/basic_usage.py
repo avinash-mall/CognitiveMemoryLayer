@@ -1,8 +1,7 @@
 """
 Basic Usage Example - Cognitive Memory Layer.
 
-Uses the py-cml package. Set AUTH__API_KEY (or CML_API_KEY) and CML_BASE_URL
-(or MEMORY_API_URL) in .env before running.
+Uses the py-cml package. Set CML_API_KEY and CML_BASE_URL in .env before running.
 
 Demonstrates: write, read, update, forget, stats.
 
@@ -29,11 +28,9 @@ from cml.models.enums import MemoryType
 
 
 def main():
-    base_url = (
-        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-    ).strip() or "http://localhost:8000"
+    base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
     with CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        api_key=os.environ.get("CML_API_KEY"),
         base_url=base_url,
     ) as memory:
         _run_basic_usage(memory, "example-session-001")

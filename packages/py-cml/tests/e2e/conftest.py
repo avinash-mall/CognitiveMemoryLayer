@@ -21,16 +21,11 @@ try:
 except Exception:
     pass
 
-# Use env when set; fallback so tests run (no skip) and fail at first request if server is down
+# Use env when set; default so tests run (no skip) and fail at first request if server is down
 INTEGRATION_URL = (
-    os.environ.get("CML_TEST_URL")
-    or os.environ.get("CML_BASE_URL")
-    or os.environ.get("MEMORY_API_URL")
-    or "http://localhost:8000"
+    os.environ.get("CML_TEST_URL") or os.environ.get("CML_BASE_URL") or "http://localhost:8000"
 ).strip()
-INTEGRATION_KEY = (
-    os.environ.get("CML_TEST_API_KEY") or os.environ.get("AUTH__API_KEY") or "test-key"
-)
+INTEGRATION_KEY = os.environ.get("CML_TEST_API_KEY") or os.environ.get("CML_API_KEY") or "test-key"
 INTEGRATION_ADMIN_KEY = os.environ.get("AUTH__ADMIN_API_KEY") or INTEGRATION_KEY
 INTEGRATION_TENANT = f"test-e2e-{os.getpid()}"
 

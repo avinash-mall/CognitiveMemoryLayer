@@ -1,6 +1,6 @@
 """OpenAI tool calling with Cognitive Memory Layer.
 
-Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
+Set CML_API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 """
 
 import json
@@ -96,12 +96,10 @@ class MemoryEnabledAssistant:
         self.model = (
             model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
         ).strip()
-        base_url = (
-            os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-        ).strip() or "http://localhost:8000"
+        base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
         self.openai = OpenAI()
         self.memory = CognitiveMemoryLayer(
-            api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+            api_key=os.environ.get("CML_API_KEY"),
             base_url=base_url,
         )
         self.messages = [

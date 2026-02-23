@@ -1,7 +1,10 @@
 import uuid
 from datetime import UTC, datetime
 
-# Assuming API server is running locally
+import pytest
+
+# Skip entire module when evaluation package is not available (e.g. in Docker/CI)
+pytest.importorskip("evaluation")
 from evaluation.scripts.eval_locomo_plus import _cml_write
 
 

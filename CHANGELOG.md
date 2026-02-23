@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **Environment variable consolidation (client)** — Client and examples now use a single canonical env var per concept; fallbacks to alternate names were removed. Set **`CML_BASE_URL`** (no longer `MEMORY_API_URL`), **`CML_API_KEY`** (no longer `MEMORY_API_KEY` or `AUTH__API_KEY` for client), and **`CML_TIMEOUT`** where a timeout is needed (no longer `MEMORY_API_TIMEOUT`). py-cml reads only `CML_BASE_URL` and `CML_API_KEY` from the environment. For local dev, set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`. See `.env.example` migration note.
+
 - **LLM and embedding config consolidation** — Removed `LLMSettings` and `LLM__*` env vars entirely. Use only `LLM_INTERNAL__*` for internal memory tasks and `LLM_EVAL__*` for evaluation (QA, judge); if `LLM_EVAL__*` is unset, `LLM_INTERNAL__*` is used. Renamed `EMBEDDING__*` to `EMBEDDING_INTERNAL__*`; when embedding config is unset, defaults to `nomic-ai/nomic-embed-text-v2-moe` (768 dims, 512 max seq). Added `FEATURES__USE_LLM_ENABLED` (default `false`) as master switch; when false, all internal LLM usage is disabled and heuristics are used. No backward compatibility: migrate `LLM__*` → `LLM_INTERNAL__*` and `EMBEDDING__*` → `EMBEDDING_INTERNAL__*` in `.env`. See `.env.example` and plan `llm_embedding_config_cleanup_32cb4f39.plan.md`.
 
 ### Fixed
@@ -21,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **LLM memory type in Unified Extractor** — When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the Unified Write Path Extractor outputs `memory_type` per chunk in the same LLM call used for constraints, facts, salience, importance, and PII. The Hippocampal Store uses this LLM-classified type when valid; otherwise falls back to constraint extraction heuristic and Write Gate ChunkType mapping. API `memory_type` override continues to take precedence. No extra LLM call; `memory_type` is an additional field in the existing unified extraction response. See `ProjectPlan/UsageDocumentation.md` § Write Path LLM Gating and Memory Types.
+
+### Changed
+
+- **Config and docs aligned with codebase** — Synced `scripts/init_structure.py` STRUCTURE with current repo layout (examples, src, tests, .github, docker). Updated CONTRIBUTING.md with dashboard in project structure and full scripts list (`update_readme_badges.py`, `run_examples.py`, `init_structure.py`). CI workflow (`.github/workflows/ci.yml`) now runs ruff check and format on `packages/py-cml/src` and `packages/py-cml/tests`. Added comment in `alembic.ini` that `sqlalchemy.url` is overridden at runtime by `migrations/env.py` from app settings.
 
 ## [1.3.3] - 2026-02-22
 

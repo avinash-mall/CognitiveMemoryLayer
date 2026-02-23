@@ -26,7 +26,11 @@ async def test_use_llm_query_classifier_only_skips_fast_path(monkeypatch):
         lambda: type(
             "S",
             (),
-            {"features": type("F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True})()},
+            {
+                "features": type(
+                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
+                )()
+            },
         )(),
     )
     classifier = QueryClassifier(llm_client=mock_llm)

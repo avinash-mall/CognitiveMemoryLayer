@@ -1,6 +1,6 @@
 """Simple chatbot with persistent memory (py-cml + OpenAI).
 
-Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
+Set CML_API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 """
 
 import os
@@ -19,9 +19,7 @@ from cml import CognitiveMemoryLayer
 
 
 def chat_with_memory():
-    base_url = (
-        os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-    ).strip() or "http://localhost:8000"
+    base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
     model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or "").strip()
     if not model:
         raise SystemExit("Set OPENAI_MODEL (or LLM_INTERNAL__MODEL) in .env")
@@ -30,7 +28,7 @@ def chat_with_memory():
     print("Chat with Memory (type 'quit' to exit)\n")
 
     with CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY"),
+        api_key=os.environ.get("CML_API_KEY"),
         base_url=base_url,
     ) as memory:
         while True:

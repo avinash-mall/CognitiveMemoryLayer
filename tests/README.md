@@ -158,7 +158,7 @@ Tests read **all** configuration from the project root **`.env`** (loaded via `c
 
 | Purpose | Variables (set in `.env`) |
 |--------|---------------------------|
-| **Auth** | `AUTH__API_KEY`, `AUTH__ADMIN_API_KEY` (use `test-key` for local/dev; dashboard tests need admin key) |
+| **Auth** | `AUTH__API_KEY` (server), `AUTH__ADMIN_API_KEY` (dashboard). For py-cml/examples set `CML_API_KEY` (use same value as `AUTH__API_KEY` for local dev, e.g. `test-key`) |
 | **Database** | `DATABASE__POSTGRES_URL`, `DATABASE__NEO4J_URL`, `DATABASE__REDIS_URL` (for integration tests) |
 | **Embedding** | `EMBEDDING__DIMENSIONS`, `EMBEDDING__PROVIDER`, `EMBEDDING__MODEL`, etc. |
 
@@ -167,7 +167,7 @@ Tests read **all** configuration from the project root **`.env`** (loaded via `c
 
 ### py-cml tests (host)
 
-- **Integration/e2e:** Require the CML API to be running; use the same `AUTH__API_KEY` (e.g. `test-key`) in `.env` as the server. Tests load repo root `.env` (e.g. `CML_BASE_URL`, `CML_API_KEY` or `AUTH__API_KEY`).
+- **Integration/e2e:** Require the CML API to be running. Set `CML_API_KEY` and `CML_BASE_URL` in repo root `.env` (use same value as server `AUTH__API_KEY`, e.g. `test-key`). Tests use `CML_TEST_URL` / `CML_TEST_API_KEY` when set, else `CML_BASE_URL` / `CML_API_KEY`. To run the API with test keys without editing `.env`, use: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api` (see `docker/docker-compose.test-key.yml`).
 - **Embedded tests:** Require `pip install -e ".[embedded]"` in `packages/py-cml` so `aiosqlite` and embedded dependencies are available. Embedded config reads `EMBEDDING__DIMENSIONS` (and other `EMBEDDING__*` / `LLM__*` vars) from `.env` when not set in code.
 
 ### Optional LLM/embedding tests (skip when unavailable)
