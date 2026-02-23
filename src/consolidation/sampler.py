@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from ..core.enums import MemoryStatus, MemoryType
 from ..core.schemas import MemoryRecord
-from ..storage.postgres import PostgresMemoryStore
+from ..storage.base import MemoryStoreBase
 from ..storage.utils import naive_utc
 
 
@@ -27,7 +27,7 @@ class EpisodeSampler:
 
     def __init__(
         self,
-        store: PostgresMemoryStore,
+        store: MemoryStoreBase,
         config: SamplingConfig | None = None,
     ):
         self.store = store

@@ -59,6 +59,15 @@ htmlcov/
 # Ruff
 .ruff_cache/
 
+# Tool output redirects (mypy, pytest)
+mypy_output.txt
+test_output.txt
+test_run2.txt
+test_results.log
+tests/_lifecycle_err.txt
+tests/_lifecycle_tb.txt
+tests/_tb.txt
+
 # uv
 .uv/
 

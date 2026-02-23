@@ -5,7 +5,10 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
+from ..utils.logging_config import get_logger
 from .query_types import QueryAnalysis, QueryIntent
+
+logger = get_logger(__name__)
 
 
 class RetrievalSource(StrEnum):
@@ -286,11 +289,7 @@ class RetrievalPlanner:
                 elif step.source == RetrievalSource.CONSTRAINTS and step.timeout_ms in (100, 200):
                     step.timeout_ms = r.default_step_timeout_ms
         except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).debug(
-                "retrieval_timeouts_apply_failed", extra={"error": str(e)}, exc_info=True
-            )
+            logger.debug("retrieval_timeouts_apply_failed", extra={"error": str(e)}, exc_info=True)
 
     def _calculate_timeout(self, steps: list[RetrievalStep]) -> int:
         """Calculate total timeout based on steps."""
@@ -299,9 +298,5 @@ class RetrievalPlanner:
 
             return get_settings().retrieval.total_timeout_ms
         except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).debug(
-                "retrieval_timeout_calc_failed", extra={"error": str(e)}, exc_info=True
-            )
+            logger.debug("retrieval_timeout_calc_failed", extra={"error": str(e)}, exc_info=True)
             return sum(s.timeout_ms for s in steps) // 2 + 100

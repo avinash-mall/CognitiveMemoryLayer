@@ -246,6 +246,49 @@ class CognitiveMemoryLayer:
                 elapsed_ms=0.0,
             )
 
+    def read_stream(
+        self,
+        query: str,
+        *,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[MemoryType] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        user_timezone: str | None = None,
+    ) -> Iterator[MemoryItem]:
+        """Stream memories via Server-Sent Events (SSE).
+
+        Same retrieval semantics as read(), but results are yielded
+        incrementally as they arrive. Useful for large result sets or
+        UIs that want progressive rendering.
+
+        Requires a CML server >= 1.4.0 with the /memory/read/stream endpoint.
+
+        Args:
+            query: Search query.
+            max_results: Max items to return (1-50).
+            context_filter: Optional context tags filter.
+            memory_types: Optional types to include.
+            since: Optional start of time range.
+            until: Optional end of time range.
+            user_timezone: Optional IANA timezone for "today"/"yesterday" filters.
+
+        Yields:
+            MemoryItem objects as they arrive from the server.
+        """
+        body = ReadRequest(
+            query=query,
+            max_results=max_results,
+            context_filter=context_filter,
+            memory_types=memory_types,
+            since=since,
+            until=until,
+            user_timezone=user_timezone,
+        ).model_dump(exclude_none=True, by_alias=True, mode="json")
+        for data in self._transport.stream_sse("/memory/read/stream", json_body=body):
+            yield MemoryItem(**data)
+
     def turn(
         self,
         user_message: str,
@@ -1240,6 +1283,25 @@ class NamespacedClient:
             since=since,
             until=until,
             response_format=response_format,
+        )
+
+    def read_stream(
+        self,
+        query: str,
+        *,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[MemoryType] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> Iterator[MemoryItem]:
+        return self._parent.read_stream(
+            query,
+            max_results=max_results,
+            context_filter=context_filter,
+            memory_types=memory_types,
+            since=since,
+            until=until,
         )
 
     def turn(

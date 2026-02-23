@@ -35,17 +35,15 @@ class DatabaseSettings(PydanticBaseModel):
     redis_url: str = Field(default="redis://localhost:6379")
 
 
-# Embedding config: EMBEDDING_INTERNAL__* (internal memory tasks). When unset, defaults to
-# nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max seq) via LocalEmbeddings.
+# Embedding config: EMBEDDING_INTERNAL__* (internal memory tasks).
+# Defaults (when unset in .env): provider=local, model=nomic-embed-text-v2-moe, dimensions=768.
 class EmbeddingInternalSettings(PydanticBaseModel):
-    """Embedding provider for internal memory tasks. When unset, uses local nomic-embed-text-v2-moe."""
+    """Embedding provider for internal memory tasks. Defaults: local, nomic-embed-text-v2-moe, 768d."""
 
-    provider: str | None = Field(default=None)  # openai | local | openai_compatible | ollama
-    model: str | None = Field(default=None)
-    dimensions: int | None = Field(default=None)
-    local_model: str | None = Field(
-        default=None
-    )  # for provider=local; default nomic-embed-text-v2-moe
+    provider: str | None = Field(default="local")  # openai | local | openai_compatible | ollama
+    model: str | None = Field(default="nomic-ai/nomic-embed-text-v2-moe")
+    dimensions: int | None = Field(default=768)
+    local_model: str | None = Field(default="nomic-ai/nomic-embed-text-v2-moe")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 

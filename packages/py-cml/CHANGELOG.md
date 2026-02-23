@@ -7,13 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Compatibility updates for CML server changes from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.md) resolutions (F-04, F-13, E-01).
+
 ### Added
 
 - **Client API Synchronization** — `py-cml` (sync and async clients) is now fully synchronized with the CML server API. Added missing dashboard and admin endpoints (e.g., `dashboard_overview`, `dashboard_memories`, `dashboard_timeline`, `dashboard_neo4j_config`, `reset_database`). Updated all new and existing methods to use properly typed Pydantic models from `cml.models` instead of generic dictionaries, providing better typing and autocomplete support. Added missing Pydantic models to `requests.py` and `responses.py`. Update documentation in `api-reference.md`.
+- **ReadResponse.retrieval_meta** — Optional `retrieval_meta: dict | None` field for server parity. When the CML server returns retrieval metadata (sources completed/timed out, elapsed ms), it is exposed here.
+
+### Changed
+
+- **CSRF header for dashboard requests** — HTTP transport now automatically adds `X-Requested-With: XMLHttpRequest` for dashboard POST, PUT, DELETE, and PATCH requests. Required for compatibility with CML servers that enforce CSRF protection on dashboard state-changing endpoints. Methods affected: `consolidate()`, `run_forgetting()`, `reconsolidate()`, `dashboard_bulk_action()`, `dashboard_config_update()`, `test_retrieval()`, `reset_database()`.
+- **WriteRequest content validation** — `content` now enforces `min_length=1` and `max_length=100_000` (aligns with server). Validates before sending; raises Pydantic `ValidationError` for invalid content.
 
 ### Documentation
 
 - **Server LLM memory type** — The CML server's unified extractor now outputs `memory_type` per chunk when `FEATURES__USE_LLM_MEMORY_TYPE` is true (default). The optional `memory_type` parameter on `write()` overrides this; when omitted, the LLM classifies the type in the same extraction call. No SDK API changes.
+- **Server streaming read** — The CML server now exposes `POST /api/v1/memory/read/stream` (SSE). The `py-cml` SDK now provides a `read_stream()` method on the sync and async clients to consume this endpoint, yielding `MemoryItem` objects incrementally for progressive rendering. The existing `read()` method continues to use the JSON endpoint.
+- **Server plugin registry** — The CML server now has an `ExtractorRegistry` (`src/extraction/registry.py`) enabling third-party custom extractors. No SDK API changes.
+- **Server per-tenant feature flags** — The CML server supports per-tenant feature flag overrides via Redis (`src/core/tenant_flags.py`). Enables A/B testing of LLM features per tenant. No SDK API changes.
+- **VALIDATION_REPORT.md** — New report documenting py-cml compatibility with recent server changes (CSRF, retrieval_meta, content validation).
+
+### Tests
+
+- **CSRF header** — Unit tests for `_add_dashboard_csrf_if_needed` (adds header for dashboard POST/PUT, skips for GET and non-dashboard); transport test verifies dashboard POST sends X-Requested-With.
+- **WriteRequest content validation** — `test_write_request_content_empty_raises`, `test_write_request_content_max_length_raises`, `test_write_request_content_at_limit_accepted`.
+- **ReadResponse retrieval_meta** — `test_read_response_parses_retrieval_meta`.
 
 ## [1.3.3] - 2026-02-22
 

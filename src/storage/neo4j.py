@@ -1,6 +1,5 @@
 """Neo4j knowledge graph store for semantic memory."""
 
-import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,9 +9,10 @@ from neo4j import AsyncGraphDatabase
 from neo4j.exceptions import ClientError as Neo4jClientError
 
 from ..core.config import get_settings
+from ..utils.logging_config import get_logger
 from .base import GraphStoreBase
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

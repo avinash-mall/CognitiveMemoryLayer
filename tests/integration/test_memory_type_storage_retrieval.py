@@ -146,9 +146,7 @@ async def test_knowledge_base_store_query(store, tenant_id):
 
     kb = KnowledgeBase(
         store=store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
     )
     await kb.store_fact(
         tenant_id, "general", "Python", "is_a", "language", source="test", confidence=0.9

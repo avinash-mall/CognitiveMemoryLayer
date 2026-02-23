@@ -6,6 +6,95 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Resolves issues from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.md). See below for issue ID mapping.
+
+### Added
+
+- **Content length validation (F-04)** — `WriteMemoryRequest.content` enforces `min_length=1` and `max_length=100_000`. Requests exceeding 100,000 characters return 400. See `ProjectPlan/UsageDocumentation.md` § POST /memory/write.
+- **API versioning documentation (S-09)** — New `docs/api-versioning.md` describing v1 stability, deprecation policy, and version transition strategy.
+- **Retrieval metadata (E-01)** — Optional `retrieval_meta` field in `ReadMemoryResponse` for sources completed/timed out and elapsed ms (future use).
+- **Embedding retries (F-10)** — Tenacity retries on `OpenAIEmbeddings.embed` and `embed_batch` for transient network errors (3 attempts, exponential backoff).
+- **LLM memory type in Unified Extractor** — When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the Unified Write Path Extractor outputs `memory_type` per chunk in the same LLM call used for constraints, facts, salience, importance, and PII.
+- **Extractor plugin registry (A-01)** — New `src/extraction/registry.py` with decorator-based `ExtractorRegistry` for registering custom entity, relation, constraint, and fact extractors without modifying core source. Thread-safe singleton `extractor_registry`.
+- **Per-tenant feature flag overrides (A-02)** — New `src/core/tenant_flags.py` with Redis-backed `TenantFeatureOverrides`. Enables per-tenant A/B testing and gradual rollout of LLM features via `get_tenant_overrides()`, `set_tenant_overrides()`, and `apply_overrides()`.
+- **OpenTelemetry tracing stubs (A-07)** — New `src/utils/tracing.py` with `trace_span()` and `async_trace_span()` context managers. No-ops when OpenTelemetry SDK is not installed; full distributed tracing when `opentelemetry-sdk` is present. `configure_tracing()` for startup bootstrap.
+- **Streaming read endpoint (E-02)** — New `POST /memory/read/stream` SSE endpoint for progressive rendering. Returns each memory as a `data:` event, with `event: done` (count + elapsed ms) or `event: error` on completion.
+
+### Changed
+
+- **Dashboard module structure (S-03)** — Split `dashboard_routes.py` (2,765 lines) into `src/api/dashboard/` package: `overview_routes`, `memory_routes`, `events_routes`, `graph_routes`, `config_routes`, `jobs_routes`, `fact_routes`, `_shared`. Import via `from .dashboard import dashboard_router`.
+- **Orchestrator write() decomposition (S-01)** — Refactored 337-line `write()` into phases: `_phase_ingest`, `_phase_unified_extraction`, `_phase_deactivate_constraints`, `_phase_encode_and_store`, `_phase_write_time_facts`, `_phase_write_constraints`, `_build_write_response`.
+- **DatabaseManager initialization (F-09)** — Added `async DatabaseManager.create()` for deterministic cleanup on init failure. App lifespan uses `await DatabaseManager.create()`; `get_instance()` retained for Celery/legacy.
+- **Exception handling (S-07)** — `orchestrator.update()` raises `MemoryNotFoundError` (404) and `MemoryAccessDenied` (403). FastAPI exception handlers map these to JSON responses.
+- **Logging consistency (S-06)** — Standardized on structlog (`get_logger`) across orchestrator, storage, retrieval, reconsolidation, and forgetting; replaced stdlib `logging`.
+- **Forget performance (F-02, F-05)** — Added `get_by_ids_batch()` to reduce N+1 queries; time-based forgetting now uses cursor pagination (no 500-record cap).
+- **Graph sync parallelization (F-07)** — `_sync_to_graph` parallelizes entity and relation merges via `asyncio.gather`.
+- **Rate limiter (F-08)** — In-memory fallback uses `TTLCache` (maxsize=10000, ttl=120s) instead of unbounded dict.
+- **Dashboard config write-protection (F-12)** — Write-protected fields (`auth.api_key`, `auth.admin_api_key`, `database.neo4j_password`, etc.) cannot be modified via dashboard; returns 403.
+- **Tenant override audit (F-11)** — Admin key tenant override logs `tenant_override_used` with admin_key_hash, original_tenant, target_tenant.
+- **CSRF header (F-13)** — Dashboard POST/PUT/DELETE/PATCH require `X-Requested-With: XMLHttpRequest`.
+- **Abstract store types (S-05)** — ReconsolidationService, ForgettingWorker, ConsolidationWorker, migrator, sampler use `MemoryStoreBase`; removed `cast(PostgresMemoryStore)` in create_lite.
+- **Session read deprecation (E-03)** — `POST /session/{session_id}/read` marked deprecated; use `/memory/read` instead.
+- **Coverage gate (A-04)** — `fail_under = 50` in pyproject.toml (target 70% over time).
+- **Memory type override warning (F-01)** — Invalid `memory_type` override now logs `invalid_memory_type_override` instead of silent `pass`.
+- **API key build caching (F-06)** — `_build_api_keys()` decorated with `@lru_cache`; call `_build_api_keys.cache_clear()` when mutating settings in tests.
+- **Silent error handling (AI-01)** — Request counter middleware logs `request_counter_increment_failed` on exception instead of bare `pass`; DatabaseManager init failure logs with `exc_info=True`.
+- **Magic numbers (AI-03)** — Named constants: `_PG_POOL_SIZE`, `_PG_MAX_OVERFLOW` in connection; `_REQUEST_COUNT_TTL` in middleware; `_SESSION_CONTEXT_LIMIT` in orchestrator; `_CONFLICT_TOP_K` in reconsolidation.
+- **WritePathConfig (S-02)** — Frozen `WritePathConfig` dataclass resolves all write-path feature flags once at `write()` entry. Replaces repeated `get_settings()` calls and compound flag checks in `_phase_unified_extraction`, `_phase_deactivate_constraints`, `_phase_write_time_facts`, `_phase_write_constraints`.
+- **Consolidated deferred imports (S-04)** — `HippocampalStore.encode_chunk()` loads `get_settings()` once at method start instead of 4 separate deferred imports.
+- **Coverage threshold (A-04)** — `fail_under` bumped from 50% to 60% (target 70%).
+- **Ruff, Black, and mypy (IA-04)** — Resolved Ruff issues (TC006, F841, B010); Black formatting; mypy passes on `src`.
+- **Minimal .env** — `.env` can be trimmed to required and optional-but-recommended variables; see `.env.example`.
+- **Config and docs aligned with codebase** — Synced `scripts/init_structure.py`; CONTRIBUTING.md; CI runs ruff on py-cml.
+
+### Tests
+
+- **Content length validation** — Unit tests for `WriteMemoryRequest` (max/min length, at-limit); E2E test for write exceeding 100k returns 4xx.
+- **Dashboard CSRF** — Unit tests include `X-Requested-With: XMLHttpRequest` for dashboard POST; added `test_dashboard_post_without_csrf_header_returns_403`.
+- **Exception handlers** — Unit tests for `update()` 404 (MemoryNotFoundError) and 403 (MemoryAccessDenied) via mocked orchestrator.
+- **DatabaseManager** — `test_timestamp_ingestion` uses `await DatabaseManager.create()`.
+- **init_structure** — `scripts/init_structure.py` updated with dashboard package structure (replaces `dashboard_routes.py`).
+- **py-cml SDK** — Added unit tests for WriteRequest content validation; transport CSRF header tests; ReadResponse retrieval_meta parse test.
+
+### Dependencies
+
+- **cachetools** — For TTLCache in rate limiter in-memory fallback (F-08).
+- **tenacity** — For embedding API retries (F-10).
+
+### Issues Resolved (from Issues.md)
+
+| ID | Category | Resolution |
+|----|----------|------------|
+| F-04 | Security | Content length validation (1–100k chars) |
+| F-09 | Reliability | DatabaseManager async `create()` with deterministic cleanup |
+| F-02, F-05 | Performance | `get_by_ids_batch()`; cursor pagination for time-based forget |
+| F-11 | Security | Tenant override audit logging |
+| F-12 | Security | Dashboard config write-protected fields (403) |
+| F-13 | Security | CSRF header for dashboard state-changing requests |
+| F-07 | Performance | Graph sync parallelized via `asyncio.gather` |
+| F-08 | Performance | TTLCache for rate limiter (bounded memory) |
+| F-10 | Reliability | Tenacity retry on embedding API calls |
+| S-03 | Structure | Dashboard split into `api/dashboard/` package |
+| S-01 | Readability | Orchestrator `write()` phase decomposition |
+| S-06 | Consistency | Structlog throughout (replaced stdlib logging) |
+| S-07 | Consistency | MemoryNotFoundError/MemoryAccessDenied + FastAPI handlers |
+| S-05 | Modularity | Abstract `MemoryStoreBase` in consumers |
+| S-09 | Documentation | `docs/api-versioning.md` |
+| E-01 | Responsiveness | `retrieval_meta` in ReadMemoryResponse |
+| E-03 | Intuitiveness | `session_read` deprecated |
+| A-04 | Maintainability | Coverage `fail_under = 50` |
+| F-01 | Correctness | Memory type override warning (no silent pass) |
+| F-06 | Performance | `@lru_cache` on `_build_api_keys` |
+| AI-01 | Error handling | Log instead of silent `except: pass` |
+| AI-03 | Readability | Named constants for magic numbers |
+| S-02 | Readability | WritePathConfig eliminates repeated flag checks |
+| S-04 | Readability | Consolidated deferred imports in encode_chunk |
+| A-01 | Extensibility | ExtractorRegistry plugin pattern |
+| A-02 | Scalability | Per-tenant feature flag overrides (Redis) |
+| A-07 | Observability | OpenTelemetry tracing stubs |
+| E-02 | Responsiveness | SSE streaming read endpoint |
+| IA-04 | Lint | Ruff/Black/mypy fixes |
+
 ### Breaking
 
 - **Environment variable consolidation (client)** — Client and examples now use a single canonical env var per concept; fallbacks to alternate names were removed. Set **`CML_BASE_URL`** (no longer `MEMORY_API_URL`), **`CML_API_KEY`** (no longer `MEMORY_API_KEY` or `AUTH__API_KEY` for client), and **`CML_TIMEOUT`** where a timeout is needed (no longer `MEMORY_API_TIMEOUT`). py-cml reads only `CML_BASE_URL` and `CML_API_KEY` from the environment. For local dev, set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`. See `.env.example` migration note.
@@ -19,14 +108,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Dashboard Knowledge Graph Depth control** — The Depth slider on the graph page (`/dashboard/#graph`) now affects both the default overview and entity Explore views. Overview query uses a `$depth` parameter instead of a hardcoded 2-hop path; initial load and tenant change pass the current slider value; changing the slider re-renders the current view (overview or explore) with the new depth. State `lastGraphParams` tracks the last rendered mode so depth changes update the same view.
 
 - **Evaluation progress display in non-TTY contexts** — Progress bars (Phase A ingestion, Phase A-B consolidation, Phase B QA, Phase C judge) now display when `eval_locomo_plus.py` is run as a subprocess from `run_full_eval.py`, e.g. in Cursor/IDE terminals or on Windows where stderr is not a TTY. tqdm calls now use `disable=False` in `eval_locomo_plus.py` and `llm_as_judge.py`; `run_full_eval.py` invokes the eval script with Python `-u` (unbuffered) for responsive output.
-
-### Added
-
-- **LLM memory type in Unified Extractor** — When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the Unified Write Path Extractor outputs `memory_type` per chunk in the same LLM call used for constraints, facts, salience, importance, and PII. The Hippocampal Store uses this LLM-classified type when valid; otherwise falls back to constraint extraction heuristic and Write Gate ChunkType mapping. API `memory_type` override continues to take precedence. No extra LLM call; `memory_type` is an additional field in the existing unified extraction response. See `ProjectPlan/UsageDocumentation.md` § Write Path LLM Gating and Memory Types.
-
-### Changed
-
-- **Config and docs aligned with codebase** — Synced `scripts/init_structure.py` STRUCTURE with current repo layout (examples, src, tests, .github, docker). Updated CONTRIBUTING.md with dashboard in project structure and full scripts list (`update_readme_badges.py`, `run_examples.py`, `init_structure.py`). CI workflow (`.github/workflows/ci.yml`) now runs ruff check and format on `packages/py-cml/src` and `packages/py-cml/tests`. Added comment in `alembic.ini` that `sqlalchemy.url` is overridden at runtime by `migrations/env.py` from app settings.
 
 ## [1.3.3] - 2026-02-22
 

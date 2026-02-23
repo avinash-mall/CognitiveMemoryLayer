@@ -37,9 +37,7 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -73,9 +71,7 @@ async def test_retrieve_for_llm_returns_string(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -98,9 +94,7 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -151,9 +145,7 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -239,9 +231,7 @@ async def test_retrieval_validity_filtering(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
