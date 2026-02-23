@@ -12,9 +12,9 @@ from .enums import MemoryType
 
 
 class WriteRequest(BaseModel):
-    """Write memory request payload."""
+    """Write memory request payload. Server enforces content length 1-100,000 characters."""
 
-    content: str
+    content: str = Field(..., min_length=1, max_length=100_000)
     context_tags: list[str] | None = None
     session_id: str | None = None
     memory_type: MemoryType | None = None

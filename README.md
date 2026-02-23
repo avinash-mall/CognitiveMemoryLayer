@@ -754,7 +754,7 @@ docker compose -f docker/docker-compose.yml up api
 ```
 
 ```bash
-# Write
+# Write (content max 100,000 characters)
 curl -X POST http://localhost:8000/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"content": "User prefers vegetarian food and lives in Paris."}'
 
@@ -789,6 +789,7 @@ See [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/Run
 | Document | Description |
 |----------|-------------|
 | [Usage & API](ProjectPlan/UsageDocumentation.md) | Full API reference, SDK usage, config, dashboard |
+| [API Versioning](docs/api-versioning.md) | Version strategy, deprecation policy, backward compatibility |
 | [Python SDK](packages/py-cml/docs/) | Getting started, API reference, configuration, examples |
 | [Tests](tests/README.md) | Test layout, how to run, coverage |
 | [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
@@ -816,6 +817,10 @@ memory = CognitiveMemoryLayer(base_url="http://localhost:8000", api_key="your-ke
 memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
 response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
 turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
+
+# Progressive streaming retrieval (SSE)
+for memory_item in memory.read_stream(query="Tell me everything about the user"):
+    print(memory_item.text)
 ```
 
 Sync, async, and embedded (SQLite) modes. See [packages/py-cml/docs](packages/py-cml/docs/).

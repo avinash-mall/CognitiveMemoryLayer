@@ -3,8 +3,15 @@
 # overrides .env for AUTH__API_KEY and AUTH__ADMIN_API_KEY only. Usage:
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api
 # Then from packages/py-cml: pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"
+# EMBEDDING_INTERNAL__PROVIDER=local uses sentence-transformers in-container (no API key needed).
 services:
   api:
     environment:
       AUTH__API_KEY: test-key
       AUTH__ADMIN_API_KEY: test-key
+      EMBEDDING_INTERNAL__PROVIDER: local
+  app:
+    environment:
+      AUTH__API_KEY: test-key
+      AUTH__ADMIN_API_KEY: test-key
+      EMBEDDING_INTERNAL__PROVIDER: local

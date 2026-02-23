@@ -30,6 +30,11 @@ def main():
         for item in result.memories:
             print(f"  [{item.type}] {item.text}")
             print(f"    Relevance: {item.relevance:.2f}, Confidence: {item.confidence:.2f}")
+
+        print("\nStreaming memories (SSE):")
+        for item in memory.read_stream("Tell me about the user"):
+            print(f"  Streamed: {item.text}")
+
         context = memory.get_context("dietary restrictions")
         print(f"\nLLM Context:\n{context}")
         stats = memory.stats()

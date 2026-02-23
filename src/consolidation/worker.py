@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ..memory.neocortical.store import NeocorticalStore
-from ..storage.postgres import PostgresMemoryStore
+from ..storage.base import MemoryStoreBase
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
 from .clusterer import SemanticClusterer
@@ -45,7 +45,7 @@ class ConsolidationWorker:
 
     def __init__(
         self,
-        episodic_store: PostgresMemoryStore,
+        episodic_store: MemoryStoreBase,
         neocortical_store: NeocorticalStore,
         llm_client: LLMClient | None,
         scheduler: ConsolidationScheduler | None = None,

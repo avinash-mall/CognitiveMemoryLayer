@@ -1,6 +1,5 @@
 """Reconsolidation orchestrator service."""
 
-import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -8,12 +7,13 @@ from typing import Any
 
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
-from ..storage.postgres import PostgresMemoryStore
+from ..storage.base import MemoryStoreBase
+from ..utils.logging_config import get_logger
 from .belief_revision import RevisionOperation, RevisionPlan
 from .conflict_detector import ConflictDetector
 from .labile_tracker import LabileStateTracker
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:
     from ..extraction.fact_extractor import FactExtractor
@@ -51,7 +51,7 @@ class ReconsolidationService:
 
     def __init__(
         self,
-        memory_store: PostgresMemoryStore,
+        memory_store: MemoryStoreBase,
         llm_client: Any | None = None,
         fact_extractor: Any | None = None,
         redis_client: Any | None = None,
@@ -67,7 +67,7 @@ class ReconsolidationService:
     # Maximum memories to run LLM conflict detection against per new fact.
     # Memories are ranked by word-overlap similarity to the new fact before
     # the cap is applied, so the most likely conflicts are always checked.
-    _CONFLICT_TOP_K: int = 5
+    _CONFLICT_TOP_K: int = 5  # Comparison window size for conflict detection
 
     @staticmethod
     def _word_overlap(a: str, b: str) -> float:

@@ -409,7 +409,7 @@ Store new information in memory.
 **Request Body:**
 ```json
 {
-  "content": "string (required)",
+  "content": "string (required, 1–100,000 characters)",
   "context_tags": ["personal", "conversation"],
   "session_id": "string (optional - origin tracking)",
   "memory_type": "episodic_event|semantic_fact|preference|task_state|procedure|constraint|hypothesis (optional)",
@@ -435,6 +435,7 @@ Store new information in memory.
 - `eval_outcome` and `eval_reason` are present only when the request included `X-Eval-Mode: true`. `eval_outcome` is `"stored"` or `"skipped"`; `eval_reason` is a short string (e.g. write-gate skip reason, or "N chunk(s) stored").
 
 **Notes:**
+- **Content limit**: Max 100,000 characters per request. Requests exceeding this return 400.
 - Request metadata is merged into the stored record; optional `memory_type` overrides automatic classification when provided. When omitted and `FEATURES__USE_LLM_MEMORY_TYPE` is true, the LLM classifies the type in the unified extraction call.
 - The Write Gate automatically filters low-importance content
 - PII is automatically redacted before storage
@@ -472,7 +473,15 @@ Process a conversation turn: auto-retrieve relevant context and optionally auto-
 
 #### POST /memory/read
 
-Retrieve relevant memories. Holistic: tenant from auth. The server applies memory_types, since, and until to retrieval; format controls response shape (packet vs flat list vs llm_context). Optional `user_timezone` (IANA, e.g. `America/New_York`) enables timezone-aware "today"/"yesterday" filters in the retrieval plan.
+Retrieve relevant memories using the standard JSON endpoint. Holistic: tenant from auth. The server applies memory_types, since, and until to retrieval; format controls response shape (packet vs flat list vs llm_context). Optional `user_timezone` (IANA, e.g. `America/New_York`) enables timezone-aware "today"/"yesterday" filters in the retrieval plan.
+
+... (headers and body identical to POST /memory/read/stream below) ...
+
+---
+
+#### POST /memory/read/stream
+
+Retrieve relevant memories progressively via Server-Sent Events (SSE). Same inputs as `/memory/read` (with `format="packet"` implied). Yields memories incrementally as they arrive, ideal for large result sets or UI streaming.
 
 **Request Headers:**
 - `X-API-Key: <api_key>` (required)
@@ -773,7 +782,7 @@ All dashboard endpoints live under `/api/v1/dashboard` and require **admin** per
 ### Implementation Notes
 
 - **Frontend**: Vanilla HTML/CSS/JS SPA in `src/dashboard/static/`. Chart.js for charts (CDN); knowledge graph uses [neovis.js](https://github.com/neo4j-contrib/neovis.js) bundled via Vite (no CDN, offline-capable). Build: `cd src/dashboard && npm install && npm run build` (Docker builds the bundle at image build time).
-- **Backend**: Routes in `src/api/dashboard_routes.py`; schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`, `SessionInfo`, `GraphExploreResponse`, `ConfigSection`, `DashboardJobItem`, `DashboardRetrievalRequest`).
+- **Backend**: Routes in `src/api/dashboard/` (overview_routes, memory_routes, events_routes, graph_routes, config_routes, jobs_routes, fact_routes); schemas in `src/api/schemas.py` (e.g. `DashboardOverview`, `DashboardMemoryDetail`, `SessionInfo`, `GraphExploreResponse`, `ConfigSection`, `DashboardJobItem`, `DashboardRetrievalRequest`).
 - **Job tracking**: Consolidation, forgetting, and reconsolidation runs are recorded in the `dashboard_jobs` PostgreSQL table (migration: `002_dashboard_jobs.py`). Job status, result, errors, and duration are tracked.
 - **Request counting**: The `RequestLoggingMiddleware` increments hourly counters in Redis (`dashboard:reqcount:{YYYY-MM-DD-HH}`) with 48-hour TTL for the API Usage page.
 - **Config overrides**: Runtime config changes are stored in Redis (`dashboard:config:overrides`) as JSON. Only safe settings (non-secrets, non-connection strings) are writable.

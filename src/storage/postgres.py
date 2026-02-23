@@ -1,7 +1,6 @@
 """PostgreSQL memory store with pgvector."""
 
 import hashlib
-import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
@@ -10,11 +9,12 @@ from sqlalchemy import and_, delete, func, or_, select, text, update
 
 from ..core.enums import MemorySource, MemoryStatus, MemoryType
 from ..core.schemas import EntityMention, MemoryRecord, MemoryRecordCreate, Provenance, Relation
+from ..utils.logging_config import get_logger
 from .base import MemoryStoreBase
 from .models import MemoryRecordModel
 from .utils import naive_utc as _naive_utc
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(__name__)
 
 _DATETIME_KEYS = frozenset(
     {"last_accessed_at", "timestamp", "written_at", "valid_from", "valid_to"}
@@ -77,7 +77,7 @@ class PostgresMemoryStore(MemoryStoreBase):
 
                 await session.commit()
                 await session.refresh(existing_record)
-                return cast(MemoryRecord, self._to_schema(existing_record))
+                return cast("MemoryRecord", self._to_schema(existing_record))
 
             ts = _naive_utc(record.timestamp or datetime.now(UTC))
             now_naive = _naive_utc(datetime.now(UTC))
@@ -105,7 +105,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             session.add(model)
             await session.commit()
             await session.refresh(model)
-            return cast(MemoryRecord, self._to_schema(model))
+            return cast("MemoryRecord", self._to_schema(model))
 
     async def get_by_id(self, record_id: UUID) -> MemoryRecord | None:
         async with self.session_factory() as session:
@@ -114,6 +114,17 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             model = r.scalar_one_or_none()
             return self._to_schema(model) if model else None
+
+    async def get_by_ids_batch(self, record_ids: list[UUID]) -> list[MemoryRecord]:
+        """Get multiple records by IDs in a single query."""
+        if not record_ids:
+            return []
+        async with self.session_factory() as session:
+            r = await session.execute(
+                select(MemoryRecordModel).where(MemoryRecordModel.id.in_(record_ids))
+            )
+            models = r.scalars().all()
+            return [rec for m in models if (rec := self._to_schema(m)) is not None]
 
     async def get_by_key(
         self,
@@ -298,11 +309,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                     q = q.order_by(col.desc() if order_by.startswith("-") else col)
             q = q.offset(offset).limit(limit)
             r = await session.execute(q)
-            return [
-                rec
-                for m in r.scalars().all()
-                if (rec := self._to_schema(m)) is not None
-            ]
+            return [rec for m in r.scalars().all() if (rec := self._to_schema(m)) is not None]
 
     async def count(
         self,
@@ -430,7 +437,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         if model is None:
             return None
         try:
-            mem_type = MemoryType(cast(str, model.type))
+            mem_type = MemoryType(cast("str", model.type))
         except ValueError:
             _logger.warning(
                 "unknown_memory_type_in_db record_id=%s value=%s",
@@ -439,7 +446,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             mem_type = MemoryType.EPISODIC_EVENT
         try:
-            status = MemoryStatus(cast(str, model.status))
+            status = MemoryStatus(cast("str", model.status))
         except ValueError:
             _logger.warning(
                 "unknown_memory_status_in_db record_id=%s value=%s",
@@ -448,40 +455,40 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             status = MemoryStatus.ACTIVE
         try:
-            provenance = Provenance(**(cast(dict, model.provenance) or {}))
+            provenance = Provenance(**(cast("dict", model.provenance) or {}))
         except (TypeError, ValueError):
             provenance = Provenance(source=MemorySource.AGENT_INFERRED)
         context_tags = getattr(model, "context_tags", None) or []
         source_session_id = getattr(model, "source_session_id", None)
         return MemoryRecord(
-            id=cast(UUID, model.id),
-            tenant_id=cast(str, model.tenant_id),
+            id=cast("UUID", model.id),
+            tenant_id=cast("str", model.tenant_id),
             context_tags=list(context_tags),
             source_session_id=source_session_id,
-            agent_id=cast(str | None, model.agent_id),
+            agent_id=cast("str | None", model.agent_id),
             namespace=getattr(model, "namespace", None),
             type=mem_type,
-            text=cast(str, model.text),
-            key=cast(str | None, model.key),
+            text=cast("str", model.text),
+            key=cast("str | None", model.key),
             embedding=list(model.embedding) if model.embedding is not None else None,
-            entities=[EntityMention(**e) for e in (cast(list, model.entities) or [])],
-            relations=[Relation(**r) for r in (cast(list, model.relations) or [])],
-            metadata=cast(dict, model.meta) or {},
-            timestamp=cast(datetime, model.timestamp),
-            written_at=cast(datetime, model.written_at),
-            valid_from=cast(datetime | None, model.valid_from),
-            valid_to=cast(datetime | None, model.valid_to),
-            confidence=cast(float, model.confidence),
-            importance=cast(float, model.importance),
-            access_count=cast(int, model.access_count),
-            last_accessed_at=cast(datetime | None, model.last_accessed_at),
-            decay_rate=cast(float, model.decay_rate),
+            entities=[EntityMention(**e) for e in (cast("list", model.entities) or [])],
+            relations=[Relation(**r) for r in (cast("list", model.relations) or [])],
+            metadata=cast("dict", model.meta) or {},
+            timestamp=cast("datetime", model.timestamp),
+            written_at=cast("datetime", model.written_at),
+            valid_from=cast("datetime | None", model.valid_from),
+            valid_to=cast("datetime | None", model.valid_to),
+            confidence=cast("float", model.confidence),
+            importance=cast("float", model.importance),
+            access_count=cast("int", model.access_count),
+            last_accessed_at=cast("datetime | None", model.last_accessed_at),
+            decay_rate=cast("float", model.decay_rate),
             status=status,
-            labile=cast(bool, model.labile),
+            labile=cast("bool", model.labile),
             provenance=provenance,
-            version=cast(int, model.version),
-            supersedes_id=cast(UUID | None, model.supersedes_id),
-            content_hash=cast(str | None, model.content_hash),
+            version=cast("int", model.version),
+            supersedes_id=cast("UUID | None", model.supersedes_id),
+            content_hash=cast("str | None", model.content_hash),
         )
 
     # ── Phase 4.1: Bulk dependency counts ──────────────────────────

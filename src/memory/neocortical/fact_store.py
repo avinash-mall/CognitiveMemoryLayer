@@ -3,7 +3,8 @@
 import contextlib
 import json
 from datetime import UTC, datetime
-from typing import Any, cast as typing_cast
+from typing import Any
+from typing import cast as typing_cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import String, and_, cast, or_, select, update
@@ -255,13 +256,17 @@ class SemanticFactStore:
             setattr(
                 model,
                 "confidence",
-                min(1.0, typing_cast(float, model.confidence) + 0.1),
+                min(1.0, typing_cast("float", model.confidence) + 0.1),
             )
-            setattr(model, "evidence_count", typing_cast(int, model.evidence_count) + 1)
+            setattr(
+                model,
+                "evidence_count",
+                typing_cast("int", model.evidence_count) + 1,
+            )
             setattr(
                 model,
                 "evidence_ids",
-                list(typing_cast(list, model.evidence_ids) or []) + (evidence_ids or []),
+                list(typing_cast("list", model.evidence_ids) or []) + (evidence_ids or []),
             )
             setattr(model, "updated_at", naive_utc(datetime.now(UTC)))
             await session.commit()
@@ -392,22 +397,22 @@ class SemanticFactStore:
         context_tags = getattr(model, "context_tags", None) or []
         return SemanticFact(
             id=str(model.id),
-            tenant_id=typing_cast(str, model.tenant_id),
+            tenant_id=typing_cast("str", model.tenant_id),
             context_tags=list(context_tags),
-            category=FactCategory(typing_cast(str, model.category)),
-            key=typing_cast(str, model.key),
-            subject=typing_cast(str, model.subject),
-            predicate=typing_cast(str, model.predicate),
+            category=FactCategory(typing_cast("str", model.category)),
+            key=typing_cast("str", model.key),
+            subject=typing_cast("str", model.subject),
+            predicate=typing_cast("str", model.predicate),
             value=val,
-            value_type=typing_cast(str, model.value_type),
-            confidence=typing_cast(float, model.confidence),
-            evidence_count=typing_cast(int, model.evidence_count),
-            evidence_ids=list(typing_cast(list, model.evidence_ids) or []),
-            valid_from=typing_cast(datetime | None, model.valid_from),
-            valid_to=typing_cast(datetime | None, model.valid_to),
-            is_current=typing_cast(bool, model.is_current),
-            created_at=typing_cast(datetime, model.created_at),
-            updated_at=typing_cast(datetime, model.updated_at),
-            version=typing_cast(int, model.version),
+            value_type=typing_cast("str", model.value_type),
+            confidence=typing_cast("float", model.confidence),
+            evidence_count=typing_cast("int", model.evidence_count),
+            evidence_ids=list(typing_cast("list", model.evidence_ids) or []),
+            valid_from=typing_cast("datetime | None", model.valid_from),
+            valid_to=typing_cast("datetime | None", model.valid_to),
+            is_current=typing_cast("bool", model.is_current),
+            created_at=typing_cast("datetime", model.created_at),
+            updated_at=typing_cast("datetime", model.updated_at),
+            version=typing_cast("int", model.version),
             supersedes_id=str(model.supersedes_id) if model.supersedes_id else None,
         )

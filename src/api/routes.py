@@ -9,6 +9,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core.config import get_settings
+from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
 from ..memory.orchestrator import MemoryOrchestrator
 from ..memory.seamless_provider import SeamlessMemoryProvider
 from ..utils.metrics import MEMORY_READS, MEMORY_WRITES
@@ -71,6 +72,10 @@ async def write_memory(
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
     """Store new information in memory. Accepts content, optional context tags, session ID, and memory type. Use X-Eval-Mode: true header for evaluation outcome/reason. Tenant-scoped via X-Tenant-ID. Internal LLM: ~1 call per chunk (UnifiedWritePathExtractor) with default settings."""
+    if len(body.content) > 100_000:
+        raise HTTPException(
+            status_code=400, detail="Content exceeds maximum length (100,000 characters)"
+        )
     eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
@@ -226,6 +231,8 @@ async def update_memory(
             version=result.get("version", 1),
             message="Memory updated successfully",
         )
+    except (MemoryNotFoundError, MemoryAccessDenied):
+        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -316,6 +323,10 @@ async def session_write(
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
     """Write to memory scoped to a session. Same as /memory/write but with session_id in the path. Use X-Eval-Mode for evaluation."""
+    if len(body.content) > 100_000:
+        raise HTTPException(
+            status_code=400, detail="Content exceeds maximum length (100,000 characters)"
+        )
     eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
     try:
         result = await orchestrator.write(
@@ -346,14 +357,18 @@ async def session_write(
         raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
-@router.post("/session/{session_id}/read", response_model=ReadMemoryResponse)
+@router.post(
+    "/session/{session_id}/read",
+    response_model=ReadMemoryResponse,
+    deprecated=True,
+)
 async def session_read(
     session_id: str,
     body: ReadMemoryRequest,
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Read from memory (session_id kept for API compatibility; access remains tenant-wide). Same query options as /memory/read."""
+    """[Deprecated] Use /memory/read instead. This endpoint returns tenant-wide results; session_id is kept for API compatibility only."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(UTC)
     try:
@@ -464,3 +479,56 @@ async def delete_all_memories(
 async def health_check():
     """Liveness/readiness check. Returns status and timestamp. No authentication required."""
     return {"status": "healthy", "timestamp": datetime.now(UTC).isoformat()}
+
+
+@router.post("/memory/read/stream")
+async def read_memory_stream(
+    body: ReadMemoryRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Stream memories as Server-Sent Events (SSE).
+
+    Same retrieval semantics as /memory/read, but results are streamed
+    incrementally. Useful for large result sets or UIs that want progressive
+    rendering. Each event is a JSON-encoded MemoryItem.
+    """
+    from starlette.responses import StreamingResponse
+
+    MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
+    start = datetime.now(UTC)
+
+    memory_type_values = (
+        [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
+        if body.memory_types
+        else None
+    )
+
+    async def event_generator():
+        try:
+            packet = await orchestrator.read(
+                tenant_id=auth.tenant_id,
+                query=body.query,
+                max_results=body.max_results,
+                context_filter=body.context_filter,
+                memory_types=memory_type_values,
+                since=body.since,
+                until=body.until,
+                user_timezone=body.user_timezone,
+            )
+            for mem in packet.all_memories:
+                item = _to_memory_item(mem)
+                yield f"data: {json.dumps(item.model_dump(), default=str)}\n\n"
+
+            elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
+            meta = {"total_count": len(packet.all_memories), "elapsed_ms": round(elapsed_ms, 2)}
+            yield f"event: done\ndata: {json.dumps(meta)}\n\n"
+        except Exception as e:
+            logger.exception("stream_read_failed", tenant_id=auth.tenant_id, error=str(e))
+            yield f"event: error\ndata: {json.dumps({'detail': _safe_500_detail(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

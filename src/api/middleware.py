@@ -6,6 +6,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 import structlog
+from cachetools import TTLCache  # type: ignore[import-untyped]
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -16,7 +17,7 @@ _RATE_LIMIT_WINDOW_SECONDS = 60
 
 
 _REQUEST_COUNT_PREFIX = "dashboard:reqcount:"
-_REQUEST_COUNT_TTL = 48 * 3600  # 48 hours
+_REQUEST_COUNT_TTL = 48 * 3600  # 48h: covers 2 full day/night dashboard cycles
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -69,8 +70,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             pipe.incr(rkey)
             pipe.expire(rkey, _REQUEST_COUNT_TTL)
             await pipe.execute()
-        except Exception:
-            pass  # Non-critical; silently ignore
+        except Exception as e:
+            logger.debug("request_counter_increment_failed", error=str(e))
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -79,7 +80,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        self._buckets: dict[str, tuple[int, datetime]] = {}
+        self._buckets: TTLCache[str, tuple[int, datetime]] = TTLCache(
+            maxsize=10000, ttl=120  # 2 min TTL for in-memory fallback
+        )
         self._lock = asyncio.Lock()
         self._redis_warning_logged = False
 
@@ -136,9 +139,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def _check_rate_limit_in_memory(self, key: str) -> bool:
         async with self._lock:
             now = datetime.now(UTC)
-            if len(self._buckets) > 10000:
-                cutoff = now - timedelta(minutes=2)
-                self._buckets = {k: v for k, v in self._buckets.items() if v[1] > cutoff}
             if key in self._buckets:
                 count, window_start = self._buckets[key]
                 if now - window_start > timedelta(minutes=1):
