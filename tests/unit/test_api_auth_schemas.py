@@ -23,6 +23,7 @@ class TestAuthConfig:
         from src.core.config import get_settings
 
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
         keys = _build_api_keys()
         assert keys == {}
 
@@ -33,6 +34,7 @@ class TestAuthConfig:
         from src.core.config import get_settings
 
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
         keys = _build_api_keys()
         assert "demo-key-123" in keys
         assert keys["demo-key-123"].tenant_id == "demo"
