@@ -1,9 +1,11 @@
+import os
 from datetime import UTC, datetime
 
 import requests
 
 
 def test_api():
+    base_url = os.environ.get("CML_BASE_URL", "http://localhost:8000").rstrip("/")
     tenant_id = "test-temporal-range-tenant"
     historical_date = datetime(2023, 1, 15, 12, 0, 0, tzinfo=UTC).isoformat()
     headers = {"X-Tenant-Id": tenant_id, "X-API-Key": "test-key"}
@@ -11,7 +13,7 @@ def test_api():
     # 1. Write the memory
     print(f"Writing memory with timestamp {historical_date}...")
     write_resp = requests.post(
-        "http://localhost:8000/api/v1/memory/write",
+        f"{base_url}/api/v1/memory/write",
         headers=headers,
         json={
             "content": "I moved to New York in January 2023.",
@@ -29,7 +31,7 @@ def test_api():
     # 3. Read back
     print("Reading memories back...")
     read_resp = requests.post(
-        "http://localhost:8000/api/v1/memory/read", headers=headers, json={"query": "New York"}
+        f"{base_url}/api/v1/memory/read", headers=headers, json={"query": "New York"}
     )
     print(f"Read response: {read_resp.status_code}")
     if read_resp.status_code == 200:

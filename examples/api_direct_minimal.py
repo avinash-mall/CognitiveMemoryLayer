@@ -1,6 +1,6 @@
 """Minimal direct API example — no py-cml, httpx only.
 
-Set AUTH__API_KEY and CML_BASE_URL (default http://localhost:8000) in .env.
+Set CML_API_KEY and CML_BASE_URL in .env.
 Demonstrates: health, write, read (packet + llm_context), turn, stats.
 """
 
@@ -16,18 +16,16 @@ except ImportError:
 
 import httpx
 
-BASE_URL = (
-    os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
-).strip() or "http://localhost:8000"
+BASE_URL = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
 API_URL = f"{BASE_URL.rstrip('/')}/api/v1"
-API_KEY = os.environ.get("AUTH__API_KEY") or os.environ.get("CML_API_KEY") or ""
+API_KEY = os.environ.get("CML_API_KEY") or ""
 HEADERS = {"Content-Type": "application/json", "X-API-Key": API_KEY}
 TIMEOUT = 30.0
 
 
 def main():
     if not API_KEY:
-        print("Error: Set AUTH__API_KEY or CML_API_KEY in .env")
+        print("Error: Set CML_API_KEY in .env")
         return 1
 
     with httpx.Client(timeout=TIMEOUT) as client:

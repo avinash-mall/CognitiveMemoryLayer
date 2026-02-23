@@ -1,6 +1,6 @@
 """LangChain integration with Cognitive Memory Layer.
 
-Set AUTH__API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
+Set CML_API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
 """
 
 import os
@@ -47,12 +47,9 @@ class CognitiveMemory(BaseMemory):
         super().__init__(**kwargs)
         if self.memory_client is None:
             base_url = (
-                self.api_url
-                or os.environ.get("CML_BASE_URL")
-                or os.environ.get("MEMORY_API_URL")
-                or "http://localhost:8000"
+                self.api_url or os.environ.get("CML_BASE_URL") or "http://localhost:8000"
             ).strip()
-            key = self.api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
+            key = self.api_key or os.environ.get("CML_API_KEY")
             self.memory_client = CognitiveMemoryLayer(api_key=key, base_url=base_url)
 
     @property
@@ -139,9 +136,9 @@ def create_memory_chain(
     memory_api_key: str | None = None,
 ) -> ConversationChain:
     base_url = (
-        memory_api_url or os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
+        memory_api_url or os.environ.get("CML_BASE_URL") or ""
     ).strip() or "http://localhost:8000"
-    key = memory_api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
+    key = memory_api_key or os.environ.get("CML_API_KEY")
     model = (
         llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
     ).strip()
