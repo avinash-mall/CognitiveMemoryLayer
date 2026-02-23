@@ -3,7 +3,7 @@
 import contextlib
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast as typing_cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import String, and_, cast, or_, select, update
@@ -252,17 +252,25 @@ class SemanticFactStore:
         existing = self._model_to_fact(model)
 
         if existing.value == new_value:
-            model.confidence = min(1.0, model.confidence + 0.1)
-            model.evidence_count += 1
-            model.evidence_ids = list(model.evidence_ids or []) + (evidence_ids or [])
-            model.updated_at = naive_utc(datetime.now(UTC))
+            setattr(
+                model,
+                "confidence",
+                min(1.0, typing_cast(float, model.confidence) + 0.1),
+            )
+            setattr(model, "evidence_count", typing_cast(int, model.evidence_count) + 1)
+            setattr(
+                model,
+                "evidence_ids",
+                list(typing_cast(list, model.evidence_ids) or []) + (evidence_ids or []),
+            )
+            setattr(model, "updated_at", naive_utc(datetime.now(UTC)))
             await session.commit()
             await session.refresh(model)
             return self._model_to_fact(model)
         else:
             # Always supersede old fact when value changes (at most one current per key)
-            model.is_current = False
-            model.valid_to = naive_utc(valid_from or datetime.now(UTC))
+            setattr(model, "is_current", False)
+            setattr(model, "valid_to", naive_utc(valid_from or datetime.now(UTC)))
             await session.flush()
             value_type = "str" if new_value is None else type(new_value).__name__.lower()
             new_fact = SemanticFact(
@@ -384,22 +392,22 @@ class SemanticFactStore:
         context_tags = getattr(model, "context_tags", None) or []
         return SemanticFact(
             id=str(model.id),
-            tenant_id=model.tenant_id,
+            tenant_id=typing_cast(str, model.tenant_id),
             context_tags=list(context_tags),
-            category=FactCategory(model.category),
-            key=model.key,
-            subject=model.subject,
-            predicate=model.predicate,
+            category=FactCategory(typing_cast(str, model.category)),
+            key=typing_cast(str, model.key),
+            subject=typing_cast(str, model.subject),
+            predicate=typing_cast(str, model.predicate),
             value=val,
-            value_type=model.value_type,
-            confidence=model.confidence,
-            evidence_count=model.evidence_count,
-            evidence_ids=list(model.evidence_ids or []),
-            valid_from=model.valid_from,
-            valid_to=model.valid_to,
-            is_current=model.is_current,
-            created_at=model.created_at,
-            updated_at=model.updated_at,
-            version=model.version,
+            value_type=typing_cast(str, model.value_type),
+            confidence=typing_cast(float, model.confidence),
+            evidence_count=typing_cast(int, model.evidence_count),
+            evidence_ids=list(typing_cast(list, model.evidence_ids) or []),
+            valid_from=typing_cast(datetime | None, model.valid_from),
+            valid_to=typing_cast(datetime | None, model.valid_to),
+            is_current=typing_cast(bool, model.is_current),
+            created_at=typing_cast(datetime, model.created_at),
+            updated_at=typing_cast(datetime, model.updated_at),
+            version=typing_cast(int, model.version),
             supersedes_id=str(model.supersedes_id) if model.supersedes_id else None,
         )

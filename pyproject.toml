@@ -144,7 +144,7 @@ module = [
     "src.celery_app",
     "src.main",
 ]
-ignore_errors = true
+ignore_errors = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

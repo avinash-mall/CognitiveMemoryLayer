@@ -3,7 +3,7 @@
 import hashlib
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import and_, delete, func, or_, select, text, update
@@ -77,7 +77,7 @@ class PostgresMemoryStore(MemoryStoreBase):
 
                 await session.commit()
                 await session.refresh(existing_record)
-                return self._to_schema(existing_record)
+                return cast(MemoryRecord, self._to_schema(existing_record))
 
             ts = _naive_utc(record.timestamp or datetime.now(UTC))
             now_naive = _naive_utc(datetime.now(UTC))
@@ -105,7 +105,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             session.add(model)
             await session.commit()
             await session.refresh(model)
-            return self._to_schema(model)
+            return cast(MemoryRecord, self._to_schema(model))
 
     async def get_by_id(self, record_id: UUID) -> MemoryRecord | None:
         async with self.session_factory() as session:
@@ -259,8 +259,9 @@ class PostgresMemoryStore(MemoryStoreBase):
                 model, similarity = row[0], row[1]
                 if similarity >= min_similarity:
                     rec = self._to_schema(model)
-                    rec.metadata["_similarity"] = similarity
-                    records.append(rec)
+                    if rec is not None:
+                        rec.metadata["_similarity"] = similarity
+                        records.append(rec)
             return records
 
     async def scan(
@@ -297,7 +298,11 @@ class PostgresMemoryStore(MemoryStoreBase):
                     q = q.order_by(col.desc() if order_by.startswith("-") else col)
             q = q.offset(offset).limit(limit)
             r = await session.execute(q)
-            return [self._to_schema(m) for m in r.scalars().all()]
+            return [
+                rec
+                for m in r.scalars().all()
+                if (rec := self._to_schema(m)) is not None
+            ]
 
     async def count(
         self,
@@ -425,58 +430,58 @@ class PostgresMemoryStore(MemoryStoreBase):
         if model is None:
             return None
         try:
-            mem_type = MemoryType(model.type)
+            mem_type = MemoryType(cast(str, model.type))
         except ValueError:
             _logger.warning(
-                "unknown_memory_type_in_db",
-                record_id=str(model.id),
-                value=model.type,
+                "unknown_memory_type_in_db record_id=%s value=%s",
+                model.id,
+                model.type,
             )
             mem_type = MemoryType.EPISODIC_EVENT
         try:
-            status = MemoryStatus(model.status)
+            status = MemoryStatus(cast(str, model.status))
         except ValueError:
             _logger.warning(
-                "unknown_memory_status_in_db",
-                record_id=str(model.id),
-                value=model.status,
+                "unknown_memory_status_in_db record_id=%s value=%s",
+                model.id,
+                model.status,
             )
             status = MemoryStatus.ACTIVE
         try:
-            provenance = Provenance(**(model.provenance or {}))
+            provenance = Provenance(**(cast(dict, model.provenance) or {}))
         except (TypeError, ValueError):
             provenance = Provenance(source=MemorySource.AGENT_INFERRED)
         context_tags = getattr(model, "context_tags", None) or []
         source_session_id = getattr(model, "source_session_id", None)
         return MemoryRecord(
-            id=model.id,
-            tenant_id=model.tenant_id,
+            id=cast(UUID, model.id),
+            tenant_id=cast(str, model.tenant_id),
             context_tags=list(context_tags),
             source_session_id=source_session_id,
-            agent_id=model.agent_id,
+            agent_id=cast(str | None, model.agent_id),
             namespace=getattr(model, "namespace", None),
             type=mem_type,
-            text=model.text,
-            key=model.key,
+            text=cast(str, model.text),
+            key=cast(str | None, model.key),
             embedding=list(model.embedding) if model.embedding is not None else None,
-            entities=[EntityMention(**e) for e in (model.entities or [])],
-            relations=[Relation(**r) for r in (model.relations or [])],
-            metadata=model.meta or {},
-            timestamp=model.timestamp,
-            written_at=model.written_at,
-            valid_from=model.valid_from,
-            valid_to=model.valid_to,
-            confidence=model.confidence,
-            importance=model.importance,
-            access_count=model.access_count,
-            last_accessed_at=model.last_accessed_at,
-            decay_rate=model.decay_rate,
+            entities=[EntityMention(**e) for e in (cast(list, model.entities) or [])],
+            relations=[Relation(**r) for r in (cast(list, model.relations) or [])],
+            metadata=cast(dict, model.meta) or {},
+            timestamp=cast(datetime, model.timestamp),
+            written_at=cast(datetime, model.written_at),
+            valid_from=cast(datetime | None, model.valid_from),
+            valid_to=cast(datetime | None, model.valid_to),
+            confidence=cast(float, model.confidence),
+            importance=cast(float, model.importance),
+            access_count=cast(int, model.access_count),
+            last_accessed_at=cast(datetime | None, model.last_accessed_at),
+            decay_rate=cast(float, model.decay_rate),
             status=status,
-            labile=model.labile,
+            labile=cast(bool, model.labile),
             provenance=provenance,
-            version=model.version,
-            supersedes_id=model.supersedes_id,
-            content_hash=model.content_hash,
+            version=cast(int, model.version),
+            supersedes_id=cast(UUID | None, model.supersedes_id),
+            content_hash=cast(str | None, model.content_hash),
         )
 
     # ── Phase 4.1: Bulk dependency counts ──────────────────────────

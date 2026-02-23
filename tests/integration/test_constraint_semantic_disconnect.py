@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.config import get_settings
+from src.core.config import get_embedding_dimensions
 from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.store import HippocampalStore
 from src.memory.hippocampal.write_gate import WriteGate
@@ -41,7 +41,7 @@ async def test_constraint_surfaces_despite_semantic_disconnect(pg_session_factor
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
         entity_extractor=None,
         relation_extractor=None,

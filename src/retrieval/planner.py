@@ -235,7 +235,9 @@ class RetrievalPlanner:
             return None
 
         # Resolve user-local "now"
-        tz = UTC
+        from datetime import tzinfo
+
+        tz: tzinfo = UTC
         if analysis.user_timezone:
             try:
                 from zoneinfo import ZoneInfo

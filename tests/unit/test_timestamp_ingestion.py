@@ -12,7 +12,7 @@ async def test_timestamp_ingestion():
 
     # Needs a real setup of stores like in tests
     from src.storage.postgres import PostgresMemoryStore
-    from src.utils.embeddings import EmbeddingClient
+    from src.utils.embeddings import get_embedding_client
     from src.utils.llm import LLMClient
 
     os.environ["STORAGE__EMBEDDING_DIM"] = "384"
@@ -21,7 +21,7 @@ async def test_timestamp_ingestion():
     os.environ["LLM_INTERNAL__API_KEY"] = "sk-proj-test"
 
     episodic_store = PostgresMemoryStore(db.pg_session_factory)
-    embedding_client = EmbeddingClient()
+    embedding_client = get_embedding_client()
     llm_client = LLMClient()
 
     orchestrator = await MemoryOrchestrator.create_lite(
