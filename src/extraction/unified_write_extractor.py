@@ -313,7 +313,7 @@ class UnifiedWritePathExtractor:
             cat_str = (item.get("category") or "preference").lower()
             category = _CATEGORY_MAP.get(cat_str, FactCategory.PREFERENCE)
             predicate = item.get("predicate", "unknown")
-            
+
             raw_key = item.get("key", "")
             if not raw_key or ":" not in raw_key:
                 clean_pred = predicate.strip().replace(" ", "_").lower()

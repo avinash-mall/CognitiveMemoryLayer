@@ -35,32 +35,34 @@ class DatabaseSettings(PydanticBaseModel):
     redis_url: str = Field(default="redis://localhost:6379")
 
 
-class EmbeddingSettings(PydanticBaseModel):
-    """Embedding provider settings."""
+# Embedding config: EMBEDDING_INTERNAL__* (internal memory tasks). When unset, defaults to
+# nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max seq) via LocalEmbeddings.
+class EmbeddingInternalSettings(PydanticBaseModel):
+    """Embedding provider for internal memory tasks. When unset, uses local nomic-embed-text-v2-moe."""
 
-    provider: str = Field(default="openai")  # openai | local | openai_compatible | ollama
-    model: str = Field(default="text-embedding-3-small")
-    dimensions: int = Field(default=1536)
-    local_model: str = Field(default="all-MiniLM-L6-v2")
-    api_key: str | None = Field(default=None)  # OpenAI; can use OPENAI_API_KEY env
-    base_url: str | None = Field(default=None)  # Optional; OpenAI-compatible embedding endpoint
-
-
-class LLMSettings(PydanticBaseModel):
-    """LLM provider settings."""
-
-    provider: str = Field(default="openai")  # openai | openai_compatible | ollama | gemini | claude
-    model: str = Field(default="gpt-4o-mini")
-    api_key: str | None = Field(default=None)  # API key; can use OPENAI_API_KEY env
-    base_url: str | None = Field(
+    provider: str | None = Field(default=None)  # openai | local | openai_compatible | ollama
+    model: str | None = Field(default=None)
+    dimensions: int | None = Field(default=None)
+    local_model: str | None = Field(
         default=None
-    )  # OpenAI-compatible endpoint; for openai_compatible/ollama or proxy
+    )  # for provider=local; default nomic-embed-text-v2-moe
+    api_key: str | None = Field(default=None)
+    base_url: str | None = Field(default=None)
 
 
+# LLM config: LLM_INTERNAL__* (internal tasks) and LLM_EVAL__* (evaluation QA/judge).
+# Supported providers: openai, ollama, anthropic, gemini, vllm, sglang, openai_compatible.
 class LLMInternalSettings(PydanticBaseModel):
-    """Optional separate LLM for internal tasks (entity/relation extraction, consolidation).
-    When any field is set, used for Entity/Relation extractors, consolidation,
-    reconsolidation, forgetting, QueryClassifier. If not set, LLM__* is used."""
+    """LLM for internal tasks (extraction, consolidation, retrieval). Env: LLM_INTERNAL__*."""
+
+    provider: str = Field(default="openai")
+    model: str = Field(default="gpt-4o-mini")
+    base_url: str | None = Field(default=None)
+    api_key: str | None = Field(default=None)
+
+
+class LLMEvalSettings(PydanticBaseModel):
+    """LLM for evaluation (QA, judge). Env: LLM_EVAL__*. If unset, falls back to LLM_INTERNAL__*."""
 
     provider: str | None = Field(default=None)
     model: str | None = Field(default=None)
@@ -138,7 +140,14 @@ class FeatureFlags(PydanticBaseModel):
     constraint_extraction_enabled: bool = Field(
         default=True, description="Cognitive: extract and store latent constraints at write time"
     )
-    # Rule-based extractor LLM replacement (RuleBasedExtractorsAndLLMReplacement.md)
+    # Master LLM switch (default false): when false, all internal LLM is disabled; heuristics used.
+    # Quality degrades when false; enabling improves quality but lowers performance (LLM latency).
+    use_llm_enabled: bool = Field(
+        default=False,
+        description="Master switch: when false, all internal LLM disabled (heuristics used). "
+        "Quality degrades when false; enabling improves quality but lowers performance.",
+    )
+    # Fine-grained LLM flags (only effective when use_llm_enabled=true)
     use_llm_constraint_extractor: bool = Field(
         default=True,
         description="Use LLM (via unified extractor) for constraint extraction instead of rule-based",
@@ -236,9 +245,9 @@ class Settings(BaseSettings):
     )  # None = use default; ["*"] disables credentials
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
-    llm: LLMSettings = Field(default_factory=LLMSettings)
+    embedding_internal: EmbeddingInternalSettings = Field(default_factory=EmbeddingInternalSettings)
     llm_internal: LLMInternalSettings = Field(default_factory=LLMInternalSettings)
+    llm_eval: LLMEvalSettings = Field(default_factory=LLMEvalSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     chunker: ChunkerSettings = Field(default_factory=ChunkerSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)
@@ -268,13 +277,16 @@ def validate_embedding_dimensions(settings: Settings | None = None) -> None:
     """Validate that the configured embedding dimension matches the DB schema.
 
     Call this at application startup (e.g. in the lifespan handler) to
-    catch mismatches between ``EMBEDDING__DIMENSIONS`` and the ``Vector(N)``
+    catch mismatches between ``EMBEDDING_INTERNAL__DIMENSIONS`` and the ``Vector(N)``
     column defined in ``MemoryRecordModel`` (MED-04).
 
     Raises ``ValueError`` if the dimensions disagree.
     """
     settings = settings or get_settings()
-    configured = settings.embedding.dimensions
+    ei = settings.embedding_internal
+    configured = (
+        ei.dimensions if ei.dimensions is not None else 768  # default nomic-embed-text-v2-moe
+    )
     try:
         from ..storage.models import MemoryRecordModel
 
@@ -284,7 +296,7 @@ def validate_embedding_dimensions(settings: Settings | None = None) -> None:
             raise ValueError(
                 f"Configured embedding dimensions ({configured}) do not match the "
                 f"database Vector column dimension ({db_dim}). Update "
-                f"EMBEDDING__DIMENSIONS or create a new migration."
+                f"EMBEDDING_INTERNAL__DIMENSIONS or create a new migration."
             )
     except ImportError:
         pass  # storage.models not available (e.g. during setup)

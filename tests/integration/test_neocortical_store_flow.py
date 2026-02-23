@@ -1,5 +1,6 @@
 """Integration tests for NeocorticalStore (fact store and mock graph)."""
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -15,22 +16,22 @@ class _MockGraphStore:
     Records every merge_edge / merge_node call for assertion.
     """
 
-    def __init__(self):
-        self.edges: list[dict] = []
-        self.nodes: list[dict] = []
+    def __init__(self) -> None:
+        self.edges: list[dict[str, Any]] = []
+        self.nodes: list[dict[str, Any]] = []
 
-    async def merge_edge(self, *args, **kwargs):
+    async def merge_edge(self, *args: Any, **kwargs: Any) -> str:
         self.edges.append({"args": args, "kwargs": kwargs})
         return f"mock-edge-{len(self.edges)}"
 
-    async def merge_node(self, *args, **kwargs):
+    async def merge_node(self, *args: Any, **kwargs: Any) -> str:
         self.nodes.append({"args": args, "kwargs": kwargs})
         return f"mock-node-{len(self.nodes)}"
 
-    async def get_entity_facts(self, *args, **kwargs):
+    async def get_entity_facts(self, *args: Any, **kwargs: Any) -> list[Any]:
         return []
 
-    async def personalized_pagerank(self, *args, **kwargs):
+    async def personalized_pagerank(self, *args: Any, **kwargs: Any) -> list[Any]:
         return []
 
 

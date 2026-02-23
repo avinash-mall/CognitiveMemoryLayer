@@ -50,7 +50,10 @@ services:
       DATABASE__NEO4J_USER: neo4j
       DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
-      # Do not override EMBEDDING__DIMENSIONS; app and api use .env so migration and tests match.
+      # Use ollama provider so get_embedding_client avoids LocalEmbeddings (sentence-transformers not in Docker)
+      EMBEDDING_INTERNAL__PROVIDER: ollama
+      EMBEDDING_INTERNAL__BASE_URL: http://host.docker.internal:11434/v1
+      # Do not override EMBEDDING_INTERNAL__DIMENSIONS; must match migration (default 768)
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,12 +61,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests/unit -v --tb=short"
+    command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"
 
   # API server (Phase 9). Run: docker compose up api (after building)
-  # Uses ../.env for AUTH__API_KEY, LLM__PROVIDER, EMBEDDING__* (e.g. Ollama).
-  # If Ollama runs on the host, set in .env: LLM__BASE_URL=http://host.docker.internal:11434/v1
-  # and EMBEDDING__BASE_URL=http://host.docker.internal:11434/v1 so the container can reach the host.
+  # Uses ../.env for AUTH__API_KEY, LLM_INTERNAL__*, EMBEDDING_INTERNAL__* (e.g. Ollama).
+  # If Ollama runs on the host, set in .env: LLM_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1
+  # and EMBEDDING_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1 so the container can reach the host.
   api:
     build:
       context: ..

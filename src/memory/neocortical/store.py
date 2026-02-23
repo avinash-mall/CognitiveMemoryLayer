@@ -1,12 +1,12 @@
 """Neocortical store: semantic memory facade (graph + fact store)."""
 
+from datetime import datetime
 from typing import Any
 
 from ...core.schemas import Relation
 from ...storage.neo4j import Neo4jGraphStore
 from .fact_store import SemanticFactStore
 from .schemas import SemanticFact
-from datetime import datetime
 
 
 class NeocorticalStore:
@@ -30,7 +30,13 @@ class NeocorticalStore:
     ) -> SemanticFact:
         """Store a semantic fact; optionally sync to graph if relation-like. Holistic: tenant-only."""
         fact = await self.facts.upsert_fact(
-            tenant_id, key, value, confidence, evidence_ids, context_tags=context_tags, valid_from=valid_from
+            tenant_id,
+            key,
+            value,
+            confidence,
+            evidence_ids,
+            context_tags=context_tags,
+            valid_from=valid_from,
         )
         if ":" in key and isinstance(value, str):
             await self._sync_fact_to_graph(tenant_id, fact)

@@ -10,8 +10,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 from ..core.config import get_settings
 
-# Embedding vector dimension driven by EMBEDDING__DIMENSIONS in .env / config.
-_EMBEDDING_DIM = get_settings().embedding.dimensions
+# Embedding vector dimension driven by EMBEDDING_INTERNAL__DIMENSIONS in .env / config.
+_EMBEDDING_DIM = get_settings().embedding_internal.dimensions or 768
 
 
 class Base(DeclarativeBase):

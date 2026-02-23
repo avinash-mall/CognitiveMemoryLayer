@@ -1,7 +1,8 @@
 """Integration tests: admin endpoints (consolidate, run_forgetting, list_tenants, component_health)."""
 
 import pytest
-from cml.models import DashboardTenantsResponse, DashboardComponentsResponse
+
+from cml.models import DashboardComponentsResponse, DashboardTenantsResponse
 
 
 @pytest.mark.integration

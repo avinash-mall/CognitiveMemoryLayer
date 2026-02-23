@@ -22,9 +22,9 @@ def chat_with_memory():
     base_url = (
         os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
     ).strip() or "http://localhost:8000"
-    model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or "").strip()
+    model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or "").strip()
     if not model:
-        raise SystemExit("Set OPENAI_MODEL (or LLM__MODEL) in .env")
+        raise SystemExit("Set OPENAI_MODEL (or LLM_INTERNAL__MODEL) in .env")
     openai_client = OpenAI()
     session_id = "chat-demo-001"
     print("Chat with Memory (type 'quit' to exit)\n")
