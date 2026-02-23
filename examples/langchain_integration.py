@@ -143,10 +143,10 @@ def create_memory_chain(
     ).strip() or "http://localhost:8000"
     key = memory_api_key or os.environ.get("CML_API_KEY") or os.environ.get("AUTH__API_KEY")
     model = (
-        llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
+        llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
     ).strip()
     if not model:
-        raise ValueError("Set OPENAI_MODEL or LLM__MODEL")
+        raise ValueError("Set OPENAI_MODEL or LLM_INTERNAL__MODEL")
     memory = CognitiveMemory(
         session_id=session_id,
         api_url=base_url,
@@ -166,8 +166,8 @@ def main():
     if not os.getenv("OPENAI_API_KEY"):
         print("Set OPENAI_API_KEY in .env")
         return
-    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL")):
-        print("Set OPENAI_MODEL or LLM__MODEL in .env")
+    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")):
+        print("Set OPENAI_MODEL or LLM_INTERNAL__MODEL in .env")
         return
     chain = create_memory_chain(session_id="langchain-demo")
     print("\nType 'quit' to exit.\n")

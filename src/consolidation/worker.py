@@ -47,7 +47,7 @@ class ConsolidationWorker:
         self,
         episodic_store: PostgresMemoryStore,
         neocortical_store: NeocorticalStore,
-        llm_client: LLMClient,
+        llm_client: LLMClient | None,
         scheduler: ConsolidationScheduler | None = None,
     ):
         self.sampler = EpisodeSampler(episodic_store)

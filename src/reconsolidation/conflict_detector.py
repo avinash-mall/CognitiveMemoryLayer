@@ -69,12 +69,13 @@ class ConflictDetector:
         """Detect if new statement conflicts with existing memory."""
         from ..core.config import get_settings
 
+        feat = get_settings().features
         fast_result: ConflictResult | None = None
-        if not get_settings().features.use_llm_conflict_detection_only:
+        if not (feat.use_llm_enabled and feat.use_llm_conflict_detection_only):
             fast_result = self._fast_detect(old_memory.text, new_statement)
         if fast_result and fast_result.confidence > 0.8:
             return fast_result
-        if self.llm:
+        if self.llm and feat.use_llm_enabled:
             return await self._llm_detect(old_memory.text, new_statement, context)
         return fast_result or ConflictResult(
             conflict_type=ConflictType.NONE,
@@ -111,6 +112,9 @@ class ConflictDetector:
             "correction:",
             "not anymore",
             "changed",
+            "i changed my mind",
+            "update:",
+            "wrong:",
         ]
         for marker in correction_markers:
             if marker in new_lower:

@@ -21,8 +21,8 @@ except ImportError:
 
 from src.core.config import get_settings
 
-# Embedding vector dimension driven by EMBEDDING__DIMENSIONS in .env / config.
-_EMBEDDING_DIM = get_settings().embedding.dimensions
+# Embedding vector dimension driven by EMBEDDING_INTERNAL__DIMENSIONS in .env / config.
+_EMBEDDING_DIM = get_settings().embedding_internal.dimensions or 768
 
 revision = "001"
 down_revision = None

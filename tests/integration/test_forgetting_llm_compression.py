@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.forgetting.compression import summarize_for_compression
-from src.utils.llm import get_llm_client
+from src.utils.llm import get_internal_llm_client
 
 
 def _make_mock_llm():
@@ -23,7 +23,7 @@ def _make_mock_llm():
 @pytest.fixture(scope="module")
 def llm_client():
     """Real LLM from config if available; otherwise mock so tests never skip."""
-    client = get_llm_client()
+    client = get_internal_llm_client()
     if client is None:
         return _make_mock_llm()
     return client

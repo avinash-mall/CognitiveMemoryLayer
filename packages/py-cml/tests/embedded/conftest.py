@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-# Load repo-root .env first so all tests read EMBEDDING__*, LLM__*, etc. (no HuggingFace default).
+# Load repo-root .env first so all tests read EMBEDDING_INTERNAL__*, LLM_INTERNAL__*, etc. (no HuggingFace default).
 try:
     from dotenv import load_dotenv
 

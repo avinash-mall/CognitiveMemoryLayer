@@ -94,7 +94,7 @@ class MemoryEnabledAssistant:
     def __init__(self, session_id: str, model: str | None = None):
         self.session_id = session_id
         self.model = (
-            model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL") or ""
+            model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
         ).strip()
         base_url = (
             os.environ.get("CML_BASE_URL") or os.environ.get("MEMORY_API_URL") or ""
@@ -187,8 +187,8 @@ def main():
     if not os.getenv("OPENAI_API_KEY"):
         print("Set OPENAI_API_KEY in .env")
         return
-    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM__MODEL")):
-        print("Set OPENAI_MODEL or LLM__MODEL in .env")
+    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")):
+        print("Set OPENAI_MODEL or LLM_INTERNAL__MODEL in .env")
         return
     assistant = MemoryEnabledAssistant(session_id="openai-demo")
     try:
