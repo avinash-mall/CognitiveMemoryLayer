@@ -12,7 +12,7 @@ Prerequisites:
     1. Start the API server:
        docker compose -f docker/docker-compose.yml up api
     2. pip install httpx
-    3. Set AUTH__API_KEY in environment
+    3. Set CML_API_KEY in environment
 """
 
 import json
@@ -20,9 +20,9 @@ import os
 
 import httpx
 
-# API Configuration (set AUTH__API_KEY in environment)
+# API Configuration (set CML_API_KEY in environment; use same value as server AUTH__API_KEY for local dev)
 BASE_URL = "http://localhost:8000/api/v1"
-API_KEY = os.environ.get("AUTH__API_KEY", "")
+API_KEY = os.environ.get("CML_API_KEY", "")
 HEADERS = {"Content-Type": "application/json", "X-API-Key": API_KEY}
 # Read/write timeout for httpx (retrieval and process_turn can be slow)
 HTTP_TIMEOUT = 60.0
@@ -392,28 +392,28 @@ def demo_curl_examples():
     print("You can also use these curl commands directly:\n")
 
     commands = [
-        ("Health Check", "curl http://localhost:8000/api/v1/health -H 'X-API-Key: $AUTH__API_KEY'"),
+        ("Health Check", "curl http://localhost:8000/api/v1/health -H 'X-API-Key: $CML_API_KEY'"),
         (
             "Write Memory",
             """curl -X POST http://localhost:8000/api/v1/memory/write \\
-  -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
+  -H "Content-Type: application/json" -H "X-API-Key: $CML_API_KEY" \\
   -d '{"content": "User likes pizza", "session_id": "test-session", "context_tags": ["preferences"]}\'""",
         ),
         (
             "Read Memory",
             """curl -X POST http://localhost:8000/api/v1/memory/read \\
-  -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
+  -H "Content-Type: application/json" -H "X-API-Key: $CML_API_KEY" \\
   -d '{"query": "food preferences", "format": "llm_context"}\'""",
         ),
         (
             "Process Turn",
             """curl -X POST http://localhost:8000/api/v1/memory/turn \\
-  -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" \\
+  -H "Content-Type: application/json" -H "X-API-Key: $CML_API_KEY" \\
   -d '{"user_message": "What do I like?", "session_id": "sess-1"}\'""",
         ),
         (
             "Get Stats",
-            '''curl http://localhost:8000/api/v1/memory/stats -H "X-API-Key: $AUTH__API_KEY"''',
+            '''curl http://localhost:8000/api/v1/memory/stats -H "X-API-Key: $CML_API_KEY"''',
         ),
     ]
 
@@ -429,9 +429,9 @@ def main():
     print("   Cognitive Memory Layer - Standalone Demo")
     print("=" * 60)
     print("\nThis demo shows the memory API without requiring LLM API keys.")
-    print("Set AUTH__API_KEY in your environment before running.\n")
+    print("Set CML_API_KEY in your environment before running.\n")
     if not API_KEY:
-        print("Error: AUTH__API_KEY is not set. Set it and run again.")
+        print("Error: CML_API_KEY is not set. Set it and run again.")
         return
     try:
         # Check health first

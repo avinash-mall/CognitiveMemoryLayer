@@ -1,23 +1,28 @@
 # Phase 1: PostgreSQL (pgvector), Neo4j, Redis, and app test runner
+# All settings read from ../.env; see .env.example for Docker infrastructure and app/api vars.
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    env_file:
+      - ../.env
     environment:
-      POSTGRES_USER: memory
-      POSTGRES_PASSWORD: memory
-      POSTGRES_DB: memory
+      POSTGRES_USER: ${POSTGRES_USER:-memory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memory}
+      POSTGRES_DB: ${POSTGRES_DB:-memory}
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-memory} -d ${POSTGRES_DB:-memory}"]
       interval: 2s
       timeout: 5s
       retries: 10
 
   neo4j:
     image: neo4j:5
+    env_file:
+      - ../.env
     environment:
-      NEO4J_AUTH: neo4j/password
+      NEO4J_AUTH: ${NEO4J_AUTH:-${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}}
     ports:
       - "7474:7474"
       - "7687:7687"
@@ -30,6 +35,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    env_file:
+      - ../.env
     ports:
       - "6379:6379"
     healthcheck:
@@ -38,6 +45,7 @@ services:
       timeout: 3s
       retries: 5
 
+  # App (test runner). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env (e.g. EMBEDDING_INTERNAL__BASE_URL for Ollama on host).
   app:
     build:
       context: ..
@@ -45,15 +53,13 @@ services:
     env_file:
       - ../.env
     environment:
-      DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
+      DATABASE__POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-memory}:${POSTGRES_PASSWORD:-memory}@postgres:5432/${POSTGRES_DB:-memory}
       DATABASE__NEO4J_URL: bolt://neo4j:7687
-      DATABASE__NEO4J_USER: neo4j
-      DATABASE__NEO4J_PASSWORD: password
+      DATABASE__NEO4J_USER: ${NEO4J_USER:-neo4j}
+      DATABASE__NEO4J_PASSWORD: ${NEO4J_PASSWORD:-password}
+      DATABASE__NEO4J_BROWSER_URL: bolt://localhost:7687
       DATABASE__REDIS_URL: redis://redis:6379
-      # Use ollama provider so get_embedding_client avoids LocalEmbeddings (sentence-transformers not in Docker)
-      EMBEDDING_INTERNAL__PROVIDER: ollama
-      EMBEDDING_INTERNAL__BASE_URL: http://host.docker.internal:11434/v1
-      # Do not override EMBEDDING_INTERNAL__DIMENSIONS; must match migration (default 768)
+      EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-openai}
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,10 +69,7 @@ services:
         condition: service_healthy
     command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"
 
-  # API server (Phase 9). Run: docker compose up api (after building)
-  # Uses ../.env for AUTH__API_KEY, LLM_INTERNAL__*, EMBEDDING_INTERNAL__* (e.g. Ollama).
-  # If Ollama runs on the host, set in .env: LLM_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1
-  # and EMBEDDING_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1 so the container can reach the host.
+  # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
   api:
     build:
       context: ..
@@ -74,12 +77,14 @@ services:
     env_file:
       - ../.env
     environment:
-      DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@postgres:5432/memory
+      DATABASE__POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-memory}:${POSTGRES_PASSWORD:-memory}@postgres:5432/${POSTGRES_DB:-memory}
       DATABASE__NEO4J_URL: bolt://neo4j:7687
+      DATABASE__NEO4J_USER: ${NEO4J_USER:-neo4j}
+      DATABASE__NEO4J_PASSWORD: ${NEO4J_PASSWORD:-password}
       DATABASE__NEO4J_BROWSER_URL: bolt://localhost:7687
-      DATABASE__NEO4J_USER: neo4j
-      DATABASE__NEO4J_PASSWORD: password
       DATABASE__REDIS_URL: redis://redis:6379
+      # Default to openai so API starts without sentence-transformers; set EMBEDDING_INTERNAL__PROVIDER=local in .env for local embeddings.
+      EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-openai}
     depends_on:
       postgres:
         condition: service_healthy

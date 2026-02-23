@@ -4,7 +4,7 @@ Run Cognitive Memory Layer examples one-by-one and report Pass / Fail / Skip.
 Run from repo root. Prerequisites:
   - pip install -r examples/requirements.txt (and for embedded: pip install -e "packages/py-cml[embedded]")
   - CML API up for API-dependent examples: docker compose -f docker/docker-compose.yml up api
-  - .env at repo root with AUTH__API_KEY, optional CML_BASE_URL; for LLM examples add OPENAI_* or ANTHROPIC_*
+  - .env at repo root with CML_API_KEY, optional CML_BASE_URL; for LLM examples add OPENAI_* or ANTHROPIC_*
 
 Usage:
   python scripts/run_examples.py --all
@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Load .env from repo root so skip logic and subprocess env see AUTH__API_KEY, etc.
+# Load .env from repo root so skip logic and subprocess env see CML_API_KEY, etc.
 _env_file = REPO_ROOT / ".env"
 if _env_file.is_file():
     try:
@@ -161,7 +161,7 @@ EXAMPLES = [
 
 
 def _has_api_key() -> bool:
-    return bool(os.environ.get("AUTH__API_KEY") or os.environ.get("CML_API_KEY"))
+    return bool(os.environ.get("CML_API_KEY"))
 
 
 def _has_openai() -> bool:
@@ -179,7 +179,7 @@ def _should_skip(ex: dict, include_llm: bool, no_skip: bool) -> str | None:
     if no_skip:
         return None
     if ex["needs_api"] and not _has_api_key():
-        return "missing AUTH__API_KEY or CML_API_KEY"
+        return "missing CML_API_KEY"
     if ex.get("needs_llm_openai") and not _has_openai():
         if not include_llm:
             return "LLM example (use --include-llm)"
