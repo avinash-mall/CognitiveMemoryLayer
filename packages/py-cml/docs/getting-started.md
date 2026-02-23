@@ -44,6 +44,11 @@ memory.write("User prefers vegetarian food and lives in Paris.")
 result = memory.read("What does the user eat?")
 for item in result.memories:
     print(f"  {item.text} (relevance: {item.relevance:.2f})")
+
+# or stream large results progressively:
+for item in memory.read_stream("What does the user eat?"):
+    print(f"  {item.text}")
+
 memory.close()
 ```
 

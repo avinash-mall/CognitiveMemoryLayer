@@ -40,9 +40,7 @@ async def test_constraint_surfaces_despite_semantic_disconnect(pg_session_factor
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(
-            dimensions=get_embedding_dimensions()
-        ),
+        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),

@@ -41,6 +41,8 @@ dependencies = [
     "tiktoken>=0.8",
     "python-dotenv>=1.0",
     "structlog>=24.0",
+    "cachetools>=5.0",
+    "tenacity>=8.0",
     "prometheus-client>=0.21",
     "httpx>=0.27",
     "semchunk",
@@ -110,6 +112,8 @@ ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", 
 "evaluation/locomo_plus/scripts/*.py" = ["E402"]
 "evaluation/locomo_plus/task_eval/*.py" = ["E402"]
 "migrations/env.py" = ["E402"]
+"src/memory/neocortical/fact_store.py" = ["B010"]
+"src/api/dashboard/_shared.py" = ["F401"]  # Re-exports from schemas for dashboard routes
 
 [tool.ruff.lint.isort]
 known-first-party = ["cml", "src"]
@@ -167,7 +171,8 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 0
+# Ramp up toward 70% as tests expand; target 70% (Issues.md A-04)
+fail_under = 60
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

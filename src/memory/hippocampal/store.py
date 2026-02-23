@@ -92,6 +92,11 @@ class HippocampalStore:
         request_metadata: dict[str, Any] | None = None,
         memory_type_override: MemoryType | None = None,
     ) -> tuple[MemoryRecord | None, WriteGateResult]:
+        # S-04: single settings load for the entire method
+        from ...core.config import get_settings as _get_settings
+
+        _features = _get_settings().features
+
         unified_result: UnifiedExtractionResult | None = None
         if self._use_unified_write_path() and self.unified_extractor:
             unified_result = await self.unified_extractor.extract(chunk)
@@ -106,23 +111,18 @@ class HippocampalStore:
 
         text = chunk.text
         if gate_result.redaction_required:
-            from ...core.config import get_settings
-
             pii_spans = None
             if (
                 unified_result
                 and unified_result.pii_spans
-                and get_settings().features.use_llm_enabled
-                and get_settings().features.use_llm_pii_redaction
+                and _features.use_llm_enabled
+                and _features.use_llm_pii_redaction
             ):
                 pii_spans = [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
             redaction_result = self.redactor.redact(text, additional_spans=pii_spans)
             text = redaction_result.redacted_text
         elif unified_result and unified_result.pii_spans and self._use_unified_write_path():
-            from ...core.config import get_settings
-
-            f = get_settings().features
-            if f.use_llm_enabled and f.use_llm_pii_redaction:
+            if _features.use_llm_enabled and _features.use_llm_pii_redaction:
                 pii_spans = [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
                 redaction_result = self.redactor.redact(text, additional_spans=pii_spans)
                 text = redaction_result.redacted_text
@@ -143,9 +143,7 @@ class HippocampalStore:
             relations = await self.relation_extractor.extract(text, entities=entity_texts)
 
         # Use caller-provided memory_type override, else LLM memory_type, else gate/constraint
-        from ...core.config import get_settings as _get_settings
-
-        settings = _get_settings().features
+        settings = _features
         memory_type = memory_type_override
         if (
             memory_type is None
@@ -351,9 +349,7 @@ class HippocampalStore:
             raw_results = await asyncio.gather(*tasks, return_exceptions=True)
             for i, res in enumerate(raw_results):
                 if i < len(surviving_unified):
-                    surviving_unified[i] = (
-                        res if not isinstance(res, BaseException) else None
-                    )
+                    surviving_unified[i] = res if not isinstance(res, BaseException) else None
 
         unified_results = surviving_unified
 
@@ -550,8 +546,8 @@ class HippocampalStore:
                 structlog.get_logger(__name__).error("encode_batch_upsert_failed", error=str(res))
                 continue
             if res is not None:
-                results.append(cast(MemoryRecord, res))
-                existing_dicts.append({"text": cast(MemoryRecord, res).text})
+                results.append(cast("MemoryRecord", res))
+                existing_dicts.append({"text": cast("MemoryRecord", res).text})
 
         return results, (gate_results_list if return_gate_results else None), unified_results
 

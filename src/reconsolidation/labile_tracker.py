@@ -2,13 +2,14 @@
 
 import asyncio
 import json
-import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
+from ..utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Redis key prefixes and TTL multiplier (session TTL = labile_duration * this)
 _LABILE_PREFIX = "labile:"

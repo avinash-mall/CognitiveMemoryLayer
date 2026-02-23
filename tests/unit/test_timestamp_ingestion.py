@@ -8,7 +8,7 @@ from src.storage.connection import DatabaseManager
 
 
 async def test_timestamp_ingestion():
-    db = DatabaseManager()
+    db = await DatabaseManager.create()
 
     # Needs a real setup of stores like in tests
     from src.storage.postgres import PostgresMemoryStore
