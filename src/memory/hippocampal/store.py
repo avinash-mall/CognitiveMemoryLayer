@@ -65,13 +65,13 @@ class HippocampalStore:
         self.unified_extractor = unified_extractor
 
     def _use_unified_write_path(self) -> bool:
-        """True when any write-path LLM flag is enabled and we have a unified extractor."""
+        """True when use_llm_enabled and any write-path LLM flag is enabled and we have a unified extractor."""
         if self.unified_extractor is None:
             return False
         from ...core.config import get_settings
 
         s = get_settings().features
-        return (
+        return s.use_llm_enabled and (
             s.use_llm_constraint_extractor
             or s.use_llm_write_time_facts
             or s.use_llm_salience_refinement
@@ -112,6 +112,7 @@ class HippocampalStore:
             if (
                 unified_result
                 and unified_result.pii_spans
+                and get_settings().features.use_llm_enabled
                 and get_settings().features.use_llm_pii_redaction
             ):
                 pii_spans = [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
@@ -120,7 +121,8 @@ class HippocampalStore:
         elif unified_result and unified_result.pii_spans and self._use_unified_write_path():
             from ...core.config import get_settings
 
-            if get_settings().features.use_llm_pii_redaction:
+            f = get_settings().features
+            if f.use_llm_enabled and f.use_llm_pii_redaction:
                 pii_spans = [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
                 redaction_result = self.redactor.redact(text, additional_spans=pii_spans)
                 text = redaction_result.redacted_text
@@ -148,6 +150,7 @@ class HippocampalStore:
         if (
             memory_type is None
             and unified_result
+            and settings.use_llm_enabled
             and settings.use_llm_memory_type
             and unified_result.memory_type
         ):
@@ -163,16 +166,23 @@ class HippocampalStore:
             )
 
         # Constraint extraction: unified or rule-based
-        if unified_result and settings.use_llm_constraint_extractor:
+        if unified_result and settings.use_llm_enabled and settings.use_llm_constraint_extractor:
             extracted_constraints = unified_result.constraints
         else:
             extracted_constraints = self.constraint_extractor.extract(chunk)
         constraint_dicts = [c.to_dict() for c in extracted_constraints]
 
-        # If high-confidence constraint extracted and no API/LLM override, override memory type
+        # If high-confidence constraint extracted and no API/LLM override, override memory type.
+        # Do NOT override when chunk is already PREFERENCE — honor caller's classification.
         if (
             memory_type_override is None
-            and not (unified_result and settings.use_llm_memory_type and unified_result.memory_type)
+            and chunk.chunk_type.value != "preference"
+            and not (
+                unified_result
+                and settings.use_llm_enabled
+                and settings.use_llm_memory_type
+                and unified_result.memory_type
+            )
             and extracted_constraints
             and any(c.confidence >= 0.7 for c in extracted_constraints)
         ):
@@ -187,7 +197,7 @@ class HippocampalStore:
 
         # Importance: unified or gate
         importance = gate_result.importance
-        if unified_result and settings.use_llm_write_gate_importance:
+        if unified_result and settings.use_llm_enabled and settings.use_llm_write_gate_importance:
             importance = unified_result.importance
 
         # Merge request-level metadata with system metadata; request metadata wins on conflict
@@ -207,6 +217,7 @@ class HippocampalStore:
         if (
             not effective_context_tags
             and unified_result
+            and settings.use_llm_enabled
             and settings.use_llm_context_tags
             and hasattr(unified_result, "context_tags")
             and unified_result.context_tags
@@ -214,12 +225,18 @@ class HippocampalStore:
             effective_context_tags = unified_result.context_tags
 
         conf = chunk.confidence
-        if unified_result and settings.use_llm_confidence and hasattr(unified_result, "confidence"):
+        if (
+            unified_result
+            and settings.use_llm_enabled
+            and settings.use_llm_confidence
+            and hasattr(unified_result, "confidence")
+        ):
             conf = unified_result.confidence
 
         decay_rate_val: float | None = None
         if (
             unified_result
+            and settings.use_llm_enabled
             and settings.use_llm_decay_rate
             and getattr(unified_result, "decay_rate", None) is not None
             and 0.01 <= unified_result.decay_rate <= 0.5
@@ -302,7 +319,10 @@ class HippocampalStore:
 
             text = chunk.text
             if gate_result.redaction_required and not (
-                _cfg.use_llm_pii_redaction and ur and getattr(ur, "pii_spans", None)
+                _cfg.use_llm_enabled
+                and _cfg.use_llm_pii_redaction
+                and ur
+                and getattr(ur, "pii_spans", None)
             ):
                 redaction_result = self.redactor.redact(text)
                 text = redaction_result.redacted_text
@@ -340,7 +360,12 @@ class HippocampalStore:
         cfg = _cfg().features
         final_texts: list[str] = []
         for i, (_idx, chunk, gate_result, text) in enumerate(surviving):
-            if unified_results[i] and unified_results[i].pii_spans and cfg.use_llm_pii_redaction:
+            if (
+                unified_results[i]
+                and unified_results[i].pii_spans
+                and cfg.use_llm_enabled
+                and cfg.use_llm_pii_redaction
+            ):
                 pii_spans = [(s.start, s.end, s.pii_type) for s in unified_results[i].pii_spans]
                 text = self.redactor.redact(chunk.text, additional_spans=pii_spans).redacted_text
             final_texts.append(text)
@@ -398,6 +423,7 @@ class HippocampalStore:
             if (
                 memory_type is None
                 and unified_res
+                and settings.use_llm_enabled
                 and settings.use_llm_memory_type
                 and unified_res.memory_type
             ):
@@ -413,7 +439,7 @@ class HippocampalStore:
                 )
 
             # Constraint extraction: unified or rule-based
-            if unified_res and settings.use_llm_constraint_extractor:
+            if unified_res and settings.use_llm_enabled and settings.use_llm_constraint_extractor:
                 extracted_constraints = unified_res.constraints
             else:
                 extracted_constraints = self.constraint_extractor.extract(chunk)
@@ -422,7 +448,12 @@ class HippocampalStore:
             # If high-confidence constraint extracted and no API/LLM override, override memory type
             if (
                 memory_type_override is None
-                and not (unified_res and settings.use_llm_memory_type and unified_res.memory_type)
+                and not (
+                    unified_res
+                    and settings.use_llm_enabled
+                    and settings.use_llm_memory_type
+                    and unified_res.memory_type
+                )
                 and extracted_constraints
                 and any(c.confidence >= 0.7 for c in extracted_constraints)
             ):
@@ -436,7 +467,7 @@ class HippocampalStore:
                 key = self._generate_key(chunk, memory_type)
 
             importance = gate_result.importance
-            if unified_res and settings.use_llm_write_gate_importance:
+            if unified_res and settings.use_llm_enabled and settings.use_llm_write_gate_importance:
                 importance = unified_res.importance
 
             system_metadata: dict[str, Any] = {
@@ -452,6 +483,7 @@ class HippocampalStore:
             if (
                 not effective_ct
                 and unified_res
+                and settings.use_llm_enabled
                 and settings.use_llm_context_tags
                 and hasattr(unified_res, "context_tags")
                 and unified_res.context_tags
@@ -459,12 +491,18 @@ class HippocampalStore:
                 effective_ct = unified_res.context_tags
 
             conf = chunk.confidence
-            if unified_res and settings.use_llm_confidence and hasattr(unified_res, "confidence"):
+            if (
+                unified_res
+                and settings.use_llm_enabled
+                and settings.use_llm_confidence
+                and hasattr(unified_res, "confidence")
+            ):
                 conf = unified_res.confidence
 
             decay_rate_val: float | None = None
             if (
                 unified_res
+                and settings.use_llm_enabled
                 and settings.use_llm_decay_rate
                 and getattr(unified_res, "decay_rate", None) is not None
                 and 0.01 <= unified_res.decay_rate <= 0.5

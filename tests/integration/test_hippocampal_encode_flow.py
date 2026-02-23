@@ -17,7 +17,7 @@ from src.utils.embeddings import MockEmbeddingClient
 
 def _make_store(session_factory):
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding.dimensions
+    dims = get_settings().embedding_internal.dimensions or 768
     embeddings = MockEmbeddingClient(dimensions=dims)
     return HippocampalStore(
         vector_store=pg_store,
@@ -42,7 +42,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         confidence=0.9,
         timestamp=datetime.now(UTC),
     )
-    dims = get_settings().embedding.dimensions
+    dims = get_settings().embedding_internal.dimensions or 768
     record, gate_result = await hippocampal_store.encode_chunk(
         tenant_id, chunk, existing_memories=None
     )
@@ -60,9 +60,9 @@ async def test_encode_chunk_stores_record(pg_session_factory):
     # Vector search smoke test (no exception; may return 0 results depending on pgvector/embedding env)
     results = await hippocampal_store.search(tenant_id, "user preference dark mode", top_k=5)
     if results:
-        assert any(r.id == record.id for r in results), (
-            "stored record should appear in search when results returned"
-        )
+        assert any(
+            r.id == record.id for r in results
+        ), "stored record should appear in search when results returned"
 
 
 @pytest.mark.asyncio
@@ -106,9 +106,9 @@ async def test_encode_chunk_stored_record_type_matches_gate(pg_session_factory):
         )
         if record is None:
             continue
-        assert record.type == expected_memory_type, (
-            f"ChunkType {chunk_type} should produce record type {expected_memory_type}, got {record.type}"
-        )
+        assert (
+            record.type == expected_memory_type
+        ), f"ChunkType {chunk_type} should produce record type {expected_memory_type}, got {record.type}"
         assert expected_memory_type in gate_result.memory_types
 
 

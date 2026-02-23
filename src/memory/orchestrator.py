@@ -79,7 +79,7 @@ class MemoryOrchestrator:
         from ..core.config import get_settings
 
         settings = get_settings()
-        internal_llm = get_internal_llm_client()
+        internal_llm = get_internal_llm_client() if settings.features.use_llm_enabled else None
         embedding_client: EmbeddingClient = get_embedding_client()
 
         # Phase 2.3: wrap with Redis cache when available and enabled
@@ -98,11 +98,19 @@ class MemoryOrchestrator:
 
         short_term_config = ShortTermMemoryConfig()
         short_term = ShortTermMemory(config=short_term_config)
-        entity_extractor = EntityExtractor(internal_llm)
-        relation_extractor = RelationExtractor(internal_llm)
+        entity_extractor = (
+            EntityExtractor(internal_llm)
+            if internal_llm and settings.features.use_llm_enabled
+            else None
+        )
+        relation_extractor = (
+            RelationExtractor(internal_llm)
+            if internal_llm and settings.features.use_llm_enabled
+            else None
+        )
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
 
-        _use_unified = (
+        _use_unified = settings.features.use_llm_enabled and (
             settings.features.use_llm_constraint_extractor
             or settings.features.use_llm_write_time_facts
             or settings.features.use_llm_salience_refinement
@@ -113,7 +121,9 @@ class MemoryOrchestrator:
             entity_extractor = None
             relation_extractor = None
 
-        unified_extractor = UnifiedWritePathExtractor(internal_llm) if _use_unified else None
+        unified_extractor = (
+            UnifiedWritePathExtractor(internal_llm) if _use_unified and internal_llm else None
+        )
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
@@ -290,12 +300,16 @@ class MemoryOrchestrator:
 
         _settings = _get_settings()
         _unified_results: list | None = None
-        _use_unified = getattr(self.hippocampal, "unified_extractor", None) is not None and (
-            _settings.features.use_llm_constraint_extractor
-            or _settings.features.use_llm_write_time_facts
-            or _settings.features.use_llm_salience_refinement
-            or _settings.features.use_llm_pii_redaction
-            or _settings.features.use_llm_write_gate_importance
+        _use_unified = (
+            _settings.features.use_llm_enabled
+            and getattr(self.hippocampal, "unified_extractor", None) is not None
+            and (
+                _settings.features.use_llm_constraint_extractor
+                or _settings.features.use_llm_write_time_facts
+                or _settings.features.use_llm_salience_refinement
+                or _settings.features.use_llm_pii_redaction
+                or _settings.features.use_llm_write_gate_importance
+            )
         )
         if (
             _use_unified
@@ -316,7 +330,11 @@ class MemoryOrchestrator:
 
                 _fact_keys = set()
                 _new_constraints: list = []
-                if _unified_results and _settings.features.use_llm_constraint_extractor:
+                if (
+                    _unified_results
+                    and _settings.features.use_llm_enabled
+                    and _settings.features.use_llm_constraint_extractor
+                ):
                     for _ur in _unified_results:
                         if _ur and hasattr(_ur, "constraints"):
                             for _c in _ur.constraints:
@@ -406,7 +424,11 @@ class MemoryOrchestrator:
             try:
                 evidence = [str(stored[0].id)] if stored else []
                 # Use unified extractor facts when LLM path enabled, else rule-based
-                if settings.features.use_llm_write_time_facts and unified_results:
+                if (
+                    settings.features.use_llm_enabled
+                    and settings.features.use_llm_write_time_facts
+                    and unified_results
+                ):
                     for ur in unified_results:
                         if ur and hasattr(ur, "facts"):
                             for fact in ur.facts:
@@ -458,7 +480,11 @@ class MemoryOrchestrator:
                 constraint_extractor = ConstraintExtractor()
                 constraints_stored = 0
                 # Use unified extractor constraints when LLM path enabled, else rule-based
-                if settings.features.use_llm_constraint_extractor and unified_results:
+                if (
+                    settings.features.use_llm_enabled
+                    and settings.features.use_llm_constraint_extractor
+                    and unified_results
+                ):
                     for ur in unified_results:
                         if ur and hasattr(ur, "constraints"):
                             for constraint in ur.constraints:

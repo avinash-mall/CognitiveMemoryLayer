@@ -49,7 +49,7 @@ async def test_use_llm_conflict_detection_only_skips_fast_path(monkeypatch, samp
         lambda: type(
             "S",
             (),
-            {"features": type("F", (), {"use_llm_conflict_detection_only": True})()},
+            {"features": type("F", (), {"use_llm_enabled": True, "use_llm_conflict_detection_only": True})()},
         )(),
     )
     detector = ConflictDetector(llm_client=mock_llm)

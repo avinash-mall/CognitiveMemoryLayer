@@ -100,6 +100,8 @@ _PREDICATE_KEYWORDS: dict[str, list[str]] = {
     "sport": ["sport", "play", "team", "game", "exercise"],
     "movie": ["movie", "film", "cinema", "watch"],
     "book": ["book", "read", "author", "novel"],
+    "hobby": ["hobby", "hobbies", "enjoy doing", "spare time", "free time"],
+    "pet": ["pet", "pets", "dog", "cat", "animal"],
 }
 
 # Confidence baseline for write-time facts

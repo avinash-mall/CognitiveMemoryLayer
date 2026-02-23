@@ -137,8 +137,9 @@ def _cue_dialogue_to_evidence(cue_dialogue: str, locomo_item: dict) -> str:
     return "\n".join(f"{t['speaker']}: {t['text'].strip()}" for t in turns if t.get("text"))
 
 
-def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> str:
-    """Cognitive: input_prompt = stitched dialogue from build_conv.build_context."""
+def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> tuple[str, list]:
+    """Cognitive: input_prompt = stitched dialogue from build_conv.build_context.
+    Returns (prompt_str, dialogue_timestamps) for per-turn timestamp metadata."""
     from build_conv import build_context
 
     ctx = build_context(plus_item, locomo_item)
@@ -148,7 +149,8 @@ def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> str:
         speaker = turn.get("speaker", "?")
         text = (turn.get("text") or "").strip()
         lines.append(f'{speaker} said, "{text}"')
-    return "\n".join(lines)
+    dialogue_timestamps = ctx.get("dialogue_timestamps") or []
+    return "\n".join(lines), dialogue_timestamps
 
 
 def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_size=None) -> list:
@@ -163,9 +165,10 @@ def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_si
     for i, plus in enumerate(plus_list):
         locomo_item = locomo_list[i % len(locomo_list)]
         try:
-            input_prompt = _stitch_dialogue_for_plus(plus, locomo_item)
+            input_prompt, dialogue_timestamps = _stitch_dialogue_for_plus(plus, locomo_item)
         except Exception:
             input_prompt = ""
+            dialogue_timestamps = []
         evidence_text = _cue_dialogue_to_evidence(
             plus.get("cue_dialogue", ""),
             locomo_item,
@@ -176,6 +179,7 @@ def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_si
             "evidence": evidence_text,
             "category": CATEGORY_SIXTH,
             "time_gap": plus.get("time_gap", ""),
+            "turn_timestamps": [t.isoformat() for t in dialogue_timestamps],
         }
         out.append(sample)
     return out

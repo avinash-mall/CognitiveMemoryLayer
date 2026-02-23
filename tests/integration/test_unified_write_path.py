@@ -20,7 +20,7 @@ from src.utils.embeddings import MockEmbeddingClient
 def _make_store_with_unified(session_factory):
     """Create HippocampalStore with mock UnifiedWritePathExtractor."""
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding.dimensions
+    dims = get_settings().embedding_internal.dimensions or 768
     embeddings = MockEmbeddingClient(dimensions=dims)
     mock_llm = AsyncMock()
     mock_llm.complete_json = AsyncMock(
@@ -76,6 +76,7 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_constraint_extractor": True,
                         "use_llm_write_time_facts": True,
                         "use_llm_salience_refinement": True,
@@ -116,7 +117,7 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
 def _make_store_with_llm_fields_mock(session_factory, confidence, context_tags, decay_rate):
     """Create HippocampalStore with mock returning confidence, context_tags, decay_rate."""
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding.dimensions
+    dims = get_settings().embedding_internal.dimensions or 768
     embeddings = MockEmbeddingClient(dimensions=dims)
     mock_llm = AsyncMock()
     mock_llm.complete_json = AsyncMock(
@@ -161,6 +162,7 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_constraint_extractor": True,
                         "use_llm_write_time_facts": False,
                         "use_llm_salience_refinement": True,
@@ -203,7 +205,7 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
 def _make_store_with_memory_type_mock(session_factory, memory_type: str):
     """Create HippocampalStore with mock that returns specific memory_type."""
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding.dimensions
+    dims = get_settings().embedding_internal.dimensions or 768
     embeddings = MockEmbeddingClient(dimensions=dims)
     mock_llm = AsyncMock()
     mock_llm.complete_json = AsyncMock(
@@ -242,6 +244,7 @@ async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_constraint_extractor": True,
                         "use_llm_write_time_facts": False,
                         "use_llm_salience_refinement": True,
@@ -286,6 +289,7 @@ async def test_encode_batch_fallback_when_llm_memory_type_disabled(pg_session_fa
                     "F",
                     (),
                     {
+                        "use_llm_enabled": True,
                         "use_llm_constraint_extractor": True,
                         "use_llm_write_time_facts": False,
                         "use_llm_salience_refinement": True,

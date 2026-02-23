@@ -44,13 +44,14 @@ def _env_int(key: str, default: int = 0) -> int:
 
 
 class EmbeddedEmbeddingConfig(BaseModel):
-    """Embedding configuration for embedded mode. Read from .env: EMBEDDING__PROVIDER, EMBEDDING__MODEL, EMBEDDING__BASE_URL, EMBEDDING__DIMENSIONS."""
+    """Embedding configuration for embedded mode. Read from .env: EMBEDDING_INTERNAL__*."""
 
-    provider: Literal["openai", "local", "openai_compatible", "vllm"] = Field(default="local")
+    provider: Literal["openai", "local", "openai_compatible", "vllm", "ollama"] = Field(default="local")
     model: str = Field(
-        default="", description="Set EMBEDDING__MODEL or EMBEDDING__LOCAL_MODEL in .env"
+        default="",
+        description="Set EMBEDDING_INTERNAL__MODEL or EMBEDDING_INTERNAL__LOCAL_MODEL in .env",
     )
-    dimensions: int = Field(default=384, description="Set EMBEDDING__DIMENSIONS in .env")
+    dimensions: int = Field(default=384, description="Set EMBEDDING_INTERNAL__DIMENSIONS in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 
@@ -59,28 +60,30 @@ class EmbeddedEmbeddingConfig(BaseModel):
     def from_env(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        prov = _env("EMBEDDING__PROVIDER")
-        if prov and prov in ("openai", "local", "openai_compatible", "vllm"):
+        prov = _env("EMBEDDING_INTERNAL__PROVIDER")
+        if prov and prov in ("openai", "local", "openai_compatible", "vllm", "ollama"):
             data = {**data, "provider": prov}
-        if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING__MODEL"):
-            data = {**data, "model": _env("EMBEDDING__MODEL")}
-        if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING__LOCAL_MODEL"):
-            data = {**data, "model": _env("EMBEDDING__LOCAL_MODEL")}
-        if data.get("base_url") is None and _env("EMBEDDING__BASE_URL"):
-            data = {**data, "base_url": _env("EMBEDDING__BASE_URL")}
-        dims = _env_int("EMBEDDING__DIMENSIONS")
+        if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING_INTERNAL__MODEL"):
+            data = {**data, "model": _env("EMBEDDING_INTERNAL__MODEL")}
+        if (not data.get("model") or data.get("model") == "") and _env(
+            "EMBEDDING_INTERNAL__LOCAL_MODEL"
+        ):
+            data = {**data, "model": _env("EMBEDDING_INTERNAL__LOCAL_MODEL")}
+        if data.get("base_url") is None and _env("EMBEDDING_INTERNAL__BASE_URL"):
+            data = {**data, "base_url": _env("EMBEDDING_INTERNAL__BASE_URL")}
+        dims = _env_int("EMBEDDING_INTERNAL__DIMENSIONS")
         if dims > 0:
             data = {**data, "dimensions": dims}
         return data
 
 
 class EmbeddedLLMConfig(BaseModel):
-    """LLM configuration for embedded mode. Set LLM__MODEL, LLM__BASE_URL in .env."""
+    """LLM configuration for embedded mode. Set LLM_INTERNAL__MODEL, LLM_INTERNAL__BASE_URL in .env."""
 
-    provider: Literal["openai", "openai_compatible", "vllm", "ollama", "gemini", "claude"] = Field(
-        default="openai"
-    )
-    model: str = Field(default="", description="Set LLM__MODEL in .env")
+    provider: Literal[
+        "openai", "openai_compatible", "vllm", "ollama", "gemini", "claude", "anthropic", "sglang"
+    ] = Field(default="openai")
+    model: str = Field(default="", description="Set LLM_INTERNAL__MODEL in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 
@@ -89,10 +92,12 @@ class EmbeddedLLMConfig(BaseModel):
     def from_env(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        if (not data.get("model") or data.get("model") == "") and _env("LLM__MODEL"):
-            data = {**data, "model": _env("LLM__MODEL")}
-        if data.get("base_url") is None and _env("LLM__BASE_URL"):
-            data = {**data, "base_url": _env("LLM__BASE_URL")}
+        if (not data.get("model") or data.get("model") == "") and _env("LLM_INTERNAL__MODEL"):
+            data = {**data, "model": _env("LLM_INTERNAL__MODEL")}
+        if data.get("base_url") is None and _env("LLM_INTERNAL__BASE_URL"):
+            data = {**data, "base_url": _env("LLM_INTERNAL__BASE_URL")}
+        if _env("LLM_INTERNAL__PROVIDER"):
+            data = {**data, "provider": _env("LLM_INTERNAL__PROVIDER")}
         return data
 
 

@@ -153,17 +153,17 @@ class QueryClassifier:
 
         settings = get_settings().features
 
-        # Fast path (always attempted unless force-LLM flag is set)
+        # Fast path (always attempted when use_llm_enabled=false or not force-LLM)
         fast_result: QueryAnalysis | None = None
-        if not settings.use_llm_query_classifier_only:
+        if not (settings.use_llm_enabled and settings.use_llm_query_classifier_only):
             fast_result = self._fast_classify(effective_query)
 
         if fast_result and fast_result.confidence > 0.8:
             self._enrich_constraint_dimensions(fast_result)
             return fast_result
 
-        # LLM path: only when explicitly requested via feature flag
-        if self.llm and settings.use_llm_query_classifier_only:
+        # LLM path: only when use_llm_enabled and explicitly requested via feature flag
+        if self.llm and settings.use_llm_enabled and settings.use_llm_query_classifier_only:
             result = await self._llm_classify(effective_query, recent_context=recent_context)
             self._enrich_constraint_dimensions(result)
             return result
