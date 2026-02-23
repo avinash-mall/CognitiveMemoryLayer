@@ -291,12 +291,18 @@ class UnifiedWritePathExtractor:
             ctype = item.get("constraint_type", "preference")
             if ctype not in ("goal", "value", "state", "causal", "policy", "preference"):
                 ctype = "preference"
+            raw_scope = item.get("scope")
+            scope_list: list[str] = (
+                [s for s in raw_scope if isinstance(s, str)]
+                if isinstance(raw_scope, list)
+                else []
+            )
             constraints.append(
                 ConstraintObject(
                     constraint_type=ctype,
                     subject=item.get("subject", "user"),
                     description=item.get("description", chunk.text[:500]),
-                    scope=item.get("scope") if isinstance(item.get("scope"), list) else [],
+                    scope=scope_list,
                     activation="",
                     status="active",
                     confidence=float(item.get("confidence", 0.7)),

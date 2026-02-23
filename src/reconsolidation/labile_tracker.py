@@ -194,6 +194,7 @@ class LabileStateTracker:
     async def _mark_labile_redis(
         self, session_key: str, scope_key: str, session: LabileSession
     ) -> None:
+        assert self._redis is not None  # caller ensures Redis backend
         ttl = int(self.labile_duration.total_seconds() * _SESSION_TTL_MULTIPLIER)
         rk = self._redis_session_key(session_key)
         sk = self._redis_scope_key(scope_key)
@@ -211,7 +212,7 @@ class LabileStateTracker:
                 self.max_sessions - 1,
             )
         except Exception as e:
-            logger.warning("labile_redis_lua_failed falling back to non-atomic", error=str(e))
+            logger.warning("labile_redis_lua_failed falling back to non-atomic: %s", e)
             await self._redis.setex(rk, ttl, payload)
             await self._redis.lpush(sk, session_key)
             await self._redis.ltrim(sk, 0, self.max_sessions - 1)
@@ -249,6 +250,7 @@ class LabileStateTracker:
         scope_id: str,
         turn_id: str | None,
     ) -> list[LabileMemory]:
+        assert self._redis is not None  # caller ensures Redis backend
         scope_key = self._scope_key(tenant_id, scope_id)
         sk = self._redis_scope_key(scope_key)
         raw_list = await self._redis.lrange(sk, 0, -1)
@@ -332,6 +334,7 @@ class LabileStateTracker:
         scope_key: str,
         memory_ids: list[UUID] | None,
     ) -> None:
+        assert self._redis is not None  # caller ensures Redis backend
         rk = self._redis_session_key(session_key)
         sk = self._redis_scope_key(scope_key)
         data = await self._redis.get(rk)
@@ -384,6 +387,7 @@ class LabileStateTracker:
 
     async def _cleanup_old_sessions_redis(self, scope_key: str) -> None:
         """Remove expired sessions and trim scope list (Redis backend)."""
+        assert self._redis is not None  # caller ensures Redis backend
         sk = self._redis_scope_key(scope_key)
         raw_list = await self._redis.lrange(sk, 0, -1)
         session_keys = [k.decode() if isinstance(k, bytes) else k for k in raw_list]
@@ -436,6 +440,7 @@ class LabileStateTracker:
 
     async def _release_all_for_tenant_redis(self, tenant_id: str) -> int:
         """Release all labile sessions for tenant (Redis backend)."""
+        assert self._redis is not None  # caller ensures Redis backend
         # Redis scope keys: labile:scope:tenant_id:scope_id
         match_pattern = f"labile:scope:{tenant_id}:*"
         cursor = 0

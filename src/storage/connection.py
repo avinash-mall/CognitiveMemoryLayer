@@ -84,6 +84,8 @@ class DatabaseManager:
 
     @asynccontextmanager
     async def pg_session(self) -> AsyncGenerator[AsyncSession, None]:
+        if self.pg_session_factory is None:
+            raise RuntimeError("DatabaseManager not initialized or PostgreSQL disabled")
         session = self.pg_session_factory()
         try:
             yield session

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.core.config import get_settings
+from src.core.config import get_embedding_dimensions
 from src.core.enums import MemoryStatus, MemoryType
 from src.memory.hippocampal.redactor import PIIRedactor
 from src.memory.hippocampal.store import HippocampalStore
@@ -17,7 +17,7 @@ from src.utils.embeddings import MockEmbeddingClient
 
 def _make_store(session_factory):
     pg_store = PostgresMemoryStore(session_factory)
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     embeddings = MockEmbeddingClient(dimensions=dims)
     return HippocampalStore(
         vector_store=pg_store,
@@ -42,7 +42,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         confidence=0.9,
         timestamp=datetime.now(UTC),
     )
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     record, gate_result = await hippocampal_store.encode_chunk(
         tenant_id, chunk, existing_memories=None
     )

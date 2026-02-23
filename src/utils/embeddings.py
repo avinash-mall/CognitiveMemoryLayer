@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from ..core.config import get_settings
+from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
 
 # Default when EMBEDDING_INTERNAL__* not provided: Sentence Transformer
 # nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max sequence length)
@@ -15,7 +15,7 @@ _DEFAULT_EMBEDDING_DIMENSIONS = 768
 try:
     from openai import AsyncOpenAI
 except ImportError:
-    AsyncOpenAI = None
+    AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 
 @dataclass
@@ -61,7 +61,7 @@ class OpenAIEmbeddings(EmbeddingClient):
         if AsyncOpenAI is None:
             raise ImportError("openai package is required for OpenAIEmbeddings")
         settings = get_settings()
-        ei = settings.embedding_internal
+        ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
         key = api_key or ei.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.model = model or ei.model or _DEFAULT_EMBEDDING_MODEL
         self._dimensions = (
@@ -118,7 +118,7 @@ class LocalEmbeddings(EmbeddingClient):
         except ImportError:
             raise ImportError("sentence-transformers is required for LocalEmbeddings")
         settings = get_settings()
-        ei = settings.embedding_internal
+        ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
         name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
@@ -129,7 +129,7 @@ class LocalEmbeddings(EmbeddingClient):
 
     @property
     def dimensions(self) -> int:
-        return self._dimensions
+        return self._dimensions or 0
 
     async def embed(self, text: str) -> EmbeddingResult:
         import asyncio
@@ -139,7 +139,7 @@ class LocalEmbeddings(EmbeddingClient):
         return EmbeddingResult(
             embedding=embedding,
             model=self.model_name,
-            dimensions=self._dimensions,
+            dimensions=self._dimensions or 0,
             tokens_used=len(text.split()),
         )
 
@@ -152,7 +152,7 @@ class LocalEmbeddings(EmbeddingClient):
             EmbeddingResult(
                 embedding=emb,
                 model=self.model_name,
-                dimensions=self._dimensions,
+                dimensions=self._dimensions or 0,
                 tokens_used=len(t.split()),
             )
             for emb, t in zip(embeddings, texts, strict=False)
@@ -166,10 +166,7 @@ class MockEmbeddingClient(EmbeddingClient):
         if dimensions is not None:
             self._dimensions = dimensions
         else:
-            ei = get_settings().embedding_internal
-            self._dimensions = (
-                ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
-            )
+            self._dimensions = get_embedding_dimensions()
 
     @property
     def dimensions(self) -> int:
@@ -313,7 +310,7 @@ def get_embedding_client() -> EmbeddingClient:
     import os
 
     settings = get_settings()
-    ei = settings.embedding_internal
+    ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
     provider = ei.provider if ei.provider is not None else "local"
     dims = ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
     model = ei.model or _DEFAULT_EMBEDDING_MODEL

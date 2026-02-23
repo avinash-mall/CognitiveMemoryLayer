@@ -273,6 +273,14 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def get_embedding_dimensions() -> int:
+    """Return configured embedding dimension (from EMBEDDING_INTERNAL__DIMENSIONS), or 768.
+    Safe when embedding_internal is missing (e.g. older settings or env quirks)."""
+    s = get_settings()
+    ei = getattr(s, "embedding_internal", None)
+    return (getattr(ei, "dimensions", None) if ei is not None else None) or 768
+
+
 def validate_embedding_dimensions(settings: Settings | None = None) -> None:
     """Validate that the configured embedding dimension matches the DB schema.
 
@@ -282,11 +290,7 @@ def validate_embedding_dimensions(settings: Settings | None = None) -> None:
 
     Raises ``ValueError`` if the dimensions disagree.
     """
-    settings = settings or get_settings()
-    ei = settings.embedding_internal
-    configured = (
-        ei.dimensions if ei.dimensions is not None else 768  # default nomic-embed-text-v2-moe
-    )
+    configured = get_embedding_dimensions()
     try:
         from ..storage.models import MemoryRecordModel
 

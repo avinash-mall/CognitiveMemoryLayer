@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ...core.enums import MemorySource, MemoryStatus, MemoryType
 from ...core.schemas import (
@@ -193,7 +193,7 @@ class HippocampalStore:
 
             key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
         else:
-            key = self._generate_key(chunk, memory_type)
+            key = self._generate_key(chunk, memory_type) or ""
 
         # Importance: unified or gate
         importance = gate_result.importance
@@ -234,14 +234,15 @@ class HippocampalStore:
             conf = unified_result.confidence
 
         decay_rate_val: float | None = None
+        dr = getattr(unified_result, "decay_rate", None) if unified_result else None
         if (
             unified_result
             and settings.use_llm_enabled
             and settings.use_llm_decay_rate
-            and getattr(unified_result, "decay_rate", None) is not None
-            and 0.01 <= unified_result.decay_rate <= 0.5
+            and dr is not None
+            and 0.01 <= dr <= 0.5
         ):
-            decay_rate_val = unified_result.decay_rate
+            decay_rate_val = dr
 
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
@@ -350,23 +351,26 @@ class HippocampalStore:
             raw_results = await asyncio.gather(*tasks, return_exceptions=True)
             for i, res in enumerate(raw_results):
                 if i < len(surviving_unified):
-                    surviving_unified[i] = res if not isinstance(res, Exception) else None
+                    surviving_unified[i] = (
+                        res if not isinstance(res, BaseException) else None
+                    )
 
         unified_results = surviving_unified
 
         # Apply LLM PII spans to texts before embedding (merge with regex redaction)
-        from ...core.config import get_settings as _cfg
+        from ...core.config import get_settings as _get_settings
 
-        cfg = _cfg().features
+        cfg = _get_settings().features
         final_texts: list[str] = []
         for i, (_idx, chunk, gate_result, text) in enumerate(surviving):
+            ures = unified_results[i] if i < len(unified_results) else None
             if (
-                unified_results[i]
-                and unified_results[i].pii_spans
+                ures is not None
+                and getattr(ures, "pii_spans", None)
                 and cfg.use_llm_enabled
                 and cfg.use_llm_pii_redaction
             ):
-                pii_spans = [(s.start, s.end, s.pii_type) for s in unified_results[i].pii_spans]
+                pii_spans = [(s.start, s.end, s.pii_type) for s in ures.pii_spans]
                 text = self.redactor.redact(chunk.text, additional_spans=pii_spans).redacted_text
             final_texts.append(text)
 
@@ -464,7 +468,7 @@ class HippocampalStore:
 
                 key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
             else:
-                key = self._generate_key(chunk, memory_type)
+                key = self._generate_key(chunk, memory_type) or ""
 
             importance = gate_result.importance
             if unified_res and settings.use_llm_enabled and settings.use_llm_write_gate_importance:
@@ -499,15 +503,16 @@ class HippocampalStore:
             ):
                 conf = unified_res.confidence
 
-            decay_rate_val: float | None = None
+            decay_rate_val = None
+            dr2 = getattr(unified_res, "decay_rate", None) if unified_res else None
             if (
                 unified_res
                 and settings.use_llm_enabled
                 and settings.use_llm_decay_rate
-                and getattr(unified_res, "decay_rate", None) is not None
-                and 0.01 <= unified_res.decay_rate <= 0.5
+                and dr2 is not None
+                and 0.01 <= dr2 <= 0.5
             ):
-                decay_rate_val = unified_res.decay_rate
+                decay_rate_val = dr2
 
             record_create = MemoryRecordCreate(
                 tenant_id=tenant_id,
@@ -535,18 +540,18 @@ class HippocampalStore:
             stored = await self.store.upsert(record_create)
             return stored
 
-        tasks = [_process_chunk(i) for i in range(len(surviving))]
+        tasks = [_process_chunk(i) for i in range(len(surviving))]  # type: ignore[misc]
         stored_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for res in stored_results:
-            if isinstance(res, Exception):
+            if isinstance(res, BaseException):
                 import structlog
 
                 structlog.get_logger(__name__).error("encode_batch_upsert_failed", error=str(res))
                 continue
             if res is not None:
-                results.append(res)
-                existing_dicts.append({"text": res.text})
+                results.append(cast(MemoryRecord, res))
+                existing_dicts.append({"text": cast(MemoryRecord, res).text})
 
         return results, (gate_results_list if return_gate_results else None), unified_results
 
