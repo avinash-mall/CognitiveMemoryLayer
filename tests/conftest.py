@@ -112,10 +112,10 @@ def mock_llm():
 
 @pytest.fixture
 def mock_embeddings():
-    """Mock embedding client for tests. Dimensions from .env (get_settings().embedding_internal.dimensions)."""
-    from src.core.config import get_settings
+    """Mock embedding client for tests. Dimensions from .env (get_embedding_dimensions())."""
+    from src.core.config import get_embedding_dimensions
 
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     client = MagicMock()
     client.dimensions = dims
     client.embed = AsyncMock(

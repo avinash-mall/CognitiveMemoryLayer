@@ -109,7 +109,7 @@ class HybridRetriever:
                 )
 
             for step, result in zip(group_steps, group_results, strict=False):
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     continue
                 if result.success and result.items:
                     all_results.extend(result.items)

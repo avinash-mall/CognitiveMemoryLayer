@@ -250,6 +250,14 @@ class QueryClassifier:
         if recent_context:
             prompt = f"Recent conversation context:\n{recent_context}\n\n{prompt}"
         try:
+            if self.llm is None:
+                return QueryAnalysis(
+                    original_query=query,
+                    intent=QueryIntent.UNKNOWN,
+                    confidence=0.5,
+                    suggested_sources=["vector", "facts"],
+                    suggested_top_k=10,
+                )
             data = await self.llm.complete_json(prompt, temperature=0.0)
             intent_str = data.get("intent", "unknown")
             try:
