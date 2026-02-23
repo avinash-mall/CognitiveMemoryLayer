@@ -69,7 +69,7 @@ memory = CognitiveMemoryLayer(config=config)
 
 ## Testing (integration and e2e)
 
-Integration and e2e tests use **`CML_TEST_URL`** (default `http://localhost:8000`) and **`CML_TEST_API_KEY`**. If `CML_TEST_API_KEY` is not set, the test conftests load the repository root `.env` and use **`AUTH__API_KEY`** and **`AUTH__ADMIN_API_KEY`** so the same keys as the server can be used. The project `.env.example` sets both to `test-key` for local development and testing.
+Integration and e2e tests use **`CML_TEST_URL`** (default `http://localhost:8000`) and **`CML_TEST_API_KEY`**. If unset, conftests use **`CML_BASE_URL`** and **`CML_API_KEY`** from the repository root `.env`. Set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY` for local development (e.g. `test-key`). To run the CML API with test keys without changing `.env`, use: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api` (see `docker/docker-compose.test-key.yml` in the repo root).
 
 ## Embedded Configuration
 

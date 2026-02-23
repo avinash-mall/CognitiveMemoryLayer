@@ -28,7 +28,11 @@ async def test_llm_classify_returns_constraint_dimensions_and_suggested_top_k(mo
         lambda: type(
             "S",
             (),
-            {"features": type("F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True})()},
+            {
+                "features": type(
+                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
+                )()
+            },
         )(),
     )
     classifier = QueryClassifier(llm_client=mock_llm)
@@ -59,7 +63,11 @@ async def test_llm_classify_valid_suggested_top_k_used(monkeypatch):
         lambda: type(
             "S",
             (),
-            {"features": type("F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True})()},
+            {
+                "features": type(
+                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
+                )()
+            },
         )(),
     )
     classifier = QueryClassifier(llm_client=mock_llm)
@@ -88,7 +96,11 @@ async def test_llm_classify_suggested_top_k_out_of_range_falls_back(monkeypatch)
         lambda: type(
             "S",
             (),
-            {"features": type("F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True})()},
+            {
+                "features": type(
+                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
+                )()
+            },
         )(),
     )
     classifier = QueryClassifier(llm_client=mock_llm)

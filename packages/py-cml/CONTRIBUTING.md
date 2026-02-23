@@ -38,11 +38,13 @@ Unit tests cover config, exceptions, retry logic, transport (including 403/422/4
 
 **Integration and E2E tests** (require a running CML server):
 
-1. From the **repository root**, start the API: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`
-2. Tests load all configuration from the repo root **`.env`** (see [tests/README.md](../../tests/README.md)). Copy **.env.example** to **.env** and set `AUTH__API_KEY=test-key` `AUTH__ADMIN_API_KEY=test-key`, and `CML_BASE_URL=http://localhost:8000` so the API and tests use the same key and URL. Optionally set `CML_TEST_API_KEY` and `CML_TEST_URL` to override.
+1. From the **repository root**, start the API: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`  
+   **Alternatively**, to run the API with test keys without changing `.env`:  
+   `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d postgres neo4j redis api` (see `docker/docker-compose.test-key.yml`).
+2. Tests load all configuration from the repo root **`.env`** (see [tests/README.md](../../tests/README.md)). Copy **.env.example** to **.env** and set `AUTH__API_KEY=test-key`, `AUTH__ADMIN_API_KEY=test-key`, `CML_API_KEY=test-key`, and `CML_BASE_URL=http://localhost:8000` so the API and tests use the same key and URL. Optionally set `CML_TEST_API_KEY` and `CML_TEST_URL` to override.
 3. From `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`
 
-If `CML_TEST_API_KEY` is unset, the integration and e2e conftests load the repo root `.env` and use `AUTH__API_KEY` / `AUTH__ADMIN_API_KEY`, so one key works for both. If the server is unreachable, tests are skipped. Optional LLM/embedding tests skip when the service is unavailable (see tests/README.md § Optional LLM/embedding tests).
+If `CML_TEST_API_KEY` is unset, the integration and e2e conftests use `CML_API_KEY` and `CML_BASE_URL` from the repo root `.env` (set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`). If the server is unreachable, tests are skipped. Optional LLM/embedding tests skip when the service is unavailable (see tests/README.md § Optional LLM/embedding tests).
 
 **Embedded tests** (require `pip install -e ".[dev,embedded]"` and CML engine):
 

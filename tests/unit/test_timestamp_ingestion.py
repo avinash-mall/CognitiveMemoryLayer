@@ -1,31 +1,26 @@
 import asyncio
 import os
-import sys
 import uuid
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
-
 from datetime import UTC, datetime
 
-from memory.orchestrator import MemoryOrchestrator
-from storage.connection import DatabaseManager
+from src.memory.orchestrator import MemoryOrchestrator
+from src.storage.connection import DatabaseManager
 
 
 async def test_timestamp_ingestion():
     db = DatabaseManager()
 
     # Needs a real setup of stores like in tests
-    from retrieval.llm import LLMClient
-    from storage.postgres.store import PostgresMemoryStore
-
-    from utils.embeddings import EmbeddingClient
+    from src.storage.postgres import PostgresMemoryStore
+    from src.utils.embeddings import EmbeddingClient
+    from src.utils.llm import LLMClient
 
     os.environ["STORAGE__EMBEDDING_DIM"] = "384"
     os.environ["LLM_INTERNAL__PROVIDER"] = "openai"
     os.environ["LLM_INTERNAL__MODEL"] = "gpt-4o-mini"
     os.environ["LLM_INTERNAL__API_KEY"] = "sk-proj-test"
 
-    episodic_store = PostgresMemoryStore(db)
+    episodic_store = PostgresMemoryStore(db.pg_session_factory)
     embedding_client = EmbeddingClient()
     llm_client = LLMClient()
 
@@ -57,7 +52,7 @@ async def test_timestamp_ingestion():
         print(f"Episodic Record ID: {r.id}, Timestamp: {r.timestamp}")
 
     print("\nChecking neocortical store for facts...")
-    from memory.neocortical.schemas import FactCategory
+    from src.memory.neocortical.schemas import FactCategory
 
     profile = await orchestrator.neocortical.get_tenant_profile(tenant_id)
     print(f"Profile: {profile}")
@@ -66,7 +61,7 @@ async def test_timestamp_ingestion():
         for f in facts:
             print(f"Fact: {f.key} = {f.value}, valid_from: {f.valid_from}")
 
-    db.close()
+    await db.close()
 
 
 if __name__ == "__main__":

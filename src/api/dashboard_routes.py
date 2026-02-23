@@ -1338,7 +1338,7 @@ async def dashboard_config(
     # Application
     app_items = [
         ConfigItem(
-            key="debug",
+            key="app_name",
             value=settings.app_name,
             default_value="CognitiveMemoryLayer",
             is_editable=True,
@@ -1421,6 +1421,17 @@ async def dashboard_config(
             requires_restart=True,
             is_required=False,
             env_var="DATABASE__NEO4J_PASSWORD",
+        ),
+        ConfigItem(
+            key="database.neo4j_browser_url",
+            value=db_s.neo4j_browser_url or "",
+            default_value="",
+            is_editable=False,
+            source=_config_source("DATABASE__NEO4J_BROWSER_URL"),
+            description="Neo4j Bolt URL for dashboard graph (neovis.js). When API in Docker, set to bolt://localhost:7687.",
+            requires_restart=True,
+            is_required=False,
+            env_var="DATABASE__NEO4J_BROWSER_URL",
         ),
         ConfigItem(
             key="database.redis_url",

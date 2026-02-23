@@ -1106,7 +1106,7 @@ cd CognitiveMemoryLayer
 
 #### 2. Create Environment File
 
-Copy `.env.example` to `.env` in the project root and adjust as needed. The example sets `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` so the API and py-cml integration/e2e tests work without extra config. For production, set strong secrets.
+Copy `.env.example` to `.env` in the project root and adjust as needed. The example sets `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` so the API and py-cml integration/e2e tests work without extra config. Alternatively, you can keep other keys in `.env` and start the API with the test-key override: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api` (see `docker/docker-compose.test-key.yml`). For production, set strong secrets.
 
 ```env
 # Auth (required for API access; .env.example uses test-key for local/testing)
@@ -1224,11 +1224,13 @@ pytest tests --cov=src --cov-report=html
 
 1. **Unit tests** (no server): `pytest tests/unit/ -v`
 2. **Integration and e2e tests** (require running CML API):
-   - From repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`
+   - From repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`  
+     Or use the test-key override so the API runs with `test-key` without changing `.env`:  
+     `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d postgres neo4j redis api` (see [docker/docker-compose.test-key.yml](../docker/docker-compose.test-key.yml)).
    - Ensure `.env` has `AUTH__API_KEY=test-key` and `AUTH__ADMIN_API_KEY=test-key` (see [.env.example](../.env.example)) so the API accepts the key used by tests.
    - From `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`
 
-If `CML_TEST_API_KEY` is not set, py-cml test conftests load the repo root `.env` and use `AUTH__API_KEY` / `AUTH__ADMIN_API_KEY`. Override with `CML_TEST_URL` and `CML_TEST_API_KEY` if needed.
+If `CML_TEST_API_KEY` is not set, py-cml test conftests use `CML_API_KEY` and `CML_BASE_URL` from the repo root `.env` (set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`). Override with `CML_TEST_URL` and `CML_TEST_API_KEY` if needed.
 
 ### Optional: vLLM for Local LLM
 
