@@ -189,13 +189,20 @@ class TestConfig:
 
     def test_nested_settings_defaults(self):
         s = get_settings()
-        assert s.embedding.provider in ("openai", "local", "openai_compatible", "vllm", "ollama")
-        assert isinstance(s.embedding.dimensions, int) and s.embedding.dimensions >= 1
-        assert s.llm.provider in (
+        assert (
+            s.embedding_internal.provider
+            in ("openai", "local", "openai_compatible", "vllm", "ollama")
+            or s.embedding_internal.provider is None
+        )
+        dims = s.embedding_internal.dimensions or 768
+        assert isinstance(dims, int) and dims >= 1
+        assert s.llm_internal.provider in (
             "openai",
             "openai_compatible",
             "vllm",
             "ollama",
             "gemini",
             "claude",
+            "anthropic",
+            "sglang",
         )

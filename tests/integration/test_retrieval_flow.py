@@ -37,7 +37,9 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        embedding_client=MockEmbeddingClient(
+            dimensions=get_settings().embedding_internal.dimensions or 768
+        ),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -59,9 +61,9 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
 
     assert packet.query == "cuisine"
     all_mems = packet.all_memories
-    assert len(all_mems) >= 1, (
-        "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
-    )
+    assert (
+        len(all_mems) >= 1
+    ), "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
     texts = [m.record.text for m in all_mems]
     assert any("Italian" in t or "cuisine" in t.lower() for t in texts)
 
@@ -71,7 +73,9 @@ async def test_retrieve_for_llm_returns_string(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        embedding_client=MockEmbeddingClient(
+            dimensions=get_settings().embedding_internal.dimensions or 768
+        ),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -94,7 +98,9 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        embedding_client=MockEmbeddingClient(
+            dimensions=get_settings().embedding_internal.dimensions or 768
+        ),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -134,9 +140,9 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
         tenant_id, "coffee and meetings", memory_types=["preference"], max_results=10
     )
     for mem in packet.all_memories:
-        assert mem.record.type == MemoryType.PREFERENCE, (
-            f"memory_types filter should restrict to preference, got {mem.record.type}"
-        )
+        assert (
+            mem.record.type == MemoryType.PREFERENCE
+        ), f"memory_types filter should restrict to preference, got {mem.record.type}"
 
 
 @pytest.mark.asyncio
@@ -145,7 +151,9 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        embedding_client=MockEmbeddingClient(
+            dimensions=get_settings().embedding_internal.dimensions or 768
+        ),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),
@@ -192,13 +200,15 @@ async def test_retrieval_embedding_called_once(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     mock_embed = AsyncMock(
         return_value=EmbeddingResult(
-            embedding=[0.1] * get_settings().embedding.dimensions,
+            embedding=[0.1] * get_settings().embedding_internal.dimensions or 768,
             model="test",
-            dimensions=get_settings().embedding.dimensions,
+            dimensions=get_settings().embedding_internal.dimensions or 768,
             tokens_used=10,
         )
     )
-    embedding_client = MockEmbeddingClient(dimensions=get_settings().embedding.dimensions)
+    embedding_client = MockEmbeddingClient(
+        dimensions=get_settings().embedding_internal.dimensions or 768
+    )
     embedding_client.embed = mock_embed
 
     hippocampal = HippocampalStore(
@@ -230,7 +240,9 @@ async def test_retrieval_validity_filtering(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
-        embedding_client=MockEmbeddingClient(dimensions=get_settings().embedding.dimensions),
+        embedding_client=MockEmbeddingClient(
+            dimensions=get_settings().embedding_internal.dimensions or 768
+        ),
         entity_extractor=None,
         relation_extractor=None,
         write_gate=WriteGate(),

@@ -48,7 +48,7 @@ def client(monkeypatch):
     if not os.environ.get("OPENAI_API_KEY"):
         from src.utils.embeddings import MockEmbeddingClient
 
-        dims = get_settings().embedding.dimensions
+        dims = get_settings().embedding_internal.dimensions or 768
         mock_emb = MockEmbeddingClient(dimensions=dims)
         monkeypatch.setattr(
             "src.memory.orchestrator.get_embedding_client",
@@ -125,9 +125,9 @@ def test_unauthorized_access():
                 "X-Tenant-ID": "e2e-unauth"
             },  # distinct tenant so rate limit bucket is separate
         )
-        assert resp.status_code == 401, (
-            f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
-        )
+        assert (
+            resp.status_code == 401
+        ), f"Expected 401 Unauthorized, got {resp.status_code}: {resp.json()}"
 
 
 def test_health_response_structure(client):

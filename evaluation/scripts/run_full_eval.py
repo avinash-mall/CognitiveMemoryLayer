@@ -17,7 +17,7 @@ Run from project root:
   python evaluation/scripts/run_full_eval.py --resume          # Resume from last failure (implies --skip-docker)
   python evaluation/scripts/run_full_eval.py --score-only    # Judge + table only; requires predictions JSON.
 
-Requires: OPENAI_API_KEY (for LLM-as-judge). QA uses LLM from project .env (LLM__PROVIDER, LLM__MODEL, LLM__BASE_URL).
+Requires: OPENAI_API_KEY (for LLM-as-judge). QA uses LLM from project .env (LLM_EVAL__* or LLM_INTERNAL__*).
 """
 
 from __future__ import annotations
@@ -188,8 +188,10 @@ def main() -> None:
                 print(f"  Resuming evaluation from sample {n}.", flush=True)
         print(flush=True)
 
-    # QA model label for table (from .env; eval_locomo_plus reads LLM__* itself)
-    llm_model = os.environ.get("LLM__MODEL", "gpt-4o-mini")
+    # QA model label for table (from .env; eval_locomo_plus reads LLM_EVAL__* / LLM_INTERNAL__* itself)
+    llm_model = os.environ.get("LLM_EVAL__MODEL") or os.environ.get(
+        "LLM_INTERNAL__MODEL", "gpt-4o-mini"
+    )
     step_count = 5 if not args.skip_docker else 2  # Docker steps + eval + table
     current_step = 0
 
@@ -339,7 +341,7 @@ def main() -> None:
             cmd.append("--score-only")
         cmd.extend(["--ingestion-workers", str(args.ingestion_workers)])
         print(f"  PYTHONPATH={env['PYTHONPATH']}", flush=True)
-        print(f"  QA LLM (from .env): LLM__MODEL={llm_model}", flush=True)
+        print(f"  QA LLM (from .env): LLM_EVAL__MODEL/LLM_INTERNAL__MODEL={llm_model}", flush=True)
         t0 = time.monotonic()
         result = subprocess.run(cmd, cwd=str(_ROOT), env=env)
         elapsed = time.monotonic() - t0

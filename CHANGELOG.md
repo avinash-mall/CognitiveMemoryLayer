@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Breaking
+
+- **LLM and embedding config consolidation** — Removed `LLMSettings` and `LLM__*` env vars entirely. Use only `LLM_INTERNAL__*` for internal memory tasks and `LLM_EVAL__*` for evaluation (QA, judge); if `LLM_EVAL__*` is unset, `LLM_INTERNAL__*` is used. Renamed `EMBEDDING__*` to `EMBEDDING_INTERNAL__*`; when embedding config is unset, defaults to `nomic-ai/nomic-embed-text-v2-moe` (768 dims, 512 max seq). Added `FEATURES__USE_LLM_ENABLED` (default `false`) as master switch; when false, all internal LLM usage is disabled and heuristics are used. No backward compatibility: migrate `LLM__*` → `LLM_INTERNAL__*` and `EMBEDDING__*` → `EMBEDDING_INTERNAL__*` in `.env`. See `.env.example` and plan `llm_embedding_config_cleanup_32cb4f39.plan.md`.
+
 ### Fixed
 
 - **Evaluation progress tracking by turn** — The Phase A ingestion progress bar in `eval_locomo_plus.py` now tracks progress by individual conversation turns rather than whole samples. Previously, the progress bar could appear stuck at 0% during slow ingestion phases or when individual turns triggered retry backoffs (e.g., due to database deadlocks), because an entire sample had to complete before the bar updated. Tracking by turns provides accurate, real-time feedback as data is inserted into the databases.

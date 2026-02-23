@@ -130,8 +130,10 @@ def build_context(plus_item, locomo_item):
     events.append((query_time, query_turns))
     events.sort(key=lambda x: x[0])
     stitched = []
-    for _, content in events:
+    dialogue_timestamps = []
+    for t, content in events:
         stitched.extend(content)
+        dialogue_timestamps.extend([t] * len(content))
     return {
         "speaker_a": speaker_a,
         "speaker_b": speaker_b,
@@ -142,6 +144,7 @@ def build_context(plus_item, locomo_item):
         "cue_turns": cue_turns,
         "query_turns": query_turns,
         "dialogue": stitched,
+        "dialogue_timestamps": dialogue_timestamps,
     }
 
 

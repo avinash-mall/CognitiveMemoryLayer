@@ -52,7 +52,7 @@ def _parse_env_line(line: str) -> tuple[str | None, str | None]:
 
 
 def update_env(updates: dict[str, Any]) -> None:
-    """Update .env with key-value pairs. Keys are env var names (e.g. APP_NAME, EMBEDDING__DIMENSIONS).
+    """Update .env with key-value pairs. Keys are env var names (e.g. APP_NAME, EMBEDDING_INTERNAL__DIMENSIONS).
 
     Updates existing lines; appends new ones. Writes atomically via temp file + replace.
     Raises OSError if file is read-only or cannot be written.

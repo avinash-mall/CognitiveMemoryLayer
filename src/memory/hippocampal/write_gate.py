@@ -43,10 +43,12 @@ class WriteGateConfig:
     def __post_init__(self) -> None:
         if not self.pii_patterns:
             self.pii_patterns = [
-                r"\b\d{3}-\d{2}-\d{4}\b",
-                r"\b\d{16}\b",
-                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-                r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",
+                r"\b\d{3}-\d{2}-\d{4}\b",  # SSN
+                r"\b\d{16}\b",  # credit card
+                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",  # email
+                r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",  # phone
+                r"\b[A-Z]{1,2}\d{6,9}\b",  # passport number
+                r"\b\d{7,8}[A-Z]\b",  # driver license (UK-style)
             ]
         if not self.secret_patterns:
             self.secret_patterns = [
@@ -93,7 +95,11 @@ class WriteGate:
             )
 
         redaction_required: bool
-        if settings.use_llm_pii_redaction and unified_result is not None:
+        if (
+            settings.use_llm_enabled
+            and settings.use_llm_pii_redaction
+            and unified_result is not None
+        ):
             redaction_required = bool(unified_result.pii_spans)
             if redaction_required:
                 risk_flags.append("contains_pii")
@@ -107,6 +113,7 @@ class WriteGate:
         effective_chunk_type: ChunkType | None = None
         if (
             unified_result is not None
+            and settings.use_llm_enabled
             and settings.use_llm_memory_type
             and unified_result.memory_type
         ):
@@ -115,9 +122,17 @@ class WriteGate:
             )
 
         importance: float
-        if settings.use_llm_write_gate_importance and unified_result is not None:
+        if (
+            settings.use_llm_enabled
+            and settings.use_llm_write_gate_importance
+            and unified_result is not None
+        ):
             importance = unified_result.importance
-        elif settings.use_llm_salience_refinement and unified_result is not None:
+        elif (
+            settings.use_llm_enabled
+            and settings.use_llm_salience_refinement
+            and unified_result is not None
+        ):
             importance = unified_result.salience
         else:
             importance = self._compute_importance(

@@ -7,6 +7,11 @@ from typing import Any
 
 from ..core.config import get_settings
 
+# Default when EMBEDDING_INTERNAL__* not provided: Sentence Transformer
+# nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max sequence length)
+_DEFAULT_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
+_DEFAULT_EMBEDDING_DIMENSIONS = 768
+
 try:
     from openai import AsyncOpenAI
 except ImportError:
@@ -56,11 +61,16 @@ class OpenAIEmbeddings(EmbeddingClient):
         if AsyncOpenAI is None:
             raise ImportError("openai package is required for OpenAIEmbeddings")
         settings = get_settings()
-        key = api_key or settings.embedding.api_key or os.environ.get("OPENAI_API_KEY", "")
-        self.model = model or settings.embedding.model
-        self._dimensions = dimensions if dimensions is not None else settings.embedding.dimensions
+        ei = settings.embedding_internal
+        key = api_key or ei.api_key or os.environ.get("OPENAI_API_KEY", "")
+        self.model = model or ei.model or _DEFAULT_EMBEDDING_MODEL
+        self._dimensions = (
+            dimensions
+            if dimensions is not None
+            else (ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS)
+        )
         self._pass_dimensions = pass_dimensions
-        url = base_url or settings.embedding.base_url
+        url = base_url or ei.base_url
         if url:
             self.client = AsyncOpenAI(base_url=url, api_key=key)
         else:
@@ -108,7 +118,8 @@ class LocalEmbeddings(EmbeddingClient):
         except ImportError:
             raise ImportError("sentence-transformers is required for LocalEmbeddings")
         settings = get_settings()
-        name = model_name or settings.embedding.local_model
+        ei = settings.embedding_internal
+        name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
             name = name.split(":")[0]
@@ -152,9 +163,13 @@ class MockEmbeddingClient(EmbeddingClient):
     """Deterministic mock for tests; no API calls."""
 
     def __init__(self, dimensions: int | None = None) -> None:
-        self._dimensions = (
-            dimensions if dimensions is not None else get_settings().embedding.dimensions
-        )
+        if dimensions is not None:
+            self._dimensions = dimensions
+        else:
+            ei = get_settings().embedding_internal
+            self._dimensions = (
+                ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
+            )
 
     @property
     def dimensions(self) -> int:
@@ -293,40 +308,42 @@ class CachedEmbeddings(EmbeddingClient):
 
 
 def get_embedding_client() -> EmbeddingClient:
-    """Factory function to get configured embedding client."""
+    """Factory function to get configured embedding client. Reads EMBEDDING_INTERNAL__*.
+    When not provided, defaults to LocalEmbeddings with nomic-ai/nomic-embed-text-v2-moe (768d)."""
     import os
 
     settings = get_settings()
-    provider = settings.embedding.provider
+    ei = settings.embedding_internal
+    provider = ei.provider if ei.provider is not None else "local"
+    dims = ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
+    model = ei.model or _DEFAULT_EMBEDDING_MODEL
+    local_model = ei.local_model or _DEFAULT_EMBEDDING_MODEL
+
     if provider == "openai":
         return OpenAIEmbeddings(
-            api_key=settings.embedding.api_key,
-            model=settings.embedding.model,
-            dimensions=settings.embedding.dimensions,
-            base_url=settings.embedding.base_url,
+            api_key=ei.api_key,
+            model=model,
+            dimensions=dims,
+            base_url=ei.base_url,
         )
     if provider in ("openai_compatible", "vllm"):
-        # OpenAI-compatible embedding endpoint (local server, proxy, etc.)
-        base_url = settings.embedding.base_url or "http://localhost:8000/v1"
-        api_key = settings.embedding.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
+        base_url = ei.base_url or "http://localhost:8000/v1"
+        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
         return OpenAIEmbeddings(
             api_key=api_key,
-            model=settings.embedding.model,
-            dimensions=settings.embedding.dimensions,
+            model=model,
+            dimensions=dims,
             base_url=base_url,
         )
     if provider == "ollama":
-        # Ollama exposes an OpenAI-compatible /v1/embeddings endpoint but does
-        # NOT accept the ``dimensions`` parameter.
-        base_url = settings.embedding.base_url or "http://localhost:11434/v1"
-        api_key = settings.embedding.api_key or os.environ.get("OPENAI_API_KEY") or "ollama"
+        base_url = ei.base_url or "http://localhost:11434/v1"
+        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "ollama"
         return OpenAIEmbeddings(
             api_key=api_key,
-            model=settings.embedding.model,
-            dimensions=settings.embedding.dimensions,
+            model=model,
+            dimensions=dims,
             base_url=base_url,
             pass_dimensions=False,
         )
-    if provider == "local":
-        return LocalEmbeddings(model_name=settings.embedding.local_model)
-    raise ValueError(f"Unknown embedding provider: {provider}")
+    # default: local (nomic-embed-text-v2-moe) when provider is local or unset
+    return LocalEmbeddings(model_name=local_model)

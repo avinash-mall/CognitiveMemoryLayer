@@ -6,7 +6,7 @@ Unified six-category eval: LoCoMo (multi-hop, temporal, common-sense, single-hop
 plus Cognitive. Uses LLM-as-judge for scoring (correct=1, partial=0.5, wrong=0).
 
 Phase A: Ingest each unified sample's input_prompt (parsed into turns) into CML.
-Phase B: For each sample, CML read with query=trigger, then LLM generates answer (provider from .env LLM__*).
+Phase B: For each sample, CML read with query=trigger, then LLM generates answer (provider from .env LLM_EVAL__* or LLM_INTERNAL__*).
 Phase C: LLM-as-judge scores predictions; writes judged JSON and summary.
 
 Usage (from project root):
@@ -24,7 +24,7 @@ import sys
 import time
 from pathlib import Path
 
-# Load project .env so LLM__* (and CML_*) are available for judge and QA
+# Load project .env so LLM_EVAL__* / LLM_INTERNAL__* (and CML_*) are available for judge and QA
 try:
     from dotenv import load_dotenv
 
@@ -66,6 +66,7 @@ _DATE_FORMATS = [
     "%m/%d/%Y",  # "01/15/2024"
     "%d %B %Y",  # "15 January 2024"
     "%B %d %Y",  # "January 15 2024" (no comma)
+    "%I:%M %p on %d %B, %Y",  # "02:30 PM on 15 January, 2024" (Locomo session format)
 ]
 
 
@@ -91,7 +92,7 @@ def _ensure_locomo_plus_path() -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Locomo-Plus unified eval with CML; QA uses LLM from .env (LLM__PROVIDER, LLM__MODEL, etc.)"
+        description="Locomo-Plus unified eval with CML; QA uses LLM from .env (LLM_EVAL__* or LLM_INTERNAL__*)"
     )
     p.add_argument(
         "--unified-file", type=str, required=True, help="Path to unified_input_samples_v2.json"
@@ -115,8 +116,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--judge-model",
         type=str,
-        default=os.environ.get("LLM__MODEL", "gpt-4o-mini"),
-        help="Model for LLM-as-judge (default: LLM__MODEL from .env or gpt-4o-mini)",
+        default=os.environ.get("LLM_EVAL__MODEL")
+        or os.environ.get("LLM_INTERNAL__MODEL", "gpt-4o-mini"),
+        help="Model for LLM-as-judge (default: LLM_EVAL__MODEL or LLM_INTERNAL__MODEL from .env or gpt-4o-mini)",
     )
     p.add_argument("--verbose", action="store_true", help="Emit per-sample retrieval diagnostics")
     p.add_argument(
@@ -264,17 +266,34 @@ _LLM_DEFAULT_BASE: dict[str, str] = {
 
 
 def _get_llm_qa_config() -> tuple[str, str, str]:
-    """Resolve (base_url, model, api_key) for QA from .env: LLM__PROVIDER, LLM__MODEL, LLM__API_KEY, LLM__BASE_URL."""
-    provider = (os.environ.get("LLM__PROVIDER") or "openai").strip().lower()
-    model = (os.environ.get("LLM__MODEL") or "gpt-4o-mini").strip()
-    api_key = (os.environ.get("LLM__API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
-    base_url = (os.environ.get("LLM__BASE_URL") or "").strip()
+    """Resolve (base_url, model, api_key) for QA from .env: LLM_EVAL__* with fallback to LLM_INTERNAL__*."""
+    provider = (
+        (
+            os.environ.get("LLM_EVAL__PROVIDER")
+            or os.environ.get("LLM_INTERNAL__PROVIDER")
+            or "openai"
+        )
+        .strip()
+        .lower()
+    )
+    model = (
+        os.environ.get("LLM_EVAL__MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or "gpt-4o-mini"
+    ).strip()
+    api_key = (
+        os.environ.get("LLM_EVAL__API_KEY")
+        or os.environ.get("LLM_INTERNAL__API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or ""
+    ).strip()
+    base_url = (
+        os.environ.get("LLM_EVAL__BASE_URL") or os.environ.get("LLM_INTERNAL__BASE_URL") or ""
+    ).strip()
     if not base_url:
         base_url = _LLM_DEFAULT_BASE.get(provider, "")
-    if not base_url and provider in ("gemini", "claude"):
+    if not base_url and provider in ("gemini", "claude", "anthropic"):
         raise RuntimeError(
-            f"LLM__BASE_URL is required for provider={provider!r}. "
-            "Use an OpenAI-compatible proxy or set LLM__PROVIDER=openai_compatible with a proxy URL."
+            f"LLM_EVAL__BASE_URL or LLM_INTERNAL__BASE_URL is required for provider={provider!r}. "
+            "Use an OpenAI-compatible proxy or set LLM_EVAL__PROVIDER=openai_compatible with a proxy URL."
         )
     if not base_url:
         base_url = _LLM_DEFAULT_BASE.get("openai_compatible", "http://localhost:8000/v1")
@@ -285,7 +304,7 @@ def _get_llm_qa_config() -> tuple[str, str, str]:
 
 
 def _llm_chat(user_content: str, max_tokens: int = 256) -> str:
-    """Call LLM for QA using OpenAI-compatible API (provider from .env LLM__*). Retries once on empty."""
+    """Call LLM for QA using OpenAI-compatible API (provider from .env LLM_EVAL__* / LLM_INTERNAL__*). Retries once on empty."""
     try:
         from openai import OpenAI
     except ImportError:
@@ -334,10 +353,19 @@ def _ingest_sample(
     tenant_id = f"lp-{sample_idx}"
     input_prompt = sample.get("input_prompt", "")
     turns = _parse_input_prompt_into_turns(input_prompt)
+    turn_timestamps = sample.get("turn_timestamps") or []
     for j, (session_id, content, date_str) in enumerate(turns):
         speaker = content.split(":")[0].strip() if ":" in content else "unknown"
-        parsed_ts = _parse_date_str(date_str)
-        ts_iso = parsed_ts.isoformat() if parsed_ts else None
+        ts_iso = None
+        if j < len(turn_timestamps) and turn_timestamps[j]:
+            t = turn_timestamps[j]
+            if isinstance(t, str) and t.strip():
+                ts_iso = t.strip()
+            elif hasattr(t, "isoformat"):
+                ts_iso = t.isoformat()
+        if ts_iso is None:
+            parsed_ts = _parse_date_str(date_str)
+            ts_iso = parsed_ts.isoformat() if parsed_ts else None
         metadata = {
             "locomo_plus_idx": sample_idx,
             "turn_idx": j,
@@ -391,7 +419,9 @@ def phase_a_ingestion(
         else:
             with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
                 futures = {
-                    executor.submit(_ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay, pbar): i
+                    executor.submit(
+                        _ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay, pbar
+                    ): i
                     for i, sample in enumerate(samples_to_ingest)
                 }
                 for future in as_completed(futures):

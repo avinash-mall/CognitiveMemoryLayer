@@ -13,11 +13,14 @@ from cml.embedded_config import EmbeddedConfig
 def test_embedded_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     """EmbeddedConfig has expected defaults."""
     for key in (
-        "EMBEDDING__PROVIDER",
-        "EMBEDDING__MODEL",
-        "EMBEDDING__DIMENSIONS",
-        "EMBEDDING__BASE_URL",
-        "EMBEDDING__LOCAL_MODEL",
+        "EMBEDDING_INTERNAL__PROVIDER",
+        "EMBEDDING_INTERNAL__MODEL",
+        "EMBEDDING_INTERNAL__DIMENSIONS",
+        "EMBEDDING_INTERNAL__BASE_URL",
+        "EMBEDDING_INTERNAL__LOCAL_MODEL",
+        "LLM_INTERNAL__PROVIDER",
+        "LLM_INTERNAL__MODEL",
+        "LLM_INTERNAL__BASE_URL",
     ):
         monkeypatch.delenv(key, raising=False)
     config = EmbeddedConfig()
