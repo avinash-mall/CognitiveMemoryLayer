@@ -212,7 +212,9 @@ Constraints:
                 items = (
                     resp
                     if isinstance(resp, list)
-                    else resp.get("results", []) if isinstance(resp, dict) else []
+                    else resp.get("results", [])
+                    if isinstance(resp, dict)
+                    else []
                 )
                 for item in items:
                     if isinstance(item, dict):

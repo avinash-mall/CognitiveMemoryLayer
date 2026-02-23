@@ -81,7 +81,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         self._buckets: TTLCache[str, tuple[int, datetime]] = TTLCache(
-            maxsize=10000, ttl=120  # 2 min TTL for in-memory fallback
+            maxsize=10000,
+            ttl=120,  # 2 min TTL for in-memory fallback
         )
         self._lock = asyncio.Lock()
         self._redis_warning_logged = False
