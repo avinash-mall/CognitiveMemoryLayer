@@ -141,13 +141,13 @@ async def test_tool_memory_store_get_results(store, tenant_id):
 @pytest.mark.asyncio
 async def test_knowledge_base_store_query(store, tenant_id):
     """KnowledgeBase: store_fact stores KNOWLEDGE; query/scan retrieves by type or namespace."""
-    from src.core.config import get_settings
+    from src.core.config import get_embedding_dimensions
     from src.utils.embeddings import MockEmbeddingClient
 
     kb = KnowledgeBase(
         store=store,
         embedding_client=MockEmbeddingClient(
-            dimensions=get_settings().embedding_internal.dimensions or 768
+            dimensions=get_embedding_dimensions()
         ),
     )
     await kb.store_fact(
@@ -210,9 +210,9 @@ async def test_historical_timestamp_preservation(pg_session_factory, tenant_id):
         async def generate_json(self, *args, **kwargs):
             return {}
 
-    from src.core.config import get_settings
+    from src.core.config import get_embedding_dimensions
 
-    dims = get_settings().embedding_internal.dimensions or 768
+    dims = get_embedding_dimensions()
     episodic_store = PostgresMemoryStore(pg_session_factory)
     embedding_client = MockEmbeddingClient(dimensions=dims)
     llm_client = MockLLMClient()

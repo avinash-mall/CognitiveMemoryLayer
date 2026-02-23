@@ -108,7 +108,7 @@ class EntityExtractor:
                     [
                         EntityMention(
                             text=e.get("text", ""),
-                            normalized=e.get("normalized", e.get("text", "")),
+                            normalized=str(e.get("normalized") or e.get("text", "")),
                             entity_type=e.get("type", "CONCEPT"),
                         )
                         for e in entries

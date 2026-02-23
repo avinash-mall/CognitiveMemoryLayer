@@ -48,7 +48,9 @@ def client(monkeypatch):
     if not os.environ.get("OPENAI_API_KEY"):
         from src.utils.embeddings import MockEmbeddingClient
 
-        dims = get_settings().embedding_internal.dimensions or 768
+        from src.core.config import get_embedding_dimensions
+
+        dims = get_embedding_dimensions()
         mock_emb = MockEmbeddingClient(dimensions=dims)
         monkeypatch.setattr(
             "src.memory.orchestrator.get_embedding_client",

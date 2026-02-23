@@ -2,7 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from ..consolidation.worker import ConsolidationWorker
@@ -187,7 +187,10 @@ class MemoryOrchestrator:
         """Factory for embedded lite mode: no PostgreSQL/Neo4j/Redis; uses provided episodic store and clients."""
         graph_store = NoOpGraphStore()
         fact_store = NoOpFactStore()
-        neocortical = NeocorticalStore(graph_store, fact_store)
+        neocortical = NeocorticalStore(
+            cast(Neo4jGraphStore, graph_store),
+            cast(SemanticFactStore, fact_store),
+        )
 
         short_term_config = ShortTermMemoryConfig(min_salience_for_encoding=0.0)
         short_term = ShortTermMemory(config=short_term_config)
@@ -205,20 +208,20 @@ class MemoryOrchestrator:
         )
 
         reconsolidation = ReconsolidationService(
-            memory_store=episodic_store,
+            memory_store=cast(PostgresMemoryStore, episodic_store),
             llm_client=llm_client,
             fact_extractor=LLMFactExtractor(llm_client),
             redis_client=None,
         )
 
         consolidation = ConsolidationWorker(
-            episodic_store=episodic_store,
+            episodic_store=cast(PostgresMemoryStore, episodic_store),
             neocortical_store=neocortical,
             llm_client=llm_client,
         )
 
         forgetting = ForgettingWorker(
-            store=episodic_store,
+            store=cast(PostgresMemoryStore, episodic_store),
             compression_llm_client=llm_client,
         )
 
@@ -382,12 +385,11 @@ class MemoryOrchestrator:
                                     None,
                                 ),
                             ):
-                                await self.neocortical.facts.deactivate_fact(_old.id)
-                                await self.hippocampal.deactivate_constraints_by_key(
-                                    tenant_id, _old.key
-                                )
                                 await self.neocortical.facts.invalidate_fact(
                                     tenant_id, _old.key, reason="superseded"
+                                )
+                                await self.hippocampal.deactivate_constraints_by_key(
+                                    tenant_id, _old.key
                                 )
                     except Exception as e:
                         logger.warning(

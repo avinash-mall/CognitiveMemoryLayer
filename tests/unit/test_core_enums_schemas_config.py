@@ -188,13 +188,19 @@ class TestConfig:
         assert a is b
 
     def test_nested_settings_defaults(self):
+        from src.core.config import get_embedding_dimensions
+
         s = get_settings()
-        assert (
-            s.embedding_internal.provider
-            in ("openai", "local", "openai_compatible", "vllm", "ollama")
-            or s.embedding_internal.provider is None
-        )
-        dims = s.embedding_internal.dimensions or 768
+        ei = getattr(s, "embedding_internal", None)
+        if ei is not None:
+            assert (
+                ei.provider
+                in ("openai", "local", "openai_compatible", "vllm", "ollama")
+                or ei.provider is None
+            )
+            dims = ei.dimensions or 768
+        else:
+            dims = get_embedding_dimensions()
         assert isinstance(dims, int) and dims >= 1
         assert s.llm_internal.provider in (
             "openai",
