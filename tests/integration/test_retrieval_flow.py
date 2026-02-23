@@ -59,9 +59,9 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
 
     assert packet.query == "cuisine"
     all_mems = packet.all_memories
-    assert len(all_mems) >= 1, (
-        "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
-    )
+    assert (
+        len(all_mems) >= 1
+    ), "retrieval should find fact (key user:preference:cuisine contains 'cuisine')"
     texts = [m.record.text for m in all_mems]
     assert any("Italian" in t or "cuisine" in t.lower() for t in texts)
 
@@ -134,9 +134,9 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
         tenant_id, "coffee and meetings", memory_types=["preference"], max_results=10
     )
     for mem in packet.all_memories:
-        assert mem.record.type == MemoryType.PREFERENCE, (
-            f"memory_types filter should restrict to preference, got {mem.record.type}"
-        )
+        assert (
+            mem.record.type == MemoryType.PREFERENCE
+        ), f"memory_types filter should restrict to preference, got {mem.record.type}"
 
 
 @pytest.mark.asyncio
