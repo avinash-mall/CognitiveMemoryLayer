@@ -99,7 +99,7 @@ class TestAuthContextPermissions:
             app.dependency_overrides.pop(get_auth_context, None)
 
     def test_require_admin_permission_returns_403_when_can_admin_false(self):
-        """When AuthContext has can_admin=False, dashboard admin endpoint returns 403."""
+        """When AuthContext has can_admin=False, admin endpoint returns 403."""
 
         async def no_admin_context():
             return AuthContext(
@@ -112,8 +112,8 @@ class TestAuthContextPermissions:
         app.dependency_overrides[get_auth_context] = no_admin_context
         try:
             with TestClient(app) as client:
-                resp = client.get(
-                    "/api/v1/dashboard/overview",
+                resp = client.post(
+                    "/api/v1/admin/consolidate/some-user",
                     headers={"X-API-Key": "any", "X-Tenant-ID": "t1"},
                 )
                 assert resp.status_code == 403
