@@ -249,6 +249,6 @@ async def test_historical_timestamp_preservation(pg_session_factory, tenant_id):
         if found_historic_fact:
             break
 
-    assert found_historic_episodic or found_historic_fact, (
-        "Either episodic or semantic store should preserve historic 2023 timestamp"
-    )
+    assert (
+        found_historic_episodic or found_historic_fact
+    ), "Either episodic or semantic store should preserve historic 2023 timestamp"
