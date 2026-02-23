@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -21,7 +20,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..memory.orchestrator import MemoryOrchestrator
 
-logger = logging.getLogger(__name__)
+from ..utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 _QUEUE_KEY = "cml:storage:queue"
 _PROCESSED_PREFIX = "cml:storage:processed:"

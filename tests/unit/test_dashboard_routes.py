@@ -8,8 +8,11 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from src.api.app import app
-from src.api.dashboard_routes import _get_db
+from src.api.dashboard import _get_db
 from src.core.config import get_settings
+
+# CSRF middleware requires this for dashboard POST/PUT/DELETE/PATCH
+DASHBOARD_POST_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
 
 
 def _env_auth():
@@ -32,6 +35,7 @@ def admin_headers(monkeypatch):
         yield {
             "X-API-Key": admin_key,
             "X-Tenant-ID": tenant,
+            **DASHBOARD_POST_HEADERS,
         }
     finally:
         get_settings.cache_clear()
@@ -49,6 +53,7 @@ def user_headers(monkeypatch):
         yield {
             "X-API-Key": api_key,
             "X-Tenant-ID": tenant,
+            **DASHBOARD_POST_HEADERS,
         }
     finally:
         get_settings.cache_clear()
@@ -186,6 +191,17 @@ class TestDashboardAuth:
         with TestClient(app, headers=user_headers) as client:
             resp = client.post("/api/v1/dashboard/database/reset")
         assert resp.status_code == 403
+
+    def test_dashboard_post_without_csrf_header_returns_403(self, admin_headers):
+        """Dashboard POST without X-Requested-With returns 403 (CSRF protection)."""
+        headers_without_csrf = {k: v for k, v in admin_headers.items() if k != "X-Requested-With"}
+        with TestClient(app, headers=headers_without_csrf) as client:
+            resp = client.post(
+                "/api/v1/dashboard/reconsolidate",
+                json={"tenant_id": "t1"},
+            )
+        assert resp.status_code == 403
+        assert resp.json().get("detail") == "Missing CSRF header"
 
 
 class TestDashboardWithAdminAndMockDb:

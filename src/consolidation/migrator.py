@@ -7,7 +7,7 @@ from uuid import UUID
 
 from ..core.enums import MemoryStatus
 from ..memory.neocortical.store import NeocorticalStore
-from ..storage.postgres import PostgresMemoryStore
+from ..storage.base import MemoryStoreBase
 from .schema_aligner import AlignmentResult
 
 
@@ -41,7 +41,7 @@ class ConsolidationMigrator:
     def __init__(
         self,
         neocortical: NeocorticalStore,
-        episodic_store: PostgresMemoryStore,
+        episodic_store: MemoryStoreBase,
     ):
         self.semantic = neocortical
         self.episodic = episodic_store

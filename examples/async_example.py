@@ -66,6 +66,11 @@ async def demo_concurrent():
         for q, r in zip(queries, read_results, strict=False):
             print(f"  '{q}': {r.total_count} memories")
 
+        print("\n--- Streaming (SSE) ---")
+        print("  'user preferences' (streamed):")
+        async for item in memory.read_stream("user preferences"):
+            print(f"    - {item.text}")
+
 
 async def demo_pipeline():
     """Processing pipeline with per-session writes and reads."""

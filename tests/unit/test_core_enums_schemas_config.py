@@ -194,8 +194,7 @@ class TestConfig:
         ei = getattr(s, "embedding_internal", None)
         if ei is not None:
             assert (
-                ei.provider
-                in ("openai", "local", "openai_compatible", "vllm", "ollama")
+                ei.provider in ("openai", "local", "openai_compatible", "vllm", "ollama")
                 or ei.provider is None
             )
             dims = ei.dimensions or 768

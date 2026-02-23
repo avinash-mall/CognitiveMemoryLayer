@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from ..core.enums import MemorySource, MemoryStatus
 from ..core.schemas import MemoryRecord, MemoryRecordCreate, Provenance
-from ..storage.postgres import PostgresMemoryStore
+from ..storage.base import MemoryStoreBase
 from ..utils.llm import LLMClient
 from .actions import ForgettingAction, ForgettingOperation, ForgettingResult
 from .compression import summarize_for_compression
@@ -15,8 +15,8 @@ class ForgettingExecutor:
 
     def __init__(
         self,
-        store: PostgresMemoryStore,
-        archive_store: PostgresMemoryStore | None = None,
+        store: MemoryStoreBase,
+        archive_store: MemoryStoreBase | None = None,
         compression_llm_client: LLMClient | None = None,
         compression_max_chars: int = 100,
     ) -> None:

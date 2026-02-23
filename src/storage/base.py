@@ -20,6 +20,15 @@ class MemoryStoreBase(ABC):
         """Get a single record by ID."""
         ...
 
+    async def get_by_ids_batch(self, record_ids: list[UUID]) -> list[MemoryRecord]:
+        """Get multiple records by IDs in a single query. Default: sequential get_by_id; override for batch."""
+        out: list[MemoryRecord] = []
+        for rid in record_ids:
+            rec = await self.get_by_id(rid)
+            if rec is not None:
+                out.append(rec)
+        return out
+
     @abstractmethod
     async def get_by_key(
         self,
@@ -87,6 +96,13 @@ class MemoryStoreBase(ABC):
     ) -> int:
         """Delete records matching filters. Holistic: tenant-only. Returns count of deleted records."""
         ...
+
+    async def count_references_to(self, record_id: UUID) -> int:
+        """
+        Count how many other records reference this one (e.g. supersedes_id, evidence_refs).
+        Default returns 0; override in stores that track references.
+        """
+        return 0
 
 
 class GraphStoreBase(ABC):
