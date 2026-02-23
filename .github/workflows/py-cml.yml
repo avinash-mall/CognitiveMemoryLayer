@@ -64,7 +64,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check src packages/py-cml/src tests packages/py-cml/tests
-      - run: ruff format --check src packages/py-cml/src tests packages/py-cml/tests
+      - run: black --check src packages/py-cml/src tests packages/py-cml/tests
       - run: mypy packages/py-cml/src/cml
 
   test:
