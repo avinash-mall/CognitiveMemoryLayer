@@ -22,13 +22,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ruff black
+          pip install ruff
 
       - name: Run ruff
         run: ruff check src tests packages/py-cml/src packages/py-cml/tests
 
-      - name: Run black
-        run: black --check src tests packages/py-cml/src packages/py-cml/tests
+      - name: Run ruff format
+        run: ruff format --check src tests packages/py-cml/src packages/py-cml/tests
 
   test:
     runs-on: ubuntu-latest
