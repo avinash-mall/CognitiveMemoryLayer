@@ -19,6 +19,7 @@ prometheus-client>=0.21
 semchunk
 transformers
 sentence-transformers>=3.0
+einops>=0.7.0
 # Embedded mode (for py-cml embedded/e2e tests)
 aiosqlite>=0.20
 
