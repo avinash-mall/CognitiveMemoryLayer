@@ -85,3 +85,6 @@ evaluation/**/*.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Recovered corrupt git backup (do not track)
+.git.corrupt/
