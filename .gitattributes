@@ -1,0 +1,2 @@
+# Normalize line endings for CI (ruff format --check on Linux)
+*.py text eol=lf
