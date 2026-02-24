@@ -29,7 +29,6 @@ env/
 # Environment and secrets
 .env
 .env.local
-.env.minimal
 *.pem
 
 # Local config (project uses .env + src/core/config.py)
