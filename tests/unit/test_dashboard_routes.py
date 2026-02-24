@@ -8,6 +8,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from src.api.app import app
+from src.api.auth import _build_api_keys
 from src.api.dashboard import _get_db
 from src.core.config import get_settings
 
@@ -31,6 +32,7 @@ def admin_headers(monkeypatch):
     monkeypatch.setenv("AUTH__ADMIN_API_KEY", admin_key)
     monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
+    _build_api_keys.cache_clear()
     try:
         yield {
             "X-API-Key": admin_key,
@@ -39,6 +41,7 @@ def admin_headers(monkeypatch):
         }
     finally:
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
 
 
 @pytest.fixture
@@ -49,6 +52,7 @@ def user_headers(monkeypatch):
     monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-key-for-tests")
     monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
+    _build_api_keys.cache_clear()
     try:
         yield {
             "X-API-Key": api_key,
@@ -57,6 +61,7 @@ def user_headers(monkeypatch):
         }
     finally:
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
 
 
 def _make_mock_db_session():
@@ -114,6 +119,7 @@ class TestDashboardAuth:
         monkeypatch.setenv("AUTH__ADMIN_API_KEY", "admin-k")
         monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "t")
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
         try:
             with TestClient(app) as client:
                 resp = client.get(
@@ -122,6 +128,7 @@ class TestDashboardAuth:
             assert resp.status_code == 401
         finally:
             get_settings.cache_clear()
+            _build_api_keys.cache_clear()
 
     def test_overview_with_user_key_returns_403(self, user_headers):
         """Dashboard overview requires admin key."""
