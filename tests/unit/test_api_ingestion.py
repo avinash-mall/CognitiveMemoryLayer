@@ -8,6 +8,7 @@ pytest.importorskip("evaluation")
 from evaluation.scripts.eval_locomo_plus import _cml_write
 
 
+@pytest.mark.e2e
 def test_api_ingestion():
     tenant_id = f"test-tenant-{uuid.uuid4()}"
     session_id = f"test-session-{uuid.uuid4()}"
