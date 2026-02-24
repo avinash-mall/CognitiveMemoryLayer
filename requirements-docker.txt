@@ -13,6 +13,7 @@ openai>=1.0
 tiktoken>=0.8
 python-dotenv>=1.0
 structlog>=24.0
+cachetools>=5.0
 tenacity>=8.0
 prometheus-client>=0.21
 semchunk
