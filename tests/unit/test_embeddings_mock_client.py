@@ -1,11 +1,8 @@
-"""Unit tests for mock embedding client.
-
-Cache and get_embedding_client() behavior are covered in test_embeddings_client_cache.py.
-"""
+"""Unit tests for mock embedding client."""
 
 import pytest
 
-from src.utils.embeddings import MockEmbeddingClient, clear_embedding_client_cache
+from src.utils.embeddings import MockEmbeddingClient
 
 
 @pytest.mark.asyncio
@@ -31,8 +28,3 @@ async def test_mock_embed_batch():
     assert len(results) == 2
     assert len(results[0].embedding) == 8
     assert results[0].embedding != results[1].embedding
-
-
-def test_clear_embedding_client_cache_callable():
-    """clear_embedding_client_cache() is callable and does not raise (smoke test)."""
-    clear_embedding_client_cache()
