@@ -14,6 +14,7 @@ from ..core.config import get_settings, validate_embedding_dimensions
 from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
 from ..storage.connection import DatabaseManager
 from .admin_routes import admin_router
+from .dashboard import dashboard_router
 from .middleware import RateLimitMiddleware, RequestLoggingMiddleware
 from .routes import router
 
@@ -71,6 +72,22 @@ def create_app() -> FastAPI:
     # CORS spec: credentials are incompatible with wildcard origins
     allow_credentials = "*" not in origins
 
+    class CSRFCheckMiddleware(BaseHTTPMiddleware):
+        """Require X-Requested-With for dashboard state-changing requests."""
+
+        async def dispatch(self, request: Request, call_next):
+            if (
+                request.url.path.startswith("/api/v1/dashboard")
+                and request.method in ("POST", "PUT", "DELETE", "PATCH")
+                and request.headers.get("X-Requested-With") != "XMLHttpRequest"
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Missing CSRF header"},
+                )
+            return await call_next(request)
+
+    app.add_middleware(CSRFCheckMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -86,6 +103,7 @@ def create_app() -> FastAPI:
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(admin_router, prefix="/api/v1")
+    app.include_router(dashboard_router, prefix="/api/v1")
 
     # Prometheus metrics endpoint
     from prometheus_client import make_asgi_app
