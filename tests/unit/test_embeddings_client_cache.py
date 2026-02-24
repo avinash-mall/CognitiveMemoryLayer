@@ -6,7 +6,10 @@ try:
     from src.utils.embeddings import clear_embedding_client_cache, get_embedding_client
 except ImportError as e:
     if "clear_embedding_client_cache" in str(e):
-        pytest.skip("clear_embedding_client_cache not in embeddings (reverted to a7a54e5)", allow_module_level=True)
+        pytest.skip(
+            "clear_embedding_client_cache not in embeddings (reverted to a7a54e5)",
+            allow_module_level=True,
+        )
     raise
 
 from src.core.config import get_settings
