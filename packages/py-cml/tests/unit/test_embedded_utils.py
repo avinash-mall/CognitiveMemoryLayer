@@ -1,6 +1,0 @@
-"""Unit tests for embedded CML utilities (placeholder)."""
-
-
-def test_embedded_utils_placeholder() -> None:
-    """Placeholder test for embedded utils module."""
-    assert True
