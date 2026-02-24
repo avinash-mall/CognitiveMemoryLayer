@@ -1,6 +1,5 @@
 """Embedding service for memory content."""
 
-import functools
 import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -133,25 +132,13 @@ class LocalEmbeddings(EmbeddingClient):
             from sentence_transformers import SentenceTransformer
         except ImportError:
             raise ImportError("sentence-transformers is required for LocalEmbeddings")
-        import threading
-
-        import torch
-
-        self._lock = threading.Lock()
         settings = get_settings()
         ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
         name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
             name = name.split(":")[0]
-        # Auto-select device: CUDA > MPS (Apple) > CPU
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            device = "cpu"
-        self.model = SentenceTransformer(name, device=device, trust_remote_code=True)
+        self.model = SentenceTransformer(name, trust_remote_code=True)
         self.model_name = name
         self._dimensions = self.model.get_sentence_embedding_dimension()
 
@@ -163,12 +150,7 @@ class LocalEmbeddings(EmbeddingClient):
         import asyncio
 
         loop = asyncio.get_running_loop()
-        
-        def _encode() -> list[float]:
-            with self._lock:
-                return self.model.encode(text).tolist()
-                
-        embedding = await loop.run_in_executor(None, _encode)
+        embedding = await loop.run_in_executor(None, lambda: self.model.encode(text).tolist())
         return EmbeddingResult(
             embedding=embedding,
             model=self.model_name,
@@ -180,12 +162,7 @@ class LocalEmbeddings(EmbeddingClient):
         import asyncio
 
         loop = asyncio.get_running_loop()
-        
-        def _encode() -> list[list[float]]:
-            with self._lock:
-                return self.model.encode(texts).tolist()
-                
-        embeddings = await loop.run_in_executor(None, _encode)
+        embeddings = await loop.run_in_executor(None, lambda: self.model.encode(texts).tolist())
         return [
             EmbeddingResult(
                 embedding=emb,
@@ -342,85 +319,43 @@ class CachedEmbeddings(EmbeddingClient):
         return [r for _, r in results if r is not None]
 
 
-def _embedding_client_cache_key(
-    provider: str,
-    model: str,
-    local_model: str,
-    dimensions: int,
-    base_url: str,
-    api_key_present: str,
-    pass_dimensions: bool,
-) -> tuple[str, str, str, int, str, str, bool]:
-    """Build a hashable cache key from embedding config. Used by _get_embedding_client_cached."""
-    return (provider, model, local_model, dimensions, base_url or "", api_key_present, pass_dimensions)
-
-
-@functools.lru_cache(maxsize=8)
-def _get_embedding_client_cached(
-    provider: str,
-    model: str,
-    local_model: str,
-    dimensions: int,
-    base_url: str,
-    api_key_present: str,
-    pass_dimensions: bool,
-) -> EmbeddingClient:
-    """Create an embedding client from a config key. Cached per key to avoid repeated model loads."""
-    import os
-
-    if provider == "openai":
-        ei = getattr(get_settings(), "embedding_internal", None) or EmbeddingInternalSettings()
-        return OpenAIEmbeddings(
-            api_key=ei.api_key,
-            model=model,
-            dimensions=dimensions,
-            base_url=base_url or None,
-        )
-    if provider in ("openai_compatible", "vllm"):
-        ei = getattr(get_settings(), "embedding_internal", None) or EmbeddingInternalSettings()
-        base = base_url or "http://localhost:8000/v1"
-        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
-        return OpenAIEmbeddings(
-            api_key=api_key,
-            model=model,
-            dimensions=dimensions,
-            base_url=base,
-        )
-    if provider == "ollama":
-        ei = getattr(get_settings(), "embedding_internal", None) or EmbeddingInternalSettings()
-        base = base_url or "http://localhost:11434/v1"
-        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "ollama"
-        return OpenAIEmbeddings(
-            api_key=api_key,
-            model=model,
-            dimensions=dimensions,
-            base_url=base,
-            pass_dimensions=pass_dimensions,
-        )
-    # default: local
-    return LocalEmbeddings(model_name=local_model)
-
-
-def clear_embedding_client_cache() -> None:
-    """Clear the embedding client cache. Call after changing embedding config (e.g. env) to get a new client."""
-    _get_embedding_client_cached.cache_clear()
-
-
 def get_embedding_client() -> EmbeddingClient:
     """Factory function to get configured embedding client. Reads EMBEDDING_INTERNAL__*.
-    When not provided, defaults to LocalEmbeddings with nomic-ai/nomic-embed-text-v2-moe (768d).
-    The returned client is cached per config; call clear_embedding_client_cache() after changing
-    embedding settings if you need a new client (and typically get_settings.cache_clear() first)."""
+    When not provided, defaults to LocalEmbeddings with nomic-ai/nomic-embed-text-v2-moe (768d)."""
+    import os
+
     settings = get_settings()
     ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
     provider = ei.provider if ei.provider is not None else "local"
     dims = ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
     model = ei.model or _DEFAULT_EMBEDDING_MODEL
     local_model = ei.local_model or _DEFAULT_EMBEDDING_MODEL
-    base_url = ei.base_url or ""
-    api_key_present = "ak" if ei.api_key else "no_ak"
-    pass_dimensions = provider != "ollama"
-    key = _embedding_client_cache_key(
-        provider, model, local_model, dims, base_url, api_key_present, pass_dimensions
-    )
-    return _get_embedding_client_cached(*key)
+
+    if provider == "openai":
+        return OpenAIEmbeddings(
+            api_key=ei.api_key,
+            model=model,
+            dimensions=dims,
+            base_url=ei.base_url,
+        )
+    if provider in ("openai_compatible", "vllm"):
+        base_url = ei.base_url or "http://localhost:8000/v1"
+        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
+        return OpenAIEmbeddings(
+            api_key=api_key,
+            model=model,
+            dimensions=dims,
+            base_url=base_url,
+        )
+    if provider == "ollama":
+        base_url = ei.base_url or "http://localhost:11434/v1"
+        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "ollama"
+        return OpenAIEmbeddings(
+            api_key=api_key,
+            model=model,
+            dimensions=dims,
+            base_url=base_url,
+            pass_dimensions=False,
+        )
+    # default: local (nomic-embed-text-v2-moe) when provider is local or unset
+    return LocalEmbeddings(model_name=local_model)
