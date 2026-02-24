@@ -1,3 +1,0 @@
-ci: use ruff check + ruff format + mypy
-
-Co-authored-by: Cursor <cursoragent@cursor.com>
