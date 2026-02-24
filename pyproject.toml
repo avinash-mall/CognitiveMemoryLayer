@@ -102,6 +102,7 @@ packages = ["src", "packages/py-cml/src/cml"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [".git.corrupt"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH", "RUF"]
@@ -113,8 +114,6 @@ ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", 
 "evaluation/locomo_plus/task_eval/*.py" = ["E402"]
 "migrations/env.py" = ["E402"]
 "src/memory/neocortical/fact_store.py" = ["B010"]
-"src/api/dashboard/_shared.py" = ["F401"]  # Re-exports from schemas for dashboard routes
-
 [tool.ruff.lint.isort]
 known-first-party = ["cml", "src"]
 

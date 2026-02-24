@@ -88,3 +88,9 @@ Thumbs.db
 
 # Recovered corrupt git backup (do not track)
 .git.corrupt/
+
+# Audit script outputs (fix corrupt vs a7a54e5)
+corrupt_candidates.txt
+deleted_still_referenced.txt
+modified_keep_local.txt
+modified_replace_with_a7a54e5.txt
