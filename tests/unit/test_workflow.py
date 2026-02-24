@@ -1,9 +1,11 @@
 import os
 from datetime import UTC, datetime
 
+import pytest
 import requests
 
 
+@pytest.mark.e2e
 def test_api():
     base_url = os.environ.get("CML_BASE_URL", "http://localhost:8000").rstrip("/")
     tenant_id = "test-temporal-range-tenant"
