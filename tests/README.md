@@ -154,7 +154,7 @@ USE_ENV_DB=1 DATABASE__POSTGRES_URL=... pytest tests/integration/test_dashboard_
 
 ### Environment and `.env`
 
-Tests read **all** configuration from the project root **`.env`** (loaded via `conftest.py`). There are no hardcoded fallbacks for URLs, API keys, or embedding dimensions. The embedding client returned by `get_embedding_client()` is cached per config; tests that monkeypatch embedding config and need a fresh client should call `clear_embedding_client_cache()` (from `src.utils.embeddings` or `src.utils`) after `get_settings.cache_clear()`.
+Tests read **all** configuration from the project root **`.env`** (loaded via `conftest.py`). There are no hardcoded fallbacks for URLs, API keys, or embedding dimensions.
 
 | Purpose | Variables (set in `.env`) |
 |--------|---------------------------|
