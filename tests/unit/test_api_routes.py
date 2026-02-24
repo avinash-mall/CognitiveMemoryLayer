@@ -4,6 +4,7 @@ import os
 from datetime import UTC
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -237,7 +238,10 @@ class TestUpdateExceptionHandlers:
             side_effect=MemoryNotFoundError(memory_id="00000000-0000-0000-0000-000000000001")
         )
 
-        app.dependency_overrides[get_orchestrator] = lambda _req: mock_orch
+        def override_orchestrator(request: Request):
+            return mock_orch
+
+        app.dependency_overrides[get_orchestrator] = override_orchestrator
         try:
             with TestClient(app, headers=auth_headers) as client:
                 resp = client.post(
@@ -264,7 +268,10 @@ class TestUpdateExceptionHandlers:
             side_effect=MemoryAccessDenied("Memory does not belong to tenant")
         )
 
-        app.dependency_overrides[get_orchestrator] = lambda _req: mock_orch
+        def override_orchestrator(request: Request):
+            return mock_orch
+
+        app.dependency_overrides[get_orchestrator] = override_orchestrator
         try:
             with TestClient(app, headers=auth_headers) as client:
                 resp = client.post(
