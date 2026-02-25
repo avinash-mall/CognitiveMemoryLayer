@@ -139,8 +139,12 @@ def create_memory_chain(
         memory_api_url or os.environ.get("CML_BASE_URL") or ""
     ).strip() or "http://localhost:8000"
     key = memory_api_key or os.environ.get("CML_API_KEY")
+    # Prefer LLM_INTERNAL__* when set (e.g. .env lines 20-22)
     model = (
-        llm_model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
+        llm_model
+        or os.environ.get("LLM_INTERNAL__MODEL")
+        or os.environ.get("OPENAI_MODEL")
+        or ""
     ).strip()
     if not model:
         raise ValueError("Set OPENAI_MODEL or LLM_INTERNAL__MODEL")
@@ -152,7 +156,16 @@ def create_memory_chain(
         store_human=True,
         store_ai=False,
     )
-    llm = ChatOpenAI(model=model, temperature=0.7)
+    llm_base = (os.environ.get("LLM_INTERNAL__BASE_URL") or "").strip()
+    if llm_base:
+        api_key = (
+            os.environ.get("LLM_INTERNAL__API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "dummy"
+        )
+        llm = ChatOpenAI(model=model, temperature=0.7, base_url=llm_base, api_key=api_key)
+    else:
+        llm = ChatOpenAI(model=model, temperature=0.7)
     return ConversationChain(llm=llm, memory=memory, prompt=PROMPT, verbose=False)
 
 
@@ -160,8 +173,18 @@ def main():
     print("=" * 60)
     print("LangChain + Cognitive Memory Layer")
     print("=" * 60)
-    if not os.getenv("OPENAI_API_KEY"):
-        print("Set OPENAI_API_KEY in .env")
+    has_llm_internal = (
+        os.environ.get("LLM_INTERNAL__PROVIDER")
+        and os.environ.get("LLM_INTERNAL__MODEL")
+        and os.environ.get("LLM_INTERNAL__BASE_URL")
+    )
+    has_openai = os.getenv("OPENAI_API_KEY") and (
+        os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")
+    )
+    if not has_llm_internal and not has_openai:
+        print(
+            "Set OPENAI_API_KEY and OPENAI_MODEL (or LLM_INTERNAL__PROVIDER/MODEL/BASE_URL) in .env"
+        )
         return
     if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")):
         print("Set OPENAI_MODEL or LLM_INTERNAL__MODEL in .env")
