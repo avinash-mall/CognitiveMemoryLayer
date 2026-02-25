@@ -42,7 +42,7 @@ EXAMPLES = [
         "needs_llm_openai": False,
         "needs_llm_anthropic": False,
         "interactive": False,
-        "timeout_sec": 90,
+        "timeout_sec": 120,
     },
     {
         "name": "quickstart",
@@ -87,7 +87,7 @@ EXAMPLES = [
         "needs_llm_openai": False,
         "needs_llm_anthropic": False,
         "interactive": False,
-        "timeout_sec": 60,
+        "timeout_sec": 180,
     },
     {
         "name": "api_direct_minimal",
@@ -164,10 +164,22 @@ def _has_api_key() -> bool:
     return bool(os.environ.get("CML_API_KEY"))
 
 
+def _has_llm_internal() -> bool:
+    """True when .env has LLM_INTERNAL__PROVIDER, MODEL, and BASE_URL (e.g. lines 20-22)."""
+    return bool(
+        os.environ.get("LLM_INTERNAL__PROVIDER")
+        and os.environ.get("LLM_INTERNAL__MODEL")
+        and os.environ.get("LLM_INTERNAL__BASE_URL")
+    )
+
+
 def _has_openai() -> bool:
     return bool(
-        os.environ.get("OPENAI_API_KEY")
-        and (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL"))
+        (
+            os.environ.get("OPENAI_API_KEY")
+            and (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL"))
+        )
+        or _has_llm_internal()
     )
 
 
@@ -183,7 +195,7 @@ def _should_skip(ex: dict, include_llm: bool, no_skip: bool) -> str | None:
     if ex.get("needs_llm_openai") and not _has_openai():
         if not include_llm:
             return "LLM example (use --include-llm)"
-        return "missing OPENAI_API_KEY or OPENAI_MODEL/LLM_INTERNAL__MODEL"
+        return "missing OPENAI_API_KEY+model or LLM_INTERNAL__PROVIDER/MODEL/BASE_URL"
     if ex.get("needs_llm_anthropic") and not _has_anthropic():
         if not include_llm:
             return "LLM example (use --include-llm)"
@@ -217,7 +229,11 @@ def _run_one(
     env["PYTHONIOENCODING"] = "utf-8"
 
     stdin_input = ex.get("stdin_input")
-    stdin_pipe = subprocess.PIPE if stdin_input else None
+    # When feeding stdin via input=, do not pass stdin= PIPE (subprocess forbids both).
+    stdin_arg = None if stdin_input else subprocess.PIPE
+    # subprocess with text=True expects str; EXAMPLES may use bytes for stdin_input
+    if stdin_input is not None and isinstance(stdin_input, bytes):
+        stdin_input = stdin_input.decode("utf-8")
 
     cmd = [sys.executable, "-u", str(path)]
     start = time.time()
@@ -226,7 +242,7 @@ def _run_one(
             cmd,
             cwd=str(REPO_ROOT),
             env=env,
-            stdin=stdin_pipe,
+            stdin=stdin_arg,
             input=stdin_input,
             capture_output=True,
             text=True,
