@@ -5,14 +5,25 @@ import pytest
 import requests
 
 
+def _server_reachable() -> bool:
+    url = os.environ.get("CML_BASE_URL", "")
+    if not url:
+        return False
+    try:
+        return requests.get(f"{url.rstrip('/')}/api/v1/health", timeout=2).status_code == 200
+    except Exception:
+        return False
+
+
 @pytest.mark.e2e
+@pytest.mark.skipif(not _server_reachable(), reason="CML API server not running")
 def test_api():
-    base_url = os.environ.get("CML_BASE_URL", "http://localhost:8000").rstrip("/")
+    base_url = os.environ.get("CML_BASE_URL", "").rstrip("/")
+    api_key = os.environ.get("CML_API_KEY", "")
     tenant_id = "test-temporal-range-tenant"
     historical_date = datetime(2023, 1, 15, 12, 0, 0, tzinfo=UTC).isoformat()
-    headers = {"X-Tenant-Id": tenant_id, "X-API-Key": "test-key"}
+    headers = {"X-Tenant-Id": tenant_id, "X-API-Key": api_key}
 
-    # 1. Write the memory
     print(f"Writing memory with timestamp {historical_date}...")
     write_resp = requests.post(
         f"{base_url}/api/v1/memory/write",
@@ -25,12 +36,10 @@ def test_api():
     )
     print(f"Write response: {write_resp.status_code} {write_resp.text}")
 
-    # 2. Wait for jobs
     import time
 
     time.sleep(2)
 
-    # 3. Read back
     print("Reading memories back...")
     read_resp = requests.post(
         f"{base_url}/api/v1/memory/read", headers=headers, json={"query": "New York"}
