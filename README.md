@@ -748,7 +748,7 @@ flowchart LR
 **Prerequisites:** Docker, Docker Compose; optionally API keys for OpenAI or Ollama.
 
 ```bash
-cp .env.example .env && docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
+cp .env.minimal .env && docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
 docker compose -f docker/docker-compose.yml up api
 # Verify: curl http://localhost:8000/api/v1/health
 ```
