@@ -28,9 +28,11 @@ from cml import CognitiveMemoryLayer
 
 def main():
     base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
+    # Use a longer request timeout; turn() and write() can be slow when the API uses LLM.
     with CognitiveMemoryLayer(
         api_key=os.environ.get("CML_API_KEY"),
         base_url=base_url,
+        timeout=120.0,
     ) as memory:
         _run_temporal_fidelity(memory)
 
