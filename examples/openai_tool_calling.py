@@ -93,11 +93,24 @@ MEMORY_TOOLS = [
 class MemoryEnabledAssistant:
     def __init__(self, session_id: str, model: str | None = None):
         self.session_id = session_id
+        # Prefer LLM_INTERNAL__* when set (e.g. .env lines 20-22)
         self.model = (
-            model or os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or ""
+            model
+            or os.environ.get("LLM_INTERNAL__MODEL")
+            or os.environ.get("OPENAI_MODEL")
+            or ""
         ).strip()
         base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
-        self.openai = OpenAI()
+        llm_base = (os.environ.get("LLM_INTERNAL__BASE_URL") or "").strip()
+        if llm_base:
+            api_key = (
+                os.environ.get("LLM_INTERNAL__API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or "dummy"
+            )
+            self.openai = OpenAI(base_url=llm_base, api_key=api_key)
+        else:
+            self.openai = OpenAI()
         self.memory = CognitiveMemoryLayer(
             api_key=os.environ.get("CML_API_KEY"),
             base_url=base_url,
@@ -182,8 +195,18 @@ def main():
     print("=" * 60)
     print("OpenAI Tool Calling + Cognitive Memory Layer")
     print("=" * 60)
-    if not os.getenv("OPENAI_API_KEY"):
-        print("Set OPENAI_API_KEY in .env")
+    has_llm_internal = (
+        os.environ.get("LLM_INTERNAL__PROVIDER")
+        and os.environ.get("LLM_INTERNAL__MODEL")
+        and os.environ.get("LLM_INTERNAL__BASE_URL")
+    )
+    has_openai = os.getenv("OPENAI_API_KEY") and (
+        os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")
+    )
+    if not has_llm_internal and not has_openai:
+        print(
+            "Set OPENAI_API_KEY and OPENAI_MODEL (or LLM_INTERNAL__PROVIDER/MODEL/BASE_URL) in .env"
+        )
         return
     if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")):
         print("Set OPENAI_MODEL or LLM_INTERNAL__MODEL in .env")
