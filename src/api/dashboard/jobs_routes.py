@@ -154,8 +154,8 @@ async def dashboard_retrieval(
 
                 builder = MemoryPacketBuilder()
                 llm_context = builder.to_llm_context(packet, max_tokens=2000)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("dashboard_retrieval_llm_context_failed", error=str(e))
 
         return DashboardRetrievalResponse(
             query=body.query,
@@ -248,8 +248,8 @@ async def dashboard_consolidate(
                 )
             )
             await session.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("dashboard_job_tracking_failed", error=str(exc))
 
     try:
         orchestrator = request.app.state.orchestrator
@@ -278,8 +278,8 @@ async def dashboard_consolidate(
                     )
                 )
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
         return result_data
     except Exception as e:
         try:
@@ -294,8 +294,8 @@ async def dashboard_consolidate(
                     )
                 )
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
         logger.error("dashboard_consolidate_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Consolidation failed: {e}")
 
@@ -326,8 +326,8 @@ async def dashboard_forget(
                 )
             )
             await session.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("dashboard_job_tracking_failed", error=str(exc))
 
     try:
         orchestrator = request.app.state.orchestrator
@@ -367,8 +367,8 @@ async def dashboard_forget(
                     )
                 )
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
         return result_data
     except Exception as e:
         try:
@@ -383,8 +383,8 @@ async def dashboard_forget(
                     )
                 )
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
         logger.error("dashboard_forget_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Forgetting failed: {e}")
 
@@ -414,8 +414,8 @@ async def dashboard_reconsolidate(
                 )
             )
             await session.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("dashboard_job_tracking_failed", error=str(exc))
 
     try:
         orchestrator = request.app.state.orchestrator
@@ -439,8 +439,8 @@ async def dashboard_reconsolidate(
                     )
                 )
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
         return result_data
     except Exception as e:
         try:
@@ -455,8 +455,8 @@ async def dashboard_reconsolidate(
                     )
                 )
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
         logger.error("dashboard_reconsolidate_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Reconsolidation failed: {e}")
 

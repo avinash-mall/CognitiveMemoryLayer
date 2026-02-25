@@ -12,7 +12,7 @@
   <a href="#basic-usage"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
   <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-704-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/version-1.3.4-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.6-blue?style=for-the-badge" alt="Version">
 </p>
 
 <p align="center">
@@ -750,20 +750,20 @@ flowchart LR
 ```bash
 cp .env.minimal .env && docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
 docker compose -f docker/docker-compose.yml up api
-# Verify: curl http://localhost:8000/api/v1/health
+# Verify: curl [REDACTED]/api/v1/health
 ```
 
 ```bash
 # Write (content max 100,000 characters)
-curl -X POST http://localhost:8000/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST [REDACTED]/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"content": "User prefers vegetarian food and lives in Paris."}'
 
 # Read
-curl -X POST http://localhost:8000/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST [REDACTED]/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"query": "dietary preferences", "format": "packet"}'
 
 # Seamless turn (retrieve + store in one call)
-curl -X POST http://localhost:8000/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST [REDACTED]/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
@@ -775,7 +775,7 @@ For full API usage, SDK, sessions, and response formats, see [UsageDocumentation
 
 LoCoMo-Plus harness benchmarks Level-2 cognitive memory: `python evaluation/scripts/run_full_eval.py`. CML achieves **21.45%** on Cognitive (above Mem0, SeCom, RAG baselines) with a **10.04%** gap (factual − cognitive), smaller than most baselines. Full comparison: [evaluation/COMPARISON.md](evaluation/COMPARISON.md).
 
-| Aspect | CML (gpt-oss:20b + CML) |
+| Aspect | CML ([REDACTED] + CML) |
 | :--- | :--- |
 | **Cognitive (LoCoMo-Plus)** | 21.45% (above Mem0 15.80%, SeCom 14.90%) |
 | **Gap** (factual − cognitive) | 10.04% (smaller than paper ~18–45%) |
@@ -813,7 +813,7 @@ pip install cognitive-memory-layer
 
 ```python
 from cml import CognitiveMemoryLayer
-memory = CognitiveMemoryLayer(base_url="http://localhost:8000", api_key="your-key")
+memory = CognitiveMemoryLayer(base_url="[REDACTED]", api_key="your-key")
 memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
 response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
 turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
@@ -825,7 +825,7 @@ for memory_item in memory.read_stream(query="Tell me everything about the user")
 
 Sync, async, and embedded (SQLite) modes. See [packages/py-cml/docs](packages/py-cml/docs/).
 
-**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `http://localhost:8000/docs` | Dashboard: `http://localhost:8000/dashboard` (requires `AUTH__ADMIN_API_KEY`)
+**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `[REDACTED]/docs` | Dashboard: `[REDACTED]/dashboard` (requires `AUTH__ADMIN_API_KEY`)
 
 **Project structure:** `src/` (engine), `packages/py-cml/` (SDK), `tests/`, `evaluation/`, `examples/`. See [CONTRIBUTING](CONTRIBUTING.md).
 

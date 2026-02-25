@@ -61,6 +61,12 @@ def _clear_settings_cache():
         get_settings.cache_clear()
     except Exception:
         pass
+    try:
+        from src.api.auth import _build_api_keys
+
+        _build_api_keys.cache_clear()
+    except Exception:
+        pass
 
 
 @pytest.fixture
