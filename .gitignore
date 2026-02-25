@@ -81,5 +81,6 @@ Thumbs.db
 .git.corrupt/
 
 # Unreleased features
-packages/models/
-ProjectPlan/CustomModel/
+packages/models/datasets/
+packages/models/prepared/
+
