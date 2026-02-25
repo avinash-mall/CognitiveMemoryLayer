@@ -1,28 +1,36 @@
 import asyncio
-import os
 import uuid
 from datetime import UTC, datetime
+
+import pytest
 
 from src.memory.orchestrator import MemoryOrchestrator
 from src.storage.connection import DatabaseManager
 
 
+@pytest.mark.integration
+@pytest.mark.requires_llm
 async def test_timestamp_ingestion():
+    import os
+
+    from src.core.config import get_settings
+
+    settings = get_settings()
+    provider = settings.embedding_internal.provider
+    if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+        pytest.skip("OpenAI API key not configured for embedding provider")
+
+    from src.utils.embeddings import get_embedding_client
+    from src.utils.llm import get_internal_llm_client
+
+    embedding_client = get_embedding_client()
+    llm_client = get_internal_llm_client()
+
     db = await DatabaseManager.create()
 
-    # Needs a real setup of stores like in tests
     from src.storage.postgres import PostgresMemoryStore
-    from src.utils.embeddings import get_embedding_client
-    from src.utils.llm import LLMClient
-
-    os.environ["STORAGE__EMBEDDING_DIM"] = "384"
-    os.environ["LLM_INTERNAL__PROVIDER"] = "openai"
-    os.environ["LLM_INTERNAL__MODEL"] = "gpt-4o-mini"
-    os.environ["LLM_INTERNAL__API_KEY"] = "sk-proj-test"
 
     episodic_store = PostgresMemoryStore(db.pg_session_factory)
-    embedding_client = get_embedding_client()
-    llm_client = LLMClient()
 
     orchestrator = await MemoryOrchestrator.create_lite(
         episodic_store=episodic_store,

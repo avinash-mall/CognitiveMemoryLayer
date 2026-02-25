@@ -7,9 +7,10 @@ Flags are stored in Redis as a JSON hash at key ``tenant_flags:{tenant_id}``.
 Missing keys fall back to the process-wide ``FeatureSettings`` from config.
 
 Usage:
-    from src.core.tenant_flags import get_tenant_features
+    from src.core.tenant_flags import get_tenant_overrides, apply_overrides
 
-    features = await get_tenant_features(tenant_id, redis_client)
+    overrides = await get_tenant_overrides(tenant_id, redis_client)
+    features = apply_overrides(global_settings.features, overrides)
     if features.use_llm_enabled:
         ...
 """
