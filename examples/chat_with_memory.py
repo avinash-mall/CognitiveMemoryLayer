@@ -20,10 +20,22 @@ from cml import CognitiveMemoryLayer
 
 def chat_with_memory():
     base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
-    model = (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or "").strip()
+    # Prefer LLM_INTERNAL__* when set (e.g. .env lines 20-22)
+    model = (
+        os.environ.get("LLM_INTERNAL__MODEL") or os.environ.get("OPENAI_MODEL") or ""
+    ).strip()
     if not model:
         raise SystemExit("Set OPENAI_MODEL (or LLM_INTERNAL__MODEL) in .env")
-    openai_client = OpenAI()
+    llm_base = (os.environ.get("LLM_INTERNAL__BASE_URL") or "").strip()
+    if llm_base:
+        api_key = (
+            os.environ.get("LLM_INTERNAL__API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "dummy"
+        )
+        openai_client = OpenAI(base_url=llm_base, api_key=api_key)
+    else:
+        openai_client = OpenAI()
     session_id = "chat-demo-001"
     print("Chat with Memory (type 'quit' to exit)\n")
 
