@@ -27,7 +27,9 @@ def _server_authed() -> bool:
 
 
 @pytest.mark.e2e
-@pytest.mark.skipif(not _server_authed(), reason="CML API server not running or auth not configured")
+@pytest.mark.skipif(
+    not _server_authed(), reason="CML API server not running or auth not configured"
+)
 def test_api_ingestion():
     base_url = os.environ.get("CML_BASE_URL", "").rstrip("/")
     api_key = os.environ.get("CML_API_KEY", "")
