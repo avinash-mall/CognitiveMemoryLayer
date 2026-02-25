@@ -9,19 +9,21 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from src.api.app import app
+from src.api.auth import _build_api_keys
 from src.core.config import get_settings
 
 
 @pytest.fixture
 def auth_headers(monkeypatch):
     """Set up auth environment from .env and return headers."""
-    api_key = os.environ.get("AUTH__API_KEY") or "test-key"
+    api_key = os.environ.get("AUTH__API_KEY") or "[REDACTED]"
     admin_key = os.environ.get("AUTH__ADMIN_API_KEY") or api_key
     tenant = os.environ.get("AUTH__DEFAULT_TENANT_ID", "default")
     monkeypatch.setenv("AUTH__API_KEY", api_key)
     monkeypatch.setenv("AUTH__ADMIN_API_KEY", admin_key)
     monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", tenant)
     get_settings.cache_clear()
+    _build_api_keys.cache_clear()
     try:
         yield {
             "X-API-Key": api_key,
@@ -29,6 +31,7 @@ def auth_headers(monkeypatch):
         }
     finally:
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
 
 
 class TestHealthEndpoint:
@@ -57,6 +60,7 @@ class TestAuthMiddleware:
         monkeypatch.setenv("AUTH__API_KEY", "required-key")
         monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "t1")
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
         try:
             with TestClient(app) as client:
                 resp = client.post(
@@ -67,12 +71,14 @@ class TestAuthMiddleware:
                 assert resp.status_code == 401
         finally:
             get_settings.cache_clear()
+            _build_api_keys.cache_clear()
 
     def test_invalid_api_key_returns_401(self, monkeypatch):
         """Requests with invalid API key get 401."""
         monkeypatch.setenv("AUTH__API_KEY", "valid-key")
         monkeypatch.setenv("AUTH__DEFAULT_TENANT_ID", "t1")
         get_settings.cache_clear()
+        _build_api_keys.cache_clear()
         try:
             with TestClient(
                 app, headers={"X-API-Key": "wrong-key", "X-Tenant-ID": "unit-auth-invalid-key"}
@@ -84,6 +90,7 @@ class TestAuthMiddleware:
                 assert resp.status_code == 401
         finally:
             get_settings.cache_clear()
+            _build_api_keys.cache_clear()
 
 
 class TestAPISchemas:
