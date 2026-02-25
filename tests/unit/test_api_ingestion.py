@@ -16,7 +16,11 @@ def _server_authed() -> bool:
     if not api_key or not base_url:
         return False
     try:
-        resp = requests.get(f"{base_url.rstrip('/')}/api/v1/health", timeout=2)
+        resp = requests.get(
+            f"{base_url.rstrip('/')}/api/v1/memory/stats",
+            headers={"X-API-Key": api_key},
+            timeout=3,
+        )
         return resp.status_code == 200
     except Exception:
         return False
