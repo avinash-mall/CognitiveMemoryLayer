@@ -7,6 +7,8 @@ import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import structlog
+
 from ...core.enums import MemorySource, MemoryStatus, MemoryType
 from ...core.schemas import (
     EntityMention,
@@ -155,7 +157,10 @@ class HippocampalStore:
             try:
                 memory_type = MemoryType(unified_result.memory_type)
             except ValueError:
-                pass
+                structlog.get_logger(__name__).debug(
+                    "invalid_llm_memory_type",
+                    raw_type=unified_result.memory_type,
+                )
         if memory_type is None:
             memory_type = (
                 gate_result.memory_types[0]
@@ -430,7 +435,10 @@ class HippocampalStore:
                 try:
                     memory_type = MemoryType(unified_res.memory_type)
                 except ValueError:
-                    pass
+                    structlog.get_logger(__name__).debug(
+                        "invalid_llm_memory_type",
+                        raw_type=unified_res.memory_type,
+                    )
             if memory_type is None:
                 memory_type = (
                     gate_result.memory_types[0]
