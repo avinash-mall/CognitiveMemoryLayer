@@ -1,0 +1,218 @@
+# ============================================================================
+# Unified Model Pipeline Configuration
+# ============================================================================
+# This file controls BOTH:
+#   1) data preparation for all model families
+#   2) training/evaluation for all model families
+#
+# Design goal:
+# - one prepare script (`packages/models/scripts/prepare.py`)
+# - one train script (`packages/models/scripts/train.py`)
+#
+# All paths can be absolute OR relative to repository root.
+# ============================================================================
+
+[paths]
+# Directory for prepared parquet outputs created by prepare.py
+prepared_dir = "packages/models/prepared_data/modelpack"
+
+# Directory containing legacy/bootstrapped prepared splits used as weak labels
+# Expected files (optional): train.parquet, test.parquet, eval.parquet
+bootstrap_prepared_dir = "packages/models/prepared_data"
+
+# Final model output directory used by train.py
+# User requirement: all models must be written here.
+trained_models_dir = "packages/models/trained_models"
+
+# Dataset storage/caching directory used by `datasets` package.
+# Uses existing project folder (flat raw datasets can coexist here).
+datasets_cache_dir = "packages/models/datasets"
+
+[prepare]
+# Global random seed for sampling/shuffling/splits
+seed = 42
+
+# Split ratios for stratified split by (task,label)
+train_ratio = 0.80
+test_ratio = 0.10
+eval_ratio = 0.10
+
+# Maximum rows sampled per source dataset (upper bound before balancing)
+max_rows_per_source = 60000
+
+# Hard cap per (task,label) to prevent source-dominance
+max_per_task_label = 50000
+
+# If true, required remote datasets are auto-downloaded when missing
+# (through Hugging Face datasets loader).
+auto_download_missing = true
+
+# If true, when pair datasets cannot be loaded from internet,
+# prepare.py synthesizes weak-supervision pairs from local bootstrap data.
+allow_local_pair_fallback = true
+
+# If true, missing `datasets` package is treated as an error.
+# Set false only for strictly local-only prep runs.
+require_datasets_package = true
+
+[train]
+# Random seed for model training
+seed = 42
+
+# Families to train. Keep all 3 for complete replacement.
+families = ["router", "extractor", "pair"]
+
+# TF-IDF settings
+max_features = 250000
+min_df = 2
+ngram_min = 1
+ngram_max = 2
+
+# SGDClassifier settings
+# `max_iter` behaves like epochs for SGD over sparse features.
+max_iter = 25
+alpha = 0.00001
+
+# Prediction batch size for progress/evaluation
+predict_batch_size = 8192
+
+[synthetic_llm]
+# Reserved section for optional future LLM augmentation.
+# Current pipeline does NOT require LLM generation.
+enabled = false
+
+# Target count placeholder if LLM synthetic backfill is enabled in future.
+target_samples_per_label = 10000
+
+# LLM connectivity / generation parameters (currently informational)
+model = ""
+base_url = ""
+api_key_env = "OPENAI_API_KEY"
+temperature = 1.2
+top_p = 0.95
+max_tokens = 256
+batch_size = 64
+timeout_seconds = 60
+
+# ============================================================================
+# Remote datasets (auto-downloaded by prepare.py when enabled=true)
+# ============================================================================
+# Fields:
+# - name: unique key used by preparation logic
+# - target: which model family primarily consumes this dataset
+# - kind: currently supports "huggingface"
+# - link: human-readable reference URL (docs / source provenance)
+# - dataset_id: HF dataset identifier
+# - config: optional HF config/subset
+# - split: HF split name (train/validation/test)
+# - max_rows: optional per-dataset cap override
+# - enabled: include this dataset in pipeline
+# - required: fail prep if download/load fails
+
+[[datasets]]
+name = "banking77"
+target = "router"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/banking77"
+dataset_id = "banking77"
+config = ""
+split = "train"
+max_rows = 60000
+enabled = true
+required = true
+
+[[datasets]]
+name = "trec"
+target = "router"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/ag_news"
+dataset_id = "ag_news"
+config = ""
+split = "train"
+max_rows = 12000
+enabled = true
+required = true
+
+[[datasets]]
+name = "massive"
+target = "router"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/dbpedia_14"
+dataset_id = "dbpedia_14"
+config = ""
+split = "train"
+max_rows = 60000
+enabled = true
+required = true
+
+[[datasets]]
+name = "moral_stories"
+target = "extractor"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/go_emotions"
+dataset_id = "go_emotions"
+config = "simplified"
+split = "train"
+max_rows = 50000
+enabled = true
+required = true
+
+[[datasets]]
+name = "pii_masking"
+target = "extractor"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/ai4privacy/pii-masking-200k"
+dataset_id = "ai4privacy/pii-masking-200k"
+config = ""
+split = "train"
+max_rows = 120000
+enabled = true
+required = true
+
+[[datasets]]
+name = "snli"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/stanfordnlp/snli"
+dataset_id = "stanfordnlp/snli"
+config = ""
+split = "train"
+max_rows = 200000
+enabled = true
+required = true
+
+[[datasets]]
+name = "multi_nli"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/nyu-mll/multi_nli"
+dataset_id = "nyu-mll/multi_nli"
+config = ""
+split = "train"
+max_rows = 200000
+enabled = true
+required = true
+
+[[datasets]]
+name = "ms_marco"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/microsoft/ms_marco"
+dataset_id = "microsoft/ms_marco"
+config = "v1.1"
+split = "train"
+max_rows = 120000
+enabled = true
+required = true
+
+[[datasets]]
+name = "quora_duplicates"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/sentence-transformers/quora-duplicates"
+dataset_id = "sentence-transformers/quora-duplicates"
+config = "pair-class"
+split = "train"
+max_rows = 120000
+enabled = true
+required = true
