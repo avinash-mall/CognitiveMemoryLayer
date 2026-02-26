@@ -1,0 +1,91 @@
+{
+  "family": "pair",
+  "split": "eval",
+  "overall": {
+    "rows": 20000,
+    "accuracy": 0.6057,
+    "macro_f1": 0.6055679206917636,
+    "weighted_f1": 0.6055679206917637,
+    "micro_f1": 0.6057,
+    "labels": [
+      "conflict_detection::conflict",
+      "conflict_detection::no_conflict",
+      "constraint_rerank::not_relevant",
+      "constraint_rerank::relevant"
+    ],
+    "confusion_matrix": [
+      [
+        3241,
+        1759,
+        0,
+        0
+      ],
+      [
+        1474,
+        3526,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        2682,
+        2318
+      ],
+      [
+        0,
+        0,
+        2335,
+        2665
+      ]
+    ]
+  },
+  "per_task": {
+    "conflict_detection": {
+      "rows": 10000,
+      "accuracy": 0.6767,
+      "macro_f1": 0.6764371861044134,
+      "weighted_f1": 0.6764371861044134,
+      "micro_f1": 0.6767,
+      "labels": [
+        "conflict",
+        "no_conflict"
+      ],
+      "confusion_matrix": [
+        [
+          3241,
+          1759
+        ],
+        [
+          1474,
+          3526
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    },
+    "constraint_rerank": {
+      "rows": 10000,
+      "accuracy": 0.5347,
+      "macro_f1": 0.5346986552791138,
+      "weighted_f1": 0.5346986552791138,
+      "micro_f1": 0.5347,
+      "labels": [
+        "not_relevant",
+        "relevant"
+      ],
+      "confusion_matrix": [
+        [
+          2682,
+          2318
+        ],
+        [
+          2335,
+          2665
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}

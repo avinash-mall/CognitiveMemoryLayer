@@ -1,0 +1,91 @@
+{
+  "family": "pair",
+  "split": "test",
+  "overall": {
+    "rows": 20000,
+    "accuracy": 0.5987,
+    "macro_f1": 0.5985651572859791,
+    "weighted_f1": 0.5985651572859791,
+    "micro_f1": 0.5987,
+    "labels": [
+      "conflict_detection::conflict",
+      "conflict_detection::no_conflict",
+      "constraint_rerank::not_relevant",
+      "constraint_rerank::relevant"
+    ],
+    "confusion_matrix": [
+      [
+        3241,
+        1759,
+        0,
+        0
+      ],
+      [
+        1471,
+        3529,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        2593,
+        2407
+      ],
+      [
+        0,
+        0,
+        2389,
+        2611
+      ]
+    ]
+  },
+  "per_task": {
+    "conflict_detection": {
+      "rows": 10000,
+      "accuracy": 0.677,
+      "macro_f1": 0.6767318684809929,
+      "weighted_f1": 0.6767318684809929,
+      "micro_f1": 0.677,
+      "labels": [
+        "conflict",
+        "no_conflict"
+      ],
+      "confusion_matrix": [
+        [
+          3241,
+          1759
+        ],
+        [
+          1471,
+          3529
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    },
+    "constraint_rerank": {
+      "rows": 10000,
+      "accuracy": 0.5204,
+      "macro_f1": 0.5203984460909654,
+      "weighted_f1": 0.5203984460909653,
+      "micro_f1": 0.5204,
+      "labels": [
+        "not_relevant",
+        "relevant"
+      ],
+      "confusion_matrix": [
+        [
+          2593,
+          2407
+        ],
+        [
+          2389,
+          2611
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}
