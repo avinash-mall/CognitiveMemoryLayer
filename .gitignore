@@ -82,5 +82,5 @@ Thumbs.db
 
 # Unreleased features
 packages/models/datasets/
-packages/models/prepared/
+packages/models/prepared_data/
 
