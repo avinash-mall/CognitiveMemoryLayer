@@ -1,11 +1,13 @@
 """Integration tests for full reconsolidation flow (labile, extract, conflict, revise)."""
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
+from src.reconsolidation.conflict_detector import ConflictResult, ConflictType
 from src.reconsolidation.service import ReconsolidationService
 from src.storage.postgres import PostgresMemoryStore
 
@@ -52,15 +54,33 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     )
     created.metadata["_similarity"] = 0.9
 
-    svc = ReconsolidationService(memory_store=store, llm_client=None)
-    result = await svc.process_turn(
-        tenant_id=tenant_id,
-        scope_id=user_id,
-        turn_id="turn2",
-        user_message="Actually, I prefer tea now.",
-        assistant_response="Got it, I'll remember you prefer tea.",
-        retrieved_memories=[created],
-    )
+    # In CI there is often no LLM/modelpack, so conflict detection returns NONE and no
+    # correction is applied. Mock the detector to return CORRECTION so we exercise the
+    # full revision + store path.
+    async def _mock_detect(old_memory, new_statement, context=None):
+        return ConflictResult(
+            conflict_type=ConflictType.CORRECTION,
+            confidence=0.95,
+            old_statement=old_memory.text or "",
+            new_statement=new_statement,
+            is_superseding=True,
+            reasoning="User correction (mocked for test)",
+        )
+
+    with patch("src.reconsolidation.service.ConflictDetector") as mock_conflict_detector:
+        mock_instance = mock_conflict_detector.return_value
+        mock_instance.detect = _mock_detect
+
+        svc = ReconsolidationService(memory_store=store, llm_client=None)
+        result = await svc.process_turn(
+            tenant_id=tenant_id,
+            scope_id=user_id,
+            turn_id="turn2",
+            user_message="Actually, I prefer tea now.",
+            assistant_response="Got it, I'll remember you prefer tea.",
+            retrieved_memories=[created],
+        )
+
     assert result.turn_id == "turn2"
     assert result.memories_processed == 1
     assert result.conflicts_found >= 1
