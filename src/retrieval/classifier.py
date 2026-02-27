@@ -1,4 +1,4 @@
-﻿"""Query classifier for retrieval strategy selection."""
+"""Query classifier for retrieval strategy selection."""
 
 import json
 

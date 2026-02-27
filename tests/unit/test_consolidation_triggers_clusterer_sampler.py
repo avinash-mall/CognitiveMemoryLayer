@@ -270,11 +270,19 @@ class TestGistExtractorConstraintValidation:
                     "clusters": [
                         {
                             "cluster_index": 0,
-                            "gists": [{"gist": "User likes tea", "type": "preference", "confidence": 0.8}],
+                            "gists": [
+                                {"gist": "User likes tea", "type": "preference", "confidence": 0.8}
+                            ],
                         },
                         {
                             "cluster_index": 1,
-                            "gists": [{"gist": "User avoids shellfish", "type": "policy", "confidence": 0.9}],
+                            "gists": [
+                                {
+                                    "gist": "User avoids shellfish",
+                                    "type": "policy",
+                                    "confidence": 0.9,
+                                }
+                            ],
                         },
                     ]
                 }
@@ -282,7 +290,9 @@ class TestGistExtractorConstraintValidation:
         llm = MockLLM()
         extractor = GistExtractor(llm)
         clusters = [
-            EpisodeCluster(cluster_id=0, episodes=[_make_record("I like tea.")], avg_confidence=0.8),
+            EpisodeCluster(
+                cluster_id=0, episodes=[_make_record("I like tea.")], avg_confidence=0.8
+            ),
             EpisodeCluster(
                 cluster_id=1,
                 episodes=[_make_record("I never eat shellfish because I'm allergic.")],

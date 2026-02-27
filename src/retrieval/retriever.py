@@ -522,7 +522,9 @@ class HybridRetriever:
             existing_texts = {str(r.get("text", "")) for r in results}
             for fact in facts:
                 category = getattr(fact, "category", None)
-                cat_label = category.value if hasattr(category, "value") else str(category or "fact")
+                cat_label = (
+                    category.value if hasattr(category, "value") else str(category or "fact")
+                )
                 fact_text = f"[{cat_label.title()}] {fact.value}"
                 if fact_text in existing_texts:
                     continue
