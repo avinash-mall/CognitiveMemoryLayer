@@ -1,4 +1,4 @@
-﻿"""Conflict detection between new information and existing memories."""
+"""Conflict detection between new information and existing memories."""
 
 from dataclasses import dataclass
 from enum import StrEnum

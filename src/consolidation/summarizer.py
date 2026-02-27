@@ -1,4 +1,4 @@
-﻿"""Gist extraction from episode clusters."""
+"""Gist extraction from episode clusters."""
 
 import json
 from dataclasses import dataclass
@@ -104,7 +104,9 @@ class GistExtractor:
             memory_texts.append(f"{i}. [{mem_type}] {ep.text}")
 
         memories_str = "\n".join(memory_texts)
-        themes_str = ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
+        themes_str = (
+            ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
+        )
 
         prompt = GIST_EXTRACTION_PROMPT.format(
             memories=memories_str,
@@ -173,7 +175,9 @@ class GistExtractor:
                 all_gists.extend(batch_result)
         return all_gists
 
-    async def _extract_gist_batch(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist] | None:
+    async def _extract_gist_batch(
+        self, clusters: list[EpisodeCluster]
+    ) -> list[ExtractedGist] | None:
         """Batch extract multiple clusters in one LLM call."""
         if self.llm is None or not clusters:
             return None
