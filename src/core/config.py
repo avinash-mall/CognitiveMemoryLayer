@@ -40,7 +40,9 @@ class DatabaseSettings(PydanticBaseModel):
 class EmbeddingInternalSettings(PydanticBaseModel):
     """Embedding provider for internal memory tasks. Defaults: local, nomic-embed-text-v2-moe, 768d."""
 
-    provider: str | None = Field(default="local")  # openai | local | openai_compatible | ollama
+    provider: str | None = Field(
+        default="local"
+    )  # openai | local | openai_compatible | ollama | vllm | mock
     model: str | None = Field(default="nomic-ai/nomic-embed-text-v2-moe")
     dimensions: int | None = Field(default=768)
     local_model: str | None = Field(default="nomic-ai/nomic-embed-text-v2-moe")
@@ -138,29 +140,29 @@ class FeatureFlags(PydanticBaseModel):
     constraint_extraction_enabled: bool = Field(
         default=True, description="Cognitive: extract and store latent constraints at write time"
     )
-    # Master LLM switch (default false): when false, all internal LLM is disabled; heuristics used.
-    # Quality degrades when false; enabling improves quality but lowers performance (LLM latency).
+    # Master LLM switch (default false): when false, internal LLM calls are disabled.
+    # Runtime uses modelpack and NER where available.
     use_llm_enabled: bool = Field(
         default=False,
-        description="Master switch: when false, all internal LLM disabled (heuristics used). "
-        "Quality degrades when false; enabling improves quality but lowers performance.",
+        description="Master switch: when false, internal LLM calls are disabled. "
+        "Runtime uses modelpack/NER alternatives when configured.",
     )
     # Fine-grained LLM flags (only effective when use_llm_enabled=true)
     use_llm_constraint_extractor: bool = Field(
         default=True,
-        description="Use LLM (via unified extractor) for constraint extraction instead of rule-based",
+        description="Use LLM (via unified extractor) for constraint extraction instead of modelpack/NER path",
     )
     use_llm_write_time_facts: bool = Field(
         default=True,
-        description="Use LLM (via unified extractor) for write-time fact extraction instead of rule-based",
+        description="Use LLM (via unified extractor) for write-time fact extraction instead of NER parser path",
     )
     use_llm_query_classifier_only: bool = Field(
         default=False,
-        description="Skip fast pattern path, always use LLM for query classification",
+        description="Bypass modelpack classifier and always use LLM for query classification",
     )
     use_llm_salience_refinement: bool = Field(
         default=True,
-        description="Use LLM salience from unified extractor instead of rule-based boosts",
+        description="Use LLM salience from unified extractor instead of non-LLM salience/modelpack signal",
     )
     use_llm_pii_redaction: bool = Field(
         default=True,
@@ -168,7 +170,7 @@ class FeatureFlags(PydanticBaseModel):
     )
     use_llm_write_gate_importance: bool = Field(
         default=True,
-        description="Use LLM importance from unified extractor instead of rule-based _compute_importance",
+        description="Use LLM importance from unified extractor instead of modelpack/default salience",
     )
     use_llm_memory_type: bool = Field(
         default=True,
@@ -188,12 +190,12 @@ class FeatureFlags(PydanticBaseModel):
     )
     use_llm_conflict_detection_only: bool = Field(
         default=False,
-        description="Skip fast pattern path, always use LLM for conflict detection",
+        description="Bypass modelpack conflict detector and always use LLM for conflict detection",
     )
     use_llm_constraint_reranker: bool = Field(
         default=False,
         description="Use LLM to score constraint relevance during reranking (1 call per read); "
-        "when False, falls back to fast text-similarity scoring",
+        "when False, modelpack scoring is used when available",
     )
 
 

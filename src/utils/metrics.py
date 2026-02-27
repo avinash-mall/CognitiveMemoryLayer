@@ -66,6 +66,28 @@ RETRIEVAL_STEP_FAILURES = Counter(
     ["source"],
 )
 
+# â”€â”€ DB Pool observability (A-06) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+DB_POOL_CHECKED_OUT = Gauge(
+    "cml_db_pool_checked_out",
+    "Number of currently checked-out SQL connections",
+)
+
+DB_POOL_CHECKOUTS_TOTAL = Counter(
+    "cml_db_pool_checkouts_total",
+    "Total SQL pool checkout events",
+)
+
+DB_POOL_CHECKINS_TOTAL = Counter(
+    "cml_db_pool_checkins_total",
+    "Total SQL pool checkin events",
+)
+
+DB_POOL_INVALIDATIONS_TOTAL = Counter(
+    "cml_db_pool_invalidations_total",
+    "Total SQL pool invalidation events",
+)
+
 # ── Phase 6.3: Fact hit rate tracking ───────────────────────────────
 
 FACT_HIT_RATE = Counter(

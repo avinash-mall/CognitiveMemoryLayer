@@ -1,6 +1,6 @@
 # LoCoMo Evaluation — Complete Runbook
 
-This document describes every step to run the Locomo-Plus evaluation with CML as the RAG backend. The evaluation uses **eval_locomo_plus.py** (unified LoCoMo + Locomo-Plus) and produces a performance table. QA uses the LLM from project `.env` (`LLM__PROVIDER`, `LLM__MODEL`, `LLM__BASE_URL`) — same as the rest of the codebase; no Ollama-specific wiring.
+This document describes every step to run the Locomo-Plus evaluation with CML as the RAG backend. The evaluation uses **eval_locomo_plus.py** (unified LoCoMo + Locomo-Plus) and produces a performance table. QA uses the LLM from project `.env` (`LLM_EVAL__PROVIDER`, `LLM_EVAL__MODEL`, `LLM_EVAL__BASE_URL`) — same as the rest of the codebase; no Ollama-specific wiring.
 
 **References:** [evaluation/README.md](../../evaluation/README.md), [Locomo-Plus repo](https://github.com/xjtuleeyf/Locomo-Plus).
 
@@ -18,12 +18,12 @@ This document describes every step to run the Locomo-Plus evaluation with CML as
   ```bash
   ollama pull <your model>
   ```
-  Use a model that matches `EMBEDDING__MODEL` in `.env` (e.g. `mxbai-embed-large` or `embeddinggemma`).
-- **QA model** (evaluation script): Uses `LLM__MODEL` from project root `.env` (see Section 2.4). If using Ollama, pull the model (e.g. `ollama pull gpt-oss:20b`) and set `LLM__PROVIDER=ollama`, `LLM__MODEL=gpt-oss:20b`, `LLM__BASE_URL=http://localhost:11434/v1`.
+  Use a model that matches `EMBEDDING_INTERNAL__MODEL` in `.env` (e.g. `mxbai-embed-large` or `embeddinggemma`).
+- **QA model** (evaluation script): Uses `LLM_EVAL__MODEL` from project root `.env` (see Section 2.5). If using Ollama, pull the model (e.g. `ollama pull gpt-oss:20b`) and set `LLM_EVAL__PROVIDER=ollama`, `LLM_EVAL__MODEL=gpt-oss:20b`, `LLM_EVAL__BASE_URL=http://localhost:11434/v1`.
 
 ### 1.3. Embedding dimension
 
-CML's vector size must match the embedding model output. Set `EMBEDDING__DIMENSIONS` in `.env` to match your model (e.g. 1024 for mxbai-embed-large, 768 for embeddinggemma). If you change model or dimension, drop databases and re-run migrations (Section 3).
+CML's vector size must match the embedding model output. Set `EMBEDDING_INTERNAL__DIMENSIONS` in `.env` to match your model (e.g. 1024 for mxbai-embed-large, 768 for embeddinggemma). If you change model or dimension, drop databases and re-run migrations (Section 3).
 
 ### 1.4. Evaluation data
 
@@ -63,36 +63,36 @@ Use the project root `.env` (copy from `.env.example` if needed).
 
 ### 2.3. Embeddings (Ollama)
 
-- `EMBEDDING__PROVIDER=ollama`
-- `EMBEDDING__MODEL` — set to your model (e.g. `mxbai-embed-large:latest`, `embeddinggemma` or `embeddinggemma:latest`)
-- **`EMBEDDING__DIMENSIONS`** — must match model output (e.g. 1024 for mxbai-embed-large, 768 for embeddinggemma)
-- `EMBEDDING__BASE_URL=http://localhost:11434/v1`  
-  If the API runs in Docker and Ollama is on the host: `EMBEDDING__BASE_URL=http://host.docker.internal:11434/v1`
+- `EMBEDDING_INTERNAL__PROVIDER=ollama`
+- `EMBEDDING_INTERNAL__MODEL` — set to your model (e.g. `mxbai-embed-large:latest`, `embeddinggemma` or `embeddinggemma:latest`)
+- **`EMBEDDING_INTERNAL__DIMENSIONS`** — must match model output (e.g. 1024 for mxbai-embed-large, 768 for embeddinggemma)
+- `EMBEDDING_INTERNAL__BASE_URL=http://localhost:11434/v1`  
+  If the API runs in Docker and Ollama is on the host: `EMBEDDING_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1`
 
-### 2.4. LLM (Ollama, for CML internals)
+### 2.4. LLM Internal (Ollama, for CML internals)
 
-- `LLM__PROVIDER=ollama`
-- `LLM__MODEL=gpt-oss:20b` (or your chosen model)
-- `LLM__BASE_URL=http://localhost:11434/v1`  
-  If API in Docker: `LLM__BASE_URL=http://host.docker.internal:11434/v1`
+- `LLM_INTERNAL__PROVIDER=ollama`
+- `LLM_INTERNAL__MODEL=gpt-oss:20b` (or your chosen model)
+- `LLM_INTERNAL__BASE_URL=http://localhost:11434/v1`  
+  If API in Docker: `LLM_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1`
 
-### 2.5. LLM Internal (optional)
+### 2.5. LLM Eval (optional override for QA/judge)
 
-Optional `LLM_INTERNAL__PROVIDER`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`, `LLM_INTERNAL__API_KEY`. When set, the server uses a separate model for chunking and entity/relation extraction; can speed up Phase A ingestion. If not set, `LLM__*` is used.
+Optional `LLM_EVAL__PROVIDER`, `LLM_EVAL__MODEL`, `LLM_EVAL__BASE_URL`, `LLM_EVAL__API_KEY`. When set, evaluation QA/judge use this config. If not set, QA/judge fall back to `LLM_INTERNAL__*`.
 
 Example:
 ```
-LLM_INTERNAL__PROVIDER=ollama
-LLM_INTERNAL__MODEL=llama3.2:3b
-LLM_INTERNAL__BASE_URL=http://host.docker.internal:11434/v1
-LLM_INTERNAL__API_KEY=
+LLM_EVAL__PROVIDER=ollama
+LLM_EVAL__MODEL=llama3.2:3b
+LLM_EVAL__BASE_URL=http://host.docker.internal:11434/v1
+LLM_EVAL__API_KEY=
 ```
 
 ---
 
 ## 3. Drop databases and recreate (clean schema)
 
-Do this when you change `EMBEDDING__DIMENSIONS` or need a clean DB.
+Do this when you change `EMBEDDING_INTERNAL__DIMENSIONS` or need a clean DB.
 
 From **project root**:
 
@@ -188,7 +188,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `--max-results 25` | CML read top-k |
 | `--verbose` | Per-sample retrieval diagnostics |
 | `--cml-url`, `--cml-api-key` | CML connection |
-| (QA uses `LLM__*` from .env; no CLI override) | — |
+| (QA uses `LLM_EVAL__*` from .env with fallback to `LLM_INTERNAL__*`; no CLI override) | — |
 | `--judge-model` | Judge model (default gpt-4o-mini) |
 
 ---
@@ -222,10 +222,10 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 | Issue | Action |
 |-------|--------|
 | **429 Too Many Requests** | Set `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` in `.env` to 600 or higher, restart API. |
-| **Embedding dimension mismatch** | Set `EMBEDDING__DIMENSIONS` correctly, then run Section 3 again. |
+| **Embedding dimension mismatch** | Set `EMBEDDING_INTERNAL__DIMENSIONS` correctly, then run Section 3 again. |
 | **Judge fails (no OPENAI_API_KEY)** | Set `OPENAI_API_KEY` or `OPENAI_BASE_URL`. |
 | **CML API not reachable** | Use `CML_BASE_URL=http://localhost:8000` (or correct host). |
-| **Ollama not reachable from container** | Set `EMBEDDING__BASE_URL` and `LLM__BASE_URL` to `http://host.docker.internal:11434/v1`. |
+| **Ollama not reachable from container** | Set `EMBEDDING_INTERNAL__BASE_URL` and `LLM_EVAL__BASE_URL` to `http://host.docker.internal:11434/v1`. |
 | **Ollama 404 from script** | Ensure Ollama is running; `OLLAMA_BASE_URL` has no `/v1`. |
 
 ---
@@ -233,11 +233,11 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 ## 8. Checklist
 
 - [ ] Ollama installed and running
-- [ ] Embedding and QA models configured (match `EMBEDDING__MODEL` and `LLM__MODEL` in .env)
-- [ ] `EMBEDDING__DIMENSIONS` set in `.env` to match your embedding model (e.g. 1024, 768)
+- [ ] Embedding and QA models configured (match `EMBEDDING_INTERNAL__MODEL` and `LLM_EVAL__MODEL` in .env)
+- [ ] `EMBEDDING_INTERNAL__DIMENSIONS` set in `.env` to match your embedding model (e.g. 1024, 768)
 - [ ] `evaluation/locomo_plus/data/unified_input_samples_v2.json` exists
 - [ ] Python deps: `requests`, `tqdm`; `OPENAI_API_KEY` set
-- [ ] `.env`: DB, `AUTH__API_KEY`, `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` set for bulk ingestion, `EMBEDDING__*`, `LLM__*` (optionally `LLM_INTERNAL__*` for faster ingestion)
+- [ ] `.env`: DB, `AUTH__API_KEY`, `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` set for bulk ingestion, `EMBEDDING_INTERNAL__*`, `LLM_EVAL__*` (optionally `LLM_INTERNAL__*` for faster ingestion)
 - [ ] `docker compose -f docker/docker-compose.yml down -v`
 - [ ] `docker compose -f docker/docker-compose.yml up -d --build postgres neo4j redis api`
 - [ ] `curl -s http://localhost:8000/api/v1/health` OK
@@ -248,3 +248,4 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 ## 9. Interpretation
 
 The table shows judge scores (0–100%) per category. **Average** is the mean of the five factual categories (LoCoMo). **LoCoMo-Plus** is the Cognitive score. **Gap** = Average − LoCoMo-Plus (positive = factual memory outperforms cognitive memory on this run).
+

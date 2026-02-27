@@ -52,8 +52,43 @@ async def test_unified_extractor_returns_facts_with_mock_llm():
     assert result.facts[0].value == "vegetarian"
 
 
-def test_rule_based_write_time_fact_extractor_still_works():
-    """Rule-based WriteTimeFactExtractor produces valid facts (flag=false path)."""
+def test_ner_write_time_fact_extractor_still_works(monkeypatch):
+    """Non-LLM WriteTimeFactExtractor produces valid facts from parsed NLP output."""
+
+    class _Node:
+        def __init__(self, text: str, dep_: str):
+            self.text = text
+            self.dep_ = dep_
+            self.subtree = [self]
+
+    class _Sent:
+        def __init__(self, text: str):
+            self.text = text
+            self._tokens = [
+                type("T", (), {"text": "I", "lemma_": "I", "pos_": "PRON"})(),
+                type("T", (), {"text": "prefer", "lemma_": "prefer", "pos_": "VERB"})(),
+            ]
+
+        def __iter__(self):
+            return iter(self._tokens)
+
+    class _Token:
+        def __init__(self):
+            self.lemma_ = "prefer"
+            self.pos_ = "VERB"
+            self.text = "prefer"
+            self.children = [_Node("Italian food", "dobj")]
+            self.sent = _Sent("I prefer Italian food")
+
+    class _Doc:
+        def __iter__(self):
+            return iter([_Token()])
+
+        ents = []
+        sents = []
+
+    monkeypatch.setattr("src.extraction.write_time_facts.parse_text", lambda text: _Doc())
+
     extractor = WriteTimeFactExtractor()
     chunk = _chunk("I prefer Italian food")
     facts = extractor.extract(chunk)

@@ -1,0 +1,8 @@
+# Test dependencies layered on top of runtime dependencies.
+pytest>=8.0
+pytest-asyncio>=0.24
+pytest-cov>=5.0
+httpx>=0.28
+testcontainers>=4.6
+psycopg2-binary>=2.9
+aiosqlite>=0.20

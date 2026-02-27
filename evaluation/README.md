@@ -18,9 +18,9 @@ For a step-by-step runbook (Ollama setup, env vars, DB setup), see [ProjectPlan/
 ## Prerequisites
 
 1. **CML API** running (e.g. via Docker; see main project README).
-2. **Embedding** (for CML): project root `.env` — `EMBEDDING__MODEL`, `EMBEDDING__DIMENSIONS`. If using Ollama embeddings, pull the model and set dimensions; then drop DBs and re-run migrations if changed.
-3. **QA model**: Phase B uses the **LLM** from project root `.env` (`LLM__PROVIDER`, `LLM__MODEL`, `LLM__BASE_URL`, `LLM__API_KEY`). Same as [.env.example lines 45–49](../.env.example) — e.g. `openai`, `openai_compatible`, or `ollama` (with `LLM__BASE_URL=http://localhost:11434/v1`).
-4. **Python deps**: `requests`, `tqdm`, `openai`; for LLM-as-judge, set `OPENAI_API_KEY` (or `OPENAI_BASE_URL` / `LLM__BASE_URL` for compatible endpoints).
+2. **Embedding** (for CML): project root `.env` — `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS`. If using Ollama embeddings, pull the model and set dimensions; then drop DBs and re-run migrations if changed.
+3. **QA model**: Phase B uses the **LLM** from project root `.env` (`LLM_EVAL__PROVIDER`, `LLM_EVAL__MODEL`, `LLM_EVAL__BASE_URL`, `LLM_EVAL__API_KEY`). Same as [.env.example lines 45–49](../.env.example) — e.g. `openai`, `openai_compatible`, or `ollama` (with `LLM_EVAL__BASE_URL=http://localhost:11434/v1`).
+4. **Python deps**: `requests`, `tqdm`, `openai`; for LLM-as-judge: set OPENAI_API_KEY, or provide an OpenAI-compatible endpoint via OPENAI_BASE_URL / LLM_EVAL__BASE_URL.
 
 ## Configuration
 
@@ -40,11 +40,11 @@ CML uses [semchunk](https://github.com/isaacus-dev/semchunk) with a Hugging Face
 |----------|---------|-------------|
 | `CML_BASE_URL` | `http://localhost:8000` | CML API base URL |
 | `CML_API_KEY` | `test-key` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
-| `LLM__PROVIDER` | `openai` | LLM provider for QA: `openai` \| `openai_compatible` \| `ollama` \| `gemini` \| `claude` (see project root [.env.example](../.env.example) lines 45–49) |
-| `LLM__MODEL` | `gpt-4o-mini` | Model for QA (e.g. `gpt-4o-mini`, `gpt-oss:20b` for Ollama) |
-| `LLM__BASE_URL` | — | OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1` for Ollama) |
-| `LLM__API_KEY` | — | API key (optional for Ollama; server may use `OPENAI_API_KEY`) |
-| `OPENAI_API_KEY` | — | Required for LLM-as-judge; also used for `LLM__API_KEY` when not set |
+| `LLM_EVAL__PROVIDER` | `openai` | LLM provider for QA: `openai` \| `openai_compatible` \| `ollama` \| `gemini` \| `claude` (see project root [.env.example](../.env.example) lines 45–49) |
+| `LLM_EVAL__MODEL` | `gpt-4o-mini` | Model for QA (e.g. `gpt-4o-mini`, `gpt-oss:20b` for Ollama) |
+| `LLM_EVAL__BASE_URL` | — | OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1` for Ollama) |
+| `LLM_EVAL__API_KEY` | — | API key (optional for Ollama; server may use `OPENAI_API_KEY`) |
+| `OPENAI_API_KEY` | — | Required for LLM-as-judge; also used for `LLM_EVAL__API_KEY` when not set |
 
 ## Run full evaluation
 
@@ -83,7 +83,7 @@ The pipeline prints a table matching the paper format:
 
 | Method | single-hop | multi-hop | temporal | commonsense | adversarial | average | LoCoMo-Plus | Gap |
 |--------|------------|-----------|----------|-------------|-------------|---------|-------------|-----|
-| CML+&lt;LLM__MODEL&gt; | ... | ... | ... | ... | ... | ... | ... | ... |
+| CML+&lt;LLM_EVAL__MODEL&gt; | ... | ... | ... | ... | ... | ... | ... | ... |
 
 **Gap** = LoCoMo average − LoCoMo-Plus (performance drop from factual to cognitive memory).
 
@@ -119,7 +119,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `--max-results N` | CML read top-k (default 25) |
 | `--verbose` | Per-sample retrieval diagnostics |
 | `--cml-url`, `--cml-api-key` | Override CML connection |
-| `--judge-model` | Model for LLM-as-judge (default: `LLM__MODEL` or gpt-4o-mini) |
+| `--judge-model` | Model for LLM-as-judge (default: `LLM_EVAL__MODEL` (fallback `LLM_INTERNAL__MODEL`) or gpt-4o-mini) |
 
 ### Outputs
 
@@ -135,7 +135,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 python evaluation/scripts/generate_locomo_report.py --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+gpt-4o-mini"
 ```
 
-Use `--method` to match your QA model (same as `LLM__MODEL` from .env, e.g. `CML+gpt-4o-mini` or `CML+gpt-oss:20b`).
+Use `--method` to match your QA model (same as `LLM_EVAL__MODEL` from .env (or fallback `LLM_INTERNAL__MODEL`), e.g. `CML+gpt-4o-mini` or `CML+gpt-oss:20b`).
 
 ## Level-2 Cognitive Memory
 
@@ -179,3 +179,4 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 - [LoCoMo repo](https://github.com/snap-research/locomo)
 - [Locomo-Plus repo](https://github.com/xjtuleeyf/Locomo-Plus)
 - [Runbook (full steps)](../ProjectPlan/LocomoEval/RunEvaluation.md)
+

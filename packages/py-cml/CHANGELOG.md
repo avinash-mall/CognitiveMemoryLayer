@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Compatibility updates for CML server changes from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.md) resolutions (F-04, F-13, E-01).
+Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Issues.md](../../ProjectPlan/BaseCML/Issues.md) resolutions (F-04, F-13, E-01).
 
 ### Added
 
@@ -18,6 +18,7 @@ Compatibility updates for CML server changes from [ProjectPlan/BaseCML/Issues.md
 
 - **CSRF header for dashboard requests** — HTTP transport now automatically adds `X-Requested-With: XMLHttpRequest` for dashboard POST, PUT, DELETE, and PATCH requests. Required for compatibility with CML servers that enforce CSRF protection on dashboard state-changing endpoints. Methods affected: `consolidate()`, `run_forgetting()`, `reconsolidate()`, `dashboard_bulk_action()`, `dashboard_config_update()`, `test_retrieval()`, `reset_database()`.
 - **WriteRequest content validation** — `content` now enforces `min_length=1` and `max_length=100_000` (aligns with server). Validates before sending; raises Pydantic `ValidationError` for invalid content.
+- **SessionScope read behavior** — `SessionScope.read()` and `AsyncSessionScope.read()` now call the session-scoped route (`POST /api/v1/session/{session_id}/read`) instead of tenant-wide `POST /api/v1/memory/read`, aligning SDK behavior with documented session isolation.
 
 ### Documentation
 

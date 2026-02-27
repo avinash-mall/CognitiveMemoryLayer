@@ -38,6 +38,7 @@ class RetrievalStep:
     skip_if_found: bool = False
     constraint_categories: list[str] | None = None
     associative_expansion: bool = False
+    query_domain: str | None = None
 
 
 @dataclass
@@ -134,6 +135,7 @@ class RetrievalPlanner:
                     priority=0,
                     timeout_ms=200,
                     constraint_categories=analysis.constraint_dimensions or None,
+                    query_domain=analysis.query_domain,
                 )
             )
             steps.append(
@@ -164,6 +166,7 @@ class RetrievalPlanner:
                     priority=1,
                     constraint_categories=analysis.constraint_dimensions,
                     associative_expansion=True,
+                    query_domain=analysis.query_domain,
                 )
             )
             steps.append(

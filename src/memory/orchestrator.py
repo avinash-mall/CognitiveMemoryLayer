@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from ..consolidation.worker import ConsolidationWorker
@@ -140,15 +140,11 @@ class MemoryOrchestrator:
 
         short_term_config = ShortTermMemoryConfig()
         short_term = ShortTermMemory(config=short_term_config)
-        entity_extractor = (
-            EntityExtractor(internal_llm)
-            if internal_llm and settings.features.use_llm_enabled
-            else None
+        entity_extractor = EntityExtractor(
+            internal_llm if settings.features.use_llm_enabled else None
         )
-        relation_extractor = (
-            RelationExtractor(internal_llm)
-            if internal_llm and settings.features.use_llm_enabled
-            else None
+        relation_extractor = RelationExtractor(
+            internal_llm if settings.features.use_llm_enabled else None
         )
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
 
@@ -229,16 +225,25 @@ class MemoryOrchestrator:
         """Factory for embedded lite mode: no PostgreSQL/Neo4j/Redis; uses provided episodic store and clients."""
         graph_store = NoOpGraphStore()
         fact_store = NoOpFactStore()
-        neocortical = NeocorticalStore(
-            cast("Neo4jGraphStore", graph_store),
-            cast("SemanticFactStore", fact_store),
-        )
+        neocortical = NeocorticalStore(graph_store, fact_store)
 
         short_term_config = ShortTermMemoryConfig(min_salience_for_encoding=0.0)
         short_term = ShortTermMemory(config=short_term_config)
+        from ..core.config import get_settings
+
+        settings = get_settings()
+        entity_extractor = EntityExtractor(
+            llm_client if settings.features.use_llm_enabled else None
+        )
+        relation_extractor = RelationExtractor(
+            llm_client if settings.features.use_llm_enabled else None
+        )
+
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
+            entity_extractor=entity_extractor,
+            relation_extractor=relation_extractor,
         )
 
         from ..retrieval.memory_retriever import MemoryRetriever
@@ -433,6 +438,7 @@ class MemoryOrchestrator:
             cat = cat_map.get((nc.constraint_type or "").lower())
             if not cat:
                 continue
+            new_fact_key = ConstraintExtractor.constraint_fact_key(nc)
             try:
                 existing = await self.neocortical.facts.get_facts_by_category(
                     tenant_id, cat, current_only=True
@@ -452,7 +458,11 @@ class MemoryOrchestrator:
                         await self.neocortical.facts.invalidate_fact(
                             tenant_id, old.key, reason="superseded"
                         )
-                        await self.hippocampal.deactivate_constraints_by_key(tenant_id, old.key)
+                        await self.hippocampal.deactivate_constraints_by_key(
+                            tenant_id,
+                            old.key,
+                            superseded_by_key=new_fact_key,
+                        )
             except Exception as e:
                 logger.warning(
                     "supersession_check_failed",
@@ -724,6 +734,7 @@ class MemoryOrchestrator:
         since: datetime | None = None,
         until: datetime | None = None,
         user_timezone: str | None = None,
+        source_session_id: str | None = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories. Holistic: tenant-only."""
         return await self.retriever.retrieve(
@@ -735,6 +746,7 @@ class MemoryOrchestrator:
             since=since,
             until=until,
             user_timezone=user_timezone,
+            source_session_id=source_session_id,
         )
 
     async def update(

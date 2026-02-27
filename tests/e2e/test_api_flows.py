@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from src.api.app import app
 from src.core.config import get_settings
 
+pytestmark = pytest.mark.e2e
+
 
 class _MockLLMClient:
     """Mock LLM for e2e tests so no real API/Ollama is required."""

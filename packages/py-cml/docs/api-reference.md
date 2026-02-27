@@ -34,6 +34,7 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **get_context(query, \*, max_results=10, ...)** → `str` — Formatted LLM context string.
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
 - **get_session_context(session_id)** → `SessionContextResponse` — Session context is scoped to memories with that `session_id` when provided.
+- **session(\*, name, ttl_hours=24, metadata)** → context manager yielding `SessionScope`/`AsyncSessionScope` — session wrapper methods inject `session_id`; `SessionScope.read()` uses `/session/{session_id}/read` for session-scoped retrieval.
 - **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True. Requires admin API key. Server implements DELETE /api/v1/memory/all.
 - **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` and `eval_mode` parameters.
 - **search(query, \*\*kwargs)** — Alias for read.

@@ -1,12 +1,119 @@
 """Neocortical store: semantic memory facade (graph + fact store)."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from ...core.schemas import Relation
-from ...storage.neo4j import Neo4jGraphStore
-from .fact_store import SemanticFactStore
-from .schemas import SemanticFact
+from .schemas import FactCategory, SemanticFact
+
+
+class GraphStoreLike(Protocol):
+    """Graph-store contract used by neocortical memory."""
+
+    async def merge_node(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        entity: str,
+        entity_type: str,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
+    ) -> str: ...
+
+    async def merge_edge(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        subject: str,
+        predicate: str,
+        object: str,
+        properties: dict[str, Any] | None = None,
+        namespace: str | None = None,
+    ) -> str: ...
+
+    async def personalized_pagerank(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        seed_entities: list[str],
+        top_k: int = 20,
+        damping: float = 0.85,
+    ) -> list[dict[str, Any]]: ...
+
+    async def get_entity_facts(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        entity: str,
+    ) -> list[dict[str, Any]]: ...
+
+    async def get_entity_facts_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        entity_names: list[str],
+    ) -> dict[str, list[dict[str, Any]]]: ...
+
+
+class FactStoreLike(Protocol):
+    """Fact-store contract used by neocortical memory."""
+
+    async def upsert_fact(
+        self,
+        tenant_id: str,
+        key: str,
+        value: Any,
+        confidence: float = 0.8,
+        evidence_ids: list[str] | None = None,
+        valid_from: datetime | None = None,
+        context_tags: list[str] | None = None,
+    ) -> SemanticFact: ...
+
+    async def get_fact(
+        self,
+        tenant_id: str,
+        key: str,
+        include_historical: bool = False,
+    ) -> SemanticFact | None: ...
+
+    async def get_tenant_profile(self, tenant_id: str) -> dict[str, Any]: ...
+
+    async def search_facts(
+        self,
+        tenant_id: str,
+        query: str,
+        limit: int = 20,
+    ) -> list[SemanticFact]: ...
+
+    async def search_facts_batch(
+        self,
+        tenant_id: str,
+        entity_names: list[str],
+        limit_per_entity: int = 5,
+    ) -> dict[str, list[SemanticFact]]: ...
+
+    async def get_facts_by_category(
+        self,
+        tenant_id: str,
+        category: FactCategory,
+        current_only: bool = True,
+        limit: int = 50,
+    ) -> list[SemanticFact]: ...
+
+    async def get_facts_by_categories(
+        self,
+        tenant_id: str,
+        categories: list[FactCategory],
+        current_only: bool = True,
+        limit: int = 200,
+    ) -> list[SemanticFact]: ...
+
+    async def invalidate_fact(
+        self,
+        tenant_id: str,
+        key: str,
+        reason: str = "superseded",
+    ) -> bool: ...
 
 
 class NeocorticalStore:
@@ -14,7 +121,7 @@ class NeocorticalStore:
     Semantic memory store combining knowledge graph and structured fact store.
     """
 
-    def __init__(self, graph_store: Neo4jGraphStore, fact_store: SemanticFactStore):
+    def __init__(self, graph_store: GraphStoreLike, fact_store: FactStoreLike):
         self.graph = graph_store
         self.facts = fact_store
 

@@ -95,10 +95,7 @@ class MemoryEnabledAssistant:
         self.session_id = session_id
         # Prefer LLM_INTERNAL__* when set (e.g. .env lines 20-22)
         self.model = (
-            model
-            or os.environ.get("LLM_INTERNAL__MODEL")
-            or os.environ.get("OPENAI_MODEL")
-            or ""
+            model or os.environ.get("LLM_INTERNAL__MODEL") or os.environ.get("OPENAI_MODEL") or ""
         ).strip()
         base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
         llm_base = (os.environ.get("LLM_INTERNAL__BASE_URL") or "").strip()
