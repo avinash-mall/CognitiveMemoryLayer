@@ -67,9 +67,23 @@ async def test_unified_extractor_empty_text_returns_defaults():
     assert result.importance == 0.5
 
 
-def test_rule_based_constraint_extractor_still_works():
-    """Rule-based ConstraintExtractor produces valid constraints (flag=false path)."""
-    extractor = ConstraintExtractor()
+def test_model_based_constraint_extractor_still_works():
+    """Model-backed ConstraintExtractor produces valid constraints when modelpack is available."""
+
+    class _StubModelPack:
+        available = True
+
+        def predict_single(self, task: str, text: str):
+            class _Pred:
+                def __init__(self, label: str, confidence: float):
+                    self.label = label
+                    self.confidence = confidence
+
+            if task == "constraint_type":
+                return _Pred("goal", 0.9)
+            return None
+
+    extractor = ConstraintExtractor(modelpack=_StubModelPack())
     chunk = _chunk("I'm trying to save money for a vacation")
     constraints = extractor.extract(chunk)
     assert len(constraints) >= 1

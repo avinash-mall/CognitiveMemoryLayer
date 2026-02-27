@@ -1,70 +1,14 @@
-"""Query classifier for retrieval strategy selection."""
+﻿"""Query classifier for retrieval strategy selection."""
 
 import json
-import re
 
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
+from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
+from ..utils.ner import extract_entity_texts
 from .query_types import QueryAnalysis, QueryIntent
 
 logger = get_logger(__name__)
-
-FAST_PATTERNS = {
-    QueryIntent.PREFERENCE_LOOKUP: [
-        r"what (do|does) (i|my) (like|prefer|want|enjoy)",
-        r"(my|i) (favorite|preferred)",
-        r"do i (like|prefer|enjoy)",
-        r"what (food|cuisine|music|movie|book|sport|hobby|color|drink) do (i|they)",
-    ],
-    QueryIntent.IDENTITY_LOOKUP: [
-        r"what('s| is) my (name|email|phone|address|job|title)",
-        r"who am i",
-        r"my (name|email|phone)",
-        r"what (is|was) (\w+'s|their|his|her) (name|job|role|title)",
-    ],
-    QueryIntent.TASK_STATUS: [
-        r"where (am i|are we) (in|on|at)",
-        r"what('s| is) (the|my) (status|progress)",
-        r"(current|next) (step|task)",
-    ],
-    QueryIntent.TEMPORAL_QUERY: [
-        r"(last|past) (week|month|day|year)",
-        r"(yesterday|today|recently)",
-        r"when did (i|we|he|she|they)",
-        r"what happened",
-        r"(first|last) time",
-        r"how long (ago|have|has)",
-    ],
-    QueryIntent.PROCEDURAL: [
-        r"how (do|can|should|did) (i|we)",
-        r"what('s| are) the steps",
-        r"(procedure|process) for",
-    ],
-    QueryIntent.EPISODIC_RECALL: [
-        r"what did (\w+ )?(say|talk|mention|discuss|tell|share|bring up)",
-        r"what (was|were) (\w+ )?(talking|saying|discussing|doing)",
-        r"tell me (about|what)",
-        r"do (you|i) remember",
-        r"(who|what|where|which) (was|were|did|is|are) (\w+ )?(said|told|mentioned|discussed|shared)",
-        r"(describe|summarize) (the|our|my|their) (conversation|discussion|talk|meeting)",
-        r"what (topics?|subjects?) (came up|were covered|did we discuss)",
-    ],
-    QueryIntent.CONSTRAINT_CHECK: [
-        r"should i",
-        r"can i",
-        r"is it ok (to|if)",
-        r"would it be (ok|fine|good|bad)",
-        r"what if i",
-        r"do you think i should",
-        r"recommend",
-        r"is (this|that|it) (consistent|aligned|compatible)",
-        r"would (this|that) (conflict|contradict|go against)",
-    ],
-    QueryIntent.GENERAL_QUESTION: [
-        r"(who|what|where|when|why|which|how) (is|are|was|were|did|do|does|has|have|had)",
-        r"tell me (more )?(about|what|how|why|when|where)",
-    ],
-}
 
 CLASSIFICATION_PROMPT = """Classify this query for a memory retrieval system.
 
@@ -96,152 +40,132 @@ Rules:
 
 
 class QueryClassifier:
-    """Classifies queries to determine retrieval strategy. Fast patterns first, then LLM."""
+    """Classifies queries using modelpack and/or LLM."""
 
-    def __init__(self, llm_client: LLMClient | None = None):
-        self.llm = llm_client
-        self._compiled_patterns = {
-            intent: [re.compile(p, re.IGNORECASE) for p in patterns]
-            for intent, patterns in FAST_PATTERNS.items()
-        }
-
-    # Patterns that indicate a decision/temptation/recommendation query
-    _DECISION_PATTERNS = [
-        re.compile(r"\bshould i\b", re.I),
-        re.compile(r"\bcan i\b", re.I),
-        re.compile(r"\bis it ok\b", re.I),
-        re.compile(r"\bwould it be\b", re.I),
-        re.compile(r"\bwhat if i\b", re.I),
-        re.compile(r"\brecommend\b", re.I),
-        re.compile(r"\bstart (watching|doing|eating|buying)\b", re.I),
-        re.compile(r"\btry (this|that|the)\b", re.I),
-        re.compile(r"\bgo (out|for|to)\b", re.I),
-    ]
-    # Patterns for constraint dimension classification
-    _CONSTRAINT_DIM_PATTERNS: dict[str, list[re.Pattern]] = {
-        "goal": [re.compile(r"\b(goal|objective|target|aim|ambition|milestone)\b", re.I)],
-        "value": [re.compile(r"\b(value|principle|ethic|belief|priority)\b", re.I)],
-        "state": [
-            re.compile(r"\b(feel|mood|stress|anxious|tired|busy|sick)\b", re.I),
-            re.compile(r"\b(energy|improve|energetic)\b", re.I),  # BUG-03: energy/improve -> state
-        ],
-        "causal": [re.compile(r"\b(because|reason|consequence|result|cause)\b", re.I)],
-        "policy": [re.compile(r"\b(rule|policy|restriction|limit|boundary)\b", re.I)],
+    _MODELPACK_INTENT_HINTS: dict[str, QueryIntent] = {
+        "constraint_check": QueryIntent.CONSTRAINT_CHECK,
+        "preference_lookup": QueryIntent.PREFERENCE_LOOKUP,
+        "identity_lookup": QueryIntent.IDENTITY_LOOKUP,
+        "task_status": QueryIntent.TASK_STATUS,
+        "episodic_recall": QueryIntent.EPISODIC_RECALL,
+        "general_question": QueryIntent.GENERAL_QUESTION,
+        "multi_hop": QueryIntent.MULTI_HOP,
+        "temporal_query": QueryIntent.TEMPORAL_QUERY,
+        "procedural": QueryIntent.PROCEDURAL,
+        "unknown": QueryIntent.UNKNOWN,
+        "planning": QueryIntent.PROCEDURAL,
+        "conversation": QueryIntent.EPISODIC_RECALL,
+        "factual": QueryIntent.GENERAL_QUESTION,
+        "tool_query": QueryIntent.GENERAL_QUESTION,
     }
+
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        modelpack: ModelPackRuntime | None = None,
+    ):
+        self.llm = llm_client
+        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
+        self._direct_intent_map = {intent.value: intent for intent in QueryIntent}
 
     async def classify(
         self,
         query: str,
         recent_context: str | None = None,
     ) -> QueryAnalysis:
-        """Classify a query and extract relevant information.
-
-        Strategy:
-        1. Always try fast regex patterns first.
-        2. If a pattern matches with confidence > 0.8, return immediately.
-        3. Only call the LLM when ``use_llm_query_classifier_only`` is
-           explicitly enabled in settings — never as a silent fallback for
-           unmatched queries.  This avoids one LLM call per read request for
-           the common case of queries that simply don't match any pattern.
-        4. For unmatched queries (fast_result is None or low-confidence)
-           without LLM, default to GENERAL_QUESTION with confidence 0.5,
-           which triggers vector + facts retrieval — a safe, broad baseline.
-        """
-        # If query is vague and we have context, use it to infer intent
-        effective_query = query
-        if recent_context and self._is_vague(query):
-            effective_query = f"{recent_context}\nUser now asks: {query}"
-
+        """Classify a query and extract relevant information."""
         from ..core.config import get_settings
 
         settings = get_settings().features
+        llm_forced = settings.use_llm_enabled and settings.use_llm_query_classifier_only
 
-        # Fast path (always attempted when use_llm_enabled=false or not force-LLM)
-        fast_result: QueryAnalysis | None = None
-        if not (settings.use_llm_enabled and settings.use_llm_query_classifier_only):
-            fast_result = self._fast_classify(effective_query)
+        result: QueryAnalysis | None = None
+        if not llm_forced:
+            result = self._modelpack_classify(query)
 
-        if fast_result and fast_result.confidence > 0.8:
-            self._enrich_constraint_dimensions(fast_result)
-            return fast_result
+        if result is None and self.llm and settings.use_llm_enabled:
+            result = await self._llm_classify(query, recent_context=recent_context)
 
-        # LLM path: only when use_llm_enabled and explicitly requested via feature flag
-        if self.llm and settings.use_llm_enabled and settings.use_llm_query_classifier_only:
-            result = await self._llm_classify(effective_query, recent_context=recent_context)
-            self._enrich_constraint_dimensions(result)
-            return result
+        if result is None:
+            result = QueryAnalysis(
+                original_query=query,
+                intent=QueryIntent.GENERAL_QUESTION,
+                confidence=0.5,
+                suggested_sources=["vector", "facts"],
+                suggested_top_k=10,
+            )
 
-        # Default: use the partial fast result when available, else GENERAL_QUESTION
-        result = fast_result or QueryAnalysis(
-            original_query=query,
-            intent=QueryIntent.GENERAL_QUESTION,
-            confidence=0.5,
-            suggested_sources=["vector", "facts"],
-            suggested_top_k=10,
-        )
-        self._enrich_constraint_dimensions(result)
-        return result
+        if not result.entities:
+            result.entities = self._extract_entities(query)
 
-    def _enrich_constraint_dimensions(self, analysis: QueryAnalysis) -> None:
-        """Detect constraint dimensions and decision-query nature from the query text."""
-        q = analysis.original_query
-        # Check if this is a decision/temptation query
-        if any(p.search(q) for p in self._DECISION_PATTERNS):
-            analysis.is_decision_query = True
-        # Skip constraint_dimensions if LLM already provided them
-        if analysis.constraint_dimensions_from_llm:
-            return
-        # BUG-03: When confidence low, retrieve all categories (constraint_dimensions=None)
-        if analysis.confidence < 0.8:
-            analysis.constraint_dimensions = None
-            return
-        # Detect constraint dimensions
-        dims: list[str] = []
-        for dim, patterns in self._CONSTRAINT_DIM_PATTERNS.items():
-            if any(p.search(q) for p in patterns):
-                dims.append(dim)
-        analysis.constraint_dimensions = dims
-        # If decision query detected but no specific intent was CONSTRAINT_CHECK,
-        # and the intent is general/unknown, upgrade it
-        if analysis.is_decision_query and analysis.intent in (
+        self._enrich_with_modelpack(result)
+        result.is_decision_query = result.intent == QueryIntent.CONSTRAINT_CHECK
+        if result.constraint_dimensions and result.intent in {
             QueryIntent.GENERAL_QUESTION,
             QueryIntent.UNKNOWN,
-        ):
-            analysis.intent = QueryIntent.CONSTRAINT_CHECK
-            analysis.suggested_sources = self._get_sources_for_intent(QueryIntent.CONSTRAINT_CHECK)
-            analysis.suggested_top_k = self._get_top_k_for_intent(QueryIntent.CONSTRAINT_CHECK)
+        }:
+            result.intent = QueryIntent.CONSTRAINT_CHECK
+            result.is_decision_query = True
+            result.suggested_sources = self._get_sources_for_intent(QueryIntent.CONSTRAINT_CHECK)
+            result.suggested_top_k = self._get_top_k_for_intent(QueryIntent.CONSTRAINT_CHECK)
+        return result
 
-    def _is_vague(self, query: str) -> bool:
-        """Heuristic: query is too short or lacks clear intent."""
-        q = query.strip().lower()
-        if len(q) < 15:
-            return True
-        vague_starts = (
-            "any ",
-            "what about",
-            "suggestions?",
-            "thoughts?",
-            "and?",
-            "so?",
-            "what do you think",
+    def _modelpack_classify(self, query: str) -> QueryAnalysis | None:
+        if not self.modelpack.available:
+            return None
+        if not query.strip():
+            return None
+
+        intent_pred = self.modelpack.predict_single("query_intent", query)
+        if intent_pred is None or not intent_pred.label:
+            return None
+        intent = self._intent_from_label(intent_pred.label)
+        if intent is None:
+            return None
+
+        return QueryAnalysis(
+            original_query=query,
+            intent=intent,
+            confidence=max(0.0, min(1.0, intent_pred.confidence)),
+            entities=self._extract_entities(query),
+            suggested_sources=self._get_sources_for_intent(intent),
+            suggested_top_k=self._get_top_k_for_intent(intent),
         )
-        return any(q.startswith(p) or q == p for p in vague_starts)
 
-    def _fast_classify(self, query: str) -> QueryAnalysis | None:
-        """Fast pattern-based classification."""
-        query_lower = query.lower()
-        for intent, patterns in self._compiled_patterns.items():
-            for pattern in patterns:
-                if pattern.search(query_lower):
-                    return QueryAnalysis(
-                        original_query=query,
-                        intent=intent,
-                        confidence=0.85,
-                        entities=self._extract_entities_simple(query),
-                        suggested_sources=self._get_sources_for_intent(intent),
-                        suggested_top_k=self._get_top_k_for_intent(intent),
-                    )
-        return None
+    def _enrich_with_modelpack(self, analysis: QueryAnalysis) -> None:
+        """Augment query analysis with router model signals when available."""
+        if not self.modelpack.available:
+            return
+
+        query = analysis.original_query or ""
+        if not query.strip():
+            return
+
+        domain_pred = self.modelpack.predict_single("query_domain", query)
+        if domain_pred and domain_pred.label:
+            analysis.query_domain = domain_pred.label
+            analysis.metadata["query_domain_confidence"] = domain_pred.confidence
+
+        if not analysis.constraint_dimensions_from_llm:
+            dim_pred = self.modelpack.predict_single("constraint_dimension", query)
+            if dim_pred and dim_pred.label and dim_pred.label != "other":
+                dims = analysis.constraint_dimensions
+                if dims is None:
+                    analysis.constraint_dimensions = [dim_pred.label]
+                elif dim_pred.label not in dims:
+                    dims.append(dim_pred.label)
+
+        intent_pred = self.modelpack.predict_single("query_intent", query)
+        if intent_pred and intent_pred.label:
+            hint_intent = self._intent_from_label(intent_pred.label)
+            if (
+                hint_intent is not None
+                and intent_pred.confidence >= 0.55
+                and analysis.intent in {QueryIntent.GENERAL_QUESTION, QueryIntent.UNKNOWN}
+            ):
+                analysis.intent = hint_intent
+                analysis.suggested_sources = self._get_sources_for_intent(hint_intent)
+                analysis.suggested_top_k = self._get_top_k_for_intent(hint_intent)
 
     async def _llm_classify(
         self,
@@ -296,7 +220,6 @@ class QueryClassifier:
                 analysis.constraint_dimensions_from_llm = True
             return analysis
         except (json.JSONDecodeError, ValueError, TypeError, Exception) as e:
-            # Catch all errors including LLM network failures, rate limits, etc. (MED-26)
             logger.warning("llm_classify_failed", extra={"error": str(e)})
             return QueryAnalysis(
                 original_query=query,
@@ -306,23 +229,14 @@ class QueryClassifier:
                 suggested_top_k=10,
             )
 
-    def _extract_entities_simple(self, query: str) -> list[str]:
-        """Simple entity extraction using capitalization.
+    def _extract_entities(self, query: str) -> list[str]:
+        return extract_entity_texts(query, max_entities=12)
 
-        Only treats capitalized words as entities if they do NOT appear at a
-        sentence boundary (i.e., after a period/exclamation/question mark or at
-        position 0). This avoids false positives like 'The', 'What', 'How'
-        (MED-23).
-        """
-        words = query.split()
-        entities = []
-        for i, word in enumerate(words):
-            w = word.strip("?.,!")
-            # Skip sentence-initial words: position 0 or preceded by sentence-ending punctuation
-            prev_ends = i == 0 or words[i - 1][-1] in ".!?"
-            if w and w[0].isupper() and len(w) > 1 and not prev_ends:
-                entities.append(w)
-        return entities
+    def _intent_from_label(self, raw_label: str) -> QueryIntent | None:
+        label = raw_label.strip().lower()
+        if label in self._direct_intent_map:
+            return self._direct_intent_map[label]
+        return self._MODELPACK_INTENT_HINTS.get(label)
 
     def _get_sources_for_intent(self, intent: QueryIntent) -> list[str]:
         """Map intent to retrieval sources."""

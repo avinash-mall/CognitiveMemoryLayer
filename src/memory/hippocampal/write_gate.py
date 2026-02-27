@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...core.config import get_settings
 from ...core.enums import MemoryType
+from ...utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 from ..working.models import ChunkType, SemanticChunk
 
 if TYPE_CHECKING:
@@ -66,11 +67,12 @@ class WriteGate:
         self,
         config: WriteGateConfig | None = None,
         known_facts_cache: set[str] | None = None,
+        modelpack: ModelPackRuntime | None = None,
     ) -> None:
         self.config = config or WriteGateConfig()
         self._known_facts = known_facts_cache or set()
-        self._pii_patterns = [re.compile(p, re.I) for p in self.config.pii_patterns]
         self._secret_patterns = [re.compile(p, re.I) for p in self.config.secret_patterns]
+        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     def evaluate(
         self,
@@ -104,7 +106,7 @@ class WriteGate:
             if redaction_required:
                 risk_flags.append("contains_pii")
         else:
-            if self._check_pii(chunk.text):
+            if self._predict_pii(chunk.text):
                 risk_flags.append("contains_pii")
                 redaction_required = True
             else:
@@ -135,7 +137,7 @@ class WriteGate:
         ):
             importance = unified_result.salience
         else:
-            importance = self._compute_importance(
+            importance = self._predict_importance(
                 chunk, context, effective_chunk_type=effective_chunk_type
             )
         novelty = self._compute_novelty(chunk, existing_memories)
@@ -180,53 +182,40 @@ class WriteGate:
             reason=f"Score: {combined_score:.2f}, importance: {importance:.2f}, novelty: {novelty:.2f}",
         )
 
-    def _check_pii(self, text: str) -> bool:
-        return any(pattern.search(text) for pattern in self._pii_patterns)
-
     def _check_secrets(self, text: str) -> bool:
         return any(pattern.search(text) for pattern in self._secret_patterns)
 
-    def _compute_importance(
+    def _predict_pii(self, text: str) -> bool:
+        if not text.strip() or not self.modelpack.available:
+            return False
+        pred = self.modelpack.predict_single("pii_presence", text)
+        if pred is None or not pred.label:
+            return False
+        label = pred.label.strip().lower()
+        return label in {"pii", "present", "contains_pii", "yes", "true"} and pred.confidence >= 0.5
+
+    def _predict_importance(
         self,
         chunk: SemanticChunk,
         context: dict[str, Any] | None = None,
         effective_chunk_type: ChunkType | None = None,
     ) -> float:
-        score = chunk.salience
-        type_boosts = {
-            ChunkType.PREFERENCE: 0.3,
-            ChunkType.CONSTRAINT: 0.3,
-            ChunkType.FACT: 0.2,
-            ChunkType.INSTRUCTION: 0.1,
-            ChunkType.EVENT: 0.1,
-        }
-        ct = effective_chunk_type if effective_chunk_type is not None else chunk.chunk_type
-        score += type_boosts.get(ct, 0.0)
-        text_lower = chunk.text.lower()
-        if any(m in text_lower for m in ["always", "never", "important", "remember"]):
-            score += 0.2
-        if any(m in text_lower for m in ["my name", "i am", "i live", "i work"]):
-            score += 0.15
-        # Constraint cue phrases boost
-        constraint_cues = [
-            "i'm trying to",
-            "i don't want",
-            "it's important that",
-            "my goal is",
-            "i value",
-            "i believe",
-            "i must",
-            "i should",
-            "i'm preparing for",
-            "i'm focused on",
-            "in order to",
-            "because of",
-        ]
-        if any(cue in text_lower for cue in constraint_cues):
-            score += 0.2
-        if chunk.entities:
-            score += 0.1 * min(len(chunk.entities), 3)
-        return min(score, 1.0)
+        if self.modelpack.available and chunk.text.strip():
+            pred = self.modelpack.predict_single("importance_bin", chunk.text)
+            if pred and pred.label:
+                mapping = {
+                    "very_low": 0.1,
+                    "low": 0.3,
+                    "medium": 0.5,
+                    "high": 0.75,
+                    "critical": 0.9,
+                }
+                label = pred.label.strip().lower()
+                if label in mapping:
+                    return mapping[label]
+
+        # No heuristic scoring path: use upstream salience directly.
+        return max(0.0, min(1.0, chunk.salience))
 
     def _compute_novelty(
         self,

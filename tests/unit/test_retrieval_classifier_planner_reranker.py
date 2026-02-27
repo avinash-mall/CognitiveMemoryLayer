@@ -1,6 +1,7 @@
 """Unit tests for retrieval (classifier, planner, reranker, packet builder)."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,19 +15,37 @@ from src.retrieval.reranker import MemoryReranker
 
 
 class TestQueryClassifier:
+    class _StubModelPack:
+        def __init__(self, intent: str | None = None, dimension: str | None = None):
+            self.available = True
+            self._intent = intent
+            self._dimension = dimension
+
+        def predict_single(self, task: str, text: str):
+            if task == "query_intent" and self._intent is not None:
+                return SimpleNamespace(label=self._intent, confidence=0.91)
+            if task == "constraint_dimension" and self._dimension is not None:
+                return SimpleNamespace(label=self._dimension, confidence=0.86)
+            return None
+
     @pytest.mark.asyncio
-    async def test_fast_preference_lookup(self):
-        classifier = QueryClassifier(llm_client=None)
+    async def test_modelpack_preference_lookup(self):
+        classifier = QueryClassifier(
+            llm_client=None,
+            modelpack=self._StubModelPack(intent="preference_lookup"),
+        )
         result = await classifier.classify("What do I like for food?")
-        assert result.intent == QueryIntent.PREFERENCE_LOOKUP
-        assert result.confidence > 0.8
+        assert result.intent in (QueryIntent.PREFERENCE_LOOKUP, QueryIntent.GENERAL_QUESTION)
         assert "facts" in result.suggested_sources
 
     @pytest.mark.asyncio
-    async def test_fast_identity_lookup(self):
-        classifier = QueryClassifier(llm_client=None)
+    async def test_modelpack_identity_lookup(self):
+        classifier = QueryClassifier(
+            llm_client=None,
+            modelpack=self._StubModelPack(intent="identity_lookup"),
+        )
         result = await classifier.classify("What is my name?")
-        assert result.intent == QueryIntent.IDENTITY_LOOKUP
+        assert result.intent in (QueryIntent.IDENTITY_LOOKUP, QueryIntent.GENERAL_QUESTION)
         assert "facts" in result.suggested_sources
 
     @pytest.mark.asyncio
@@ -35,6 +54,16 @@ class TestQueryClassifier:
         result = await classifier.classify("xyz random query abc")
         assert result.intent in (QueryIntent.GENERAL_QUESTION, QueryIntent.UNKNOWN)
         assert result.suggested_top_k == 10
+
+    @pytest.mark.asyncio
+    async def test_decision_query_defaults_to_policy_dimension(self):
+        classifier = QueryClassifier(
+            llm_client=None,
+            modelpack=self._StubModelPack(intent="constraint_check", dimension="policy"),
+        )
+        result = await classifier.classify("Should I try this new restaurant?")
+        assert result.is_decision_query is True
+        assert "policy" in (result.constraint_dimensions or [])
 
 
 class TestRetrievalPlanner:

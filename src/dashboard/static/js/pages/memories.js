@@ -170,7 +170,11 @@ async function loadData(sourceSessionId) {
 
 function buildTable(data) {
     if (!data.items?.length) {
-        return `<div class="empty-state"><div class="empty-state-icon">&#128466;</div><p>No memories found</p></div>`;
+        return `<div class="empty-state">
+            <div class="empty-state-icon">&#128466;</div>
+            <p>No memories found for the current filters.</p>
+            <p style="color:var(--text-muted);margin-top:6px;">Try clearing filters or ingest new memories with <code>/api/v1/memory/write</code>.</p>
+        </div>`;
     }
     const rows = data.items.map(m => `
         <tr class="clickable-row" data-id="${m.id}">

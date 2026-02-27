@@ -1,6 +1,6 @@
 # Phase 8: Weight Adaptation Interface — Dynamic LoRA
 
-**Intrinsic Phase I-8** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+**Intrinsic Phase I-8** (planned; not yet implemented). See [ActiveCML/README.md](README.md) for the mapping of I-1..I-10 to core CML phases.
 
 ## Overview
 

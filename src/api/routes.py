@@ -200,6 +200,7 @@ async def read_memory(
             episodes=episodes,
             constraints=constraints,
             llm_context=llm_context,
+            retrieval_meta=packet.retrieval_meta,
             total_count=len(all_memories),
             elapsed_ms=elapsed_ms,
         )
@@ -368,7 +369,7 @@ async def session_read(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """[Deprecated] Use /memory/read instead. This endpoint returns tenant-wide results; session_id is kept for API compatibility only."""
+    """[Deprecated] Use /memory/read instead. This endpoint is session-scoped by path `session_id`."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
     start = datetime.now(UTC)
     try:
@@ -386,6 +387,7 @@ async def session_read(
             since=body.since,
             until=body.until,
             user_timezone=body.user_timezone,
+            source_session_id=session_id,
         )
         elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
 
@@ -417,6 +419,7 @@ async def session_read(
             episodes=episodes,
             constraints=constraints,
             llm_context=llm_context,
+            retrieval_meta=packet.retrieval_meta,
             total_count=len(all_memories),
             elapsed_ms=elapsed_ms,
         )
@@ -521,7 +524,11 @@ async def read_memory_stream(
                 yield f"data: {json.dumps(item.model_dump(), default=str)}\n\n"
 
             elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
-            meta = {"total_count": len(packet.all_memories), "elapsed_ms": round(elapsed_ms, 2)}
+            meta = {
+                "total_count": len(packet.all_memories),
+                "elapsed_ms": round(elapsed_ms, 2),
+                "retrieval_meta": packet.retrieval_meta,
+            }
             yield f"event: done\ndata: {json.dumps(meta)}\n\n"
         except Exception as e:
             logger.exception("stream_read_failed", tenant_id=auth.tenant_id, error=str(e))

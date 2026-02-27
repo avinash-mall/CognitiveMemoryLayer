@@ -3,6 +3,8 @@
 import re
 from dataclasses import dataclass
 
+from ...utils.ner import extract_pii_spans
+
 
 @dataclass
 class RedactionResult:
@@ -35,12 +37,17 @@ class PIIRedactor:
         self,
         text: str,
         additional_spans: list[tuple[int, int, str]] | None = None,
+        include_ner: bool = False,
     ) -> RedactionResult:
         """Redact PII from text. additional_spans: [(start, end, pii_type), ...] from LLM."""
         matches: list[tuple[int, int, str, str]] = []  # start, end, pii_type, original
         for pii_type, pattern in self._compiled.items():
             for match in pattern.finditer(text):
                 matches.append((match.start(), match.end(), pii_type, match.group()))
+        if include_ner:
+            for start, end, pii_type in extract_pii_spans(text):
+                if 0 <= start < end <= len(text):
+                    matches.append((start, end, pii_type, text[start:end]))
         if additional_spans:
             for start, end, pii_type in additional_spans:
                 if 0 <= start < end <= len(text):

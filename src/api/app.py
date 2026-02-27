@@ -11,7 +11,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..core.config import get_settings, validate_embedding_dimensions
-from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
+from ..core.exceptions import (
+    CognitiveMemoryError,
+    MemoryAccessDenied,
+    MemoryNotFoundError,
+)
+from ..core.exceptions import (
+    ValidationError as CMLValidationError,
+)
 from ..storage.connection import DatabaseManager
 from .admin_routes import admin_router
 from .dashboard import dashboard_router
@@ -26,6 +33,9 @@ _DASHBOARD_DIR = pathlib.Path(__file__).resolve().parent.parent / "dashboard" / 
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan handler."""
     settings = get_settings()
+    from ..utils.tracing import configure_tracing
+
+    configure_tracing(service_name="cognitive-memory-layer")
 
     # Validate embedding dimensions match DB schema at startup
     validate_embedding_dimensions(settings)
@@ -60,6 +70,16 @@ def create_app() -> FastAPI:
         _request: Request, exc: MemoryAccessDenied
     ) -> JSONResponse:
         return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    @app.exception_handler(CMLValidationError)
+    async def validation_error_handler(
+        _request: Request, exc: CMLValidationError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(CognitiveMemoryError)
+    async def cml_error_handler(_request: Request, exc: CognitiveMemoryError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     settings = get_settings()
     if settings.cors_origins is not None:

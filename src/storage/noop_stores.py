@@ -117,6 +117,15 @@ class NoOpFactStore:
     ) -> list[SemanticFact]:
         return []
 
+    async def get_facts_by_categories(
+        self,
+        tenant_id: str,
+        categories: list[FactCategory],
+        current_only: bool = True,
+        limit: int = 200,
+    ) -> list[SemanticFact]:
+        return []
+
     async def get_tenant_profile(self, tenant_id: str) -> dict[str, Any]:
         return {}
 
@@ -136,3 +145,11 @@ class NoOpFactStore:
     ) -> dict[str, list[SemanticFact]]:
         """Batch variant; return empty dict for no-op."""
         return {}
+
+    async def invalidate_fact(
+        self,
+        tenant_id: str,
+        key: str,
+        reason: str = "superseded",
+    ) -> bool:
+        return False

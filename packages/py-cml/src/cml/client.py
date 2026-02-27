@@ -201,6 +201,33 @@ class CognitiveMemoryLayer:
         data = self._transport.request("POST", "/memory/read", json=body)
         return ReadResponse(**data)
 
+    def _read_session(
+        self,
+        session_id: str,
+        query: str,
+        *,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[MemoryType] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
+    ) -> ReadResponse:
+        """Retrieve memories scoped to a specific session id."""
+        body = ReadRequest(
+            query=query,
+            max_results=max_results,
+            context_filter=context_filter,
+            memory_types=memory_types,
+            since=since,
+            until=until,
+            format=response_format,
+            user_timezone=user_timezone,
+        ).model_dump(exclude_none=True, by_alias=True, mode="json")
+        data = self._transport.request("POST", f"/session/{session_id}/read", json=body)
+        return ReadResponse(**data)
+
     def read_safe(
         self,
         query: str,
@@ -1141,7 +1168,7 @@ class CognitiveMemoryLayer:
 
 
 class SessionScope:
-    """Session-scoped wrapper: injects session_id into write/turn/remember."""
+    """Session-scoped wrapper for write/read/turn operations."""
 
     def __init__(self, parent: CognitiveMemoryLayer, session_id: str) -> None:
         self._parent = parent
@@ -1181,8 +1208,10 @@ class SessionScope:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
-        return self._parent.read(
+        return self._parent._read_session(
+            self.session_id,
             query,
             max_results=max_results,
             context_filter=context_filter,
@@ -1190,6 +1219,7 @@ class SessionScope:
             since=since,
             until=until,
             response_format=response_format,
+            user_timezone=user_timezone,
         )
 
     def turn(
@@ -1199,6 +1229,7 @@ class SessionScope:
         assistant_response: str | None = None,
         max_context_tokens: int = 1500,
         timestamp: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> TurnResponse:
         return self._parent.turn(
             user_message,
@@ -1206,6 +1237,7 @@ class SessionScope:
             session_id=self.session_id,
             max_context_tokens=max_context_tokens,
             timestamp=timestamp,
+            user_timezone=user_timezone,
         )
 
     def remember(

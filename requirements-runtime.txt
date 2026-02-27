@@ -1,0 +1,26 @@
+# Runtime dependencies for API container (no training/evaluation tooling).
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.0
+pydantic-settings>=2.0
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.30.0
+pgvector>=0.3.0
+neo4j>=5.0
+redis>=5.0
+celery>=5.4
+openai>=1.0
+tiktoken>=0.8
+python-dotenv>=1.0
+structlog>=24.0
+cachetools>=5.0
+tenacity>=8.0
+prometheus-client>=0.21
+alembic>=1.14
+
+# Runtime NLP stack
+spacy>=3.7
+semchunk
+transformers
+sentence-transformers>=3.0
+einops>=0.7.0
