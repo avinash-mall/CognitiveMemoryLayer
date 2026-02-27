@@ -61,6 +61,11 @@ class SchemaAligner:
                     integration_key=gist.key,
                 )
 
+        source_types = {t.lower() for t in (gist.source_memory_types or [])}
+        if "constraint" in source_types and gist.gist_type not in self._COGNITIVE_TYPE_MAP:
+            # Preserve constraint semantics when source cluster is constraint-only/mixed.
+            gist.gist_type = "policy"
+
         # Cognitive constraint types: generate keys like user:goal:{scope}
         if gist.gist_type in self._COGNITIVE_TYPE_MAP:
             scope = gist.predicate or "general"

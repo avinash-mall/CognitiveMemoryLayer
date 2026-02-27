@@ -35,7 +35,7 @@
     <!-- Main app layout -->
     <div id="app" class="app-layout hidden">
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" role="complementary" aria-label="Dashboard navigation">
             <div class="sidebar-header">
                 <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
                     <circle cx="24" cy="24" r="22" stroke="var(--accent)" stroke-width="2"/>
@@ -47,7 +47,7 @@
                 </svg>
                 <span class="sidebar-title">CML Dashboard</span>
             </div>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" role="navigation" aria-label="Primary">
                 <a href="#overview" class="nav-item active" data-page="overview">
                     <span class="nav-icon">&#9634;</span>
                     <span class="nav-label">Overview</span>
@@ -104,14 +104,14 @@
         </aside>
 
         <!-- Main content -->
-        <main class="main-content">
+        <main class="main-content" role="main">
             <header class="top-bar">
                 <h1 id="page-title" class="page-title">Overview</h1>
                 <div class="top-bar-actions">
-                    <select id="tenant-selector" class="select-sm" title="Filter by tenant">
+                    <select id="tenant-selector" class="select-sm" title="Filter by tenant" aria-label="Filter by tenant">
                         <option value="">All Tenants</option>
                     </select>
-                    <button id="refresh-btn" class="btn btn-ghost btn-sm" title="Refresh data">&#8635; Refresh</button>
+                    <button id="refresh-btn" class="btn btn-ghost btn-sm" title="Refresh data" aria-label="Refresh data">&#8635; Refresh</button>
                 </div>
             </header>
             <div id="page-container" class="page-container">

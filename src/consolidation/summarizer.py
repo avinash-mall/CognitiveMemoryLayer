@@ -1,4 +1,4 @@
-"""Gist extraction from episode clusters."""
+﻿"""Gist extraction from episode clusters."""
 
 import json
 from dataclasses import dataclass
@@ -42,36 +42,32 @@ Return JSON:
 
 Rules:
 - Combine information across memories to get the core meaning
-- Don't include episodic details (times, specific conversations)
+- Do not include episodic details (times, specific conversations)
 - Focus on durable, generalizable information
 - Higher confidence if multiple memories support the same conclusion
 - Use "goal"/"value"/"state"/"causal"/"policy" types when memories express constraints, commitments, or conditions that should govern future behavior"""
 
-# Constraint-signal words to preserve when gist_type is cognitive
-_COGNITIVE_GIST_TYPES = {"goal", "value", "state", "causal", "policy"}
-_CONSTRAINT_SIGNAL_WORDS = frozenset(
-    {
-        "never",
-        "always",
-        "must",
-        "avoid",
-        "allergic",
-        "shouldn't",
-        "can't",
-        "won't",
-        "refuse",
-        "should",
-        "need",
-        "have to",
-        "trying",
-        "value",
-        "important",
-        "because",
-        "reason",
-        "policy",
-        "rule",
-    }
-)
+_BATCH_GIST_CLUSTER_SIZE = 8
+
+BATCH_GIST_EXTRACTION_PROMPT = """Analyze these memory clusters and extract semantic gists for EACH cluster.
+
+CLUSTERS:
+{clusters}
+
+For each cluster, return one or more gist objects with:
+- gist
+- type ("fact","preference","pattern","summary","goal","value","state","causal","policy")
+- confidence (0.0-1.0)
+- optional: subject, predicate, value, key
+
+Return JSON with this exact shape:
+{{
+  "clusters": [
+    {{"cluster_index": 0, "gists": [{{"gist": "...", "type": "...", "confidence": 0.8}}]}},
+    {{"cluster_index": 1, "gists": [{{"gist": "...", "type": "...", "confidence": 0.7}}]}}
+  ]
+}}
+"""
 
 
 @dataclass
@@ -79,7 +75,7 @@ class ExtractedGist:
     """Extracted semantic gist from a cluster."""
 
     text: str
-    gist_type: str  # "fact", "preference", "pattern", "summary", "goal", "value", "state", "causal", "policy"
+    gist_type: str
     confidence: float
     supporting_episode_ids: list[str]
 
@@ -87,59 +83,28 @@ class ExtractedGist:
     subject: str | None = None
     predicate: str | None = None
     value: Any | None = None
+    source_memory_types: list[str] | None = None
 
 
 class GistExtractor:
-    """Extracts semantic gist from episode clusters. Uses heuristic when llm_client is None."""
+    """Extracts semantic gist from episode clusters using LLM only."""
 
     def __init__(self, llm_client: LLMClient | None):
         self.llm = llm_client
 
-    def _heuristic_extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
-        """Heuristic fallback: truncation + keyword-based gist_type when LLM disabled."""
-        if not cluster.episodes:
-            return []
-        combined = " ".join(ep.text for ep in cluster.episodes).lower()
-        gist_text = combined[:100].strip()
-        if len(combined) > 100:
-            gist_text = (
-                gist_text.rsplit(maxsplit=1)[0] + "..." if " " in gist_text else gist_text + "..."
-            )
-        gist_type = "summary"
-        if any(w in combined for w in ("prefer", "like", "love", "enjoy", "hate", "dislike")):
-            gist_type = "preference"
-        elif any(w in combined for w in ("never", "always", "must", "should")):
-            gist_type = "policy"
-        elif any(w in combined for w in ("goal", "trying", "working toward")):
-            gist_type = "goal"
-        elif any(w in combined for w in ("value", "important", "believe")):
-            gist_type = "value"
-        return [
-            ExtractedGist(
-                text=gist_text or "Cluster summary",
-                gist_type=gist_type,
-                confidence=0.5,
-                supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
-            )
-        ]
-
     async def extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
-        """Extract gists from a single cluster. Uses heuristic when LLM is None."""
-        if not cluster.episodes:
+        """Extract gists from a single cluster."""
+        if not cluster.episodes or self.llm is None:
             return []
-
-        if self.llm is None:
-            return self._heuristic_extract_gist(cluster)
 
         memory_texts = []
+        source_types = self._cluster_source_types(cluster)
         for i, ep in enumerate(cluster.episodes[:10], 1):
             mem_type = ep.type.value if hasattr(ep.type, "value") else str(ep.type)
             memory_texts.append(f"{i}. [{mem_type}] {ep.text}")
 
         memories_str = "\n".join(memory_texts)
-        themes_str = (
-            ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
-        )
+        themes_str = ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
 
         prompt = GIST_EXTRACTION_PROMPT.format(
             memories=memories_str,
@@ -148,7 +113,6 @@ class GistExtractor:
 
         try:
             response = await self.llm.complete(prompt, temperature=0.0)
-            # Strip markdown code block if present
             raw = response.strip()
             if raw.startswith("```"):
                 lines = raw.split("\n")
@@ -158,60 +122,130 @@ class GistExtractor:
                     lines = lines[:-1]
                 raw = "\n".join(lines)
             data = json.loads(raw)
+        except Exception:
+            return []
 
-            gists_data = data if isinstance(data, list) else [data]
+        gists_data = data if isinstance(data, list) else [data]
+        gists: list[ExtractedGist] = []
+        for gd in gists_data:
+            if not isinstance(gd, dict):
+                continue
+            gist_text = str(gd.get("gist", "")).strip()
+            if not gist_text:
+                continue
+            gist_type = str(gd.get("type", "summary")).strip().lower() or "summary"
+            confidence = float(gd.get("confidence", 0.7)) * cluster.avg_confidence
+            gists.append(
+                ExtractedGist(
+                    text=gist_text,
+                    gist_type=gist_type,
+                    confidence=confidence,
+                    supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
+                    key=gd.get("key"),
+                    subject=gd.get("subject"),
+                    predicate=gd.get("predicate"),
+                    value=gd.get("value"),
+                    source_memory_types=source_types,
+                )
+            )
 
-            gists = []
+        return gists
+
+    async def extract_from_clusters(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist]:
+        """Extract gists from all clusters."""
+        all_gists: list[ExtractedGist] = []
+        if not clusters or self.llm is None:
+            return all_gists
+
+        if len(clusters) == 1:
+            return await self.extract_gist(clusters[0])
+
+        import asyncio
+
+        for i in range(0, len(clusters), _BATCH_GIST_CLUSTER_SIZE):
+            batch = clusters[i : i + _BATCH_GIST_CLUSTER_SIZE]
+            batch_result = await self._extract_gist_batch(batch)
+            if batch_result is None:
+                fallback = await asyncio.gather(*[self.extract_gist(c) for c in batch])
+                for gist_list in fallback:
+                    all_gists.extend(gist_list)
+            else:
+                all_gists.extend(batch_result)
+        return all_gists
+
+    async def _extract_gist_batch(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist] | None:
+        """Batch extract multiple clusters in one LLM call."""
+        if self.llm is None or not clusters:
+            return None
+
+        lines: list[str] = []
+        for idx, cluster in enumerate(clusters):
+            source_types = self._cluster_source_types(cluster)
+            themes = ", ".join(cluster.common_entities) if cluster.common_entities else "none"
+            lines.append(f"Cluster {idx}:")
+            lines.append(f"Source types: {', '.join(source_types) if source_types else 'unknown'}")
+            lines.append(f"Themes: {themes}")
+            for j, ep in enumerate(cluster.episodes[:8], 1):
+                mem_type = ep.type.value if hasattr(ep.type, "value") else str(ep.type)
+                lines.append(f"{j}. [{mem_type}] {ep.text}")
+            lines.append("")
+
+        prompt = BATCH_GIST_EXTRACTION_PROMPT.format(clusters="\n".join(lines))
+
+        try:
+            data = await self.llm.complete_json(prompt, temperature=0.0)
+        except Exception:
+            return None
+
+        clusters_out = data.get("clusters", []) if isinstance(data, dict) else []
+        if not isinstance(clusters_out, list):
+            return None
+
+        out: list[ExtractedGist] = []
+        for cluster_obj in clusters_out:
+            if not isinstance(cluster_obj, dict):
+                continue
+            idx = cluster_obj.get("cluster_index")
+            if not isinstance(idx, int) or idx < 0 or idx >= len(clusters):
+                continue
+            cluster = clusters[idx]
+            source_types = self._cluster_source_types(cluster)
+
+            gists_data = cluster_obj.get("gists", [])
+            if not isinstance(gists_data, list):
+                continue
+
             for gd in gists_data:
-                gist_text = gd.get("gist", "").strip()
-                gist_type = gd.get("type", "summary")
+                if not isinstance(gd, dict):
+                    continue
+                gist_text = str(gd.get("gist", "")).strip()
                 if not gist_text:
                     continue
-                # Optional validation: cognitive gists should preserve constraint-signal words
-                if gist_type in _COGNITIVE_GIST_TYPES:
-                    cluster_text = " ".join(ep.text for ep in cluster.episodes).lower()
-                    gist_lower = gist_text.lower()
-                    signals_in_cluster = [w for w in _CONSTRAINT_SIGNAL_WORDS if w in cluster_text]
-                    if signals_in_cluster and not any(w in gist_lower for w in signals_in_cluster):
-                        continue  # Drop gist that lost constraint semantics
-                conf = float(gd.get("confidence", 0.7)) * cluster.avg_confidence
-                gists.append(
+                gist_type = str(gd.get("type", "summary")).strip().lower() or "summary"
+                confidence = float(gd.get("confidence", 0.7)) * cluster.avg_confidence
+                out.append(
                     ExtractedGist(
                         text=gist_text,
                         gist_type=gist_type,
-                        confidence=conf,
+                        confidence=confidence,
                         supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
                         key=gd.get("key"),
                         subject=gd.get("subject"),
                         predicate=gd.get("predicate"),
                         value=gd.get("value"),
+                        source_memory_types=source_types,
                     )
                 )
-            return gists
 
-        except (json.JSONDecodeError, KeyError, TypeError):
-            return [
-                ExtractedGist(
-                    text=self._simple_summary(cluster),
-                    gist_type="summary",
-                    confidence=cluster.avg_confidence * 0.5,
-                    supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
-                )
-            ]
+        return out or None
 
-    async def extract_from_clusters(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist]:
-        """Extract gists from all clusters."""
-        import asyncio
-
-        all_gists = []
-        results = await asyncio.gather(*[self.extract_gist(c) for c in clusters])
-        for gist_list in results:
-            all_gists.extend(gist_list)
-        return all_gists
-
-    def _simple_summary(self, cluster: EpisodeCluster) -> str:
-        if cluster.common_entities:
-            return f"User discussed: {', '.join(cluster.common_entities[:3])}"
-        if cluster.episodes:
-            return cluster.episodes[0].text[:100]
-        return "Cluster summary"
+    @staticmethod
+    def _cluster_source_types(cluster: EpisodeCluster) -> list[str]:
+        return list(
+            dict.fromkeys(
+                [
+                    (ep.type.value if hasattr(ep.type, "value") else str(ep.type)).lower()
+                    for ep in cluster.episodes
+                ]
+            )
+        )

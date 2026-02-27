@@ -24,12 +24,15 @@ class _MockGraphStore:
 
 
 class _MockLLM:
-    """Returns invalid JSON so GistExtractor uses fallback summary."""
+    """Returns valid gist JSON for consolidation tests."""
 
     async def complete(
         self, prompt: str, temperature: float = 0.0, max_tokens: int = 500, system_prompt=None
     ):
-        return "not valid json"
+        return (
+            '{"gist":"User likes pizza","type":"preference","confidence":0.8,'
+            '"subject":"user","predicate":"food_preference","value":"pizza"}'
+        )
 
     async def complete_json(self, prompt: str, schema=None, temperature: float = 0.0):
         return {}
@@ -61,8 +64,8 @@ async def test_consolidation_empty_episodes(pg_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_consolidation_with_episodes_fallback_gist(pg_session_factory):
-    """With episodic records, consolidation runs; mock LLM triggers fallback gist -> align -> migrate."""
+async def test_consolidation_with_episodes_llm_gist(pg_session_factory):
+    """With episodic records, consolidation runs and migrates LLM-extracted gists."""
     episodic = PostgresMemoryStore(pg_session_factory)
     fact_store = SemanticFactStore(pg_session_factory)
     neocortical = NeocorticalStore(graph_store=_MockGraphStore(), fact_store=fact_store)

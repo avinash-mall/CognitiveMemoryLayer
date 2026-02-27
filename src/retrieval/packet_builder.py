@@ -1,9 +1,11 @@
 """Memory packet builder for LLM consumption."""
 
 import json
+from datetime import datetime
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryPacket, RetrievedMemory
+from ..utils.modelpack import get_modelpack_runtime
 
 # Fallback constants when config unavailable (BUG-02: avoid diluting constraints)
 EPISODE_RELEVANCE_THRESHOLD = 0.5
@@ -35,15 +37,67 @@ class MemoryPacketBuilder:
                 packet.constraints.append(mem)
             else:
                 packet.recent_episodes.append(mem)
+        packet.constraints, constraint_warnings = self._resolve_constraint_conflicts(packet.constraints)
         conflicts = self._detect_conflicts(packet)
         if conflicts:
             packet.warnings.extend(conflicts)
+        if constraint_warnings:
+            packet.warnings.extend(constraint_warnings)
         for mem in memories:
             if mem.record.confidence < 0.5:
                 packet.open_questions.append(
                     f"Uncertain: {mem.record.text} (confidence: {mem.record.confidence:.2f})"
                 )
         return packet
+
+    def _resolve_constraint_conflicts(
+        self,
+        constraints: list[RetrievedMemory],
+    ) -> tuple[list[RetrievedMemory], list[str]]:
+        """Resolve retrieval-time supersession conflicts among constraints.
+
+        Keeps the most recent surviving constraints and drops older constraints
+        when a newer one supersedes them (same key or model-backed supersession).
+        """
+        if len(constraints) <= 1:
+            return constraints, []
+
+        def _ts(mem: RetrievedMemory) -> datetime:
+            ts = mem.record.timestamp
+            return ts if isinstance(ts, datetime) else datetime.min
+
+        ordered = sorted(constraints, key=_ts, reverse=True)
+        kept: list[RetrievedMemory] = []
+        warnings: list[str] = []
+        modelpack = get_modelpack_runtime()
+
+        for candidate in ordered:
+            cand_key = getattr(candidate.record, "key", None) or ""
+            suppressed = False
+            for newer in kept:
+                newer_key = getattr(newer.record, "key", None) or ""
+                if cand_key and newer_key and cand_key == newer_key:
+                    warnings.append(
+                        f"Suppressed older constraint for key '{cand_key}' in favor of newer statement."
+                    )
+                    suppressed = True
+                    break
+
+                if modelpack.available:
+                    pred = modelpack.predict_pair(
+                        "supersession", candidate.record.text, newer.record.text
+                    )
+                    if pred and pred.label == "supersedes" and pred.confidence >= 0.6:
+                        warnings.append(
+                            f"Suppressed likely superseded constraint: '{candidate.record.text[:80]}...'"
+                        )
+                        suppressed = True
+                        break
+
+            if not suppressed:
+                kept.append(candidate)
+
+        return kept, warnings
 
     def _detect_conflicts(self, packet: MemoryPacket) -> list[str]:
         """Detect potential conflicts in retrieved memories."""

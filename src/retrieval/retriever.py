@@ -1,6 +1,8 @@
 """Hybrid retriever executing plans across memory sources."""
 
 import asyncio
+import inspect
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,10 +14,21 @@ from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.logging_config import get_logger
+from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
 
 logger = get_logger(__name__)
+
+_DOMAIN_KEYWORDS: dict[str, set[str]] = {
+    "food": {"food", "eat", "meal", "diet", "restaurant", "allergy", "nutrition", "cuisine"},
+    "travel": {"travel", "trip", "flight", "hotel", "vacation", "destination"},
+    "finance": {"finance", "bank", "money", "budget", "loan", "invest", "expense"},
+    "health": {"health", "medical", "doctor", "medicine", "sleep", "exercise", "allergy"},
+    "work": {"work", "job", "career", "project", "deadline", "meeting", "office"},
+    "tech": {"tech", "software", "code", "api", "database", "python", "app"},
+    "social": {"friend", "family", "social", "party", "relationship", "people"},
+}
 
 
 @dataclass
@@ -41,10 +54,12 @@ class HybridRetriever:
         hippocampal: HippocampalStore,
         neocortical: NeocorticalStore,
         cache: Any | None = None,
+        modelpack: ModelPackRuntime | None = None,
     ):
         self.hippocampal = hippocampal
         self.neocortical = neocortical
         self.cache = cache
+        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     async def retrieve(
         self,
@@ -64,6 +79,9 @@ class HybridRetriever:
         plan_start = time.perf_counter()
         plan_budget = plan.total_timeout_ms / 1000.0
         skip_remaining = False
+        completed_sources: set[str] = set()
+        timed_out_sources: set[str] = set()
+        failed_sources: set[str] = set()
 
         for group_indices in plan.parallel_steps:
             if skip_remaining:
@@ -74,6 +92,9 @@ class HybridRetriever:
                 elapsed = time.perf_counter() - plan_start
                 remaining = plan_budget - elapsed
                 if remaining <= 0:
+                    for idx in group_indices:
+                        if idx < len(plan.steps):
+                            timed_out_sources.add(plan.steps[idx].source.value)
                     logger.info(
                         "retrieval_plan_budget_exceeded", extra={"elapsed_ms": elapsed * 1000}
                     )
@@ -97,6 +118,8 @@ class HybridRetriever:
                         timeout=remaining,
                     )
                 except TimeoutError:
+                    for step in group_steps:
+                        timed_out_sources.add(step.source.value)
                     logger.info("retrieval_group_timeout", extra={"group": group_indices})
                     break
             else:
@@ -110,7 +133,14 @@ class HybridRetriever:
 
             for step, result in zip(group_steps, group_results, strict=False):
                 if isinstance(result, BaseException):
+                    failed_sources.add(step.source.value)
                     continue
+                if result.success:
+                    completed_sources.add(step.source.value)
+                elif result.error and "timeout" in result.error.lower():
+                    timed_out_sources.add(step.source.value)
+                else:
+                    failed_sources.add(step.source.value)
                 if result.success and result.items:
                     all_results.extend(result.items)
                     # Phase 3.2: cross-group skip
@@ -130,38 +160,67 @@ class HybridRetriever:
                     session_ids.add(rec.source_session_id)
             if session_ids:
                 try:
-                    for sid in session_ids:
-                        extra = await self.hippocampal.store.scan(
+                    batch_limit = min(200, max(20, len(session_ids) * 10))
+                    try:
+                        extra_constraints = await self.hippocampal.store.scan(
                             tenant_id,
                             filters={
                                 "type": [MemoryType.CONSTRAINT.value],
-                                "source_session_id": sid,
+                                "source_session_id": list(session_ids),
                                 "status": "active",
                             },
-                            limit=10,
+                            limit=batch_limit,
                         )
-                        for c in extra:
-                            if not any(
-                                x.get("record")
-                                and getattr(x["record"], "id", None) == getattr(c, "id", None)
-                                for x in all_results
-                            ):
-                                all_results.append(
-                                    {
-                                        "type": MemoryType.CONSTRAINT.value,
-                                        "source": "constraints_associative",
-                                        "text": getattr(c, "text", ""),
-                                        "confidence": getattr(c, "confidence", 0.7),
-                                        "relevance": 0.8,
-                                        "timestamp": getattr(c, "timestamp", None),
-                                        "record": c,
-                                    }
-                                )
+                    except Exception:
+                        # Fallback for stores that don't support list-valued source_session_id filters.
+                        extra_constraints = []
+                        for sid in session_ids:
+                            rows = await self.hippocampal.store.scan(
+                                tenant_id,
+                                filters={
+                                    "type": [MemoryType.CONSTRAINT.value],
+                                    "source_session_id": sid,
+                                    "status": "active",
+                                },
+                                limit=10,
+                            )
+                            extra_constraints.extend(rows)
+
+                    existing_ids = {
+                        str(getattr(x.get("record"), "id", ""))
+                        for x in all_results
+                        if x.get("record") is not None
+                    }
+                    for c in extra_constraints:
+                        cid = str(getattr(c, "id", ""))
+                        if cid and cid in existing_ids:
+                            continue
+                        if cid:
+                            existing_ids.add(cid)
+                        all_results.append(
+                            {
+                                "type": MemoryType.CONSTRAINT.value,
+                                "source": "constraints_associative",
+                                "text": getattr(c, "text", ""),
+                                "confidence": getattr(c, "confidence", 0.7),
+                                "relevance": 0.8,
+                                "timestamp": getattr(c, "timestamp", None),
+                                "record": c,
+                            }
+                        )
                 except Exception as e:
                     logger.warning(
                         "associative_expansion_failed", extra={"error": str(e)}, exc_info=True
                     )
 
+        elapsed_ms = (time.perf_counter() - plan_start) * 1000
+        plan.analysis.metadata["retrieval_meta"] = {
+            "sources_attempted": sorted({step.source.value for step in plan.steps}),
+            "sources_completed": sorted(completed_sources),
+            "sources_timed_out": sorted(timed_out_sources),
+            "sources_failed": sorted(failed_sources),
+            "total_elapsed_ms": round(elapsed_ms, 2),
+        }
         return self._to_retrieved_memories(all_results, plan.analysis)
 
     async def _execute_step_with_timeout(
@@ -183,6 +242,12 @@ class HybridRetriever:
                 "retrieval_step_timeout",
                 extra={"source": step.source.value, "timeout_ms": step.timeout_ms},
             )
+            try:
+                from ..utils.metrics import RETRIEVAL_TIMEOUT_COUNT
+
+                RETRIEVAL_TIMEOUT_COUNT.labels(source=step.source.value).inc()
+            except Exception:
+                pass
             return RetrievalResult(
                 source=step.source,
                 items=[],
@@ -384,6 +449,10 @@ class HybridRetriever:
             "status": "active",
             "exclude_expired": True,
         }
+        if step.time_filter:
+            for k in ("since", "until", "source_session_id"):
+                if k in step.time_filter:
+                    constraint_filters[k] = step.time_filter[k]
         try:
             records = await self.hippocampal.search(
                 tenant_id,
@@ -428,29 +497,137 @@ class HybridRetriever:
             ]
 
         try:
-            for category in cognitive_categories:
-                facts = await self.neocortical.facts.get_facts_by_category(
-                    tenant_id, category, current_only=True, limit=step.top_k
+            facts = []
+            used_batch = False
+            batch_fetch = getattr(self.neocortical.facts, "get_facts_by_categories", None)
+            if callable(batch_fetch):
+                maybe_coro = batch_fetch(
+                    tenant_id,
+                    cognitive_categories,
+                    current_only=True,
+                    limit=max(step.top_k * max(1, len(cognitive_categories)), step.top_k),
                 )
-                for fact in facts:
-                    fact_text = f"[{category.value.title()}] {fact.value}"
-                    if fact_text not in {r["text"] for r in results}:
-                        results.append(
-                            {
-                                "type": MemoryType.CONSTRAINT.value,
-                                "source": "constraints",
-                                "key": fact.key,
-                                "text": fact_text,
-                                "value": fact.value,
-                                "confidence": fact.confidence,
-                                "relevance": 0.75,
-                                "record": fact,
-                            }
+                if inspect.isawaitable(maybe_coro):
+                    facts = await maybe_coro
+                    used_batch = True
+
+            if not used_batch:
+                for category in cognitive_categories:
+                    facts.extend(
+                        await self.neocortical.facts.get_facts_by_category(
+                            tenant_id, category, current_only=True, limit=step.top_k
                         )
+                    )
+
+            existing_texts = {str(r.get("text", "")) for r in results}
+            for fact in facts:
+                category = getattr(fact, "category", None)
+                cat_label = category.value if hasattr(category, "value") else str(category or "fact")
+                fact_text = f"[{cat_label.title()}] {fact.value}"
+                if fact_text in existing_texts:
+                    continue
+                existing_texts.add(fact_text)
+                results.append(
+                    {
+                        "type": MemoryType.CONSTRAINT.value,
+                        "source": "constraints",
+                        "key": fact.key,
+                        "text": fact_text,
+                        "value": fact.value,
+                        "confidence": fact.confidence,
+                        "relevance": 0.75,
+                        "record": fact,
+                    }
+                )
         except Exception:
             logger.warning("constraint_fact_search_failed", exc_info=True)
 
-        return results[: step.top_k]
+        rescored = self._rescore_constraints(
+            query=step.query or "",
+            query_domain=step.query_domain,
+            rows=results,
+        )
+        return rescored[: step.top_k]
+
+    def _rescore_constraints(
+        self,
+        *,
+        query: str,
+        query_domain: str | None,
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not rows:
+            return rows
+
+        modelpack_ready = self.modelpack.available and bool(query.strip())
+        for row in rows:
+            base = float(row.get("relevance", 0.7))
+            text = str(row.get("text", "") or "")
+            score = base + self._domain_bonus(query_domain=query_domain, row=row)
+
+            if modelpack_ready and text:
+                rel_pred = self.modelpack.predict_pair("constraint_rerank", query, text)
+                if rel_pred:
+                    rel_signal = (
+                        rel_pred.confidence
+                        if rel_pred.label == "relevant"
+                        else (1.0 - rel_pred.confidence)
+                    )
+                    score += (rel_signal - 0.5) * 0.45
+
+                scope_pred = self.modelpack.predict_pair("scope_match", query, text)
+                if scope_pred:
+                    scope_signal = (
+                        scope_pred.confidence
+                        if scope_pred.label == "match"
+                        else (1.0 - scope_pred.confidence)
+                    )
+                    score += (scope_signal - 0.5) * 0.25
+
+            row["relevance"] = max(0.0, min(1.5, score))
+
+        rows.sort(
+            key=lambda x: (
+                float(x.get("relevance", 0.0)),
+                float(x.get("confidence", 0.0)),
+            ),
+            reverse=True,
+        )
+        return rows
+
+    def _domain_bonus(self, *, query_domain: str | None, row: dict[str, Any]) -> float:
+        domain = (query_domain or "").strip().lower()
+        if not domain or domain == "general":
+            return 0.0
+
+        bonus = 0.0
+        text = str(row.get("text", "") or "").lower()
+
+        # Prefer constraints already tagged with matching scope/context.
+        row_tags: set[str] = set()
+        record = row.get("record")
+        record_tags = getattr(record, "context_tags", None)
+        if isinstance(record_tags, list):
+            row_tags.update(str(t).strip().lower() for t in record_tags if str(t).strip())
+
+        metadata = getattr(record, "metadata", None) or {}
+        constraints_meta = metadata.get("constraints", []) if isinstance(metadata, dict) else []
+        if constraints_meta and isinstance(constraints_meta, list):
+            scope_vals = constraints_meta[0].get("scope", [])
+            if isinstance(scope_vals, list):
+                row_tags.update(str(t).strip().lower() for t in scope_vals if str(t).strip())
+
+        if domain in row_tags:
+            bonus += 0.25
+
+        keywords = _DOMAIN_KEYWORDS.get(domain, set())
+        if keywords and text:
+            words = set(re.findall(r"[a-z0-9_]+", text))
+            overlap = len(words & keywords)
+            if overlap > 0:
+                bonus += min(0.18, 0.06 * overlap)
+
+        return bonus
 
     async def _retrieve_cache(
         self,

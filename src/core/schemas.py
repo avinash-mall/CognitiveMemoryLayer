@@ -175,6 +175,7 @@ class MemoryPacket(BaseModel):
     # Meta
     open_questions: list[str] = Field(default_factory=list)  # Needs confirmation
     warnings: list[str] = Field(default_factory=list)  # Conflicts detected
+    retrieval_meta: dict[str, Any] | None = None
 
     @property
     def all_memories(self) -> list[RetrievedMemory]:

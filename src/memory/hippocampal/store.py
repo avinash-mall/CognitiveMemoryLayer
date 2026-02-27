@@ -21,6 +21,8 @@ from ...extraction.entity_extractor import EntityExtractor
 from ...extraction.relation_extractor import RelationExtractor
 from ...storage.base import MemoryStoreBase
 from ...utils.embeddings import EmbeddingClient
+from ...utils.ner import extract_entities as _ner_extract_entities
+from ...utils.ner import extract_relations as _ner_extract_relations
 from ..working.models import SemanticChunk
 from .redactor import PIIRedactor
 from .write_gate import WriteDecision, WriteGate, WriteGateResult
@@ -36,6 +38,31 @@ if TYPE_CHECKING:
 def _gate_result_to_dict(g: WriteGateResult) -> dict:
     """Serialize for API (eval mode)."""
     return {"decision": g.decision.value, "reason": g.reason}
+
+
+def _ner_entities_for_text(text: str) -> list[EntityMention]:
+    return [
+        EntityMention(
+            text=e.text,
+            normalized=e.normalized,
+            entity_type=e.entity_type,
+            start_char=e.start_char,
+            end_char=e.end_char,
+        )
+        for e in _ner_extract_entities(text)
+    ]
+
+
+def _ner_relations_for_text(text: str) -> list[Relation]:
+    return [
+        Relation(
+            subject=r.subject,
+            predicate=r.predicate,
+            object=r.object,
+            confidence=r.confidence,
+        )
+        for r in _ner_extract_relations(text)
+    ]
 
 
 class HippocampalStore:
@@ -134,15 +161,15 @@ class HippocampalStore:
         entities: list[EntityMention] = []
         if self.entity_extractor:
             entities = await self.entity_extractor.extract(text)
-        elif chunk.entities:
-            entities = [
-                EntityMention(text=e, normalized=e, entity_type="CONCEPT") for e in chunk.entities
-            ]
+        else:
+            entities = _ner_entities_for_text(text)
 
         relations: list[Relation] = []
         if self.relation_extractor:
             entity_texts = [e.normalized for e in entities]
             relations = await self.relation_extractor.extract(text, entities=entity_texts)
+        else:
+            relations = _ner_relations_for_text(text)
 
         # Use caller-provided memory_type override, else LLM memory_type, else gate/constraint
         settings = _features
@@ -168,7 +195,7 @@ class HippocampalStore:
                 else MemoryType.EPISODIC_EVENT
             )
 
-        # Constraint extraction: unified or rule-based
+        # Constraint extraction: unified LLM or modelpack/NER path
         if unified_result and settings.use_llm_enabled and settings.use_llm_constraint_extractor:
             extracted_constraints = unified_result.constraints
         else:
@@ -384,13 +411,7 @@ class HippocampalStore:
         if self.entity_extractor:
             entities_batch = await self.entity_extractor.extract_batch(texts_to_embed)
         else:
-            entities_batch = [
-                [
-                    EntityMention(text=e, normalized=e, entity_type="CONCEPT")
-                    for e in (chunk.entities or [])
-                ]
-                for _idx, chunk, _gr, _txt in surviving
-            ]
+            entities_batch = [_ner_entities_for_text(text) for text in texts_to_embed]
 
         relations_batch: list[list[Relation]] = []
         if self.relation_extractor:
@@ -400,7 +421,7 @@ class HippocampalStore:
             ]
             relations_batch = await self.relation_extractor.extract_batch(relation_items)
         else:
-            relations_batch = [[] for _ in surviving]
+            relations_batch = [_ner_relations_for_text(text) for text in texts_to_embed]
 
         # ---- Phase 4: Upsert (bounded concurrency) ----
         results: list[MemoryRecord] = []
@@ -446,7 +467,7 @@ class HippocampalStore:
                     else MemoryType.EPISODIC_EVENT
                 )
 
-            # Constraint extraction: unified or rule-based
+            # Constraint extraction: unified LLM or modelpack/NER path
             if unified_res and settings.use_llm_enabled and settings.use_llm_constraint_extractor:
                 extracted_constraints = unified_res.constraints
             else:
@@ -606,10 +627,23 @@ class HippocampalStore:
                 )
         return results
 
-    async def deactivate_constraints_by_key(self, tenant_id: str, constraint_key: str) -> int:
-        """Deactivate previous episodic CONSTRAINT records with the same fact key (supersession)."""
+    async def deactivate_constraints_by_key(
+        self,
+        tenant_id: str,
+        constraint_key: str,
+        superseded_by_key: str | None = None,
+    ) -> int:
+        """Deactivate previous episodic CONSTRAINT records with the same fact key."""
         if hasattr(self.store, "deactivate_constraints_by_key"):
-            return await self.store.deactivate_constraints_by_key(tenant_id, constraint_key)
+            try:
+                return await self.store.deactivate_constraints_by_key(
+                    tenant_id,
+                    constraint_key,
+                    superseded_by_key=superseded_by_key,
+                )
+            except TypeError:
+                # Backward compatibility for stores with legacy two-arg signature.
+                return await self.store.deactivate_constraints_by_key(tenant_id, constraint_key)
         return 0
 
     async def get_recent(

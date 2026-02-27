@@ -44,6 +44,19 @@ export async function renderOverview({ tenantId } = {}) {
 }
 
 function buildOverviewHTML(overview, timeline, components, events, labile, reqStats) {
+    if ((overview?.total_memories || 0) === 0) {
+        return `
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-title">Welcome</div>
+            <div class="empty-state" style="padding:20px;">
+                <div class="empty-state-icon">&#129504;</div>
+                <p>No memories exist yet for this tenant.</p>
+                <p style="color:var(--text-muted);margin-top:6px;">Start with <code>POST /api/v1/memory/write</code>, then refresh this page.</p>
+            </div>
+        </div>
+        `;
+    }
+
     return `
         <!-- KPI Cards -->
         <div class="kpi-grid">

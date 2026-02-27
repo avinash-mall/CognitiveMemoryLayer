@@ -67,6 +67,12 @@ def _clear_settings_cache():
         _build_api_keys.cache_clear()
     except Exception:
         pass
+    try:
+        from src.utils.embeddings import clear_embedding_client_cache
+
+        clear_embedding_client_cache()
+    except Exception:
+        pass
 
 
 @pytest.fixture

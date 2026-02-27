@@ -1,145 +1,112 @@
-# Unified Custom Model Pipeline
+# Model Pipeline
 
-This folder now uses:
+This folder contains the consolidated custom-model pipeline used by CML runtime.
 
-- One preparation script: `packages/models/scripts/prepare.py`
-- One training script: `packages/models/scripts/train.py`
-- One shared config: `packages/models/model_pipeline.toml`
+- Prepare script: `packages/models/scripts/prepare.py`
+- Train script: `packages/models/scripts/train.py`
+- Config: `packages/models/model_pipeline.toml`
+- Output models: `packages/models/trained_models`
 
-All trained models are written to:
+## Model families
 
-- `packages/models/trained_models`
+1. `router_model.joblib`
+- Tasks: `memory_type`, `query_intent`, `query_domain`, `constraint_dimension`, `context_tag`, `salience_bin`, `importance_bin`, `confidence_bin`, `decay_profile`
 
-## Models Created and What They Solve
+2. `extractor_model.joblib`
+- Tasks: `constraint_type`, `constraint_scope`, `constraint_stability`, `fact_type`, `pii_presence`
 
-The pipeline trains 3 consolidated models to replace most LLM-gated paths.
+3. `pair_model.joblib`
+- Tasks: `conflict_detection`, `constraint_rerank`, `scope_match`, `supersession`
 
-| Model name | Family | Main tasks |
-|---|---|---|
-| `router_model.joblib` | `router` | `memory_type`, `query_intent`, `constraint_dimension`, `context_tag`, `salience_bin`, `importance_bin`, `confidence_bin`, `decay_profile` |
-| `extractor_model.joblib` | `extractor` | `constraint_type`, `constraint_scope`, `fact_type`, `pii_presence` |
-| `pair_model.joblib` | `pair` | `conflict_detection`, `constraint_rerank` |
+## Runtime wiring
 
-### Issue-to-model mapping (from `REPORT.md`)
+Modelpack inference is consumed from `src/utils/modelpack.py`.
 
-| Issue | Best model(s) | Why |
-|---|---|---|
-| `C-01` Semantic disconnect for constraints | `extractor_model` + `pair_model` + `router_model` | Scope typing + query context + pairwise relevance improves semantic linkage. |
-| `C-02` Constraint dilution | `pair_model` + `extractor_model` | Relevance scoring + scope-aware filtering improves top-k constraints. |
-| `C-03` Missing fast constraint dimensions | `router_model` | Predicts `constraint_dimension` without LLM classifier. |
-| `L-04` Empty constraint scope | `extractor_model` | Predicts `constraint_scope` directly. |
-| `L-06` Write gate misses important constraints | `router_model` | Learned salience/importance bins reduce heuristic-only drops. |
-| `C-04`, `C-05`, `C-06` | Partial by all 3 | Models improve signals; runtime policy/supersession/consolidation logic still required. |
+Current runtime integrations include:
 
-### Issues better solved by NER (spaCy-style) than classifier-only models
+- `query_domain`: classifier/planner/retriever
+- `scope_match`: retriever/reranker
+- `constraint_stability`: reranker
+- `supersession`: constraint extraction/supersession checks
+- `pii_presence` + `importance_bin`: write gate non-LLM path
 
-Classifier models help with labels, but these are better handled with explicit NER/rules:
+If model artifacts are not present, runtime uses safe non-LLM defaults for those paths.
 
-- Fine-grained PII span extraction/redaction (`USE_LLM_PII_REDACTION` replacement quality)
-- Entity-level constraint scope extraction (multi-entity scope, aliases, cross-sentence coreference)
-- Structured relation extraction for graph updates
+## Data preparation
 
-Recommended hybrid: model classification + NER post-processing.
+`prepare.py` performs:
 
-## Datasets and Which Model They Train
+1. dataset loading (auto-download via Hugging Face IDs in config)
+2. merge with existing local prepared data when available
+3. missing-only balancing to target counts (default `10000` per task-label)
+4. LLM-only synthetic backfill for deficits
+5. stratified split output (`train`, `test`, `eval`)
 
-Configured in `packages/models/model_pipeline.toml` (`[[datasets]]` entries).
+Prepared outputs are written to `packages/models/prepared_data/modelpack`.
 
-| Dataset name (config) | Source | Trains |
-|---|---|---|
-| `banking77` | `banking77` | `router_model` |
-| `trec` | `ag_news` | `router_model` |
-| `massive` | `dbpedia_14` | `router_model` |
-| `moral_stories` | `go_emotions` (`simplified`) | `extractor_model` |
-| `pii_masking` | `ai4privacy/pii-masking-200k` | `extractor_model` |
-| `snli` | `stanfordnlp/snli` | `pair_model` |
-| `multi_nli` | `nyu-mll/multi_nli` | `pair_model` |
-| `ms_marco` | `microsoft/ms_marco` (`v1.1`) | `pair_model` |
-| `quora_duplicates` | `sentence-transformers/quora-duplicates` (`pair-class`) | `pair_model` |
+### Existing dataset folder
 
-Local bootstrap dataset:
+Raw dataset cache/downloads use existing flat folder:
 
-- `packages/models/prepared_data/{train,test,eval}.parquet` (if present) is used as weak supervision.
+- `packages/models/datasets`
 
-If required internet datasets are missing locally, `prepare.py` auto-downloads them using links/IDs in config.
-Downloaded artifacts are cached under `packages/models/datasets` (existing flat datasets folder).
+## Synthetic generation (LLM-only)
 
-## LLM Feature Replacement Map
+Synthetic generation does not use rule-based labeling.
 
-| Previous LLM-gated feature | Replacement |
-|---|---|
-| `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` | `extractor_model` (`constraint_type`, `constraint_scope`) |
-| `FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR` | `extractor_model` |
-| `FEATURES__USE_LLM_WRITE_TIME_FACTS` | `extractor_model` (`fact_type`) |
-| `FEATURES__USE_LLM_QUERY_CLASSIFIER_ONLY` | `router_model` (`query_intent`, `constraint_dimension`) |
-| `FEATURES__USE_LLM_SALIENCE_REFINEMENT` | `router_model` (`salience_bin`) |
-| `FEATURES__USE_LLM_PII_REDACTION` | `extractor_model` (`pii_presence`) + recommended NER for span-level masking |
-| `FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE` | `router_model` (`importance_bin`) |
-| `FEATURES__USE_LLM_MEMORY_TYPE` | `router_model` (`memory_type`) |
-| `FEATURES__USE_LLM_CONFIDENCE` | `router_model` (`confidence_bin`) |
-| `FEATURES__USE_LLM_CONTEXT_TAGS` | `router_model` (`context_tag`) |
-| `FEATURES__USE_LLM_DECAY_RATE` | `router_model` (`decay_profile`) |
-| `FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY` | `pair_model` (`conflict_detection`) |
-| `FEATURES__USE_LLM_CONSTRAINT_RERANKER` | `pair_model` (`constraint_rerank`) |
+Flow:
 
-### What is left (not fully replaced by classifiers)
+1. Randomly select seed samples from related datasets.
+2. Prompt LLM for target `(task, label)` generation.
+3. Parse/validate and keep accepted rows until target count is reached.
 
-- Precise PII span extraction/redaction quality (best with NER/rule layer)
-- Consolidation-time semantic preservation and supersession policy logic
-- Retrieval/store algorithmic efficiency fixes (`E-*` issues in report)
-
-## Config File
-
-Use:
-
-- `packages/models/model_pipeline.toml`
-
-It contains:
-
-- Paths (`prepared_dir`, `bootstrap_prepared_dir`, `trained_models_dir`, dataset storage path)
-- Prepare settings (seed, split ratios, sample caps, auto-download behavior)
-- Train settings (`max_iter` as epoch-like SGD iterations, `max_features`, `min_df`, etc.)
-- Optional/reserved LLM settings (kept in config for completeness, currently disabled by default)
-- Dataset definitions (`name`, `link`, `dataset_id`, `split`, `max_rows`, `required`)
-
-## Usage Guide
-
-From repo root:
+Expected env settings (example):
 
 ```bash
-# Optional deps
-pip install datasets pyarrow pandas scikit-learn joblib tqdm
-
-# 1) Prepare all model-family datasets (auto-download missing required datasets)
-python -m packages.models.scripts.prepare
-
-# 2) Train/test/eval all model families
-python -m packages.models.scripts.train
+LLM_EVAL__PROVIDER=ollama
+LLM_EVAL__MODEL=gemma3:12b
+LLM_EVAL__BASE_URL=http://localhost:11434/v1
 ```
 
-From `packages/models`:
+## Training
+
+`train.py` trains all selected families and writes:
+
+- `*_model.joblib`
+- `*_label_map.json`
+- `*_metrics_test.json`
+- `*_metrics_eval.json`
+- `*_report_test.json`
+- `*_report_eval.json`
+- `*_epoch_stats.json`
+- `*_training_metadata.json`
+- `manifest.json`
+
+Per-epoch training logs are printed to console and persisted in epoch stats files.
+
+## Usage
+
+From repository root:
 
 ```bash
-cd packages/models
-python -m scripts.prepare
-python -m scripts.train
+python -m packages.models.scripts.prepare
+python -m packages.models.scripts.train
 ```
 
 Common overrides:
 
 ```bash
-# Use a custom config file
-python -m scripts.prepare --config model_pipeline.toml
-python -m scripts.train --config model_pipeline.toml
-
-# Preparation overrides
-python -m scripts.prepare --max-rows-per-source 20000 --max-per-task-label 15000 --seed 123
-
-# Training overrides
-python -m scripts.train --max-iter 35 --max-features 300000 --predict-batch-size 4096
+python -m packages.models.scripts.prepare --target-per-task-label 10000 --llm-temperature 1.35
+python -m packages.models.scripts.prepare --force-full
+python -m packages.models.scripts.train --max-iter 25 --max-features 250000
 ```
 
-Outputs:
+## Config reference
 
-- Prepared datasets: `packages/models/prepared_data/modelpack/*`
-- Trained models and metrics: `packages/models/trained_models/*`
+All settings are in `packages/models/model_pipeline.toml`:
+
+- paths
+- preparation targets/splits
+- training hyperparameters
+- synthetic LLM parameters
+- dataset source definitions (links + IDs + required/optional)

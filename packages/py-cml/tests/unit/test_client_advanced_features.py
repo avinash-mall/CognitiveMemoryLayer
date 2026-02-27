@@ -371,6 +371,29 @@ def test_session_scope_turn_injects_session_id(cml_config: CMLConfig) -> None:
     assert call_kw["assistant_response"] == "Assistant replied"
 
 
+def test_session_scope_read_uses_session_scoped_endpoint(cml_config: CMLConfig) -> None:
+    """SessionScope.read() uses /session/{id}/read (not tenant-wide /memory/read)."""
+    from cml.client import SessionScope
+
+    parent = CognitiveMemoryLayer(config=cml_config)
+    parent._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "query": "q",
+            "memories": [],
+            "total_count": 0,
+            "elapsed_ms": 1.0,
+        }
+    )
+    scope = SessionScope(parent, "sess-789")
+    scope.read("q", response_format="llm_context", user_timezone="America/New_York")
+
+    call = parent._transport.request.call_args
+    assert call[0] == ("POST", "/session/sess-789/read")
+    assert call[1]["json"]["query"] == "q"
+    assert call[1]["json"]["format"] == "llm_context"
+    assert call[1]["json"]["user_timezone"] == "America/New_York"
+
+
 # ---- OpenAI helper ----
 
 

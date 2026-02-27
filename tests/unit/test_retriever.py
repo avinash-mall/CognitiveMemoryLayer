@@ -8,6 +8,7 @@ import pytest
 
 from src.core.enums import MemoryType
 from src.memory.neocortical.schemas import FactCategory, SemanticFact
+from src.retrieval.planner import RetrievalSource, RetrievalStep
 from src.retrieval.retriever import HybridRetriever
 
 
@@ -23,6 +24,7 @@ def mock_neocortical():
     neocortical = MagicMock()
     neocortical.facts = MagicMock()
     neocortical.facts.get_facts_by_category = AsyncMock(return_value=[])
+    neocortical.facts.get_facts_by_categories = AsyncMock(return_value=[])
     return neocortical
 
 
@@ -104,3 +106,38 @@ def test_fact_to_record_source_constraints_routes_to_constraint(mock_hippocampal
     record = retriever._fact_to_record(fact, item)
 
     assert record.type == MemoryType.CONSTRAINT
+
+
+@pytest.mark.asyncio
+async def test_retrieve_constraints_uses_batch_category_query(mock_hippocampal, mock_neocortical):
+    """_retrieve_constraints prefers single IN-query batch fact fetch when available."""
+    retriever = HybridRetriever(mock_hippocampal, mock_neocortical)
+    mock_hippocampal.search = AsyncMock(return_value=[])
+    mock_neocortical.facts.get_facts_by_categories = AsyncMock(
+        return_value=[
+            SemanticFact(
+                id=str(uuid4()),
+                tenant_id="t",
+                category=FactCategory.POLICY,
+                key="user:policy:diet",
+                subject="user",
+                predicate="diet",
+                value="Avoid shellfish",
+                value_type="str",
+                confidence=0.9,
+                updated_at=datetime.now(UTC),
+            )
+        ]
+    )
+
+    step = RetrievalStep(
+        source=RetrievalSource.CONSTRAINTS,
+        query="Should I order shellfish?",
+        top_k=5,
+        constraint_categories=["policy"],
+    )
+
+    rows = await retriever._retrieve_constraints("t", step)
+
+    assert rows
+    mock_neocortical.facts.get_facts_by_categories.assert_awaited_once()

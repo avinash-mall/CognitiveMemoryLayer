@@ -50,6 +50,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      target: test
     env_file:
       - ../.env
     environment:
@@ -74,6 +75,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      target: production
     env_file:
       - ../.env
     environment:
@@ -85,6 +87,12 @@ services:
       DATABASE__REDIS_URL: redis://redis:6379
       # Default to openai so API starts without sentence-transformers; set EMBEDDING_INTERNAL__PROVIDER=local in .env for local embeddings.
       EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-openai}
+      # Pass CI markers through so startup LLM validation can auto-skip in GitHub Actions.
+      CI: ${CI:-}
+      GITHUB_ACTIONS: ${GITHUB_ACTIONS:-}
+      LLM_STARTUP_VALIDATION_ENABLED: ${LLM_STARTUP_VALIDATION_ENABLED:-true}
+      LLM_STARTUP_VALIDATE_IN_CI: ${LLM_STARTUP_VALIDATE_IN_CI:-false}
+      LLM_STARTUP_VALIDATION_TIMEOUT_SEC: ${LLM_STARTUP_VALIDATION_TIMEOUT_SEC:-3}
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,7 +102,7 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
-    command: sh -c "alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
+    command: sh -c "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
