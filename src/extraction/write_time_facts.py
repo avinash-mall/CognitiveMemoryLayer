@@ -1,4 +1,4 @@
-﻿"""Write-time fact extraction: populate the semantic store at write time.
+"""Write-time fact extraction: populate the semantic store at write time.
 
 LLM path remains in unified extractor.
 Non-LLM path uses spaCy parse + NER only.
@@ -203,7 +203,9 @@ class WriteTimeFactExtractor:
             if not self._has_first_person(sent):
                 continue
 
-            orgs = [ent.text.strip() for ent in sent.ents if ent.label_ == "ORG" and ent.text.strip()]
+            orgs = [
+                ent.text.strip() for ent in sent.ents if ent.label_ == "ORG" and ent.text.strip()
+            ]
             lemmas = {t.lemma_.lower() for t in sent}
             if orgs and "work" in lemmas:
                 self._append_fact(

@@ -37,7 +37,9 @@ class MemoryPacketBuilder:
                 packet.constraints.append(mem)
             else:
                 packet.recent_episodes.append(mem)
-        packet.constraints, constraint_warnings = self._resolve_constraint_conflicts(packet.constraints)
+        packet.constraints, constraint_warnings = self._resolve_constraint_conflicts(
+            packet.constraints
+        )
         conflicts = self._detect_conflicts(packet)
         if conflicts:
             packet.warnings.extend(conflicts)

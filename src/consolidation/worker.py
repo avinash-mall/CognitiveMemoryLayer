@@ -125,7 +125,9 @@ class ConsolidationWorker:
                     cat = cat_map.get((c.constraint_type or "").lower())
                     if cat is not None:
                         if cat not in category_cache:
-                            category_cache[cat] = await self.migrator.semantic.facts.get_facts_by_category(
+                            category_cache[
+                                cat
+                            ] = await self.migrator.semantic.facts.get_facts_by_category(
                                 tenant_id, cat, current_only=True, limit=200
                             )
                         for old in list(category_cache[cat]):

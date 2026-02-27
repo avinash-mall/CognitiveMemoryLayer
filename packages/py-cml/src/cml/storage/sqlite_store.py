@@ -25,8 +25,7 @@ try:
     from src.storage.base import MemoryStoreBase
 except ImportError as e:
     raise ImportError(
-        "Embedded lite mode requires the CML engine. "
-        "From repo root: pip install -e \".[embedded]\"."
+        'Embedded lite mode requires the CML engine. From repo root: pip install -e ".[embedded]".'
     ) from e
 
 import aiosqlite
@@ -463,4 +462,3 @@ class SQLiteMemoryStore(MemoryStoreBase):
             supersedes_id=(UUID(row["supersedes_id"]) if row.get("supersedes_id") else None),
             content_hash=row.get("content_hash"),
         )
-
