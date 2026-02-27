@@ -1,6 +1,6 @@
 """Anthropic Claude tool use with Cognitive Memory Layer.
 
-Set AUTH__API_KEY, CML_BASE_URL, ANTHROPIC_API_KEY in .env.
+Set CML_API_KEY, CML_BASE_URL, ANTHROPIC_API_KEY in .env.
 """
 
 import json
@@ -176,3 +176,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

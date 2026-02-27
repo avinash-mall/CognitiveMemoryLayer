@@ -2,7 +2,7 @@
 
 Runnable scripts live in the repository [examples/](../../../examples/) and [packages/py-cml/examples/](../examples/) directories; this page describes SDK usage patterns.
 
-The `examples/` and `packages/py-cml/examples/` directories contain runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`. For timezone-aware "today"/"yesterday" retrieval, use `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")` when the server supports it. For benchmark scripts, use `write(..., eval_mode=True)` to get `eval_outcome` and `eval_reason` in the response; see [API Reference — Eval mode](api-reference.md#eval-mode-write-gate).
+The `examples/` and `packages/py-cml/examples/` directories contain runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM_INTERNAL__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`. For timezone-aware "today"/"yesterday" retrieval, use `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")` when the server supports it. For benchmark scripts, use `write(..., eval_mode=True)` to get `eval_outcome` and `eval_reason` in the response; see [API Reference — Eval mode](api-reference.md#eval-mode-write-gate).
 
 ## Quickstart
 
@@ -18,7 +18,7 @@ python examples/quickstart.py
 
 **File:** [examples/chat_with_memory.py](../../../examples/chat_with_memory.py)
 
-A simple chatbot that uses OpenAI and cognitive-memory-layer for persistent memory. Each turn retrieves relevant memories and injects them into the system prompt, then stores the exchange. Requires `openai`, a CML server, and `.env` with `CML_BASE_URL`, `CML_API_KEY`, `OPENAI_MODEL` (or `LLM__MODEL`). Type `quit` to exit.
+A simple chatbot that uses OpenAI and cognitive-memory-layer for persistent memory. Each turn retrieves relevant memories and injects them into the system prompt, then stores the exchange. Requires `openai`, a CML server, and `.env` with `CML_BASE_URL`, `CML_API_KEY`, `OPENAI_MODEL` (or `LLM_INTERNAL__MODEL`). Type `quit` to exit.
 
 ```bash
 pip install openai
@@ -132,3 +132,5 @@ with CognitiveMemoryLayer(api_key="...", base_url="...") as memory:
 ```
 
 The constraint extraction runs at **write time** and stores structured `ConstraintObject` data in both episodic (vector) and semantic (fact) stores. At **read time**, queries classified as `CONSTRAINT_CHECK` (e.g. "should I", "can I", "is it ok", "recommend") trigger a highest-priority retrieval step that fetches constraints first.
+
+

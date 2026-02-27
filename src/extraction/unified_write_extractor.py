@@ -11,6 +11,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+import structlog
+
 from ..core.schemas import EntityMention, Relation
 from ..memory.neocortical.schemas import FactCategory
 from ..memory.working.models import SemanticChunk
@@ -161,6 +163,8 @@ _CATEGORY_MAP = {
     "custom": FactCategory.CUSTOM,
 }
 
+_logger = structlog.get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Extractor
@@ -173,20 +177,30 @@ class UnifiedWritePathExtractor:
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm = llm_client
 
+    @staticmethod
+    def _default_result(chunk: SemanticChunk) -> UnifiedExtractionResult:
+        salience = getattr(chunk, "salience", 0.5) or 0.5
+        return UnifiedExtractionResult(salience=salience, importance=0.5)
+
     async def extract(self, chunk: SemanticChunk) -> UnifiedExtractionResult:
         """Extract constraints, facts, salience, importance, and optionally PII in one LLM call."""
         text = getattr(chunk, "text", None)
         if not isinstance(text, str) or not text.strip():
-            return UnifiedExtractionResult(
-                salience=getattr(chunk, "salience", 0.5) or 0.5,
-                importance=0.5,
-            )
+            return self._default_result(chunk)
 
         chunk_type = getattr(chunk, "chunk_type", None)
         chunk_type_str = str(chunk_type) if chunk_type else "statement"
 
         prompt = _UNIFIED_PROMPT.format(text=text.strip(), chunk_type=chunk_type_str)
-        raw = await self._llm.complete_json(prompt, temperature=0.0)
+        try:
+            raw = await self._llm.complete_json(prompt, temperature=0.0)
+        except Exception as exc:
+            _logger.warning(
+                "unified_write_extractor_fallback",
+                error=str(exc),
+                chunk_id=getattr(chunk, "id", None),
+            )
+            return self._default_result(chunk)
         if not isinstance(raw, dict):
             raw = json.loads(str(raw)) if isinstance(raw, str) else {}
         return self._parse_result(raw, chunk)
@@ -225,7 +239,15 @@ class UnifiedWritePathExtractor:
             "Return ONLY valid JSON, no markdown or explanation."
         )
 
-        raw = await self._llm.complete_json(batch_prompt, temperature=0.0)
+        try:
+            raw = await self._llm.complete_json(batch_prompt, temperature=0.0)
+        except Exception as exc:
+            _logger.warning(
+                "unified_write_extractor_batch_fallback",
+                error=str(exc),
+                chunk_count=len(chunks),
+            )
+            return [self._default_result(chunk) for chunk in chunks]
         if not isinstance(raw, dict):
             raw = json.loads(str(raw)) if isinstance(raw, str) else {}
 
@@ -235,12 +257,7 @@ class UnifiedWritePathExtractor:
             if isinstance(item, dict):
                 results.append(self._parse_result(item, chunk))
             else:
-                results.append(
-                    UnifiedExtractionResult(
-                        salience=getattr(chunk, "salience", 0.5) or 0.5,
-                        importance=0.5,
-                    )
-                )
+                results.append(self._default_result(chunk))
         return results
 
     def _parse_result(

@@ -1,20 +1,17 @@
-"""Write-time fact extraction: populate the semantic store at write time.
+﻿"""Write-time fact extraction: populate the semantic store at write time.
 
-Uses rule-based patterns (no LLM) to keep latency minimal on the hot
-write path.  Only extracts high-confidence, well-structured facts.
-Write-time facts receive lower initial confidence (0.6) than
-consolidation-derived facts (0.8) so that the consolidation pipeline
-can still refine them.
+LLM path remains in unified extractor.
+Non-LLM path uses spaCy parse + NER only.
 """
 
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..memory.neocortical.schemas import FactCategory
+from ..utils.ner import parse_text
 
 if TYPE_CHECKING:
     from ..memory.working.models import SemanticChunk
@@ -31,67 +28,6 @@ class ExtractedFact:
     confidence: float
 
 
-# ── Rule-based patterns ─────────────────────────────────────────────
-# Each tuple: (compiled regex, key_template, category, confidence_boost)
-
-_PREFERENCE_PATTERNS: list[tuple[re.Pattern[str], str, FactCategory, float]] = [
-    # "I prefer/like/love/enjoy/hate/dislike X"
-    (
-        re.compile(
-            r"\b(?:i|my)\s+(?:prefer|like|love|enjoy|hate|dislike)\s+(.+)",
-            re.IGNORECASE,
-        ),
-        "user:preference:{pred}",
-        FactCategory.PREFERENCE,
-        0.7,
-    ),
-    # "My favorite X is Y"
-    (
-        re.compile(
-            r"\b(?:my|the)\s+(?:favorite|favourite)\s+(\w+)\s+(?:is|are)\s+(.+)",
-            re.IGNORECASE,
-        ),
-        "user:preference:{pred}",
-        FactCategory.PREFERENCE,
-        0.75,
-    ),
-]
-
-_IDENTITY_PATTERNS: list[tuple[re.Pattern[str], str, FactCategory, float]] = [
-    # "My name is X" / "I'm X" / "Call me X"
-    (
-        re.compile(
-            r"\b(?:my name is|i'?m|call me|i am)\s+" r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            re.IGNORECASE,
-        ),
-        "user:identity:name",
-        FactCategory.IDENTITY,
-        0.85,
-    ),
-    # "I live in X" / "I'm from X" / "I moved to X"
-    (
-        re.compile(
-            r"\b(?:i live in|i'?m from|i moved to|i'm based in)\s+"
-            r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)",
-            re.IGNORECASE,
-        ),
-        "user:location:current_city",
-        FactCategory.LOCATION,
-        0.7,
-    ),
-    # "I work as X" / "I'm a X" / "My job is X"
-    (
-        re.compile(
-            r"\b(?:i work as|i'?m a|my job is|my occupation is)\s+(.+)",
-            re.IGNORECASE,
-        ),
-        "user:occupation:role",
-        FactCategory.OCCUPATION,
-        0.7,
-    ),
-]
-
-# Known predicate keywords for preference sub-categorisation
 _PREDICATE_KEYWORDS: dict[str, list[str]] = {
     "cuisine": ["food", "restaurant", "eat", "cook", "meal", "cuisine", "dish"],
     "music": ["music", "song", "band", "listen", "genre", "artist"],
@@ -104,22 +40,15 @@ _PREDICATE_KEYWORDS: dict[str, list[str]] = {
     "pet": ["pet", "pets", "dog", "cat", "animal"],
 }
 
-# Confidence baseline for write-time facts
+_PREFERENCE_LEMMAS = {"prefer", "like", "love", "enjoy", "hate", "dislike"}
+_FIRST_PERSON_TOKENS = {"i", "me", "my", "mine", "myself"}
 _WRITE_TIME_CONFIDENCE_BASE: float = 0.6
 
 
 class WriteTimeFactExtractor:
-    """Extract structured facts from chunks at write-time.
-
-    Processes preference, fact, and constraint chunk types.
-    Uses purely rule-based pattern matching — no LLM calls.
-    """
+    """Extract structured facts from chunks at write-time."""
 
     def extract(self, chunk: SemanticChunk) -> list[ExtractedFact]:
-        """Extract facts from a single chunk.
-
-        Returns an empty list for chunk types that don't contain facts.
-        """
         from ..memory.working.models import ChunkType
 
         fact_bearing_types = {
@@ -130,58 +59,184 @@ class WriteTimeFactExtractor:
         if chunk.chunk_type not in fact_bearing_types:
             return []
 
-        facts: list[ExtractedFact] = []
         text = chunk.text.strip()
+        if not text:
+            return []
 
-        # Try preference patterns
-        for pattern, key_template, category, conf_boost in _PREFERENCE_PATTERNS:
-            match = pattern.search(text)
-            if not match:
-                continue
-            # Handle two-group patterns (e.g. "favorite X is Y")
-            if match.lastindex and match.lastindex >= 2:
-                value = match.group(2).strip().rstrip(".")
-                predicate = match.group(1).strip().lower()
-            else:
-                value = match.group(1).strip().rstrip(".")
-                predicate = _derive_predicate(value)
-            key = key_template.format(pred=predicate)
-            facts.append(
-                ExtractedFact(
-                    key=key,
-                    category=category,
-                    predicate=predicate,
-                    value=value,
-                    confidence=_WRITE_TIME_CONFIDENCE_BASE * conf_boost,
-                )
-            )
+        doc = parse_text(text)
+        if doc is None:
+            return []
 
-        # Try identity patterns
-        for pattern, key_str, category, conf_boost in _IDENTITY_PATTERNS:
-            match = pattern.search(text)
-            if not match:
-                continue
-            value = match.group(1).strip()
-            predicate = key_str.split(":")[-1]
-            facts.append(
-                ExtractedFact(
-                    key=key_str,
-                    category=category,
-                    predicate=predicate,
-                    value=value,
-                    confidence=_WRITE_TIME_CONFIDENCE_BASE * conf_boost,
-                )
-            )
+        facts: list[ExtractedFact] = []
+        seen: set[tuple[str, str]] = set()
+
+        self._extract_preference_facts(doc, facts, seen)
+        self._extract_identity_facts(doc, facts, seen)
+        self._extract_location_facts(doc, facts, seen)
+        self._extract_occupation_facts(doc, facts, seen)
 
         return facts
 
+    def _append_fact(
+        self,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+        *,
+        key: str,
+        category: FactCategory,
+        predicate: str,
+        value: str,
+        confidence_boost: float,
+    ) -> None:
+        clean_value = value.strip().strip(".")
+        if not clean_value:
+            return
+        dedupe_key = (key, clean_value.lower())
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        facts.append(
+            ExtractedFact(
+                key=key,
+                category=category,
+                predicate=predicate,
+                value=clean_value,
+                confidence=min(1.0, _WRITE_TIME_CONFIDENCE_BASE * confidence_boost),
+            )
+        )
+
+    def _extract_preference_facts(
+        self,
+        doc: Any,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+    ) -> None:
+        for token in doc:
+            if token.lemma_.lower() not in _PREFERENCE_LEMMAS:
+                continue
+            if token.pos_ not in {"VERB", "AUX"}:
+                continue
+
+            obj = ""
+            for child in token.children:
+                if child.dep_ in {"dobj", "attr", "oprd", "pobj", "xcomp"}:
+                    obj = " ".join(tok.text for tok in child.subtree).strip()
+                    if obj:
+                        break
+            if not obj:
+                sent = token.sent.text.strip()
+                marker = token.text
+                idx = sent.lower().find(marker.lower())
+                if idx >= 0:
+                    obj = sent[idx + len(marker) :].strip()
+            if not obj:
+                continue
+
+            predicate = _derive_predicate(obj)
+            self._append_fact(
+                facts,
+                seen,
+                key=f"user:preference:{predicate}",
+                category=FactCategory.PREFERENCE,
+                predicate=predicate,
+                value=obj,
+                confidence_boost=0.75,
+            )
+
+    def _extract_identity_facts(
+        self,
+        doc: Any,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+    ) -> None:
+        for ent in doc.ents:
+            if ent.label_ != "PERSON" or not ent.text.strip():
+                continue
+            sent = ent.sent
+            if not self._has_first_person(sent):
+                continue
+            lemmas = {t.lemma_.lower() for t in sent}
+            if lemmas & {"be", "call", "name"}:
+                self._append_fact(
+                    facts,
+                    seen,
+                    key="user:identity:name",
+                    category=FactCategory.IDENTITY,
+                    predicate="name",
+                    value=ent.text,
+                    confidence_boost=0.9,
+                )
+                return
+
+    def _extract_location_facts(
+        self,
+        doc: Any,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+    ) -> None:
+        for ent in doc.ents:
+            if ent.label_ not in {"GPE", "LOC"}:
+                continue
+            sent = ent.sent
+            if not self._has_first_person(sent):
+                continue
+            lemmas = {t.lemma_.lower() for t in sent}
+            if lemmas & {"live", "be", "move", "base", "come"}:
+                self._append_fact(
+                    facts,
+                    seen,
+                    key="user:location:current_city",
+                    category=FactCategory.LOCATION,
+                    predicate="current_city",
+                    value=ent.text,
+                    confidence_boost=0.78,
+                )
+                return
+
+    def _extract_occupation_facts(
+        self,
+        doc: Any,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+    ) -> None:
+        for sent in doc.sents:
+            if not self._has_first_person(sent):
+                continue
+
+            orgs = [ent.text.strip() for ent in sent.ents if ent.label_ == "ORG" and ent.text.strip()]
+            lemmas = {t.lemma_.lower() for t in sent}
+            if orgs and "work" in lemmas:
+                self._append_fact(
+                    facts,
+                    seen,
+                    key="user:occupation:role",
+                    category=FactCategory.OCCUPATION,
+                    predicate="role",
+                    value=f"works at {orgs[0]}",
+                    confidence_boost=0.72,
+                )
+                return
+
+            for token in sent:
+                if token.dep_ in {"attr", "oprd"} and token.pos_ in {"NOUN", "PROPN"}:
+                    self._append_fact(
+                        facts,
+                        seen,
+                        key="user:occupation:role",
+                        category=FactCategory.OCCUPATION,
+                        predicate="role",
+                        value=" ".join(t.text for t in token.subtree),
+                        confidence_boost=0.78,
+                    )
+                    return
+
+    @staticmethod
+    def _has_first_person(sent: Any) -> bool:
+        return any(t.text.lower() in _FIRST_PERSON_TOKENS for t in sent)
+
 
 def _derive_predicate(value: str) -> str:
-    """Derive a predicate name from the preference value.
-
-    Matches against known keyword groups first, falling back to a stable
-    hash when no group matches.
-    """
+    """Derive a predicate name from the preference value."""
     value_lower = value.lower()
     for predicate, keywords in _PREDICATE_KEYWORDS.items():
         if any(kw in value_lower for kw in keywords):

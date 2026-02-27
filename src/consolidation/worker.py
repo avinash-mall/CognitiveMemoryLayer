@@ -89,7 +89,16 @@ class ConsolidationWorker:
         # BUG-06: Preserve constraints from episodic memories before gist extraction
         from ..core.enums import MemoryType
         from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
+        from ..memory.neocortical.schemas import FactCategory
 
+        cat_map = {
+            "goal": FactCategory.GOAL,
+            "value": FactCategory.VALUE,
+            "state": FactCategory.STATE,
+            "causal": FactCategory.CAUSAL,
+            "policy": FactCategory.POLICY,
+        }
+        category_cache: dict[FactCategory, list] = {}
         for ep in episodes:
             if ep.type != MemoryType.CONSTRAINT:
                 continue
@@ -112,6 +121,33 @@ class ConsolidationWorker:
                         provenance=cdict.get("provenance", []),
                     )
                     fact_key = ConstraintExtractor.constraint_fact_key(c)
+
+                    cat = cat_map.get((c.constraint_type or "").lower())
+                    if cat is not None:
+                        if cat not in category_cache:
+                            category_cache[cat] = await self.migrator.semantic.facts.get_facts_by_category(
+                                tenant_id, cat, current_only=True, limit=200
+                            )
+                        for old in list(category_cache[cat]):
+                            if old.key == fact_key:
+                                continue
+                            old_obj = ConstraintObject(
+                                constraint_type=cat.value,
+                                subject="user",
+                                description=str(old.value),
+                                scope=getattr(old, "context_tags", None) or [],
+                            )
+                            if await ConstraintExtractor.detect_supersession(old_obj, c):
+                                await self.migrator.semantic.facts.invalidate_fact(
+                                    tenant_id, old.key, reason="superseded_consolidation"
+                                )
+                                if hasattr(self.migrator.episodic, "deactivate_constraints_by_key"):
+                                    await self.migrator.episodic.deactivate_constraints_by_key(
+                                        tenant_id,
+                                        old.key,
+                                        superseded_by_key=fact_key,
+                                    )
+
                     await self.migrator.semantic.store_fact(
                         tenant_id=tenant_id,
                         key=fact_key,

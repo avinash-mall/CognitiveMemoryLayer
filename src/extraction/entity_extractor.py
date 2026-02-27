@@ -1,9 +1,17 @@
-"""Entity extraction from text (LLM-based)."""
+"""Entity extraction from text.
+
+Primary path:
+- LLM extraction when an LLM client is available.
+
+Fallback path:
+- spaCy NER for non-LLM mode.
+"""
 
 import json
 
 from ..core.schemas import EntityMention
 from ..utils.llm import LLMClient
+from ..utils.ner import extract_entities
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -39,9 +47,9 @@ Extract ALL meaningful entities. Return only the JSON array, no other text."""
 
 
 class EntityExtractor:
-    """Extracts named entities from text using LLM."""
+    """Extracts named entities from text using LLM with spaCy fallback."""
 
-    def __init__(self, llm_client: LLMClient) -> None:
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm = llm_client
 
     async def extract(
@@ -49,6 +57,9 @@ class EntityExtractor:
         text: str,
         context: str | None = None,
     ) -> list[EntityMention]:
+        if not self.llm:
+            return self._spacy_extract(text)
+
         prompt = ENTITY_EXTRACTION_PROMPT.format(text=text)
         if context:
             prompt = f"Context: {context}\n\n{prompt}"
@@ -67,7 +78,19 @@ class EntityExtractor:
                 if e.get("text")
             ]
         except (json.JSONDecodeError, KeyError, TypeError):
-            return []
+            return self._spacy_extract(text)
+
+    def _spacy_extract(self, text: str) -> list[EntityMention]:
+        return [
+            EntityMention(
+                text=e.text,
+                normalized=e.normalized,
+                entity_type=e.entity_type,
+                start_char=e.start_char,
+                end_char=e.end_char,
+            )
+            for e in extract_entities(text)
+        ]
 
     async def extract_batch(self, texts: list[str]) -> list[list[EntityMention]]:
         """Extract entities from multiple texts in a single LLM call.
@@ -78,6 +101,8 @@ class EntityExtractor:
         """
         if not texts:
             return []
+        if not self.llm:
+            return [self._spacy_extract(text) for text in texts]
         if len(texts) == 1:
             return [await self.extract(texts[0])]
 

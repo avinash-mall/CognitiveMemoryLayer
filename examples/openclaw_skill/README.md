@@ -28,7 +28,7 @@ CML acts as a structured memory backend that any OpenClaw agent can use alongsid
 
    # Copy and configure environment
    cp .env.example .env
-   # Edit .env -- set AUTH__API_KEY, LLM__MODEL, EMBEDDING__MODEL, etc.
+   # Edit .env -- set AUTH__API_KEY, LLM_INTERNAL__MODEL, EMBEDDING_INTERNAL__MODEL, etc.
 
    # Start all services
    docker compose -f docker/docker-compose.yml up -d
@@ -150,7 +150,7 @@ OpenClaw Agent
 | Problem | Solution |
 |---------|----------|
 | "Connection refused" errors | Verify CML server is running: `curl http://localhost:8000/api/v1/health` |
-| "401 Unauthorized" | Check `CML_API_KEY` matches `AUTH__API_KEY` in your CML `.env` |
+| "401 Unauthorized" | Check `CML_API_KEY` matches your server `AUTH__API_KEY` in CML `.env` |
 | Skill not appearing | Verify `SKILL.md` has the required YAML frontmatter and is at `~/.openclaw/workspace/skills/cml-memory/SKILL.md` |
 | No memories returned | Ensure you have written memories first; try a broader query |
 | Slow responses | CML needs embedding generation on write; first write may be slower |
@@ -161,3 +161,5 @@ OpenClaw Agent
 - [py-cml Python SDK](../../packages/py-cml/README.md)
 - [CML API Reference](http://localhost:8000/docs) (when server is running)
 - [OpenClaw Skills Guide](https://github.com/openclaw/openclaw)
+
+

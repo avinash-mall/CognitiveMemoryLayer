@@ -77,3 +77,39 @@ def test_rate_limit_middleware_isolates_by_tenant():
         for i in range(2):
             r = client.get("/ok", headers={"X-API-Key": "key-tenant-b"})
             assert r.status_code == 200
+
+
+def test_rate_limit_middleware_skips_health_endpoint():
+    """Health endpoint should not consume or be blocked by rate limiting."""
+    app = FastAPI()
+
+    @app.get("/api/v1/health")
+    async def health():
+        return {"ok": True}
+
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=1)
+    with TestClient(app) as client:
+        r1 = client.get("/api/v1/health", headers={"X-API-Key": "same-key"})
+        r2 = client.get("/api/v1/health", headers={"X-API-Key": "same-key"})
+        r3 = client.get("/api/v1/health", headers={"X-API-Key": "same-key"})
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r3.status_code == 200
+
+
+def test_rate_limit_middleware_skips_test_key():
+    """Default local test key should be exempt from throttling."""
+    app = FastAPI()
+
+    @app.get("/ok")
+    async def ok():
+        return {"ok": True}
+
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=1)
+    with TestClient(app) as client:
+        r1 = client.get("/ok", headers={"X-API-Key": "test-key"})
+        r2 = client.get("/ok", headers={"X-API-Key": "test-key"})
+        r3 = client.get("/ok", headers={"X-API-Key": "test-key"})
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r3.status_code == 200

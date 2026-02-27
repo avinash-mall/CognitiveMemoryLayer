@@ -1,49 +1,62 @@
 # Cognitive Memory Layer - Examples
 
-Working examples using the **py-cml** package. See [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) for server setup and [packages/py-cml/docs](../packages/py-cml/docs/) for SDK docs.
+Runnable examples using CML API directly or via `py-cml`.
 
-**Prerequisites:** Start API (`docker compose -f docker/docker-compose.yml up api`, or with test keys without changing `.env`: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up api`), copy `.env.example` to `.env`, set `AUTH__API_KEY`. For LLM examples: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Install: `pip install -r examples/requirements.txt` or `pip install -e packages/py-cml`.
+See:
 
-## Examples Overview
+- Server docs: [UsageDocumentation](../ProjectPlan/UsageDocumentation.md)
+- SDK docs: [packages/py-cml/docs](../packages/py-cml/docs/)
+
+## Prerequisites
+
+- Start API:
+  - `docker compose -f docker/docker-compose.yml up api`
+  - or test-key overlay: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up api`
+- Copy `.env.example` to `.env`
+- Set:
+  - `AUTH__API_KEY` (server)
+  - `CML_API_KEY` (client/examples; usually same value)
+  - `CML_BASE_URL` (default `http://localhost:8000`)
+- For LLM examples: `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`
+- Install deps:
+  - `pip install -r examples/requirements.txt`
+  - or from repo root: `pip install -e .`
+
+## Examples
 
 | File | Description |
 |------|-------------|
 | `quickstart.py` | Minimal intro: write, read, get_context, stats |
 | `basic_usage.py` | Full CRUD: write, read, update, forget, stats |
-| `chat_with_memory.py` | Simple chatbot: py-cml `turn()` for context + OpenAI |
-| `openai_tool_calling.py` | OpenAI function calling: memory_write, memory_read, memory_update, memory_forget |
-| `anthropic_tool_calling.py` | Anthropic Claude tool use with same memory tools |
-| `langchain_integration.py` | LangChain `BaseMemory` backed by py-cml |
-| `async_example.py` | Async usage: concurrent writes, batch_read, pipeline |
-| `embedded_mode.py` | Serverless: py-cml embedded with SQLite (no API) |
-| `agent_integration.py` | Agent pattern: observe, plan, reflect using memory |
-| `standalone_demo.py` | **No py-cml**: raw httpx demo of all API endpoints |
-| `api_direct_minimal.py` | **No py-cml**: minimal httpx-only script (health, write, read, turn, stats) |
-| `api_curl_examples.sh` | **No py-cml**: curl commands for all memory endpoints |
-| `openclaw_skill/` | [OpenClaw](https://openclaw.ai/) skill: persistent structured memory (SKILL.md + setup) |
-| `packages/py-cml/examples/temporal_fidelity.py` | Timestamped writes and turns (historical replay, benchmarks) |
+| `chat_with_memory.py` | Chatbot with `turn()` + OpenAI |
+| `openai_tool_calling.py` | OpenAI tool-calling memory tools |
+| `anthropic_tool_calling.py` | Anthropic tool-calling memory tools |
+| `langchain_integration.py` | LangChain memory integration |
+| `async_example.py` | Async usage and concurrency |
+| `embedded_mode.py` | Serverless embedded mode |
+| `agent_integration.py` | Agent loop pattern |
+| `standalone_demo.py` | Raw `httpx` API demo |
+| `api_direct_minimal.py` | Minimal direct API script |
+| `api_curl_examples.sh` | Direct API curl examples |
 
-## How to run
-
-From the project root you can run each example in turn and get a Pass / Fail / Skip report:
+## Run
 
 ```bash
-# Run all non-LLM examples (embedded, quickstart, basic_usage, async, agent_integration, temporal_fidelity, standalone_demo)
 python scripts/run_examples.py --all
-
-# Run a single example by name
-python scripts/run_examples.py --example embedded_mode
 python scripts/run_examples.py --example quickstart
-
-# Include LLM examples (requires OPENAI_* or ANTHROPIC_* keys and CML API)
 python scripts/run_examples.py --all --include-llm
-
-# Do not skip when env vars are missing (useful for debugging)
-python scripts/run_examples.py --all --no-skip
 ```
 
-Prerequisites: API up for API-dependent examples; embedded needs `pip install -e "packages/py-cml[embedded]"`. Standalone demo runs non-interactively.
+Quick manual runs:
 
-**Quick runs:** `python examples/quickstart.py` | `python examples/chat_with_memory.py` | `python examples/embedded_mode.py` (no server). Direct API: `python examples/api_direct_minimal.py` or `bash examples/api_curl_examples.sh`.
+```bash
+python examples/quickstart.py
+python examples/chat_with_memory.py
+python examples/embedded_mode.py
+```
 
-**Troubleshooting:** Could not connect → start API. API key required → set `AUTH__API_KEY` in `.env` (or start API with `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up api` to use test keys). No memories → broaden query. See [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) and [py-cml docs](../packages/py-cml/docs/).
+## Troubleshooting
+
+- Connection refused: start API containers.
+- Unauthorized: verify `CML_API_KEY` matches server `AUTH__API_KEY`.
+- Empty reads: broaden query or add more writes first.

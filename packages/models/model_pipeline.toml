@@ -40,16 +40,16 @@ eval_ratio = 0.10
 # Maximum rows sampled per source dataset (upper bound before balancing)
 max_rows_per_source = 60000
 
-# Hard cap per (task,label) to prevent source-dominance
+# Minimum rows required per (task,label). Existing rows are kept and
+# LLM synthesis fills any gap up to at least this count.
+target_per_task_label = 10000
+
+# Hard cap per (task,label); must be >= target_per_task_label.
 max_per_task_label = 50000
 
 # If true, required remote datasets are auto-downloaded when missing
 # (through Hugging Face datasets loader).
 auto_download_missing = true
-
-# If true, when pair datasets cannot be loaded from internet,
-# prepare.py synthesizes weak-supervision pairs from local bootstrap data.
-allow_local_pair_fallback = true
 
 # If true, missing `datasets` package is treated as an error.
 # Set false only for strictly local-only prep runs.
@@ -77,22 +77,35 @@ alpha = 0.00001
 predict_batch_size = 8192
 
 [synthetic_llm]
-# Reserved section for optional future LLM augmentation.
-# Current pipeline does NOT require LLM generation.
-enabled = false
-
-# Target count placeholder if LLM synthetic backfill is enabled in future.
-target_samples_per_label = 10000
-
-# LLM connectivity / generation parameters (currently informational)
+# Synthetic generation is LLM-only.
+# Provider/model/base URL are loaded from env first.
+#
+# Required env values (user preference):
+#   LLM_EVAL__PROVIDER=ollama
+#   LLM_EVAL__MODEL=gemma3:12b
+#   LLM_EVAL__BASE_URL=http://localhost:11434/v1
+provider_env = "LLM_EVAL__PROVIDER"
+model_env = "LLM_EVAL__MODEL"
+base_url_env = "LLM_EVAL__BASE_URL"
+provider = "ollama"
 model = ""
 base_url = ""
 api_key_env = "OPENAI_API_KEY"
-temperature = 1.2
+
+# Higher randomness for diversity.
+temperature = 1.35
 top_p = 0.95
-max_tokens = 256
-batch_size = 64
-timeout_seconds = 60
+max_tokens = 1024
+batch_size = 24
+timeout_seconds = 120
+max_retries = 3
+
+# Retry budget per (task,label) while filling missing rows.
+max_attempts_per_label = 80
+
+# Only the first N rows/lines from each local raw dataset file are scanned
+# to build seed pools (fast structure probing).
+local_raw_scan_rows_per_file = 300
 
 # ============================================================================
 # Remote datasets (auto-downloaded by prepare.py when enabled=true)
@@ -122,7 +135,7 @@ enabled = true
 required = true
 
 [[datasets]]
-name = "trec"
+name = "ag_news"
 target = "router"
 kind = "huggingface"
 link = "https://huggingface.co/datasets/ag_news"
@@ -134,7 +147,19 @@ enabled = true
 required = true
 
 [[datasets]]
-name = "massive"
+name = "clinc_oos"
+target = "router"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/clinc_oos"
+dataset_id = "clinc_oos"
+config = "plus"
+split = "train"
+max_rows = 50000
+enabled = true
+required = true
+
+[[datasets]]
+name = "dbpedia_14"
 target = "router"
 kind = "huggingface"
 link = "https://huggingface.co/datasets/dbpedia_14"
@@ -194,6 +219,18 @@ enabled = true
 required = true
 
 [[datasets]]
+name = "anli"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/facebook/anli"
+dataset_id = "facebook/anli"
+config = ""
+split = "train_r3"
+max_rows = 100000
+enabled = true
+required = true
+
+[[datasets]]
 name = "ms_marco"
 target = "pair"
 kind = "huggingface"
@@ -204,6 +241,30 @@ split = "train"
 max_rows = 120000
 enabled = true
 required = true
+
+[[datasets]]
+name = "ultrachat_200k"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/HuggingFaceH4/ultrachat_200k"
+dataset_id = "HuggingFaceH4/ultrachat_200k"
+config = ""
+split = "train_sft"
+max_rows = 80000
+enabled = true
+required = false
+
+[[datasets]]
+name = "openassistant_oasst1"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/OpenAssistant/oasst1"
+dataset_id = "OpenAssistant/oasst1"
+config = ""
+split = "train"
+max_rows = 80000
+enabled = true
+required = false
 
 [[datasets]]
 name = "quora_duplicates"

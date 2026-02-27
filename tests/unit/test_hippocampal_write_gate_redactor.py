@@ -71,7 +71,15 @@ class TestWriteGate:
         assert result.novelty == 0.0
 
     def test_pii_triggers_redaction(self):
-        gate = WriteGate()
+        class _PIIModelPack:
+            available = True
+
+            def predict_single(self, task: str, text: str):
+                if task == "pii_presence":
+                    return type("P", (), {"label": "pii", "confidence": 0.9})()
+                return None
+
+        gate = WriteGate(modelpack=_PIIModelPack())
         chunk = SemanticChunk(
             id="5",
             text="My email is test@example.com",

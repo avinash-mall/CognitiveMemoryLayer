@@ -22,7 +22,7 @@ pip install cognitive-memory-layer[embedded]
 ## First memory in 5 steps
 
 1. **Install** — `pip install cognitive-memory-layer`
-2. **Start the CML server** — See the CognitiveMemoryLayer project for server setup (or use embedded mode and skip this). From the repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`. The server and tests read configuration (including `EMBEDDING__DIMENSIONS`) from the project root `.env`; copy `.env.example` to `.env` and set values as needed (Docker does not override them).
+2. **Start the CML server** — See the CognitiveMemoryLayer project for server setup (or use embedded mode and skip this). From the repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`. The server and tests read configuration (including `EMBEDDING_INTERNAL__DIMENSIONS`) from the project root `.env`; copy `.env.example` to `.env` and set values as needed (Docker does not override them).
 3. **Get your API key** — From your CML server or dashboard. For local development, the project `.env.example` uses `AUTH__API_KEY=test-key`; copy to `.env` so the server accepts that key.
 4. **Create the client** — Set `CML_BASE_URL` and `CML_API_KEY` in `.env`, then `CognitiveMemoryLayer(api_key="...", base_url="...")` (or omit `base_url` to use `CML_BASE_URL` from env).
 5. **Write and read** — `memory.write("...")` then `memory.read("query")` or `memory.get_context("query")`
@@ -65,7 +65,7 @@ with CognitiveMemoryLayer(api_key="...", base_url="http://localhost:8000") as me
 From the repo root, with a virtual environment:
 
 1. **Install from source (editable):**  
-   `pip install -e packages/py-cml`
+   `pip install -e .`
 2. **Verify:**  
    `python -c "import cml; print(cml.__version__)"`  
    `python -c "from cml import CognitiveMemoryLayer; print('OK')"`
@@ -76,7 +76,7 @@ From the repo root, with a virtual environment:
    - In the repo `.env` set `AUTH__API_KEY=your-api-key` and `OPENAI_API_KEY=sk-your-key` (server uses OpenAI for embeddings by default).
    - From repo root:  
      `python examples/quickstart.py`  
-   Set `CML_API_KEY`, `CML_BASE_URL`, and (for chat examples) `OPENAI_MODEL` or `LLM__MODEL` in `.env`; examples read these and do not use hardcoded URLs or models.
+   Set `CML_API_KEY`, `CML_BASE_URL`, and (for chat examples) `OPENAI_MODEL` or `LLM_INTERNAL__MODEL` in `.env`; examples read these and do not use hardcoded URLs or models.
 
 ## Advanced Features
 
@@ -116,3 +116,5 @@ See [API Reference — Models](api-reference.md#models) for the `ReadResponse.co
 - [API Reference](api-reference.md) — All operations and types
 - [Examples](examples.md) — Quickstart, chat, async, embedded, agent, temporal fidelity
 - Embedded mode — See README and examples/embedded_mode.py
+
+

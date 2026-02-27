@@ -218,6 +218,34 @@ class AsyncCognitiveMemoryLayer:
         data = await self._transport.request("POST", "/memory/read", json=body)
         return ReadResponse(**data)
 
+    async def _read_session(
+        self,
+        session_id: str,
+        query: str,
+        *,
+        max_results: int = 10,
+        context_filter: list[str] | None = None,
+        memory_types: list[MemoryType] | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
+    ) -> ReadResponse:
+        """Retrieve memories scoped to a specific session id."""
+        self._ensure_same_loop()
+        body = ReadRequest(
+            query=query,
+            max_results=max_results,
+            context_filter=context_filter,
+            memory_types=memory_types,
+            since=since,
+            until=until,
+            format=response_format,
+            user_timezone=user_timezone,
+        ).model_dump(exclude_none=True, by_alias=True, mode="json")
+        data = await self._transport.request("POST", f"/session/{session_id}/read", json=body)
+        return ReadResponse(**data)
+
     async def read_safe(
         self,
         query: str,
@@ -1104,7 +1132,7 @@ class AsyncCognitiveMemoryLayer:
 
 
 class AsyncSessionScope:
-    """Session-scoped wrapper: injects session_id into write/turn/remember."""
+    """Session-scoped wrapper for write/read/turn operations."""
 
     def __init__(self, parent: AsyncCognitiveMemoryLayer, session_id: str) -> None:
         self._parent = parent
@@ -1144,8 +1172,10 @@ class AsyncSessionScope:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
-        return await self._parent.read(
+        return await self._parent._read_session(
+            self.session_id,
             query,
             max_results=max_results,
             context_filter=context_filter,
@@ -1153,6 +1183,7 @@ class AsyncSessionScope:
             since=since,
             until=until,
             response_format=response_format,
+            user_timezone=user_timezone,
         )
 
     async def turn(
@@ -1162,6 +1193,7 @@ class AsyncSessionScope:
         assistant_response: str | None = None,
         max_context_tokens: int = 1500,
         timestamp: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> TurnResponse:
         return await self._parent.turn(
             user_message,
@@ -1169,6 +1201,7 @@ class AsyncSessionScope:
             session_id=self.session_id,
             max_context_tokens=max_context_tokens,
             timestamp=timestamp,
+            user_timezone=user_timezone,
         )
 
     async def remember(

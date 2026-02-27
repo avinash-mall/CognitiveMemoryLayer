@@ -7,9 +7,11 @@ from ..core.schemas import MemoryPacket
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.llm import LLMClient
+from ..utils.modelpack import get_modelpack_runtime
+from ..utils.tracing import async_trace_span
 from .classifier import QueryClassifier
 from .packet_builder import MemoryPacketBuilder
-from .planner import RetrievalPlanner
+from .planner import RetrievalPlanner, RetrievalSource
 from .reranker import MemoryReranker, RerankerConfig
 from .retriever import HybridRetriever
 
@@ -35,11 +37,14 @@ class MemoryRetriever:
         llm_client: LLMClient | None = None,
         cache: object | None = None,
     ):
-        self.classifier = QueryClassifier(llm_client)
+        modelpack = get_modelpack_runtime()
+        self.classifier = QueryClassifier(llm_client, modelpack=modelpack)
         self.planner = RetrievalPlanner()
-        self.retriever = HybridRetriever(hippocampal, neocortical, cache)
+        self.retriever = HybridRetriever(hippocampal, neocortical, cache, modelpack=modelpack)
         self.reranker = MemoryReranker(
-            config=_reranker_config_from_settings(), llm_client=llm_client
+            config=_reranker_config_from_settings(),
+            llm_client=llm_client,
+            modelpack=modelpack,
         )
         self.packet_builder = MemoryPacketBuilder()
 
@@ -55,43 +60,68 @@ class MemoryRetriever:
         since: datetime | None = None,
         until: datetime | None = None,
         user_timezone: str | None = None,
+        source_session_id: str | None = None,
     ) -> MemoryPacket:
         """Retrieve relevant memories for a query. Holistic: tenant-only."""
-        analysis = await self.classifier.classify(query, recent_context=recent_context)
-        if user_timezone is not None:
-            analysis.user_timezone = user_timezone
-        plan = self.planner.plan(analysis)
+        async with async_trace_span("retrieval.pipeline", tenant_id=tenant_id):
+            analysis = await self.classifier.classify(query, recent_context=recent_context)
+            if user_timezone is not None:
+                analysis.user_timezone = user_timezone
+            plan = self.planner.plan(analysis)
 
-        # Inject API-level filters into every retrieval step
-        if memory_types or since or until:
-            for step in plan.steps:
-                if memory_types and not step.memory_types:
-                    step.memory_types = memory_types
-                if since or until:
-                    time_filter = step.time_filter or {}
-                    if since:
-                        time_filter["since"] = since
-                    if until:
-                        time_filter["until"] = until
-                    step.time_filter = time_filter
+            # Session-scoped reads should avoid tenant-wide semantic/graph sources.
+            if source_session_id:
+                kept_steps = []
+                idx_map: dict[int, int] = {}
+                for old_idx, step in enumerate(plan.steps):
+                    if step.source in {RetrievalSource.VECTOR, RetrievalSource.CONSTRAINTS}:
+                        idx_map[old_idx] = len(kept_steps)
+                        kept_steps.append(step)
+                kept_groups: list[list[int]] = []
+                for group in plan.parallel_steps:
+                    new_group = [idx_map[i] for i in group if i in idx_map]
+                    if new_group:
+                        kept_groups.append(new_group)
+                plan.steps = kept_steps
+                plan.parallel_steps = kept_groups or (
+                    [[i for i in range(len(plan.steps))]] if plan.steps else []
+                )
 
-        # Embed query once and pass to retriever to avoid redundant embedding calls
-        query_embedding = None
-        if plan.steps:
-            emb_result = await self.retriever.hippocampal.embeddings.embed(
-                plan.analysis.original_query
+            # Inject API-level filters into every retrieval step
+            if memory_types or since or until or source_session_id:
+                for step in plan.steps:
+                    if memory_types and not step.memory_types:
+                        step.memory_types = memory_types
+                    if since or until or source_session_id:
+                        time_filter = step.time_filter or {}
+                        if since:
+                            time_filter["since"] = since
+                        if until:
+                            time_filter["until"] = until
+                        if source_session_id:
+                            time_filter["source_session_id"] = source_session_id
+                        step.time_filter = time_filter
+
+            # Embed query once and pass to retriever to avoid redundant embedding calls
+            query_embedding = None
+            if plan.steps:
+                emb_result = await self.retriever.hippocampal.embeddings.embed(
+                    plan.analysis.original_query
+                )
+                query_embedding = emb_result.embedding
+            raw_results = await self.retriever.retrieve(
+                tenant_id,
+                plan,
+                context_filter=context_filter,
+                query_embedding=query_embedding,
             )
-            query_embedding = emb_result.embedding
-        raw_results = await self.retriever.retrieve(
-            tenant_id,
-            plan,
-            context_filter=context_filter,
-            query_embedding=query_embedding,
-        )
-        reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
-        if return_packet:
-            return self.packet_builder.build(reranked, query)
-        return MemoryPacket(query=query, recent_episodes=reranked)
+            reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
+            retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
+            if return_packet:
+                packet = self.packet_builder.build(reranked, query)
+                packet.retrieval_meta = retrieval_meta
+                return packet
+            return MemoryPacket(query=query, recent_episodes=reranked, retrieval_meta=retrieval_meta)
 
     async def retrieve_for_llm(
         self,

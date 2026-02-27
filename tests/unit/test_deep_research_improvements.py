@@ -264,6 +264,86 @@ class TestBatchEmbeddings:
         call_args = mock_store.increment_access_counts.call_args
         assert list(call_args[0][0]) == [id1, id2]
 
+    @pytest.mark.asyncio
+    async def test_encode_chunk_uses_ner_fallback_when_extractors_absent(self, monkeypatch):
+        """When entity/relation extractors are None, hippocampal store should use NER fallback."""
+        from src.memory.hippocampal.store import HippocampalStore
+
+        class _FakeEnt:
+            def __init__(self):
+                self.text = "Alice"
+                self.normalized = "Alice"
+                self.entity_type = "PERSON"
+                self.start_char = 0
+                self.end_char = 5
+
+        class _FakeRel:
+            def __init__(self):
+                self.subject = "Alice"
+                self.predicate = "works_at"
+                self.object = "Acme"
+                self.confidence = 0.65
+
+        monkeypatch.setattr(
+            "src.memory.hippocampal.store._ner_extract_entities",
+            lambda text: [_FakeEnt()],
+        )
+        monkeypatch.setattr(
+            "src.memory.hippocampal.store._ner_extract_relations",
+            lambda text: [_FakeRel()],
+        )
+
+        captured = {}
+        mock_store = MagicMock()
+        mock_store.scan = AsyncMock(return_value=[])
+
+        async def _upsert(record):
+            captured["record"] = record
+            return MemoryRecord(
+                id=uuid4(),
+                tenant_id=record.tenant_id,
+                context_tags=record.context_tags,
+                type=record.type,
+                text=record.text,
+                key=record.key,
+                confidence=record.confidence,
+                importance=record.importance,
+                provenance=record.provenance,
+                timestamp=record.timestamp,
+                entities=record.entities,
+                relations=record.relations,
+            )
+
+        mock_store.upsert = AsyncMock(side_effect=_upsert)
+
+        mock_embeddings = MagicMock()
+        mock_embeddings.embed = AsyncMock(
+            return_value=EmbeddingResult(
+                embedding=[0.1] * 8, model="m", dimensions=8, tokens_used=3
+            )
+        )
+
+        store = HippocampalStore(
+            vector_store=mock_store,
+            embedding_client=mock_embeddings,
+            entity_extractor=None,
+            relation_extractor=None,
+        )
+
+        chunk = SemanticChunk(
+            id="c-ner",
+            text="Alice works at Acme.",
+            chunk_type=ChunkType.EVENT,
+            salience=0.8,
+            timestamp=datetime.now(UTC),
+        )
+        record, _ = await store.encode_chunk("tenant1", chunk, existing_memories=[])
+
+        assert record is not None
+        rec = captured["record"]
+        assert rec.entities and rec.entities[0].normalized == "Alice"
+        assert rec.relations and rec.relations[0].predicate == "works_at"
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Phase 2.2: Async storage pipeline
