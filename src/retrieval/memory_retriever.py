@@ -121,7 +121,9 @@ class MemoryRetriever:
                 packet = self.packet_builder.build(reranked, query)
                 packet.retrieval_meta = retrieval_meta
                 return packet
-            return MemoryPacket(query=query, recent_episodes=reranked, retrieval_meta=retrieval_meta)
+            return MemoryPacket(
+                query=query, recent_episodes=reranked, retrieval_meta=retrieval_meta
+            )
 
     async def retrieve_for_llm(
         self,

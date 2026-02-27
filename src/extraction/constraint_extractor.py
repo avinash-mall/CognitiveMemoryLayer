@@ -1,4 +1,4 @@
-﻿"""Constraint extraction with modelpack + NER (no rule-pattern heuristics)."""
+"""Constraint extraction with modelpack + NER (no rule-pattern heuristics)."""
 
 from __future__ import annotations
 
