@@ -1,6 +1,5 @@
 """Database connection manager for PostgreSQL, Neo4j, and Redis."""
 
-import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -24,11 +23,37 @@ _PG_POOL_SIZE = 20
 _PG_MAX_OVERFLOW = 10
 
 
-class DatabaseManager:
-    """Singleton manager for all database connections."""
+def _attach_pool_metrics(engine: AsyncEngine) -> None:
+    """Attach SQLAlchemy pool checkout/checkin metrics listeners."""
+    try:
+        from sqlalchemy import event
 
-    _instance: "DatabaseManager | None" = None
-    _lock: "threading.Lock" = threading.Lock()
+        from ..utils.metrics import (
+            DB_POOL_CHECKED_OUT,
+            DB_POOL_CHECKINS_TOTAL,
+            DB_POOL_CHECKOUTS_TOTAL,
+            DB_POOL_INVALIDATIONS_TOTAL,
+        )
+    except Exception:
+        return
+
+    @event.listens_for(engine.sync_engine, "checkout")
+    def _on_checkout(*_args, **_kwargs) -> None:
+        DB_POOL_CHECKOUTS_TOTAL.inc()
+        DB_POOL_CHECKED_OUT.inc()
+
+    @event.listens_for(engine.sync_engine, "checkin")
+    def _on_checkin(*_args, **_kwargs) -> None:
+        DB_POOL_CHECKINS_TOTAL.inc()
+        DB_POOL_CHECKED_OUT.dec()
+
+    @event.listens_for(engine.sync_engine, "invalidate")
+    def _on_invalidate(*_args, **_kwargs) -> None:
+        DB_POOL_INVALIDATIONS_TOTAL.inc()
+
+
+class DatabaseManager:
+    """Manager for database connections (explicit lifecycle)."""
 
     pg_engine: AsyncEngine | None
     pg_session_factory: async_sessionmaker[AsyncSession] | None
@@ -38,11 +63,7 @@ class DatabaseManager:
     @classmethod
     async def create(cls) -> "DatabaseManager":
         """Async factory that guarantees clean rollback on partial failure."""
-        instance = cls.__new__(cls)
-        instance.pg_engine = None
-        instance.pg_session_factory = None
-        instance.neo4j_driver = None
-        instance.redis = None
+        instance = cls()
         try:
             instance._init_connections()
         except Exception:
@@ -60,6 +81,7 @@ class DatabaseManager:
             max_overflow=_PG_MAX_OVERFLOW,
             pool_pre_ping=True,
         )
+        _attach_pool_metrics(self.pg_engine)
         self.pg_session_factory = async_sessionmaker(
             self.pg_engine,
             class_=AsyncSession,
@@ -76,42 +98,11 @@ class DatabaseManager:
         self.redis = redis.from_url(db.redis_url)
 
     def __init__(self) -> None:
-        """Synchronous constructor. Prefer create() for async lifespan to get proper cleanup on failure."""
+        """Initialize empty handles. Use ``await DatabaseManager.create()``."""
         self.pg_engine = None
         self.pg_session_factory = None
         self.neo4j_driver = None
         self.redis = None
-        try:
-            self._init_connections()
-        except Exception as e:
-            import asyncio
-
-            async def _cleanup():
-                if self.pg_engine is not None:
-                    await self.pg_engine.dispose()
-                if self.neo4j_driver is not None:
-                    await self.neo4j_driver.close()
-                if self.redis is not None:
-                    await self.redis.aclose()
-
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(_cleanup())
-            except RuntimeError:
-                _logger.error(
-                    "db_manager_init_failed",
-                    msg="Initialization failed without active event loop; cleanup not performed automatically.",
-                    error=str(e),
-                    exc_info=True,
-                )
-            raise
-
-    @classmethod
-    def get_instance(cls) -> "DatabaseManager":
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = cls()
-        return cls._instance
 
     @asynccontextmanager
     async def pg_session(self) -> AsyncGenerator[AsyncSession, None]:
@@ -149,7 +140,3 @@ class DatabaseManager:
         if self.redis:
             await self.redis.aclose()
             self.redis = None
-        # Reset singleton so next get_instance() creates a fresh manager (avoids using closed driver).
-        with self._lock:
-            if DatabaseManager._instance is self:
-                DatabaseManager._instance = None

@@ -269,6 +269,27 @@ class TestUnifiedExtractorEmptyAndBatch:
         assert results[1].entities == []
         assert results[1].relations == []
 
+    @pytest.mark.asyncio
+    async def test_extract_falls_back_when_llm_call_fails(self, mock_llm):
+        mock_llm.complete_json.side_effect = RuntimeError("llm backend unavailable")
+        extractor = UnifiedWritePathExtractor(mock_llm)
+        chunk = _chunk("I live in Berlin.")
+        result = await extractor.extract(chunk)
+        assert isinstance(result, UnifiedExtractionResult)
+        assert result.entities == []
+        assert result.relations == []
+        assert result.salience == chunk.salience
+
+    @pytest.mark.asyncio
+    async def test_extract_batch_falls_back_when_llm_call_fails(self, mock_llm):
+        mock_llm.complete_json.side_effect = RuntimeError("llm backend unavailable")
+        extractor = UnifiedWritePathExtractor(mock_llm)
+        chunks = [_chunk("I live in Berlin."), _chunk("I prefer dark mode.")]
+        results = await extractor.extract_batch(chunks)
+        assert len(results) == 2
+        assert all(isinstance(r, UnifiedExtractionResult) for r in results)
+        assert all(r.entities == [] for r in results)
+
 
 class TestUnifiedExtractorConfidenceContextTagsDecayRate:
     """Unified extractor parses confidence, context_tags, decay_rate from LLM output."""

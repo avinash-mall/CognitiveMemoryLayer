@@ -32,7 +32,7 @@ This report validates whether `packages/py-cml` needs updates given the changes 
 - `test_retrieval()` — POST `/dashboard/retrieval`
 - `reset_database()` — POST `/dashboard/database/reset`
 
-**Fix:** In [packages/py-cml/src/cml/transport/http.py](packages/py-cml/src/cml/transport/http.py), add `X-Requested-With: XMLHttpRequest` to headers when:
+**Fix:** In [src/cml/transport/http.py](src/cml/transport/http.py), add `X-Requested-With: XMLHttpRequest` to headers when:
 - `path.startswith("/dashboard")` and
 - `method in ("POST", "PUT", "DELETE", "PATCH")`
 
@@ -51,7 +51,7 @@ if path.startswith("/dashboard") and method in ("POST", "PUT", "DELETE", "PATCH"
 
 **Impact:** Pydantic v2 ignores extra fields by default when parsing, so the SDK will not break. However, users cannot access `retrieval_meta` if the server returns it.
 
-**Fix (optional):** In [packages/py-cml/src/cml/models/responses.py](packages/py-cml/src/cml/models/responses.py), add to `ReadResponse`:
+**Fix (optional):** In [src/cml/models/responses.py](src/cml/models/responses.py), add to `ReadResponse`:
 
 ```python
 retrieval_meta: dict | None = None  # Server: sources_completed, sources_timed_out, total_elapsed_ms

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="#basic-usage"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
   <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-704-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
   <img src="https://img.shields.io/badge/version-1.3.6-blue?style=for-the-badge" alt="Version">
@@ -36,13 +36,16 @@
 - [Key Features](#key-features)
 - [Research Foundation](#research-foundation)
 - [Architecture Overview](#architecture-overview)
+- [Runtime modes](#runtime-modes)
 - [Neuroscience-to-Implementation Mapping](#neuroscience-to-implementation-mapping)
 - [Memory Types](#memory-types)
-- [Basic Usage](#basic-usage)
+- [Quick start](#quick-start)
+- [Core endpoints](#core-endpoints)
 - [Evaluation Highlights](#evaluation-highlights)
 - [Documentation](#documentation)
 - [Technology Stack](#technology-stack)
 - [Python SDK](#python-sdk)
+- [Custom models](#custom-models)
 - [Testing](#testing)
 - [References](#references)
 - [Future Roadmap](#future-roadmap)
@@ -103,6 +106,40 @@ The system implements the **Complementary Learning Systems (CLS) theory** with a
 | :--- | :--- | :--- | :--- |
 | **Hippocampal** | Fast (one-shot) | Sparse | Episodic |
 | **Neocortical** | Slow (gradual) | Distributed | Semantic |
+
+### High-level overview
+
+```mermaid
+flowchart LR
+    C[Client or SDK] --> API[FastAPI API]
+    API --> ORCH[MemoryOrchestrator]
+
+    ORCH --> WRITE[Write Path]
+    ORCH --> READ[Read Path]
+    ORCH --> BG[Background Workers]
+
+    WRITE --> STM[Short-term chunking]
+    WRITE --> GATE[Write gate + PII redaction]
+    WRITE --> EXT[Extraction]
+    EXT -->|default| NER[spaCy NER + parser]
+    EXT -->|optional| LLM[LLM_INTERNAL]
+    EXT -->|runtime inference| MP[Modelpack]
+
+    READ --> CLS[Query classifier]
+    READ --> PLAN[Retrieval planner]
+    READ --> RET[Hybrid retriever]
+    READ --> RER[Memory reranker]
+
+    RET --> PG[(Postgres + pgvector)]
+    RET --> NEO[(Neo4j)]
+    RET --> FACT[(Semantic facts)]
+
+    BG --> CONS[Consolidation]
+    BG --> RECON[Reconsolidation]
+    BG --> FORGET[Forgetting]
+```
+
+### Pipeline detail
 
 ```mermaid
 %%{
@@ -220,6 +257,13 @@ flowchart LR
     S2 --> R4
     S3 --> R4
 ```
+
+### Runtime modes
+
+- `FEATURES__USE_LLM_ENABLED=false` (default): runtime uses modelpack + NER/non-LLM paths.
+- `FEATURES__USE_LLM_ENABLED=true`: LLM paths are enabled and fine-grained `FEATURES__USE_LLM_*` flags decide where LLM is used.
+
+See [Usage Documentation](ProjectPlan/UsageDocumentation.md#runtime-modes).
 
 ---
 
@@ -743,27 +787,77 @@ flowchart LR
 
 ---
 
-## Basic Usage
+## Quick start
 
-**Prerequisites:** Docker, Docker Compose; optionally API keys for OpenAI or Ollama.
+### 1. Install
 
 ```bash
-cp .env.minimal .env && docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-docker compose -f docker/docker-compose.yml up api
-# Verify: curl [REDACTED]/api/v1/health
+pip install -e .
 ```
+
+### 2. Configure
+
+```bash
+cp .env.example .env
+```
+
+Set at least:
+
+- `DATABASE__POSTGRES_URL`
+- `AUTH__API_KEY`
+- `CML_API_KEY` (for SDK/examples)
+
+### 3. Start infrastructure
+
+```bash
+docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
+```
+
+### 4. Run migrations
+
+```bash
+alembic upgrade head
+```
+
+### 5. Start API
+
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+```
+
+Docker run (includes LLM endpoint preflight and migrations):
+
+```bash
+docker compose -f docker/docker-compose.yml up -d api
+```
+
+Notes:
+
+- The `api` container now runs a startup check (`scripts/validate_llm_endpoints.py`) when `FEATURES__USE_LLM_ENABLED=true`.
+- In GitHub Actions/CI, this check is skipped by default (`GITHUB_ACTIONS=true` or `CI=true`).
+- Set `LLM_STARTUP_VALIDATION_ENABLED=false` to bypass locally, or set `LLM_STARTUP_VALIDATE_IN_CI=true` to enforce in CI.
+- Runtime image excludes test/training/evaluation tooling; `app` service uses Docker `test` target for test dependencies.
+- Local embedding runtime keeps CUDA-enabled torch wheels and uses `cuda` automatically when a GPU is available.
+
+### 6. Smoke test
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/health"
+```
+
+### API examples (write, read, turn)
 
 ```bash
 # Write (content max 100,000 characters)
-curl -X POST [REDACTED]/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST http://localhost:8000/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"content": "User prefers vegetarian food and lives in Paris."}'
 
 # Read
-curl -X POST [REDACTED]/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST http://localhost:8000/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"query": "dietary preferences", "format": "packet"}'
 
 # Seamless turn (retrieve + store in one call)
-curl -X POST [REDACTED]/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST http://localhost:8000/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
@@ -771,11 +865,29 @@ For full API usage, SDK, sessions, and response formats, see [UsageDocumentation
 
 ---
 
+## Core endpoints
+
+- `POST /api/v1/memory/write`
+- `POST /api/v1/memory/read`
+- `POST /api/v1/memory/turn`
+- `POST /api/v1/memory/update`
+- `POST /api/v1/memory/forget`
+- `GET /api/v1/memory/stats`
+- `POST /api/v1/session/create`
+- `POST /api/v1/session/{session_id}/write`
+- `POST /api/v1/session/{session_id}/read` (deprecated)
+- `GET /api/v1/session/{session_id}/context`
+- `POST /api/v1/memory/read/stream`
+- `DELETE /api/v1/memory/all` (admin)
+- `GET /api/v1/health`
+
+---
+
 ## Evaluation Highlights
 
 LoCoMo-Plus harness benchmarks Level-2 cognitive memory: `python evaluation/scripts/run_full_eval.py`. CML achieves **21.45%** on Cognitive (above Mem0, SeCom, RAG baselines) with a **10.04%** gap (factual − cognitive), smaller than most baselines. Full comparison: [evaluation/COMPARISON.md](evaluation/COMPARISON.md).
 
-| Aspect | CML ([REDACTED] + CML) |
+| Aspect | CML (CML + API) |
 | :--- | :--- |
 | **Cognitive (LoCoMo-Plus)** | 21.45% (above Mem0 15.80%, SeCom 14.90%) |
 | **Gap** (factual − cognitive) | 10.04% (smaller than paper ~18–45%) |
@@ -789,9 +901,12 @@ See [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/Run
 | Document | Description |
 |----------|-------------|
 | [Usage & API](ProjectPlan/UsageDocumentation.md) | Full API reference, SDK usage, config, dashboard |
+| [Open pending technical gaps](ProjectPlan/BaseCML/PENDING_ISSUES.md) | Pending technical issues |
+| [Custom model replacement status](ProjectPlan/CustomModel/SLMReplacementReport.md) | SLM replacement report |
+| [Release history](CHANGELOG.md) | Changelog |
+| [Python SDK](packages/py-cml/docs/README.md) | Getting started, API reference, configuration, examples |
 | [API Versioning](docs/api-versioning.md) | Version strategy, deprecation policy, backward compatibility |
-| [Python SDK](packages/py-cml/docs/) | Getting started, API reference, configuration, examples |
-| [Tests](tests/README.md) | Test layout, how to run, coverage |
+| [Tests](tests/README.md) | Test layout, how to run, coverage, environment and service requirements |
 | [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
 | [Examples](examples/README.md) | Example scripts and integrations |
 | [Contributing](CONTRIBUTING.md) | Dev setup, code standards, PR process |
@@ -813,7 +928,7 @@ pip install cognitive-memory-layer
 
 ```python
 from cml import CognitiveMemoryLayer
-memory = CognitiveMemoryLayer(base_url="[REDACTED]", api_key="your-key")
+memory = CognitiveMemoryLayer(base_url="http://localhost:8000", api_key="your-key")
 memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
 response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
 turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
@@ -825,19 +940,34 @@ for memory_item in memory.read_stream(query="Tell me everything about the user")
 
 Sync, async, and embedded (SQLite) modes. See [packages/py-cml/docs](packages/py-cml/docs/).
 
-**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `[REDACTED]/docs` | Dashboard: `[REDACTED]/dashboard` (requires `AUTH__ADMIN_API_KEY`)
+**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `http://localhost:8000/docs` | Dashboard: `http://localhost:8000/dashboard` (requires `AUTH__ADMIN_API_KEY`)
 
 **Project structure:** `src/` (engine), `packages/py-cml/` (SDK), `tests/`, `evaluation/`, `examples/`. See [CONTRIBUTING](CONTRIBUTING.md).
+
+---
+
+## Custom models
+
+Training/data prep lives in `packages/models`:
+
+- prepare: `python -m packages.models.scripts.prepare`
+- train: `python -m packages.models.scripts.train`
+- config: `packages/models/model_pipeline.toml`
+- outputs: `packages/models/trained_models`
+
+See [packages/models/README.md](packages/models/README.md).
 
 ---
 
 ## Testing
 
 ```bash
-pytest tests/unit tests/integration tests/e2e -v --tb=short
+pytest tests/unit -v --tb=short
+pytest tests/integration -v --tb=short
+pytest tests/e2e -v
 ```
 
-See [tests/README.md](tests/README.md) for layout, coverage, and SDK tests.
+See [tests/README.md](tests/README.md) for environment and service requirements.
 
 ---
 

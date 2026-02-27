@@ -245,6 +245,12 @@ class PostgresMemoryStore(MemoryStoreBase):
                         q = q.where(MemoryRecordModel.type.in_(t))
                     else:
                         q = q.where(MemoryRecordModel.type == t)
+                if "source_session_id" in filters:
+                    source_session_id = filters["source_session_id"]
+                    if isinstance(source_session_id, list):
+                        q = q.where(MemoryRecordModel.source_session_id.in_(source_session_id))
+                    else:
+                        q = q.where(MemoryRecordModel.source_session_id == source_session_id)
                 if "since" in filters:
                     since = _naive_utc(filters["since"])
                     if since is not None:
@@ -288,7 +294,11 @@ class PostgresMemoryStore(MemoryStoreBase):
             if filters and "context_tags" in filters:
                 q = q.where(MemoryRecordModel.context_tags.overlap(filters["context_tags"]))
             if filters and "source_session_id" in filters:
-                q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
+                source_session_id = filters["source_session_id"]
+                if isinstance(source_session_id, list):
+                    q = q.where(MemoryRecordModel.source_session_id.in_(source_session_id))
+                else:
+                    q = q.where(MemoryRecordModel.source_session_id == source_session_id)
             if filters:
                 if "status" in filters:
                     q = q.where(MemoryRecordModel.status == filters["status"])
@@ -323,7 +333,11 @@ class PostgresMemoryStore(MemoryStoreBase):
             if filters and "context_tags" in filters:
                 q = q.where(MemoryRecordModel.context_tags.overlap(filters["context_tags"]))
             if filters and "source_session_id" in filters:
-                q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
+                source_session_id = filters["source_session_id"]
+                if isinstance(source_session_id, list):
+                    q = q.where(MemoryRecordModel.source_session_id.in_(source_session_id))
+                else:
+                    q = q.where(MemoryRecordModel.source_session_id == source_session_id)
             if filters and "status" in filters:
                 q = q.where(MemoryRecordModel.status == filters["status"])
             if filters and "type" in filters:
@@ -354,7 +368,11 @@ class PostgresMemoryStore(MemoryStoreBase):
             if "context_tags" in filters:
                 q = q.where(MemoryRecordModel.context_tags.overlap(filters["context_tags"]))
             if "source_session_id" in filters:
-                q = q.where(MemoryRecordModel.source_session_id == filters["source_session_id"])
+                source_session_id = filters["source_session_id"]
+                if isinstance(source_session_id, list):
+                    q = q.where(MemoryRecordModel.source_session_id.in_(source_session_id))
+                else:
+                    q = q.where(MemoryRecordModel.source_session_id == source_session_id)
             if "status" in filters:
                 q = q.where(MemoryRecordModel.status == filters["status"])
             if "type" in filters:
@@ -411,12 +429,21 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             await session.commit()
 
-    async def deactivate_constraints_by_key(self, tenant_id: str, constraint_key: str) -> int:
-        """Deactivate episodic CONSTRAINT records with the given fact key (supersession)."""
+    async def deactivate_constraints_by_key(
+        self,
+        tenant_id: str,
+        constraint_key: str,
+        superseded_by_key: str | None = None,
+    ) -> int:
+        """Deactivate episodic CONSTRAINT records with the given fact key.
+
+        When ``superseded_by_key`` is provided, append lightweight lineage
+        metadata so retrieval and audits can trace which newer constraint
+        superseded the old one.
+        """
         async with self.session_factory() as session:
             result = await session.execute(
-                update(MemoryRecordModel)
-                .where(
+                select(MemoryRecordModel).where(
                     and_(
                         MemoryRecordModel.tenant_id == tenant_id,
                         MemoryRecordModel.type == MemoryType.CONSTRAINT.value,
@@ -424,10 +451,30 @@ class PostgresMemoryStore(MemoryStoreBase):
                         MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
                     )
                 )
-                .values(status=MemoryStatus.SILENT.value)
             )
+            rows = result.scalars().all()
+            if not rows:
+                return 0
+
+            now = _naive_utc(datetime.now(UTC))
+            for row in rows:
+                row.status = MemoryStatus.SILENT.value
+                row.valid_to = now
+                if superseded_by_key:
+                    meta = dict(getattr(row, "meta", {}) or {})
+                    lineage = meta.get("supersession_lineage", [])
+                    if not isinstance(lineage, list):
+                        lineage = []
+                    lineage.append(
+                        {
+                            "superseded_by_key": superseded_by_key,
+                            "superseded_at": now.isoformat(),
+                        }
+                    )
+                    meta["supersession_lineage"] = lineage[-5:]
+                    row.meta = meta
             await session.commit()
-            return result.rowcount
+            return len(rows)
 
     def _hash_content(self, text: str, tenant_id: str) -> str:
         content = f"{tenant_id}:{text.lower().strip()}"

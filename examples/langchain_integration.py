@@ -141,10 +141,7 @@ def create_memory_chain(
     key = memory_api_key or os.environ.get("CML_API_KEY")
     # Prefer LLM_INTERNAL__* when set (e.g. .env lines 20-22)
     model = (
-        llm_model
-        or os.environ.get("LLM_INTERNAL__MODEL")
-        or os.environ.get("OPENAI_MODEL")
-        or ""
+        llm_model or os.environ.get("LLM_INTERNAL__MODEL") or os.environ.get("OPENAI_MODEL") or ""
     ).strip()
     if not model:
         raise ValueError("Set OPENAI_MODEL or LLM_INTERNAL__MODEL")
@@ -159,9 +156,7 @@ def create_memory_chain(
     llm_base = (os.environ.get("LLM_INTERNAL__BASE_URL") or "").strip()
     if llm_base:
         api_key = (
-            os.environ.get("LLM_INTERNAL__API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-            or "dummy"
+            os.environ.get("LLM_INTERNAL__API_KEY") or os.environ.get("OPENAI_API_KEY") or "dummy"
         )
         llm = ChatOpenAI(model=model, temperature=0.7, base_url=llm_base, api_key=api_key)
     else:

@@ -2,7 +2,7 @@
 
 ## Environment Variables
 
-Unset options are loaded from the environment (or a `.env` file). Use the `CML_` prefix. **No hardcoded defaults for URLs or model names** — set `CML_BASE_URL` (and for the OpenAI helper, `OPENAI_MODEL` or `LLM__MODEL`) in `.env`.
+Unset options are loaded from the environment (or a `.env` file). Use the `CML_` prefix. **No hardcoded defaults for URLs or model names** — set `CML_BASE_URL` (and for the OpenAI helper, `OPENAI_MODEL` or `LLM_INTERNAL__MODEL`) in `.env`.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -16,7 +16,7 @@ Unset options are loaded from the environment (or a `.env` file). Use the `CML_`
 | `CML_ADMIN_API_KEY` | Admin API key (for admin operations, e.g. `delete_all`, `list_tenants`, `get_events`) | — |
 | `CML_VERIFY_SSL` | Verify SSL certificates (`true`/`false`) | `true` |
 
-For **CMLOpenAIHelper**, set `OPENAI_MODEL` or `LLM__MODEL` in `.env` (or pass `model=` to the helper); no default model in code.
+For **CMLOpenAIHelper**, set `OPENAI_MODEL` or `LLM_INTERNAL__MODEL` in `.env` (or pass `model=` to the helper); no default model in code.
 
 ## Direct Initialization
 
@@ -79,8 +79,8 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 |------|--------|
 | **storage_mode** | `lite` (default), `standard`, `full` — only `lite` is implemented (SQLite + local embeddings) |
 | **database** | `EmbeddedDatabaseConfig`: `database_url` (default SQLite), optional Neo4j/Redis |
-| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING__MODEL` in .env), `dimensions` (set `EMBEDDING__DIMENSIONS` in .env; default 384), `api_key`, `base_url` |
-| **llm** | `EmbeddedLLMConfig`: `provider`, `model` (set `LLM__MODEL` in .env), `api_key`, `base_url` |
+| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING_INTERNAL__MODEL` in .env), `dimensions` (set `EMBEDDING_INTERNAL__DIMENSIONS` in .env; default 384), `api_key`, `base_url` |
+| **llm** | `EmbeddedLLMConfig`: `provider`, `model` (set `LLM_INTERNAL__MODEL` in .env), `api_key`, `base_url` |
 | **auto_consolidate** / **auto_forget** | Optional background tasks (default `False`) |
 
 **Lite mode** uses SQLite (in-memory or file via `db_path`) and local sentence-transformers embeddings. **Standard** and **full** modes require PostgreSQL, Neo4j, and Redis and are not yet implemented in the SDK.
@@ -113,7 +113,7 @@ The CML server supports optional **`LLM_INTERNAL__*`** environment variables for
 | `LLM_INTERNAL__BASE_URL` | Base URL for the internal LLM endpoint |
 | `LLM_INTERNAL__API_KEY` | API key (if required) |
 
-If not set, the server uses `LLM__*` for all tasks. Useful for bulk ingestion (e.g. Locomo evaluation) where a smaller model speeds up internal tasks.
+If not set, the server uses default `LLM_INTERNAL__*` settings from configuration. Useful for bulk ingestion (e.g. Locomo evaluation) where a smaller model speeds up internal tasks.
 
 ### Internal LLM Call Counts (default settings)
 
@@ -136,3 +136,4 @@ The project follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATC
 - **PATCH** — Bug fixes, performance, documentation
 
 See [CHANGELOG.md](../CHANGELOG.md) for version history.
+

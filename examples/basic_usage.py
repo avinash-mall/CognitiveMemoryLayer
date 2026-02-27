@@ -9,7 +9,7 @@ Prerequisites:
     1. Start the API server:
        docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
        docker compose -f docker/docker-compose.yml up api
-    2. pip install cognitive-memory-layer  # or: pip install -e packages/py-cml
+    2. pip install cognitive-memory-layer  # or from repo root: pip install -e .
 """
 
 import os
@@ -144,3 +144,4 @@ def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
 
 if __name__ == "__main__":
     main()
+

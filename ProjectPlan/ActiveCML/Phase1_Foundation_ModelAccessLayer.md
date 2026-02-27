@@ -1,6 +1,6 @@
 # Phase 1: Foundation & Model Access Layer
 
-**Intrinsic Phase I-1** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+**Intrinsic Phase I-1** (planned; not yet implemented). See [ActiveCML/README.md](README.md) for the mapping of I-1..I-10 to core CML phases.
 
 ## Overview
 

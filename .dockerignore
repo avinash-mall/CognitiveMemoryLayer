@@ -39,3 +39,13 @@ htmlcov
 # Optional: exclude from build context (uncomment if desired)
 # examples/
 # ProjectPlan/
+
+# Large local model/data artifacts (not required to run API)
+packages/models/datasets/
+packages/models/prepared_data/
+packages/models/trained_models/
+
+# Local caches and databases
+.mypy_cache/
+.ruff_cache/
+*.db

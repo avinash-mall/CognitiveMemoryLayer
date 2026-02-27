@@ -1,6 +1,6 @@
 # Phase 7: Memory Hierarchy & Cache Management
 
-**Intrinsic Phase I-7** (planned; not yet implemented). See [BaseCMLStatus.md](../BaseCML/BaseCMLStatus.md) for the mapping of I-1..I-10 to core CML phases.
+**Intrinsic Phase I-7** (planned; not yet implemented). See [ActiveCML/README.md](README.md) for the mapping of I-1..I-10 to core CML phases.
 
 ## Overview
 

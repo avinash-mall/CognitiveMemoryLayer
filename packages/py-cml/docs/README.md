@@ -1,17 +1,17 @@
-# cognitive-memory-layer â€” Documentation
+# cognitive-memory-layer — Documentation
 
 Documentation for the Python SDK for the Cognitive Memory Layer.
 
 ## Contents
 
-- [Getting Started](getting-started.md) â€” Prerequisites, installation, first memory, connect to server, cognitive constraints
-- [API Reference](api-reference.md) â€” Sync/async client methods, models (including `ReadResponse.constraints`), exceptions
-- [Configuration](configuration.md) â€” Environment variables, `CMLConfig`, embedded config, server-side feature flags
-- [Examples](examples.md) â€” Quickstart, chat, async, embedded, agent, temporal fidelity, cognitive constraints
-- [Temporal Fidelity](temporal-fidelity.md) â€” Optional `timestamp` for historical data replay
+- [Getting Started](getting-started.md) — installation, first calls, session usage
+- [API Reference](api-reference.md) — sync/async client methods and models
+- [Configuration](configuration.md) — env vars and embedded mode config
+- [Examples](examples.md) — integration examples
+- [Temporal Fidelity](temporal-fidelity.md) — historical timestamp usage
 
 ## Quick links
 
-- [Usage & API](../../ProjectPlan/UsageDocumentation.md) â€” server setup, API reference, config
-- [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) â€” source, issues
-- [CHANGELOG](../CHANGELOG.md) â€” version history
+- [Usage & API](../../../ProjectPlan/UsageDocumentation.md) — server setup, API reference, config
+- [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer)
+- [CHANGELOG](../CHANGELOG.md)

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
+from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 
 # Recency weights by memory type stability
 _STABLE_TYPES = {MemoryType.CONSTRAINT}
@@ -27,9 +28,15 @@ class RerankerConfig:
 class MemoryReranker:
     """Reranks retrieved memories by relevance, recency, confidence, and diversity."""
 
-    def __init__(self, config: RerankerConfig | None = None, llm_client=None):
+    def __init__(
+        self,
+        config: RerankerConfig | None = None,
+        llm_client=None,
+        modelpack: ModelPackRuntime | None = None,
+    ):
         self.config = config or RerankerConfig()
         self.llm_client = llm_client
+        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     async def rerank(
         self,
@@ -65,9 +72,10 @@ class MemoryReranker:
         Stable constraints (value/policy) and preference/value facts (BUG-04)
         should not be heavily penalised for age.
         """
+        recency_weight = self.config.recency_weight
         key = getattr(memory.record, "key", None) or ""
         if key.startswith(("user:preference:", "user:value:")):
-            return 0.1  # Semi-stable: preferences/values age slowly
+            recency_weight = min(recency_weight, 0.1)  # Semi-stable: preferences/values age slowly
         if memory.record.type in _STABLE_TYPES:
             # Check constraint sub-type from metadata
             meta = memory.record.metadata or {}
@@ -75,11 +83,26 @@ class MemoryReranker:
             if constraints_meta and isinstance(constraints_meta, list):
                 ctype = constraints_meta[0].get("constraint_type", "")
                 if ctype in _STABLE_CONSTRAINT_TYPES:
-                    return 0.0  # Stable: age does not affect score
+                    recency_weight = 0.0  # Stable: age does not affect score
                 if ctype in _SEMI_STABLE_CONSTRAINT_TYPES:
-                    return 0.15
-            return 0.10  # Generic constraint: moderate stability
-        return self.config.recency_weight
+                    recency_weight = min(recency_weight, 0.15)
+            else:
+                recency_weight = min(recency_weight, 0.10)  # Generic constraint: moderate stability
+
+            # Model-backed stability fallback when structured type is missing/weak.
+            if self.modelpack.available:
+                stability = self.modelpack.predict_single(
+                    "constraint_stability", memory.record.text
+                )
+                if stability and stability.confidence >= 0.55:
+                    if stability.label == "stable":
+                        recency_weight = 0.0
+                    elif stability.label == "semi_stable":
+                        recency_weight = min(recency_weight, 0.12)
+                    elif stability.label == "volatile":
+                        recency_weight = max(recency_weight, 0.25)
+
+        return recency_weight
 
     def _calculate_score(
         self,
@@ -166,31 +189,30 @@ class MemoryReranker:
     async def _score_constraints_batch(
         self, query: str, constraint_texts: list[str]
     ) -> list[float]:
-        """Score multiple constraints against a query using a single LLM batch call.
+        """Score multiple constraints against a query using modelpack and/or LLM."""
+        if not constraint_texts:
+            return []
 
-        The LLM call is skipped (falling back to text similarity) when:
-        - The query is empty (context-only reads with query='')
-        - No llm_client is configured
-        - FEATURES__USE_LLM_CONSTRAINT_RERANKER is False (default)
-        """
-        if not self.llm_client or not constraint_texts:
-            return [self._text_similarity(query, text) for text in constraint_texts]
+        model_scores = self._score_constraints_with_modelpack(query, constraint_texts)
+        if model_scores is not None:
+            return model_scores
 
-        # Skip expensive LLM scoring when query is empty (e.g. context reads)
+        if not self.llm_client:
+            return [0.0 for _ in constraint_texts]
+
         if not query.strip():
-            return [self._text_similarity(query, text) for text in constraint_texts]
+            return [0.0 for _ in constraint_texts]
 
-        # Gate behind feature flags (use_llm_enabled and use_llm_constraint_reranker)
         from ..core.config import get_settings
 
         feat = get_settings().features
         if not (feat.use_llm_enabled and feat.use_llm_constraint_reranker):
-            return [self._text_similarity(query, text) for text in constraint_texts]
+            return [0.0 for _ in constraint_texts]
 
         import asyncio
 
         batch_size = 10
-        results = [self._text_similarity(query, text) for text in constraint_texts]
+        results = [0.0 for _ in constraint_texts]
 
         for i in range(0, len(constraint_texts), batch_size):
             batch = constraint_texts[i : i + batch_size]
@@ -230,3 +252,43 @@ Constraints:
                 pass
 
         return results
+
+    def _score_constraints_with_modelpack(
+        self,
+        query: str,
+        constraint_texts: list[str],
+    ) -> list[float] | None:
+        if not query.strip():
+            return None
+        if not self.modelpack.available:
+            return None
+
+        out: list[float] = []
+        used = False
+        for text in constraint_texts:
+            signals: list[float] = []
+
+            rel_pred = self.modelpack.predict_pair("constraint_rerank", query, text)
+            if rel_pred:
+                used = True
+                rel_signal = (
+                    rel_pred.confidence
+                    if rel_pred.label == "relevant"
+                    else (1.0 - rel_pred.confidence)
+                )
+                signals.append(rel_signal)
+
+            scope_pred = self.modelpack.predict_pair("scope_match", query, text)
+            if scope_pred:
+                used = True
+                scope_signal = (
+                    scope_pred.confidence
+                    if scope_pred.label == "match"
+                    else (1.0 - scope_pred.confidence)
+                )
+                signals.append(scope_signal)
+
+            score = sum(signals) / len(signals) if signals else 0.0
+            out.append(max(0.0, min(1.0, score)))
+
+        return out if used else None

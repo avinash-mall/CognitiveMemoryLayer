@@ -1,12 +1,12 @@
 #!/bin/bash
 # Cognitive Memory Layer — curl examples (direct API, no py-cml)
-# Set AUTH__API_KEY and optionally CML_BASE_URL before running.
+# Set CML_API_KEY (or AUTH__API_KEY) and optionally CML_BASE_URL before running.
 # Prerequisites: API server running (docker compose -f docker/docker-compose.yml up api)
 # Optional: pipe output through jq for pretty-print
 
 BASE_URL="${CML_BASE_URL:-http://localhost:8000}"
 API_URL="${BASE_URL%/}/api/v1"
-KEY="${AUTH__API_KEY:?Set AUTH__API_KEY}"
+KEY="${CML_API_KEY:-${AUTH__API_KEY:?Set CML_API_KEY (or AUTH__API_KEY)}}"
 
 echo "# Health Check"
 curl -s "$API_URL/health" -H "X-API-Key: $KEY"
@@ -50,3 +50,4 @@ echo "# Create Session"
 curl -s -X POST "$API_URL/session/create" \
   -H "Content-Type: application/json" -H "X-API-Key: $KEY" \
   -d '{"ttl_hours": 24}'
+
