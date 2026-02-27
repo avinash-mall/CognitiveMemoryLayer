@@ -1,10 +1,12 @@
 """Embedding service for memory content."""
 
 import hashlib
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
@@ -21,6 +23,9 @@ try:
     from openai import AsyncOpenAI
 except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment,misc]
+
+_logger = structlog.get_logger(__name__)
+_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str], "EmbeddingClient"] = {}
 
 
 @dataclass
@@ -132,15 +137,28 @@ class LocalEmbeddings(EmbeddingClient):
             from sentence_transformers import SentenceTransformer
         except ImportError:
             raise ImportError("sentence-transformers is required for LocalEmbeddings")
+        try:
+            import torch
+        except ImportError:
+            torch = None  # type: ignore[assignment]
         settings = get_settings()
         ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
         name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
             name = name.split(":")[0]
-        self.model = SentenceTransformer(name, trust_remote_code=True)
+        device = "cpu"
+        if torch is not None and getattr(torch, "cuda", None) is not None:
+            try:
+                if bool(torch.cuda.is_available()):
+                    device = "cuda"
+            except Exception:
+                device = "cpu"
+        self.model = SentenceTransformer(name, trust_remote_code=True, device=device)
         self.model_name = name
+        self.device = device
         self._dimensions = self.model.get_sentence_embedding_dimension()
+        _logger.info("local_embeddings_loaded", model=self.model_name, device=self.device)
 
     @property
     def dimensions(self) -> int:
@@ -188,14 +206,21 @@ class MockEmbeddingClient(EmbeddingClient):
         return self._dimensions
 
     async def embed(self, text: str) -> EmbeddingResult:
-        import random
-
-        # Use the hash to seed a deterministic PRNG, generating all dimensions
-        # instead of padding most with 0.0 (LOW-15)
-        h = hashlib.sha256(text.encode()).digest()
-        seed = int.from_bytes(h[:8], "little")
-        rng = random.Random(seed)
-        embedding = [rng.gauss(0.0, 0.3) for _ in range(self._dimensions)]
+        # Deterministic hashed-token embedding so texts with lexical overlap
+        # produce higher cosine similarity in tests and offline environments.
+        tokens = re.findall(r"[a-z0-9_]+", text.lower())
+        if not tokens:
+            tokens = ["__empty__"]
+        embedding = [0.0] * self._dimensions
+        for token in tokens:
+            digest = hashlib.sha256(token.encode()).digest()
+            for offset in (0, 8):
+                idx = int.from_bytes(digest[offset : offset + 4], "little") % self._dimensions
+                sign = 1.0 if digest[offset + 4] % 2 == 0 else -1.0
+                weight = 1.0 + (digest[offset + 5] / 255.0) * 0.25
+                embedding[idx] += sign * weight
+        text_digest = hashlib.sha256(text.encode()).digest()
+        embedding[int.from_bytes(text_digest[:4], "little") % self._dimensions] += 0.01
         # L2-normalize for reliable cosine similarity
         norm = sum(x * x for x in embedding) ** 0.5
         if norm > 0:
@@ -204,7 +229,7 @@ class MockEmbeddingClient(EmbeddingClient):
             embedding=embedding,
             model="mock",
             dimensions=self._dimensions,
-            tokens_used=len(text.split()),
+            tokens_used=len(tokens),
         )
 
     async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
@@ -330,32 +355,60 @@ def get_embedding_client() -> EmbeddingClient:
     dims = ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
     model = ei.model or _DEFAULT_EMBEDDING_MODEL
     local_model = ei.local_model or _DEFAULT_EMBEDDING_MODEL
+    api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or ""
+    base_url = ei.base_url or ""
+
+    cache_key = (provider, model, dims, local_model, api_key, base_url)
+    cached = _EMBEDDING_CLIENT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    client: EmbeddingClient
 
     if provider == "openai":
-        return OpenAIEmbeddings(
-            api_key=ei.api_key,
+        if not api_key and not base_url:
+            _logger.warning(
+                "embedding_openai_missing_key_fallback_to_mock",
+                provider=provider,
+                model=model,
+            )
+            client = MockEmbeddingClient(dimensions=dims)
+        else:
+            client = OpenAIEmbeddings(
+                api_key=api_key,
+                model=model,
+                dimensions=dims,
+                base_url=ei.base_url,
+            )
+    elif provider in ("openai_compatible", "vllm"):
+        resolved_base_url = base_url or "http://localhost:8000/v1"
+        resolved_api_key = api_key or "dummy"
+        client = OpenAIEmbeddings(
+            api_key=resolved_api_key,
             model=model,
             dimensions=dims,
-            base_url=ei.base_url,
+            base_url=resolved_base_url,
         )
-    if provider in ("openai_compatible", "vllm"):
-        base_url = ei.base_url or "http://localhost:8000/v1"
-        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
-        return OpenAIEmbeddings(
-            api_key=api_key,
+    elif provider == "ollama":
+        resolved_base_url = base_url or "http://localhost:11434/v1"
+        resolved_api_key = api_key or "ollama"
+        client = OpenAIEmbeddings(
+            api_key=resolved_api_key,
             model=model,
             dimensions=dims,
-            base_url=base_url,
-        )
-    if provider == "ollama":
-        base_url = ei.base_url or "http://localhost:11434/v1"
-        api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or "ollama"
-        return OpenAIEmbeddings(
-            api_key=api_key,
-            model=model,
-            dimensions=dims,
-            base_url=base_url,
+            base_url=resolved_base_url,
             pass_dimensions=False,
         )
-    # default: local (nomic-embed-text-v2-moe) when provider is local or unset
-    return LocalEmbeddings(model_name=local_model)
+    elif provider == "mock":
+        client = MockEmbeddingClient(dimensions=dims)
+    else:
+        # default: local (nomic-embed-text-v2-moe) when provider is local or unset
+        client = LocalEmbeddings(model_name=local_model)
+
+    _EMBEDDING_CLIENT_CACHE[cache_key] = client
+    return client
+
+
+def clear_embedding_client_cache() -> None:
+    """Clear cached embedding clients. Useful in tests that mutate env config."""
+    _EMBEDDING_CLIENT_CACHE.clear()

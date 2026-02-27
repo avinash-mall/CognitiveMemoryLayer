@@ -1,4 +1,11 @@
-"""Relation (OpenIE-style) extraction from text."""
+"""Relation extraction from text.
+
+Primary path:
+- LLM OpenIE extraction when an LLM client is available.
+
+Fallback path:
+- spaCy dependency-based relation extraction for non-LLM mode.
+"""
 
 import asyncio
 import json
@@ -6,6 +13,7 @@ import re
 
 from ..core.schemas import Relation
 from ..utils.llm import LLMClient
+from ..utils.ner import extract_relations
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -45,9 +53,9 @@ Return only the JSON array."""
 
 
 class RelationExtractor:
-    """Extracts relation triples from text using LLM."""
+    """Extracts relation triples from text using LLM with spaCy fallback."""
 
-    def __init__(self, llm_client: LLMClient) -> None:
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm = llm_client
 
     async def extract(
@@ -55,6 +63,9 @@ class RelationExtractor:
         text: str,
         entities: list[str] | None = None,
     ) -> list[Relation]:
+        if not self.llm:
+            return self._spacy_extract(text)
+
         prompt = RELATION_EXTRACTION_PROMPT.format(text=text)
         if entities:
             prompt += f"\n\nKnown entities: {', '.join(entities)}"
@@ -74,7 +85,18 @@ class RelationExtractor:
                 if r.get("subject") and r.get("predicate") and r.get("object")
             ]
         except (json.JSONDecodeError, KeyError, TypeError):
-            return []
+            return self._spacy_extract(text)
+
+    def _spacy_extract(self, text: str) -> list[Relation]:
+        return [
+            Relation(
+                subject=r.subject,
+                predicate=self._normalize_predicate(r.predicate),
+                object=r.object,
+                confidence=r.confidence,
+            )
+            for r in extract_relations(text)
+        ]
 
     async def extract_batch(self, items: list[tuple[str, list[str]]]) -> list[list[Relation]]:
         """Extract relations from multiple (text, entities) pairs in a single LLM call.
@@ -85,6 +107,8 @@ class RelationExtractor:
         """
         if not items:
             return []
+        if not self.llm:
+            return [self._spacy_extract(text) for text, _entities in items]
         if len(items) == 1:
             text, entities = items[0]
             return [await self.extract(text, entities=entities)]

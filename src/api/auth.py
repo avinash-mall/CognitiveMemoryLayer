@@ -5,11 +5,13 @@ import hmac
 from dataclasses import dataclass
 from functools import lru_cache
 
-import structlog
 from fastapi import Depends, Header, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from ..core.config import get_settings
+from ..utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -77,7 +79,7 @@ async def get_auth_context(
     tenant_id = (x_tenant_id if (x_tenant_id and context.can_admin) else None) or context.tenant_id
     user_id = x_user_id or context.user_id
     if x_tenant_id and context.can_admin and x_tenant_id != context.tenant_id:
-        structlog.get_logger(__name__).warning(
+        logger.warning(
             "tenant_override_used",
             admin_key_hash=hashlib.sha256(context.api_key.encode()).hexdigest()[:8],
             original_tenant=context.tenant_id,

@@ -109,6 +109,43 @@ class SemanticFactStore:
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]
 
+    async def get_facts_by_categories(
+        self,
+        tenant_id: str,
+        categories: list[FactCategory],
+        current_only: bool = True,
+        limit: int = 200,
+    ) -> list[SemanticFact]:
+        """Get facts across multiple categories in a single query.
+
+        Uses ``WHERE category IN (...)`` to avoid one query per category on
+        the hot retrieval path.
+        """
+        if not categories:
+            return []
+
+        category_values = list(dict.fromkeys(c.value for c in categories))
+        async with self.session_factory() as session:
+            q = select(SemanticFactModel).where(
+                and_(
+                    SemanticFactModel.tenant_id == tenant_id,
+                    SemanticFactModel.category.in_(category_values),
+                )
+            )
+            if current_only:
+                q = q.where(SemanticFactModel.is_current.is_(True))
+                now = datetime.now(UTC).replace(tzinfo=None)
+                q = q.where(
+                    or_(
+                        SemanticFactModel.valid_to.is_(None),
+                        SemanticFactModel.valid_to >= now,
+                    )
+                )
+            q = q.limit(limit)
+            result = await session.execute(q)
+            rows = result.scalars().all()
+            return [self._model_to_fact(r) for r in rows]
+
     async def get_tenant_profile(self, tenant_id: str) -> dict[str, Any]:
         """Get complete profile as structured dict by category. Holistic: tenant-only."""
         profile: dict[str, Any] = {}

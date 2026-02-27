@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -78,6 +79,32 @@ def _make_retrieved(
     )
 
 
+class _StubModelPack:
+    def __init__(
+        self,
+        *,
+        single: dict[str, tuple[str, float]] | None = None,
+        pair: dict[str, tuple[str, float]] | None = None,
+    ):
+        self.available = True
+        self._single = single or {}
+        self._pair = pair or {}
+
+    def predict_single(self, task: str, text: str):
+        payload = self._single.get(task)
+        if payload is None:
+            return None
+        label, confidence = payload
+        return SimpleNamespace(label=label, confidence=confidence)
+
+    def predict_pair(self, task: str, text_a: str, text_b: str):
+        payload = self._pair.get(task)
+        if payload is None:
+            return None
+        label, confidence = payload
+        return SimpleNamespace(label=label, confidence=confidence)
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Phase 2a: ChunkType.CONSTRAINT
 # ═══════════════════════════════════════════════════════════════════
@@ -105,7 +132,9 @@ class TestConstraintExtractor:
     """ConstraintExtractor detects goals, values, states, causal, policy."""
 
     def test_constraint_extractor_extracts_goal(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("goal", 0.9)})
+        )
         chunk = _make_chunk("I'm trying to eat healthier this year.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
@@ -113,7 +142,9 @@ class TestConstraintExtractor:
         assert "goal" in types
 
     def test_constraint_extractor_extracts_value(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("value", 0.9)})
+        )
         chunk = _make_chunk("I value environmental sustainability.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
@@ -121,7 +152,9 @@ class TestConstraintExtractor:
         assert "value" in types
 
     def test_constraint_extractor_extracts_state(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("state", 0.9)})
+        )
         chunk = _make_chunk("I'm currently dealing with a tight deadline.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
@@ -129,7 +162,9 @@ class TestConstraintExtractor:
         assert "state" in types
 
     def test_constraint_extractor_extracts_causal(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("causal", 0.9)})
+        )
         chunk = _make_chunk("I'm studying hard in order to get the scholarship.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
@@ -137,7 +172,9 @@ class TestConstraintExtractor:
         assert "causal" in types
 
     def test_constraint_extractor_extracts_policy(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("policy", 0.9)})
+        )
         chunk = _make_chunk("I never eat shellfish because I'm allergic.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
@@ -157,7 +194,10 @@ class TestConstraintExtractor:
         assert constraints == []
 
     def test_confidence_includes_base(self):
-        extractor = ConstraintExtractor(base_confidence=0.65)
+        extractor = ConstraintExtractor(
+            base_confidence=0.65,
+            modelpack=_StubModelPack(single={"constraint_type": ("goal", 0.4)}),
+        )
         chunk = _make_chunk("I'm trying to save money for a trip.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
@@ -172,28 +212,36 @@ class TestConstraintExtractor:
             assert c.confidence <= 1.0
 
     def test_subject_defaults_to_user(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("goal", 0.9)})
+        )
         chunk = _make_chunk("I'm trying to be more productive.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
         assert constraints[0].subject == "user"
 
     def test_subject_extracted_from_speaker_prefix(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("goal", 0.9)})
+        )
         chunk = _make_chunk("Alice: I'm trying to be more productive.")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
         assert constraints[0].subject == "alice"
 
     def test_provenance_from_turn_id(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("policy", 0.9)})
+        )
         chunk = _make_chunk("I must avoid dairy.", source_turn_id="turn_7")
         constraints = extractor.extract(chunk)
         assert len(constraints) >= 1
         assert "turn_7" in constraints[0].provenance
 
     def test_scope_from_entities(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("goal", 0.9)})
+        )
         chunk = _make_chunk(
             "I'm trying to save money for Japan.",
             entities=["money", "Japan"],
@@ -207,7 +255,20 @@ class TestConstraintExtractorBatch:
     """Batch extraction."""
 
     def test_extract_batch_multiple_chunks(self):
-        extractor = ConstraintExtractor()
+        class _BatchModelPack:
+            available = True
+
+            def predict_single(self, task: str, text: str):
+                if task != "constraint_type":
+                    return None
+                lowered = text.lower()
+                if "trying to" in lowered:
+                    return SimpleNamespace(label="goal", confidence=0.9)
+                if "never eat" in lowered:
+                    return SimpleNamespace(label="policy", confidence=0.9)
+                return None
+
+        extractor = ConstraintExtractor(modelpack=_BatchModelPack())
         chunks = [
             _make_chunk("I'm trying to eat healthier."),
             _make_chunk("The weather is sunny."),
@@ -266,7 +327,11 @@ class TestConstraintSupersession:
     """detect_supersession() identifies when a new constraint replaces an old one."""
 
     @pytest.mark.asyncio
-    async def test_same_type_same_scope_supersedes(self):
+    async def test_same_type_same_scope_supersedes(self, monkeypatch):
+        monkeypatch.setattr(
+            "src.extraction.constraint_extractor.get_modelpack_runtime",
+            lambda: _StubModelPack(pair={"supersession": ("supersedes", 0.9)}),
+        )
         old = ConstraintObject("goal", "user", "Save 1000", scope=["money"])
         new = ConstraintObject("goal", "user", "Save 2000", scope=["money"])
         assert await ConstraintExtractor.detect_supersession(old, new) is True
@@ -284,7 +349,11 @@ class TestConstraintSupersession:
         assert await ConstraintExtractor.detect_supersession(old, new) is False
 
     @pytest.mark.asyncio
-    async def test_both_unscoped_same_type_supersedes(self):
+    async def test_both_unscoped_same_type_supersedes(self, monkeypatch):
+        monkeypatch.setattr(
+            "src.extraction.constraint_extractor.get_modelpack_runtime",
+            lambda: _StubModelPack(pair={"supersession": ("supersedes", 0.9)}),
+        )
         old = ConstraintObject("policy", "user", "Never eat late")
         new = ConstraintObject("policy", "user", "Never eat after 8pm")
         assert await ConstraintExtractor.detect_supersession(old, new) is True
@@ -359,7 +428,18 @@ class TestWriteGateConstraint:
         assert MemoryType.CONSTRAINT in result.memory_types
 
     def test_constraint_chunk_gets_importance_boost(self):
-        gate = WriteGate()
+        class _ImportanceModelPack:
+            available = True
+
+            def predict_single(self, task: str, text: str):
+                if task != "importance_bin":
+                    return None
+                lowered = text.lower()
+                if "focused on saving" in lowered:
+                    return SimpleNamespace(label="high", confidence=0.9)
+                return SimpleNamespace(label="low", confidence=0.9)
+
+        gate = WriteGate(modelpack=_ImportanceModelPack())
         constraint_chunk = SemanticChunk(
             id="c2",
             text="I'm focused on saving for the trip.",
@@ -463,40 +543,55 @@ class TestSchemaManagerCognitive:
 class TestQueryClassifierConstraintCheck:
     """Classifier detects CONSTRAINT_CHECK intent and enriches constraint dimensions."""
 
+    @staticmethod
+    def _constraint_classifier() -> QueryClassifier:
+        return QueryClassifier(
+            llm_client=None,
+            modelpack=_StubModelPack(
+                single={
+                    "query_intent": ("constraint_check", 0.9),
+                    "constraint_dimension": ("policy", 0.8),
+                }
+            ),
+        )
+
     @pytest.mark.asyncio
     async def test_should_i_triggers_constraint_check(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = self._constraint_classifier()
         result = await classifier.classify("Should I order the lobster?")
         assert result.intent == QueryIntent.CONSTRAINT_CHECK
         assert "constraints" in result.suggested_sources
 
     @pytest.mark.asyncio
     async def test_can_i_triggers_constraint_check(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = self._constraint_classifier()
         result = await classifier.classify("Can I eat this cake?")
         assert result.intent == QueryIntent.CONSTRAINT_CHECK
 
     @pytest.mark.asyncio
     async def test_is_it_ok_triggers_constraint_check(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = self._constraint_classifier()
         result = await classifier.classify("Is it ok to skip the gym session?")
         assert result.intent == QueryIntent.CONSTRAINT_CHECK
 
     @pytest.mark.asyncio
     async def test_recommend_triggers_constraint_check(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = self._constraint_classifier()
         result = await classifier.classify("Can you recommend a restaurant?")
         assert result.intent == QueryIntent.CONSTRAINT_CHECK
 
     @pytest.mark.asyncio
     async def test_decision_query_enriches_dimensions(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = self._constraint_classifier()
         result = await classifier.classify("Should I buy this expensive jacket?")
         assert result.is_decision_query is True
 
     @pytest.mark.asyncio
     async def test_non_decision_query_not_flagged(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = QueryClassifier(
+            llm_client=None,
+            modelpack=_StubModelPack(single={"query_intent": ("identity_lookup", 0.9)}),
+        )
         result = await classifier.classify("What is my name?")
         assert result.is_decision_query is False
         assert result.intent != QueryIntent.CONSTRAINT_CHECK

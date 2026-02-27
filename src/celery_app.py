@@ -48,15 +48,25 @@ def _run_async(coro):
     return loop.run_until_complete(coro)
 
 
+async def _get_or_create_db_manager():
+    """Get or initialize a per-thread DatabaseManager for Celery workers."""
+    from .storage.connection import DatabaseManager
+
+    db = getattr(_thread_local, "db_manager", None)
+    if db is None or getattr(db, "pg_session_factory", None) is None:
+        db = await DatabaseManager.create()
+        _thread_local.db_manager = db
+    return db
+
+
 def _get_all_tenant_user_pairs() -> list[tuple[str, str]]:
     """Discover all tenant (and user) pairs from the memory store for fan-out."""
     from sqlalchemy import distinct, select
 
-    from .storage.connection import DatabaseManager
     from .storage.models import MemoryRecordModel
 
     async def _fetch():
-        db = DatabaseManager.get_instance()
+        db = await _get_or_create_db_manager()
         pairs = []
         async with db.pg_session_factory() as session:
             r = await session.execute(select(distinct(MemoryRecordModel.tenant_id)))
@@ -108,10 +118,9 @@ def run_forgetting_task(
         # Create DB manager inside async context to ensure connections
         # are bound to the correct event loop (MED-14)
         from .forgetting.worker import ForgettingWorker
-        from .storage.connection import DatabaseManager
         from .storage.postgres import PostgresMemoryStore
 
-        db = DatabaseManager.get_instance()
+        db = await _get_or_create_db_manager()
         store = PostgresMemoryStore(db.pg_session_factory)
         worker = ForgettingWorker(store)
 

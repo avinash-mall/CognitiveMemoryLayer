@@ -18,7 +18,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Tests](https://img.shields.io/badge/Tests-175-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
-[![Version](https://img.shields.io/badge/version-1.3.4-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
+[![Version](https://img.shields.io/badge/version-1.3.6-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
 **What's new (1.3.x):** `ReadResponse.constraints`, `user_timezone` on read/turn, `reconsolidate()`, eval_mode for write, embedded read filter passthrough. Dashboard admin methods (1.1.0): sessions, rate limits, knowledge graph, config, retrieval test, bulk actions. See [CHANGELOG](CHANGELOG.md).
 
@@ -110,8 +110,11 @@ with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as
 with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as memory:
     with memory.session(name="session-001") as session:
         session.write("User asked about Italian food.")
+        session.read("What did I ask earlier?")
         session.turn(user_message="Any good places nearby?", assistant_response="...")
 ```
+
+`SessionScope.read()` and `AsyncSessionScope.read()` call the session-scoped server route (`/session/{session_id}/read`) so reads stay isolated to that session.
 
 **More usage:** Timezone-aware retrieval with `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")`. Batch operations: `batch_write([{"content": "..."}, ...])` and `batch_read(["query1", "query2"])` for multiple writes or reads.
 
@@ -133,7 +136,7 @@ memory = CognitiveMemoryLayer(
 
 Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(config=config)`.
 
-**Embedded:** Use `EmbeddedConfig` (or constructor args). Options: `storage_mode` (`lite` | `standard` | `full`; only `lite` is implemented), `tenant_id`, `database`, `embedding`, `llm`, `auto_consolidate`, `auto_forget`. Embedding and LLM are read from `.env` when not set: `EMBEDDING__PROVIDER`, `EMBEDDING__MODEL`, `EMBEDDING__DIMENSIONS`, `EMBEDDING__BASE_URL`, `LLM__MODEL`, `LLM__BASE_URL`. Lite mode uses SQLite and local embeddings; pass `db_path` for a persistent database. Full details in [Configuration](docs/configuration.md).
+**Embedded:** Use `EmbeddedConfig` (or constructor args). Options: `storage_mode` (`lite` | `standard` | `full`; only `lite` is implemented), `tenant_id`, `database`, `embedding`, `llm`, `auto_consolidate`, `auto_forget`. Embedding and LLM are read from `.env` when not set: `EMBEDDING_INTERNAL__PROVIDER`, `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS`, `EMBEDDING_INTERNAL__BASE_URL`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`. Lite mode uses SQLite and local embeddings; pass `db_path` for a persistent database. Full details in [Configuration](docs/configuration.md).
 
 ---
 
@@ -148,7 +151,7 @@ Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(
 
 **Response shape:** `ReadResponse` has `memories`, `facts`, `preferences`, `episodes`, `constraints` (when the server has constraint extraction), and `context` (formatted string for LLM injection).
 
-**Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them. The server can use LLM-based extraction (constraints, facts, salience, importance) when `FEATURES__USE_LLM_*` flags are enabled; see [UsageDocumentation](../ProjectPlan/UsageDocumentation.md) § Configuration Reference.
+**Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them. The server can use LLM-based extraction (constraints, facts, salience, importance) when `FEATURES__USE_LLM_*` flags are enabled; see [UsageDocumentation](../../ProjectPlan/UsageDocumentation.md) § Configuration Reference.
 
 **Session and namespace:** `memory.session(name=...)` (SessionScope) scopes writes/reads/turns to a session. `with_namespace(namespace)` returns a `NamespacedClient` (and async `AsyncNamespacedClient`) that injects namespace into write, update, and batch_write.
 
@@ -156,7 +159,7 @@ Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(
 
 **Embedded extras:** `EmbeddedConfig` for storage_mode, embedding/LLM, `auto_consolidate`, `auto_forget`. Export/import: `export_memories`, `import_memories` (and async `export_memories_async`, `import_memories_async`) for migration between embedded and server.
 
-**OpenAI integration:** `CMLOpenAIHelper(memory_client, openai_client)` for memory-augmented chat. Set `OPENAI_MODEL` or `LLM__MODEL` in `.env`.
+**OpenAI integration:** `CMLOpenAIHelper(memory_client, openai_client)` for memory-augmented chat. Set `OPENAI_MODEL` or `LLM_INTERNAL__MODEL` in `.env`.
 
 ```python
 from openai import OpenAI
@@ -219,3 +222,4 @@ Some integration, embedded, and e2e tests skip when the CML server or embedding 
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+

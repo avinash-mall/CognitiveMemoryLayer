@@ -1,10 +1,11 @@
-"""Conflict detection between new information and existing memories."""
+﻿"""Conflict detection between new information and existing memories."""
 
 from dataclasses import dataclass
 from enum import StrEnum
 
 from ..core.schemas import MemoryRecord
 from ..utils.llm import LLMClient
+from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 
 
 class ConflictType(StrEnum):
@@ -57,8 +58,13 @@ Return only valid JSON, no other text:
 class ConflictDetector:
     """Detects conflicts between new information and existing memories."""
 
-    def __init__(self, llm_client: LLMClient | None = None):
+    def __init__(
+        self,
+        llm_client: LLMClient | None = None,
+        modelpack: ModelPackRuntime | None = None,
+    ):
         self.llm = llm_client
+        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     async def detect(
         self,
@@ -70,19 +76,21 @@ class ConflictDetector:
         from ..core.config import get_settings
 
         feat = get_settings().features
-        fast_result: ConflictResult | None = None
-        if not (feat.use_llm_enabled and feat.use_llm_conflict_detection_only):
-            fast_result = self._fast_detect(old_memory.text, new_statement)
-        if fast_result and fast_result.confidence > 0.8:
-            return fast_result
+        model_result = self._modelpack_detect(old_memory.text, new_statement)
+
         if self.llm and feat.use_llm_enabled:
-            return await self._llm_detect(old_memory.text, new_statement, context)
-        return fast_result or ConflictResult(
+            if feat.use_llm_conflict_detection_only or model_result is None:
+                return await self._llm_detect(old_memory.text, new_statement, context)
+
+        if model_result is not None:
+            return model_result
+
+        return ConflictResult(
             conflict_type=ConflictType.NONE,
-            confidence=0.5,
+            confidence=0.0,
             old_statement=old_memory.text,
             new_statement=new_statement,
-            reasoning="No conflict detected (heuristic)",
+            reasoning="No conflict model available",
         )
 
     async def detect_batch(
@@ -95,89 +103,48 @@ class ConflictDetector:
 
         return await asyncio.gather(*[self.detect(mem, new_statement) for mem in memories])
 
-    def _fast_detect(
+    def _modelpack_detect(
         self,
         old_statement: str,
         new_statement: str,
     ) -> ConflictResult | None:
-        """Fast heuristic conflict detection."""
-        old_lower = old_statement.lower()
-        new_lower = new_statement.lower()
+        if not self.modelpack.available:
+            return None
 
-        correction_markers = [
-            "actually",
-            "no,",
-            "that's wrong",
-            "i meant",
-            "correction:",
-            "not anymore",
-            "changed",
-            "i changed my mind",
-            "update:",
-            "wrong:",
-        ]
-        for marker in correction_markers:
-            if marker in new_lower:
-                return ConflictResult(
-                    conflict_type=ConflictType.CORRECTION,
-                    confidence=0.85,
-                    old_statement=old_statement,
-                    new_statement=new_statement,
-                    is_superseding=True,
-                    reasoning=f"Contains correction marker: '{marker}'",
-                )
+        pred = self.modelpack.predict_pair("conflict_detection", old_statement, new_statement)
+        if pred is None or not pred.label:
+            return None
 
-        negations = ["not", "don't", "doesn't", "no longer", "never"]
-        for neg in negations:
-            if neg in new_lower and neg not in old_lower:
-                old_words = set(old_lower.replace(neg, "").split())
-                new_words = set(new_lower.replace(neg, "").split())
-                overlap = len(old_words & new_words) / max(len(old_words | new_words), 1)
-                if overlap > 0.5:
-                    return ConflictResult(
-                        conflict_type=ConflictType.DIRECT_CONTRADICTION,
-                        confidence=0.75,
-                        old_statement=old_statement,
-                        new_statement=new_statement,
-                        conflicting_aspect="Negation of similar content",
-                        reasoning=f"High word overlap ({overlap:.0%}) with negation",
-                    )
+        mapped = self._map_conflict_label(pred.label)
+        if mapped is None:
+            return None
 
-        preference_words = [
-            "like",
-            "prefer",
-            "favorite",
-            "enjoy",
-            "love",
-            "hate",
-        ]
-        old_has_pref = any(w in old_lower for w in preference_words)
-        new_has_pref = any(w in new_lower for w in preference_words)
-        if old_has_pref and new_has_pref:
-            # Only classify as temporal change if the statements share topic
-            # overlap, avoiding false positives on unrelated preferences (MED-27)
-            old_words = (
-                set(old_lower.split())
-                - set(preference_words)
-                - {"i", "my", "a", "the", "is", "are"}
-            )
-            new_words = (
-                set(new_lower.split())
-                - set(preference_words)
-                - {"i", "my", "a", "the", "is", "are"}
-            )
-            if old_words and new_words:
-                topic_overlap = len(old_words & new_words) / max(len(old_words | new_words), 1)
-                if topic_overlap > 0.2:
-                    return ConflictResult(
-                        conflict_type=ConflictType.TEMPORAL_CHANGE,
-                        confidence=0.6,
-                        old_statement=old_statement,
-                        new_statement=new_statement,
-                        is_superseding=True,
-                        reasoning=f"Both express preferences with topic overlap ({topic_overlap:.0%})",
-                    )
-        return None
+        return ConflictResult(
+            conflict_type=mapped,
+            confidence=max(0.0, min(1.0, pred.confidence)),
+            old_statement=old_statement,
+            new_statement=new_statement,
+            is_superseding=mapped in {ConflictType.CORRECTION, ConflictType.TEMPORAL_CHANGE},
+            reasoning=f"Modelpack prediction: {pred.label}",
+        )
+
+    @staticmethod
+    def _map_conflict_label(raw_label: str) -> ConflictType | None:
+        label = raw_label.strip().lower()
+        mapping = {
+            "none": ConflictType.NONE,
+            "no_conflict": ConflictType.NONE,
+            "temporal_change": ConflictType.TEMPORAL_CHANGE,
+            "change": ConflictType.TEMPORAL_CHANGE,
+            "contradiction": ConflictType.DIRECT_CONTRADICTION,
+            "direct_contradiction": ConflictType.DIRECT_CONTRADICTION,
+            "refinement": ConflictType.REFINEMENT,
+            "correction": ConflictType.CORRECTION,
+            "supersedes": ConflictType.CORRECTION,
+            "ambiguity": ConflictType.AMBIGUITY,
+            "ambiguous": ConflictType.AMBIGUITY,
+        }
+        return mapping.get(label)
 
     async def _llm_detect(
         self,
@@ -185,7 +152,7 @@ class ConflictDetector:
         new_statement: str,
         context: str | None = None,
     ) -> ConflictResult:
-        """LLM-based conflict detection. Uses complete_json() for reliable parsing (MED-45)."""
+        """LLM-based conflict detection. Uses complete_json() for reliable parsing."""
         prompt = CONFLICT_DETECTION_PROMPT.format(
             old_statement=old_statement,
             new_statement=new_statement,
@@ -201,7 +168,7 @@ class ConflictDetector:
                     new_statement=new_statement,
                 )
             data = await self.llm.complete_json(prompt, temperature=0.0)
-            raw_type = data.get("conflict_type", "none")
+            raw_type = str(data.get("conflict_type", "none")).lower()
             try:
                 ctype = ConflictType(raw_type)
             except ValueError:
@@ -212,8 +179,8 @@ class ConflictDetector:
                 old_statement=old_statement,
                 new_statement=new_statement,
                 conflicting_aspect=data.get("conflicting_aspect"),
-                is_superseding=data.get("is_superseding", False),
-                reasoning=data.get("reasoning", ""),
+                is_superseding=bool(data.get("is_superseding", False)),
+                reasoning=str(data.get("reasoning", "")),
             )
         except Exception as e:
             return ConflictResult(

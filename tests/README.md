@@ -18,7 +18,7 @@ pytest tests/unit tests/integration tests/e2e -v
 # Short tracebacks
 pytest tests/unit tests/integration tests/e2e -v --tb=short
 
-# Run server + SDK tests (704 total)
+# Run full server + SDK suite
 pytest tests/unit tests/integration tests/e2e packages/py-cml/tests -v
 ```
 
@@ -30,7 +30,7 @@ pytest tests/unit tests/integration tests/e2e packages/py-cml/tests -v
 | `tests/integration/`| Integration tests (real app, Postgres; optional Neo4j/Redis). |
 | `tests/e2e/`        | End-to-end API flow tests. |
 
-**Server total: 529 tests** (unit + integration + e2e). With `packages/py-cml/tests` (175 tests), **combined total: 704**. Run `python scripts/update_readme_badges.py` from the repo root to refresh version and test-count badges in the READMEs.
+Run `python scripts/update_readme_badges.py` from the repo root to refresh version and test-count badges in the READMEs after adding/removing tests.
 
 ### Unit test files (by domain)
 
@@ -160,15 +160,17 @@ Tests read **all** configuration from the project root **`.env`** (loaded via `c
 |--------|---------------------------|
 | **Auth** | `AUTH__API_KEY` (server), `AUTH__ADMIN_API_KEY` (dashboard). For py-cml/examples set `CML_API_KEY` (use same value as `AUTH__API_KEY` for local dev, e.g. `test-key`) |
 | **Database** | `DATABASE__POSTGRES_URL`, `DATABASE__NEO4J_URL`, `DATABASE__REDIS_URL` (for integration tests) |
-| **Embedding** | `EMBEDDING__DIMENSIONS`, `EMBEDDING__PROVIDER`, `EMBEDDING__MODEL`, etc. |
+| **Embedding** | `EMBEDDING_INTERNAL__DIMENSIONS`, `EMBEDDING_INTERNAL__PROVIDER`, `EMBEDDING_INTERNAL__MODEL`, etc. |
 
-- **Embedding dimensions:** The DB vector column is created from `EMBEDDING__DIMENSIONS` at migration time. Server and tests must use the **same** value (from `.env`). If you see "expected N dimensions, not M", ensure `.env` has the correct `EMBEDDING__DIMENSIONS` and run `docker compose -f docker/docker-compose.yml down -v` before re-running migrations and tests.
-- **Docker:** The `app` and `api` services use `env_file: ../.env` and do **not** override `EMBEDDING__DIMENSIONS`, so migrations and tests in Docker use the same dimensions as in `.env`.
+- **Embedding dimensions:** The DB vector column is created from `EMBEDDING_INTERNAL__DIMENSIONS` at migration time. Server and tests must use the **same** value (from `.env`). If you see "expected N dimensions, not M", ensure `.env` has the correct `EMBEDDING_INTERNAL__DIMENSIONS` and run `docker compose -f docker/docker-compose.yml down -v` before re-running migrations and tests.
+- **Offline fallback:** If `EMBEDDING_INTERNAL__PROVIDER=openai` is set without an API key, CML automatically uses deterministic mock embeddings for local/offline runs.
+- **Docker:** The `app` and `api` services use `env_file: ../.env`, so migrations and tests in Docker use the same embedding dimensions/config as `.env`.
 
 ### py-cml tests (host)
 
 - **Integration/e2e:** Require the CML API to be running. Set `CML_API_KEY` and `CML_BASE_URL` in repo root `.env` (use same value as server `AUTH__API_KEY`, e.g. `test-key`). Tests use `CML_TEST_URL` / `CML_TEST_API_KEY` when set, else `CML_BASE_URL` / `CML_API_KEY`. To run the API with test keys without editing `.env`, use: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api` (see `docker/docker-compose.test-key.yml`).
-- **Embedded tests:** Require `pip install -e ".[embedded]"` in `packages/py-cml` so `aiosqlite` and embedded dependencies are available. Embedded config reads `EMBEDDING__DIMENSIONS` (and other `EMBEDDING__*` / `LLM__*` vars) from `.env` when not set in code.
+- **Rate-limit note:** `/api/v1/health` and requests using local `test-key` are exempt from throttling to avoid false failures during integration/e2e test bursts.
+- **Embedded tests:** Require `pip install -e ".[embedded]"` in `packages/py-cml` so `aiosqlite` and embedded dependencies are available. Embedded config reads `EMBEDDING_INTERNAL__DIMENSIONS` (and other `EMBEDDING_INTERNAL__*` / `LLM_INTERNAL__*` vars) from `.env` when not set in code.
 
 ### Optional LLM/embedding tests (skip when unavailable)
 

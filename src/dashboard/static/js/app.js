@@ -156,7 +156,13 @@ function handleHashChange() {
 
     // Update active nav
     document.querySelectorAll('.nav-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.page === page);
+        const isActive = el.dataset.page === page;
+        el.classList.toggle('active', isActive);
+        if (isActive) {
+            el.setAttribute('aria-current', 'page');
+        } else {
+            el.removeAttribute('aria-current');
+        }
     });
 
     // Hide all pages, show target

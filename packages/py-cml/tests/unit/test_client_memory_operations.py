@@ -220,6 +220,31 @@ async def test_async_read_returns_read_response(cml_config: CMLConfig) -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_session_scope_read_uses_session_scoped_endpoint(
+    cml_config: CMLConfig,
+) -> None:
+    """AsyncSessionScope.read() uses /session/{id}/read."""
+    from cml.async_client import AsyncSessionScope
+
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "query": "prefs",
+            "memories": [],
+            "total_count": 0,
+            "elapsed_ms": 1.0,
+        }
+    )
+    scope = AsyncSessionScope(client, "sess-123")
+    result = await scope.read("prefs", response_format="list", user_timezone="Europe/London")
+    assert isinstance(result, ReadResponse)
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/session/sess-123/read")
+    assert call[1]["json"]["format"] == "list"
+    assert call[1]["json"]["user_timezone"] == "Europe/London"
+
+
+@pytest.mark.asyncio
 async def test_async_forget_raises_without_selector(cml_config: CMLConfig) -> None:
     """Async client forget() raises ValueError when no selector provided."""
     config = cml_config
