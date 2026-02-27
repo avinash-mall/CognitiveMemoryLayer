@@ -67,8 +67,7 @@ def _check_embedded_deps() -> None:
         )
     except ImportError as e:
         raise ImportError(
-            "Embedded mode requires the CML engine. "
-            "From repo root: pip install -e \".[embedded]\"."
+            'Embedded mode requires the CML engine. From repo root: pip install -e ".[embedded]".'
         ) from e
 
 
@@ -516,4 +515,3 @@ class EmbeddedCognitiveMemoryLayer:
     async def search(self, query: str, **kwargs: Any) -> ReadResponse:
         """Alias for read()."""
         return await self.read(query, **kwargs)
-
