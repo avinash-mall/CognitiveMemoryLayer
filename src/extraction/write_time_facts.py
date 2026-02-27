@@ -7,6 +7,7 @@ Non-LLM path uses spaCy parse + NER only.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -64,11 +65,11 @@ class WriteTimeFactExtractor:
             return []
 
         doc = parse_text(text)
-        if doc is None:
-            return []
-
         facts: list[ExtractedFact] = []
         seen: set[tuple[str, str]] = set()
+        if doc is None:
+            self._extract_facts_without_nlp(text, facts, seen)
+            return facts
 
         self._extract_preference_facts(doc, facts, seen)
         self._extract_identity_facts(doc, facts, seen)
@@ -229,12 +230,84 @@ class WriteTimeFactExtractor:
                         predicate="role",
                         value=" ".join(t.text for t in token.subtree),
                         confidence_boost=0.78,
-                    )
-                    return
+                )
+                return
 
     @staticmethod
     def _has_first_person(sent: Any) -> bool:
         return any(t.text.lower() in _FIRST_PERSON_TOKENS for t in sent)
+
+    def _extract_facts_without_nlp(
+        self,
+        text: str,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+    ) -> None:
+        """Best-effort fallback extraction when spaCy model is unavailable."""
+        normalized = " ".join(text.strip().split())
+        if not normalized:
+            return
+
+        pref = re.search(
+            r"\b(?:i|we)\s+(?:really\s+|also\s+|just\s+|still\s+)*(?:prefer|like|love|enjoy|hate|dislike)\s+(.+)",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        if pref:
+            obj = self._clean_match_value(pref.group(1))
+            if obj:
+                predicate = _derive_predicate(obj)
+                self._append_fact(
+                    facts,
+                    seen,
+                    key=f"user:preference:{predicate}",
+                    category=FactCategory.PREFERENCE,
+                    predicate=predicate,
+                    value=obj,
+                    confidence_boost=0.75,
+                )
+
+        for pattern in (
+            r"\bmy name is\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+            r"\bcall me\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+        ):
+            match = re.search(pattern, normalized, flags=re.IGNORECASE)
+            if not match:
+                continue
+            self._append_fact(
+                facts,
+                seen,
+                key="user:identity:name",
+                category=FactCategory.IDENTITY,
+                predicate="name",
+                value=self._clean_match_value(match.group(1)),
+                confidence_boost=0.9,
+            )
+            break
+
+        for pattern in (
+            r"\bi live in\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+            r"\bi(?: am|'m)\s+from\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+            r"\bi(?: am|'m)\s+based in\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+            r"\bi moved to\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+        ):
+            match = re.search(pattern, normalized, flags=re.IGNORECASE)
+            if not match:
+                continue
+            self._append_fact(
+                facts,
+                seen,
+                key="user:location:current_city",
+                category=FactCategory.LOCATION,
+                predicate="current_city",
+                value=self._clean_match_value(match.group(1)),
+                confidence_boost=0.78,
+            )
+            break
+
+    @staticmethod
+    def _clean_match_value(value: str) -> str:
+        return value.strip().strip(".,!?;:")
 
 
 def _derive_predicate(value: str) -> str:
