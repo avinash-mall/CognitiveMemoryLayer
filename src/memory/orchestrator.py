@@ -140,10 +140,10 @@ class MemoryOrchestrator:
 
         short_term_config = ShortTermMemoryConfig()
         short_term = ShortTermMemory(config=short_term_config)
-        entity_extractor = EntityExtractor(
+        entity_extractor: EntityExtractor | None = EntityExtractor(
             internal_llm if settings.features.use_llm_enabled else None
         )
-        relation_extractor = RelationExtractor(
+        relation_extractor: RelationExtractor | None = RelationExtractor(
             internal_llm if settings.features.use_llm_enabled else None
         )
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
