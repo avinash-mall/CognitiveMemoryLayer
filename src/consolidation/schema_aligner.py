@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-from ..memory.neocortical.fact_store import SemanticFactStore
 from ..memory.neocortical.schemas import FactCategory
+from ..memory.neocortical.store import FactStoreLike
 from .summarizer import ExtractedGist
 
 
@@ -28,7 +28,7 @@ class SchemaAligner:
 
     def __init__(
         self,
-        fact_store: SemanticFactStore,
+        fact_store: FactStoreLike,
         rapid_integration_threshold: float = 0.7,
     ):
         self.fact_store = fact_store

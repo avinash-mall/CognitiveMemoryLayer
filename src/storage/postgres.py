@@ -457,6 +457,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 return 0
 
             now = _naive_utc(datetime.now(UTC))
+            assert now is not None
             for row in rows:
                 row.status = MemoryStatus.SILENT.value
                 row.valid_to = now

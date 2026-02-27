@@ -11,7 +11,7 @@ from ..utils.modelpack import get_modelpack_runtime
 from ..utils.tracing import async_trace_span
 from .classifier import QueryClassifier
 from .packet_builder import MemoryPacketBuilder
-from .planner import RetrievalPlanner, RetrievalSource
+from .planner import RetrievalPlanner, RetrievalSource, RetrievalStep
 from .reranker import MemoryReranker, RerankerConfig
 from .retriever import HybridRetriever
 
@@ -71,7 +71,7 @@ class MemoryRetriever:
 
             # Session-scoped reads should avoid tenant-wide semantic/graph sources.
             if source_session_id:
-                kept_steps = []
+                kept_steps: list[RetrievalStep] = []
                 idx_map: dict[int, int] = {}
                 for old_idx, step in enumerate(plan.steps):
                     if step.source in {RetrievalSource.VECTOR, RetrievalSource.CONSTRAINTS}:

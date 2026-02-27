@@ -12,8 +12,11 @@ from .logging_config import get_logger
 
 logger = get_logger(__name__)
 
+spacy: Any
 try:  # pragma: no cover - import guard
-    import spacy
+    import spacy as _spacy
+
+    spacy = _spacy
 except Exception:  # pragma: no cover - optional dependency
     spacy = None
 
