@@ -209,10 +209,10 @@ class GistExtractor:
         for cluster_obj in clusters_out:
             if not isinstance(cluster_obj, dict):
                 continue
-            idx = cluster_obj.get("cluster_index")
-            if not isinstance(idx, int) or idx < 0 or idx >= len(clusters):
+            cluster_idx = cluster_obj.get("cluster_index")
+            if not isinstance(cluster_idx, int) or cluster_idx < 0 or cluster_idx >= len(clusters):
                 continue
-            cluster = clusters[idx]
+            cluster = clusters[cluster_idx]
             source_types = self._cluster_source_types(cluster)
 
             gists_data = cluster_obj.get("gists", [])

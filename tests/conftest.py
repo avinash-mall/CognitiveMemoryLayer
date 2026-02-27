@@ -34,6 +34,10 @@ _llm_flags = (
 for _f in _llm_flags:
     os.environ[_f] = "false"
 
+# Keep tests lightweight by avoiding local sentence-transformer startup
+# unless a run explicitly overrides this env var.
+os.environ.setdefault("EMBEDDING_INTERNAL__PROVIDER", "openai")
+
 # Allow importing src when run from project root or with PYTHONPATH
 try:
     import src.storage.models  # noqa: F401 - ensure module loaded for fixtures
