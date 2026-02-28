@@ -1,117 +1,153 @@
-<h1 align="center">Cognitive Memory Layer</h1>
+<div align="center">
 
-<p align="center">
-  <strong>A neuro-inspired memory system that brings human-like memory to AI</strong>
-</p>
+# Cognitive Memory Layer
 
-<p align="center">
-  <em>Store. Retrieve. Consolidate. Forget. &mdash; Just like the human brain.</em>
-</p>
+### A Neuro-Inspired Memory System for AI
 
-<p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
-  <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-761-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/version-1.3.6-blue?style=for-the-badge" alt="Version">
-</p>
+*Store. Retrieve. Consolidate. Forget.*
+*Just like the human brain.*
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Neo4j-Graph%20DB-008CC1?style=flat-square&logo=neo4j&logoColor=white" alt="Neo4j">
-  <img src="https://img.shields.io/badge/Redis-Cache+Queue-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis">
-  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/License-GPL--3.0-A42E2B?style=flat-square&logo=gnu&logoColor=white" alt="License">
-</p>
+<br/>
 
----
+[![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
+[![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./ProjectPlan/UsageDocumentation.md)
+[![Tests](https://img.shields.io/badge/Tests-761-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Version](https://img.shields.io/badge/version-1.3.6-blue?style=for-the-badge)](#)
 
-## Table of Contents
+<br/>
 
-<details open>
-<summary><strong>Click to expand</strong></summary>
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Neo4j](https://img.shields.io/badge/Neo4j-Graph%20DB-008CC1?style=flat-square&logo=neo4j&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-Cache+Queue-DC382D?style=flat-square&logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-GPL--3.0-A42E2B?style=flat-square&logo=gnu&logoColor=white)
 
-- [What is CML?](#what-is-cml)
-- [Key Features](#key-features)
-- [Research Foundation](#research-foundation)
-- [Architecture Overview](#architecture-overview)
-- [Runtime modes](#runtime-modes)
-- [Neuroscience-to-Implementation Mapping](#neuroscience-to-implementation-mapping)
-- [Memory Types](#memory-types)
-- [Quick start](#quick-start)
-- [Core endpoints](#core-endpoints)
-- [Evaluation Highlights](#evaluation-highlights)
-- [Documentation](#documentation)
-- [Technology Stack](#technology-stack)
-- [Python SDK](#python-sdk)
-- [Custom models](#custom-models)
-- [Testing](#testing)
-- [References](#references)
-- [Future Roadmap](#future-roadmap)
-
-</details>
+</div>
 
 ---
 
-## What is CML?
+<div align="center">
 
-Current Large Language Models operate with **fixed context windows** and **static weights**. They lack the dynamic, reconstructive nature of human memory:
+**[The Problem](#-the-problem)** &#8226;
+**[How Your Brain Solves It](#-how-your-brain-solves-it)** &#8226;
+**[How CML Implements It](#-how-cml-implements-it)** &#8226;
+**[Architecture](#-architecture)** &#8226;
+**[Quick Start](#-quick-start)** &#8226;
+**[Evaluation](#-evaluation-highlights)** &#8226;
+**[Docs](#-documentation)**
 
-| Limitation | Impact |
-| :--- | :--- |
-| Cannot dynamically update knowledge | Stale information persists |
-| No integration without catastrophic forgetting | Retraining required |
-| No relevance-based forgetting | Context bloat and inefficiency |
-| No episodic-to-semantic consolidation | All memories treated equally |
-| No latent constraint tracking | Decision-relevant context is lost |
-
-The **Cognitive Memory Layer (CML)** solves this by implementing the Multi-Store Memory Model from cognitive neuroscience: a dual-store architecture with hippocampal (fast, episodic) and neocortical (slow, semantic) systems connected by biologically-inspired consolidation, reconsolidation, and active forgetting.
+</div>
 
 ---
 
-## Key Features
-
-Dual-store (hippocampal + neocortical), hybrid retrieval, cognitive constraints, consolidation, reconsolidation, active forgetting, Python SDK, LoCoMo-Plus evaluation. See [Usage & API](ProjectPlan/UsageDocumentation.md#overview) for details.
-
----
-
-## Research Foundation
-
-> *"Memory is the process of maintaining information over time."*
-> &mdash; **Matlin, 2005**
+## The Problem
 
 > *"The brain does not simply store memories; it actively reconstructs them."*
-> &mdash; **Bartlett, 1932**
+> &mdash; **Bartlett, 1932** <sup>[7]</sup>
 
-### Key Research Frameworks Integrated
+Current Large Language Models have a fundamental cognitive deficit. They operate with **fixed context windows** and **static weights** &mdash; the computational equivalent of a brilliant mind with amnesia:
 
-| Framework | Key Contribution | Implementation |
+| What LLMs Lack | What Happens | What Humans Do |
 | :--- | :--- | :--- |
-| **HippoRAG** (2024) | Hippocampal index with KG + PPR | Neo4j graph store with Personalized PageRank |
-| **HawkinsDB** (2025) | Thousand Brains: unified memory types | 15 multi-type memory records |
-| **Mem0** (2025) | A.U.D.N. ops + graph memory | `ReconsolidationService` with belief revision |
-| **CLS Theory** (1995) | Dual-system: fast hippo + slow neo | `HippocampalStore` + `NeocorticalStore` |
-| **LoCoMo-Plus** (2024) | Level-2 cognitive memory benchmark | Constraint extraction and constraint-aware retrieval |
+| Dynamic knowledge updates | Stale information persists | Continuously revise beliefs |
+| Graceful forgetting | Context bloat, noise accumulation | Actively prune irrelevant traces |
+| Episodic &rarr; semantic consolidation | All memories treated equally | Distill experiences into knowledge |
+| Latent constraint tracking | Safety-critical context is lost | "I can't eat that &mdash; I'm allergic" |
+
+The **Cognitive Memory Layer** bridges this gap by implementing how human memory *actually* works &mdash; not as a simple database, but as a living, reconstructive system grounded in decades of neuroscience research.
 
 ---
 
-<a name="architecture-overview"></a>
+## How Your Brain Solves It
 
-## Architecture Overview
+CML's architecture is a direct computational translation of three foundational theories from cognitive neuroscience. Each maps to a specific subsystem in the codebase.
 
-The system implements the **Complementary Learning Systems (CLS) theory** with a fast hippocampal store for episodic encoding and a slow neocortical store for semantic knowledge.
+### Theory 1: The Multi-Store Model <sup>[Atkinson & Shiffrin, 1968]</sup>
 
-| System | Learning Speed | Representation | Memory Type |
-| :--- | :--- | :--- | :--- |
-| **Hippocampal** | Fast (one-shot) | Sparse | Episodic |
-| **Neocortical** | Slow (gradual) | Distributed | Semantic |
+Human memory is not a single store &mdash; it is a **pipeline**. Information flows through distinct stages, each with different capacity, encoding, and duration:
 
-### High-level overview
+```
+                        Attention                    Rehearsal
+  Sensory Register  ──────────────►  Short-Term  ──────────────►  Long-Term
+  (250ms, huge)                      (20s, ~7 items)              (lifetime, unlimited)
+       │                                  │                            │
+       └─── Decay                         └─── Displacement            └─── Interference
+```
+
+**In CML:** Raw input enters the `SensoryBuffer` (token-level encoding via tiktoken). A `WorkingMemoryManager` enforces the ~7-item capacity limit. `SemchunkChunker` handles semantic segmentation before long-term encoding.
+
+> **Reference**: Miller, G.A. (1956). ["The magical number seven, plus or minus two."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
+
+### Theory 2: Complementary Learning Systems <sup>[McClelland et al., 1995]</sup>
+
+The brain uses **two complementary systems** that learn at fundamentally different speeds &mdash; and this tension is not a bug, it's the architecture:
+
+| System | Brain Region | Speed | What It Stores | Decay |
+| :--- | :--- | :--- | :--- | :--- |
+| **Hippocampal** | Medial Temporal Lobe | Fast (one-shot) | Rich episodic traces | Rapid |
+| **Neocortical** | Distributed Cortex | Slow (gradual) | Distilled semantic knowledge | Stable |
+
+The hippocampus captures today's lunch conversation in full context. Over time &mdash; during sleep &mdash; **sharp-wave ripples** replay these episodes, training the neocortex to extract the durable semantic pattern: *"this person is vegetarian."*
+
+**In CML:** `HippocampalStore` performs one-shot episodic encoding with dense vector embeddings. `NeocorticalStore` maintains structured semantic facts with schema alignment. The `ConsolidationEngine` performs the equivalent of sleep-replay: sampling, clustering, gist extraction, and migration from hippocampal to neocortical stores.
+
+> **Reference**: McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C. (1995). ["Why there are complementary learning systems in the hippocampus and neocortex."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
+
+### Theory 3: Reconsolidation <sup>[Nader et al., 2000]</sup>
+
+A discovery that upended memory science: retrieved memories become **temporarily unstable** ("labile") and can be modified before restabilizing. Memory is not read-only &mdash; every retrieval is a potential rewrite.
+
+**In CML:** The `LabileStateTracker` marks retrieved memories as labile for 5 minutes. The `ConflictDetector` identifies contradictions, refinements, and supersessions. The `BeliefRevisionEngine` applies one of 6 strategies (reinforce, correct, time-slice, merge, demote, supersede) before restabilizing.
+
+> **Reference**: Nader, K., Schafe, G.E., & Le Doux, J.E. (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
+
+### Theory 4: Active Forgetting <sup>[Shuai et al., 2010]</sup>
+
+Forgetting is not failure &mdash; it is an **active, protein-mediated process**. The proteins Rac1 and Cofilin actively prune synaptic connections, removing traces that are no longer relevant. This keeps memory efficient and prevents catastrophic interference.
+
+**In CML:** The `ForgettingWorker` runs a relevance scorer every 24h. Memories are triaged into five actions &mdash; Keep, Decay, Silence, Compress, or Delete &mdash; based on importance, recency, frequency, confidence, type, and dependency count.
+
+> **Reference**: Shuai, Y., et al. (2010). ["Forgetting is regulated through Rac activity in Drosophila."](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
+
+---
+
+## How CML Implements It
+
+CML integrates five AI memory research frameworks, mapping each onto a specific capability:
+
+| Framework | Paper | What CML Takes From It |
+| :--- | :--- | :--- |
+| **CLS Theory** | McClelland et al. (1995) | Dual-store: fast hippocampal + slow neocortical |
+| **HippoRAG** | Gutierrez et al. (2024) <sup>[8]</sup> | Knowledge graph + Personalized PageRank for multi-hop retrieval |
+| **HawkinsDB** | Based on Thousand Brains Theory | 15 cognitive memory types with biological decay profiles |
+| **Mem0** | mem0.ai (2024) <sup>[9]</sup> | Add/Update/Delete/No-change ops + belief revision |
+| **LoCoMo-Plus** | Li et al. (2024) <sup>[14]</sup> | Level-2 cognitive constraint evaluation (goal/value/state/causal/policy) |
+
+### The Cognitive Constraint Layer
+
+This is what makes CML different from a vector database with extra steps. Standard RAG retrieves text that *looks similar*. CML retrieves **latent constraints** &mdash; goals, values, policies, states, and causal rules &mdash; even when the query is semantically distant from the constraint:
+
+```
+User stored:    "I'm deathly allergic to shellfish"      (cue)
+User asks:      "Recommend a restaurant for tonight"      (trigger)
+                 ↑                                         ↑
+           These are semantically distant &mdash; cosine similarity is low.
+           But the constraint is CRITICAL to the response.
+```
+
+CML solves this through **multi-path retrieval**: vector search + knowledge graph traversal + structured constraint lookup + domain-aware rescoring. Constraints are extracted at write time, stored with type metadata (goal/value/policy/state/causal), and surfaced at retrieval time regardless of surface-level semantic similarity.
+
+---
+
+## Architecture
+
+### System Overview
 
 ```mermaid
 flowchart LR
-    C[Client or SDK] --> API[FastAPI API]
+    C[Client / SDK] --> API[FastAPI API]
     API --> ORCH[MemoryOrchestrator]
 
     ORCH --> WRITE[Write Path]
@@ -125,7 +161,7 @@ flowchart LR
     EXT -->|optional| LLM[LLM_INTERNAL]
     EXT -->|runtime inference| MP[Modelpack]
 
-    READ --> CLS[Query classifier]
+    READ --> CLS2[Query classifier]
     READ --> PLAN[Retrieval planner]
     READ --> RET[Hybrid retriever]
     READ --> RER[Memory reranker]
@@ -139,78 +175,10 @@ flowchart LR
     BG --> FORGET[Forgetting]
 ```
 
-### Pipeline detail
+### Data Flow: Write &rarr; Store &rarr; Read
 
 ```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#F8FAFC',
-      'primaryTextColor': '#0F172A',
-      'primaryBorderColor': '#475569',
-      'lineColor': '#64748B',
-      'tertiaryColor': '#ffffff',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef client fill:#dcfce7,stroke:#166534,stroke-width:2px,color:#14532d
-    classDef api fill:#f3e8ff,stroke:#6b21a8,stroke-width:2px,color:#581c87
-    classDef orch fill:#fff7ed,stroke:#c2410c,stroke-width:2px,color:#7c2d12
-    classDef module fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#9a3412
-    classDef db fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#075985
-    classDef worker fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,stroke-dasharray:5 5,color:#991b1b
-    classDef external fill:#f1f5f9,stroke:#334155,stroke-width:2px,stroke-dasharray:5 5,color:#334155
-
-    C(["SDK / Scripts / cURL / Dashboard"]):::client
-    C ==>|HTTP| A[["FastAPI + Auth"]]:::api
-    A ==>|invokes| O
-
-    subgraph Core ["Memory Pipeline"]
-        direction TB
-        O[["Orchestrator"]]:::orch
-        WG{{"Write Gate"}}:::orch
-        Sens[["Sensory + Working"]]:::module
-        Ext[["Extraction"]]:::module
-        Ret[["Retrieval"]]:::module
-        Con[["Consolidation"]]:::module
-        Rec[["Reconsolidation"]]:::module
-        Fgt[["Forgetting"]]:::module
-        O --> WG --> Sens --> Ext --> Ret
-        Ret --> Con --> Rec --> Fgt
-    end
-
-    Ext -.->|calls| LLM(["LLM Provider"]):::external
-
-    Ret -->|search| DB[("Postgres + Neo4j")]:::db
-    Con -->|write| DB
-    Rec -->|update| DB
-    Fgt -->|purge| Cache[("Redis + Logs")]:::db
-
-    W{{"Celery Workers"}}:::worker
-    W -.->|async| Con
-    W -.->|async| Fgt
-```
-
-### End-to-End Data Flow
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#F8FAFC',
-      'primaryTextColor': '#0F172A',
-      'primaryBorderColor': '#475569',
-      'lineColor': '#64748B',
-      'fontSize': '13px'
-    }
-  }
-}%%
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F8FAFC', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#475569', 'lineColor': '#64748B', 'fontSize': '13px'}}}%%
 flowchart LR
     classDef write fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e40af
     classDef process fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#9a3412
@@ -258,667 +226,138 @@ flowchart LR
     S3 --> R4
 ```
 
-### Runtime modes
+### Neuroscience &rarr; Code Mapping
 
-- `FEATURES__USE_LLM_ENABLED=false` (default): runtime uses modelpack + NER/non-LLM paths.
-- `FEATURES__USE_LLM_ENABLED=true`: LLM paths are enabled and fine-grained `FEATURES__USE_LLM_*` flags decide where LLM is used.
-
-See [Usage Documentation](ProjectPlan/UsageDocumentation.md#runtime-modes).
-
----
-
-## Neuroscience-to-Implementation Mapping
+Every module in CML corresponds to a specific biological mechanism. Click to explore each:
 
 <details>
-<summary><strong>1. Sensory and Working Memory (Prefrontal Cortex)</strong></summary>
+<summary><strong>Sensory & Working Memory</strong> &mdash; Miller's 7&plusmn;2 capacity limit</summary>
 
-**Biological Basis**: Sensory memory holds high-fidelity input for seconds. Working memory acts as a temporary workspace with limited capacity (~7+/-2 items).
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#E2E8F0',
-      'primaryTextColor': '#0F172A',
-      'primaryBorderColor': '#334155',
-      'lineColor': '#64748B',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef input fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px
-    classDef memory fill:#F0F9FF,stroke:#0EA5E9,stroke-width:2px,color:#0369A1
-    classDef artifact fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,stroke-dasharray: 5 5,color:#9A3412
-
-    subgraph STM ["SENSORY + WORKING MEMORY"]
-        direction TB
-        In([Input Stream]):::input
-        Sensory[[Sensory Buffer]]:::memory
-        Working[[Working Memory]]:::memory
-        Chunks[/"Chunks for\nEncoding"/]:::artifact
-
-        In --> Sensory
-        Sensory --> Working
-        Sensory & Working --> Chunks
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| Sensory buffer | `SensoryBuffer` (token-ID storage via tiktoken, batch decode) | `src/memory/sensory/buffer.py` |
-| Working memory limit | `WorkingMemoryManager` (max=10) + `BoundedStateMap` (LRU/TTL) | `src/memory/working/manager.py` |
-| Semantic chunking | `SemchunkChunker` (semchunk + Hugging Face tokenizer) | `src/memory/working/chunker.py` |
-
-**Reference**: Miller, G.A. (1956). "The Magical Number Seven, Plus or Minus Two"
+| Sensory register | `SensoryBuffer` (tiktoken token-ID storage) | `src/memory/sensory/buffer.py` |
+| Working memory (7&plusmn;2) | `WorkingMemoryManager` (max=10) + `BoundedStateMap` | `src/memory/working/manager.py` |
+| Semantic chunking | `SemchunkChunker` (Hugging Face tokenizer) | `src/memory/working/chunker.py` |
 
 </details>
 
 <details>
-<summary><strong>2. Encoding: Write Gate and Salience (CREB/Npas4)</strong></summary>
+<summary><strong>Encoding Gate</strong> &mdash; CREB/Npas4 neuronal selection</summary>
 
-**Biological Basis**: Not all experiences become memories. The proteins **CREB** and **Npas4** regulate which neurons are recruited into memory engrams based on excitability.
+Not all experiences become memories. CML's `WriteGate` mirrors the CREB protein's role in selecting which neurons participate in engram formation (Han et al., 2007 <sup>[5]</sup>).
 
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#FFFBEB',
-      'primaryTextColor': '#451a03',
-      'primaryBorderColor': '#d97706',
-      'lineColor': '#b45309',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef input fill:#4338ca,stroke:#312e81,color:#fff,stroke-width:2px
-    classDef process fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#9a3412
-    classDef logic fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#166534
-    classDef result fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#fff
-
-    subgraph WG ["WRITE GATE (CREB/Npas4)"]
-        direction TB
-        In([Input Chunk]):::input
-        Step1[[Salience Scoring]]:::process
-        Step2[[Novelty Check]]:::process
-        Step3[[Risk Assessment]]:::process
-        Q1{{Importance > 0.3?}}:::logic
-        Q2{{Is New?}}:::logic
-        Q3{{Contains PII?}}:::logic
-        Dec([WriteDecision:\nSTORE / SKIP]):::result
-
-        In --> Step1 --> Step2 --> Step3
-        Step1 -.-> Q1
-        Step2 -.-> Q2
-        Step3 -.-> Q3
-        Q1 & Q2 & Q3 ==> Dec
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| CREB allocation | `WriteGate.evaluate()` with salience, novelty, and risk scoring | `src/memory/hippocampal/write_gate.py` |
-| Npas4 gating | Write gate threshold (0.3); constraint chunks get importance boost | `WriteGateConfig` |
-| PII redaction | `PIIRedactor` strips sensitive information before storage | `src/memory/hippocampal/redactor.py` |
-| Type override | `ChunkType.CONSTRAINT` maps to `MemoryType.CONSTRAINT` | `write_gate.py` |
-
-**Reference**: Han et al. (2007). "Neuronal Competition and Selection During Memory Formation"
+| CREB allocation | `WriteGate.evaluate()` &mdash; salience, novelty, risk | `src/memory/hippocampal/write_gate.py` |
+| PII redaction | `PIIRedactor` strips sensitive data before storage | `src/memory/hippocampal/redactor.py` |
+| Constraint boost | Constraint chunks get `importance += 0.2` | `WriteGateConfig` |
 
 </details>
 
 <details>
-<summary><strong>3. Hippocampal Store (Episodic Memory)</strong></summary>
+<summary><strong>Hippocampal Store</strong> &mdash; One-shot episodic encoding with pattern separation</summary>
 
-**Biological Basis**: The hippocampus rapidly encodes detailed, context-rich episodes with a single exposure using **pattern separation**.
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#EEF2FF',
-      'primaryTextColor': '#1e3a8a',
-      'primaryBorderColor': '#1d4ed8',
-      'lineColor': '#3b82f6',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef input fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e40af
-    classDef process fill:#eff6ff,stroke:#60a5fa,stroke-width:2px,color:#1d4ed8
-    classDef data fill:#f0f9ff,stroke:#0ea5e9,stroke-width:1px,stroke-dasharray: 5 5,color:#0369a1
-    classDef storage fill:#1e40af,stroke:#1e3a8a,stroke-width:2px,color:#fff
-
-    subgraph Hippo ["HIPPOCAMPAL STORE (Episodic)"]
-        direction TB
-        Chunk(Chunk):::input
-        PII[[PII Redactor]]:::process
-        Embed[[Batch Embedder]]:::process
-        Unified[["Unified Extractor\n(Entities, Facts, Constraints)"]]:::process
-        Dense[/"Dense Vector"/]:::data
-        Sparse[/"Entities + Relations"/]:::data
-        Meta[/"Constraint Metadata"/]:::data
-        Record[("MemoryRecord")]:::storage
-
-        Chunk --> PII
-        PII --> Embed
-        PII --> Unified
-        Embed --> Dense
-        Unified --> Sparse
-        Unified --> Meta
-        Dense & Sparse & Meta ==> Record
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| One-shot encoding | `HippocampalStore.encode_batch()` &mdash; gate+redact, batch embed, unified extract, upsert | `src/memory/hippocampal/store.py` |
-| Pattern separation | Content-based stable keys (SHA256) + unique embeddings | `PostgresMemoryStore` |
-| Write-time facts | `UnifiedWritePathExtractor` populates semantic store at write time | `src/extraction/unified_write_extractor.py` |
-| Constraint extraction | `UnifiedWritePathExtractor` detects goals/values/policies/states/causal at encode time | `src/extraction/unified_write_extractor.py` |
-| Batch entity/relation extraction | `UnifiedWritePathExtractor` returns typed entities and relations; when unified path enabled, graph sync uses them for Neo4j (schema-first, few-shot prompts; excludes system prompts) | `src/extraction/unified_write_extractor.py` |
-| Contextual binding | Metadata: time, agent, turn, speaker, constraints | `MemoryRecord` schema |
-
-**Reference**: HippoRAG (2024) &mdash; "Neurobiologically Inspired Long-Term Memory for LLMs"
+| One-shot encoding | `HippocampalStore.encode_batch()` | `src/memory/hippocampal/store.py` |
+| Pattern separation | SHA256 stable keys + unique embeddings | `PostgresMemoryStore` |
+| Unified extraction | Entities, relations, constraints, facts in one call | `src/extraction/unified_write_extractor.py` |
 
 </details>
 
 <details>
-<summary><strong>4. Neocortical Store (Semantic Memory)</strong></summary>
+<summary><strong>Neocortical Store</strong> &mdash; Slow semantic learning with schema alignment</summary>
 
-**Biological Basis**: The neocortex gradually encodes generalized, semantic knowledge through slow learning, supporting **pattern completion** via associative networks.
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#FAF5FF',
-      'primaryTextColor': '#581c87',
-      'primaryBorderColor': '#9333ea',
-      'lineColor': '#a855f7',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef root fill:#d8b4fe,stroke:#7e22ce,stroke-width:2px,color:#3b0764
-    classDef leaf fill:#f3e8ff,stroke:#a855f7,stroke-width:1px,color:#6b21a8
-    classDef cognitive fill:#fce7f3,stroke:#db2777,stroke-width:1px,color:#9d174d
-
-    subgraph Neo ["NEOCORTICAL STORE (Semantic)"]
-        direction TB
-        User(((User:123))):::root
-        Paris((Paris)):::leaf
-        Veg((Vegetarian)):::leaf
-        Acme((Acme Corp)):::leaf
-        Goal((Save for trip)):::cognitive
-        Policy((No shellfish)):::cognitive
-
-        User -- "lives_in" --> Paris
-        User -- "prefers" --> Veg
-        User -- "works_at" --> Acme
-        User -- "goal" --> Goal
-        User -- "policy" --> Policy
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| Schema-based storage | `FactSchema` + `FactCategory` with `DEFAULT_FACT_SCHEMAS` | `src/memory/neocortical/schemas.py` |
-| Cognitive fact categories | `GOAL`, `STATE`, `VALUE`, `CAUSAL`, `POLICY` in `FactCategory` | `src/memory/neocortical/schemas.py` |
-| Personalized PageRank | `Neo4jGraphStore.personalized_pagerank()` for multi-hop traversal | `src/storage/neo4j.py` |
-| Schema management | `SchemaManager` resolves and registers fact schemas dynamically | `src/memory/neocortical/schema_manager.py` |
-
-**Reference**: HippoRAG uses PPR for "pattern completion across a whole graph structure"
+| Schema-based storage | `FactSchema` + `FactCategory` | `src/memory/neocortical/schemas.py` |
+| Cognitive categories | GOAL, STATE, VALUE, CAUSAL, POLICY | `src/memory/neocortical/schemas.py` |
+| Graph traversal | Personalized PageRank on Neo4j | `src/storage/neo4j.py` |
 
 </details>
 
 <details>
-<summary><strong>5. Retrieval: Ecphory and Constructive Memory</strong></summary>
+<summary><strong>Retrieval</strong> &mdash; Tulving's ecphory (cue-engram interaction)</summary>
 
-**Biological Basis**: Memory retrieval is **ecphory**&mdash;the interaction between a retrieval cue and a stored engram that reconstructs the memory.
+Memory retrieval is not lookup &mdash; it is **ecphory**: the interaction between a retrieval cue and a stored engram that *reconstructs* the memory (Tulving, 1983 <sup>[2]</sup>).
 
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#F1F5F9',
-      'primaryTextColor': '#334155',
-      'primaryBorderColor': '#94a3b8',
-      'lineColor': '#64748B',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef input fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px
-    classDef logic fill:#FFF7ED,stroke:#EA580C,stroke-width:2px,color:#9A3412
-    classDef hippo fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e40af
-    classDef neo fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#6b21a8
-    classDef constraint fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#9d174d
-    classDef result fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46
-
-    subgraph Retrieval ["HYBRID RETRIEVAL (Ecphory)"]
-        direction TB
-        Query([User Query]):::input
-        Class{{Query Classifier\n10 Intents}}:::logic
-        Vector[("Vector Search (Hippocampal)")]:::hippo
-        Graph[("Graph Search (Neocortical)")]:::neo
-        Constraints[("Constraint\nLookup")]:::constraint
-        Rerank[["Reranker + Fusion"]]:::logic
-        Packet(Memory Packet):::result
-
-        Query --> Class
-        Class --> Vector
-        Class --> Graph
-        Class --> Constraints
-        Vector & Graph & Constraints --> Rerank
-        Rerank --> Packet
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| Query classification | `QueryClassifier` with 10 intents incl. `CONSTRAINT_CHECK` | `src/retrieval/classifier.py` |
-| Retrieval planning | `RetrievalPlanner` generates multi-step plans with priorities | `src/retrieval/planner.py` |
-| Hybrid search | `HybridRetriever` with per-step timeouts, cross-group skip-if-found | `src/retrieval/retriever.py` |
-| Constraint retrieval | Vector search (MemoryType.CONSTRAINT) + fact lookup across cognitive categories | `src/retrieval/retriever.py` |
-| Reranking | Configurable weights (`recency_weight=0.1`, `relevance_weight=0.5`, `confidence_weight=0.2`) | `src/retrieval/reranker.py` |
-| Packet building | Facts, preferences, episodes, constraints with provenance and formatting | `src/retrieval/packet_builder.py` |
-| Temporal queries | Timezone-aware "today"/"yesterday" via `user_timezone` | `src/retrieval/planner.py` |
-
-**Reference**: Tulving, E. (1983). "Elements of Episodic Memory" &mdash; Encoding Specificity Principle
+| Query classification | `QueryClassifier` (10 intents) | `src/retrieval/classifier.py` |
+| Retrieval planning | `RetrievalPlanner` (parallel step groups) | `src/retrieval/planner.py` |
+| Hybrid search | Vector + Graph + Constraints + Facts | `src/retrieval/retriever.py` |
+| Constraint-aware reranking | Type-stability weighting, domain rescoring | `src/retrieval/reranker.py` |
 
 </details>
 
 <details>
-<summary><strong>6. Reconsolidation and Belief Revision</strong></summary>
+<summary><strong>Consolidation</strong> &mdash; Sleep-cycle replay (sharp-wave ripples)</summary>
 
-**Biological Basis**: When a memory is retrieved, it enters a **labile state** and can be modified before being restabilized (reconsolidation).
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#FFF7ED',
-      'primaryTextColor': '#7c2d12',
-      'primaryBorderColor': '#ea580c',
-      'lineColor': '#c2410c',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef input fill:#4F46E5,stroke:#312E81,color:#fff,stroke-width:2px
-    classDef process fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#9a3412
-    classDef list fill:#fff,stroke:#ea580c,stroke-width:1px,stroke-dasharray: 5 5,color:#c2410c
-    classDef engine fill:#7c2d12,stroke:#431407,stroke-width:2px,color:#fff
-    classDef result fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46
-
-    subgraph Recon ["RECONSOLIDATION + BELIEF REVISION"]
-        direction TB
-        Retrieved([Retrieved Memory]):::input
-        Mark[[Mark Labile: 5 min]]:::process
-        Detect{{Conflict Detection}}:::process
-        Types[\"Conflict Types:\n* Contradiction\n* Refinement\n* Supersede"/]:::list
-        Belief[["Belief Revision Engine"]]:::engine
-        Reinforce(REINFORCE):::result
-        Slice(TIME_SLICE):::result
-        Correct(CORRECT):::result
-
-        Retrieved --> Mark
-        Retrieved --> Detect
-        Detect --> Types
-        Mark & Types ==> Belief
-        Belief --> Reinforce
-        Belief --> Slice
-        Belief --> Correct
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| Labile state tracking | `LabileStateTracker` (5-min labile window) | `src/reconsolidation/labile_tracker.py` |
-| Conflict detection | `ConflictDetector` identifies contradictions, refinements, supersessions | `src/reconsolidation/conflict_detector.py` |
-| Belief revision | `BeliefRevisionEngine` (6 strategies) | `src/reconsolidation/belief_revision.py` |
-| Constraint supersession | `ConstraintExtractor.detect_supersession()` for same-type+scope | `src/extraction/constraint_extractor.py` |
-
-**Reference**: Nader et al. (2000). "Fear memories require protein synthesis in the amygdala for reconsolidation"
+| Episode sampling | `EpisodeSampler` (7d episodes, 90d constraints) | `src/consolidation/sampler.py` |
+| Semantic clustering | `SemanticClusterer` | `src/consolidation/clusterer.py` |
+| Gist extraction | `GistSummarizer` (preserves constraint types) | `src/consolidation/summarizer.py` |
+| Migration | `ConsolidationMigrator` (hippo &rarr; neocortex) | `src/consolidation/migrator.py` |
 
 </details>
 
 <details>
-<summary><strong>7. Consolidation: The "Sleep Cycle"</strong></summary>
+<summary><strong>Active Forgetting</strong> &mdash; Rac1/Cofilin synaptic pruning</summary>
 
-**Biological Basis**: During NREM sleep, the hippocampus "replays" recent experiences via **sharp-wave ripples**, training the neocortex to extract semantic structures.
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#F3E8FF',
-      'primaryTextColor': '#581c87',
-      'primaryBorderColor': '#9333ea',
-      'lineColor': '#a855f7',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef input fill:#d8b4fe,stroke:#7e22ce,stroke-width:2px,color:#3b0764
-    classDef process fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8
-    classDef output fill:#4c1d95,stroke:#2e1065,stroke-width:2px,color:#fff
-
-    subgraph Consol ["CONSOLIDATION ENGINE (Sleep Cycle)"]
-        direction TB
-        Trigger((Trigger)):::input
-        Sample[[Episode Sampler]]:::process
-        Cluster[[Semantic Clusterer]]:::process
-        Gist[[Gist Extractor]]:::process
-        Schema[[Schema Aligner]]:::process
-        Migrator(Migrator:\nHippo to Neocortex):::output
-
-        Trigger --> Sample
-        Sample --> Cluster
-        Cluster --> Gist
-        Gist --> Schema
-        Schema ==> Migrator
-    end
-```
-
-| Concept | Implementation | Location |
+| Biology | Code | Location |
 | :--- | :--- | :--- |
-| Episode sampling | `EpisodeSampler` with type-specific time windows (7d episodes, 90d constraints) | `src/consolidation/sampler.py` |
-| Semantic clustering | `SemanticClusterer` groups related memories | `src/consolidation/clusterer.py` |
-| Gist extraction | `GistSummarizer` produces cognitive gist types | `src/consolidation/summarizer.py` |
-| Schema alignment | `SchemaAligner` maps gists to `FactCategory` (incl. cognitive types) | `src/consolidation/schema_aligner.py` |
-| Migration | `ConsolidationMigrator` moves facts hippo &rarr; neocortex | `src/consolidation/migrator.py` |
-
-**Reference**: McClelland et al. (1995). "Why there are complementary learning systems"
+| Relevance scoring | `ForgettingScorer` (6-factor composite) | `src/forgetting/scorer.py` |
+| Interference | `InterferenceDetector` | `src/forgetting/interference.py` |
+| Five actions | Keep / Decay / Silence / Compress / Delete | `src/forgetting/actions.py` |
 
 </details>
 
-<details>
-<summary><strong>8. Active Forgetting (Rac1/Cofilin)</strong></summary>
+### Memory Types
 
-**Biological Basis**: Forgetting is an **active process**. The proteins **Rac1** and **Cofilin** actively degrade memory traces by pruning synaptic connections.
+CML supports 15 memory types, each with a biological analog and distinct decay profile:
 
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#FEF2F2',
-      'primaryTextColor': '#7f1d1d',
-      'primaryBorderColor': '#ef4444',
-      'lineColor': '#f87171',
-      'fontSize': '14px'
-    }
-  }
-}%%
-flowchart TD
-    classDef start fill:#7f1d1d,stroke:#450a0a,stroke-width:2px,color:#fff
-    classDef process fill:#fee2e2,stroke:#f87171,stroke-width:2px,color:#991b1b
-    classDef safe fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46
-    classDef warn fill:#fffbeb,stroke:#d97706,stroke-width:2px,color:#92400e
-    classDef danger fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#b91c1c
-
-    subgraph Forget ["ACTIVE FORGETTING (Rac1/Cofilin)"]
-        direction TB
-        Start([Background Process\nEvery 24h]):::start
-        Scorer[[Relevance Scorer]]:::process
-        Policy{{Policy Engine}}:::process
-        Keep(KEEP):::safe
-        Decay(DECAY):::warn
-        Silent(SILENCE):::warn
-        Comp(COMPRESS):::warn
-        Del(DELETE):::danger
-
-        Start --> Scorer
-        Scorer --> Policy
-        Policy -- "> 0.7" --> Keep
-        Policy -- "> 0.5" --> Decay
-        Policy -- "> 0.3" --> Silent
-        Policy -- "> 0.1" --> Comp
-        Policy -- "< 0.1" --> Del
-    end
-```
-
-| Concept | Implementation | Location |
-| :--- | :--- | :--- |
-| Relevance scoring | `ForgettingScorer` computes composite relevance | `src/forgetting/scorer.py` |
-| Interference | `InterferenceDetector` finds conflicting memories | `src/forgetting/interference.py` |
-| Actions | Keep, Decay, Silence, Compress, Delete | `src/forgetting/actions.py` |
-| LLM compression | LLM-based summarization for `COMPRESS` action | `src/forgetting/compression.py` |
-| DB-side aggregation | `bulk_dependency_counts()` (one SQL vs O(n^2) Python loop) | `src/storage/postgres.py` |
-
-**Reference**: Shuai et al. (2010). "Forgetting is regulated through Rac activity in Drosophila"
-
-</details>
-
----
-
-## Memory Types
-
-CML supports 15 memory types reflecting different cognitive functions. When `FEATURES__USE_LLM_MEMORY_TYPE` is true (default), the LLM classifies each chunk into one of these types in the unified extraction call; you can override via the `memory_type` parameter on write.
-
-| Type | Description | Biological Analog | Decay |
-| :--- | :--- | :--- | :--- |
-| `episodic_event` | What happened (full context) | Hippocampal trace | Fast |
-| `semantic_fact` | Durable distilled facts | Neocortical schema | Slow |
-| `preference` | User preferences and tastes | Orbitofrontal cortex | Medium |
-| `constraint` | Goals, values, policies, states, causal rules | Prefrontal inhibition | Stable |
-| `procedure` | How to do something | Procedural memory | Stable |
-| `hypothesis` | Uncertain beliefs | Predictive coding | Needs confirm |
-| `task_state` | Current task progress | Working memory | Very Fast |
-| `conversation` | Chat message / turn | Dialogue memory | Session |
-| `message` | Single message | Message storage | Session |
-| `tool_result` | Tool execution output | Function results | Task |
-| `reasoning_step` | Chain-of-thought step | Agent reasoning | Session |
-| `scratch` | Temporary working memory | Working notes | Fast |
-| `knowledge` | General world knowledge | Domain facts | Stable |
-| `observation` | Agent observations | Environment context | Session |
-| `plan` | Agent plans and goals | Task planning | Task |
-
----
-
-## Cognitive Constraint Layer (Level-2 Memory)
-
-Goals, values, policies, states, and causal rules extracted at write time and surfaced at retrieval. Enables LoCoMo-Plus Level-2 performance. See [UsageDocumentation](ProjectPlan/UsageDocumentation.md) for constraint extraction and retrieval details.
-
-```mermaid
-%%{
-  init: {
-    'theme': 'base',
-    'flowchart': { 'useMaxWidth': true },
-    'themeVariables': {
-      'primaryColor': '#FDF2F8',
-      'primaryTextColor': '#831843',
-      'primaryBorderColor': '#db2777',
-      'lineColor': '#ec4899',
-      'fontSize': '13px'
-    }
-  }
-}%%
-flowchart LR
-    classDef extract fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#9d174d
-    classDef store fill:#f3e8ff,stroke:#9333ea,stroke-width:2px,color:#581c87
-    classDef retrieve fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#065f46
-
-    subgraph Extract ["EXTRACTION"]
-        E1["Unified\nExtractor"]:::extract
-        E2["5 Types:\nGoal | Value |\nPolicy | State |\nCausal"]:::extract
-        E1 --> E2
-    end
-
-    subgraph Store ["STORAGE"]
-        S1["Hippocampal\nmetadata"]:::store
-        S2["Neocortical\nFactCategory"]:::store
-        E2 --> S1
-        E2 --> S2
-    end
-
-    subgraph Retrieve ["RETRIEVAL"]
-        R1["CONSTRAINT_CHECK\nIntent"]:::retrieve
-        R2["Vector + Fact\nLookup"]:::retrieve
-        R3["Memory Packet\nwith Constraints"]:::retrieve
-        S1 & S2 --> R1
-        R1 --> R2 --> R3
-    end
-```
+| Type | Description | Decay | Type | Description | Decay |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `episodic_event` | What happened | Fast | `conversation` | Chat turn | Session |
+| `semantic_fact` | Distilled facts | Slow | `message` | Single message | Session |
+| `preference` | Likes/dislikes | Medium | `tool_result` | Function output | Task |
+| `constraint` | Rules/policies/goals | Stable | `reasoning_step` | CoT step | Session |
+| `procedure` | How-to | Stable | `scratch` | Working notes | Fast |
+| `hypothesis` | Uncertain belief | Confirm | `knowledge` | World knowledge | Stable |
+| `task_state` | Progress | Very Fast | `observation` | Environment | Session |
+| `plan` | Goals/plans | Task | | | |
 
 ---
 
 ## Quick Start
 
-### 1. Install
-
 ```bash
+# 1. Install
 pip install -e .
-```
 
-### 2. Configure
+# 2. Configure
+cp .env.example .env   # Set DATABASE__POSTGRES_URL and AUTH__API_KEY
 
-```bash
-cp .env.example .env
-```
-
-Set at least:
-
-- `DATABASE__POSTGRES_URL`
-- `AUTH__API_KEY`
-- `CML_API_KEY` (for SDK/examples)
-
-### 3. Start infrastructure
-
-```bash
+# 3. Start infrastructure
 docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-```
 
-### 4. Run migrations
-
-```bash
+# 4. Migrate and run
 alembic upgrade head
-```
-
-### 5. Start API
-
-```bash
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-Docker run (includes LLM endpoint preflight and migrations):
+<details>
+<summary><strong>Docker one-liner</strong></summary>
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d api
 ```
 
-Notes:
+</details>
 
-- The `api` container now runs a startup check (`scripts/validate_llm_endpoints.py`) when `FEATURES__USE_LLM_ENABLED=true`.
-- In GitHub Actions/CI, this check is skipped by default (`GITHUB_ACTIONS=true` or `CI=true`).
-- Set `LLM_STARTUP_VALIDATION_ENABLED=false` to bypass locally, or set `LLM_STARTUP_VALIDATE_IN_CI=true` to enforce in CI.
-- Runtime image excludes test/training/evaluation tooling; `app` service uses Docker `test` target for test dependencies.
-- Local embedding runtime keeps CUDA-enabled torch wheels and uses `cuda` automatically when a GPU is available.
-
-### 6. Smoke test
-
-```bash
-curl -X GET "[REDACTED]/api/v1/health"
-```
-
-### API examples (write, read, turn)
-
-```bash
-# Write (content max 100,000 characters)
-curl -X POST [REDACTED]/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
-  -d '{"content": "User prefers vegetarian food and lives in Paris."}'
-
-# Read
-curl -X POST [REDACTED]/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
-  -d '{"query": "dietary preferences", "format": "packet"}'
-
-# Seamless turn (retrieve + store in one call)
-curl -X POST [REDACTED]/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
-  -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
-```
-
-For full API usage, SDK, sessions, and response formats, see [UsageDocumentation](ProjectPlan/UsageDocumentation.md).
-
----
-
-## Core endpoints
-
-- `POST /api/v1/memory/write`
-- `POST /api/v1/memory/read`
-- `POST /api/v1/memory/turn`
-- `POST /api/v1/memory/update`
-- `POST /api/v1/memory/forget`
-- `GET /api/v1/memory/stats`
-- `POST /api/v1/session/create`
-- `POST /api/v1/session/{session_id}/write`
-- `POST /api/v1/session/{session_id}/read` (deprecated)
-- `GET /api/v1/session/{session_id}/context`
-- `POST /api/v1/memory/read/stream`
-- `DELETE /api/v1/memory/all` (admin)
-- `GET /api/v1/health`
-
----
-
-## Evaluation Highlights
-
-LoCoMo-Plus harness benchmarks Level-2 cognitive memory: `python evaluation/scripts/run_full_eval.py`. CML achieves **21.45%** on Cognitive (above Mem0, SeCom, RAG baselines) with a **10.04%** gap (factual − cognitive), smaller than most baselines. Full comparison: [evaluation/COMPARISON.md](evaluation/COMPARISON.md).
-
-| Aspect | CML (CML + API) |
-| :--- | :--- |
-| **Cognitive (LoCoMo-Plus)** | 21.45% (above Mem0 15.80%, SeCom 14.90%) |
-| **Gap** (factual − cognitive) | 10.04% (smaller than paper ~18–45%) |
-
-See [evaluation/README.md](evaluation/README.md) and [ProjectPlan/LocomoEval/RunEvaluation.md](ProjectPlan/LocomoEval/RunEvaluation.md).
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Usage & API](ProjectPlan/UsageDocumentation.md) | Full API reference, SDK usage, config, dashboard |
-| [Open pending technical gaps](ProjectPlan/BaseCML/PENDING_ISSUES.md) | Pending technical issues |
-| [Custom model replacement status](ProjectPlan/CustomModel/SLMReplacementReport.md) | SLM replacement report |
-| [Release history](CHANGELOG.md) | Changelog |
-| [Python SDK](packages/py-cml/docs/README.md) | Getting started, API reference, configuration, examples |
-| [API Versioning](docs/api-versioning.md) | Version strategy, deprecation policy, backward compatibility |
-| [Tests](tests/README.md) | Test layout, how to run, coverage, environment and service requirements |
-| [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
-| [Examples](examples/README.md) | Example scripts and integrations |
-| [Contributing](CONTRIBUTING.md) | Dev setup, code standards, PR process |
-| [Future Roadmap](ProjectPlan/ActiveCML/) | Intrinsic memory phase plans |
-
----
-
-## Technology Stack
-
-FastAPI, PostgreSQL+pgvector, Neo4j, Redis, Celery. Feature flags and config: [.env.example](.env.example), [UsageDocumentation — Configuration](ProjectPlan/UsageDocumentation.md#configuration-reference).
-
----
-
-## Python SDK
+<details>
+<summary><strong>Python SDK</strong></summary>
 
 ```bash
 pip install cognitive-memory-layer
@@ -926,104 +365,108 @@ pip install cognitive-memory-layer
 
 ```python
 from cml import CognitiveMemoryLayer
-memory = CognitiveMemoryLayer(base_url="[REDACTED]", api_key="your-key")
-memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
-response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
-turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
 
-# Progressive streaming retrieval (SSE)
-for memory_item in memory.read_stream(query="Tell me everything about the user"):
-    print(memory_item.text)
+memory = CognitiveMemoryLayer(base_url="<your-cml-url>", api_key="your-key")
+memory.write(content="I never eat shellfish - severe allergy.", tenant_id="demo")
+response = memory.read(query="Recommend a restaurant", tenant_id="demo")
+# Constraints section will include the shellfish allergy ^
 ```
 
-Sync, async, and embedded (SQLite) modes. See [packages/py-cml/docs](packages/py-cml/docs/).
+Sync, async, and embedded (SQLite) modes. See [SDK docs](packages/py-cml/docs/).
 
-**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `[REDACTED]/docs` | Dashboard: `[REDACTED]/dashboard` (requires `AUTH__ADMIN_API_KEY`)
-
-**Project structure:** `src/` (engine), `packages/py-cml/` (SDK), `tests/`, `evaluation/`, `examples/`. See [CONTRIBUTING](CONTRIBUTING.md).
+</details>
 
 ---
 
-## Custom models
+## Evaluation Highlights
 
-Training/data prep lives in `packages/models`:
+Evaluated on **LoCoMo-Plus** &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall:
 
-- prepare: `python -m packages.models.scripts.prepare`
-- train: `python -m packages.models.scripts.train`
-- config: `packages/models/model_pipeline.toml`
-- outputs: `packages/models/trained_models`
+| Metric | CML | Mem0 | SeCom | RAG Baselines |
+| :--- | :--- | :--- | :--- | :--- |
+| **Cognitive score** | **21.45%** | 15.80% | 14.90% | 12-15% |
+| **Factual-Cognitive gap** | **10.04%** | ~30% | ~27% | ~18-45% |
 
-See [packages/models/README.md](packages/models/README.md).
+> CML's gap between factual and cognitive performance is the **smallest** of any system tested &mdash; meaning it retains constraint-consistency better than alternatives.
+
+Full results: [evaluation/README.md](evaluation/README.md) &#8226; Run: `python evaluation/scripts/run_full_eval.py`
 
 ---
 
 ## Testing
 
 ```bash
-pytest tests/unit -v --tb=short
-pytest tests/integration -v --tb=short
-pytest tests/e2e -v
+pytest tests/unit -v --tb=short        # 580+ unit tests
+pytest tests/integration -v --tb=short  # 87 integration tests
+pytest tests/e2e -v                     # End-to-end API tests
 ```
 
-See [tests/README.md](tests/README.md) for environment and service requirements.
+Full-stack quality test with LLM-as-judge: `python scripts/test_memory_quality.py`
+
+Details: [tests/README.md](tests/README.md)
 
 ---
 
-## References
+## Documentation
 
-<details>
-<summary><strong>Neuroscience Foundations</strong></summary>
-
-1. **McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C.** (1995). ["Why there are complementary learning systems in the hippocampus and neocortex."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
-2. **Tulving, E.** (1983). ["Elements of Episodic Memory."](https://books.google.com/books/about/Elements_of_episodic_memory.html?id=3nQ6AAAAMAAJ) Oxford University Press.
-3. **Nader, K., Schafe, G.E., & Le Doux, J.E.** (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
-4. **Shuai, Y., et al.** (2010). ["Forgetting is regulated through Rac activity in Drosophila."](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
-5. **Han, J.H., et al.** (2007). ["Neuronal competition and selection during memory formation."](https://doi.org/10.1126/science.1139438) *Science*, 316(5823), 457-460.
-6. **Miller, G.A.** (1956). ["The magical number seven, plus or minus two."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
-7. **Bartlett, F.C.** (1932). ["Remembering: A Study in Experimental and Social Psychology."](https://archive.org/details/rememberingstudy00bart) Cambridge University Press.
-
-</details>
-
-<details>
-<summary><strong>AI Memory Frameworks</strong></summary>
-
-8. **HippoRAG** (2024). ["Neurobiologically Inspired Long-Term Memory for Large Language Models."](https://arxiv.org/abs/2405.14831) *arXiv:2405.14831*.
-9. **Mem0** (2024). ["Mem0: The Memory Layer for AI Applications."](https://github.com/mem0ai/mem0) *GitHub Repository*.
-10. **HawkinsDB** (2024). ["HawkinsDB: A Thousand Brains Theory inspired Database."](https://github.com/harishsg993010/HawkinsDB) *GitHub Repository*.
-11. **Wu, T., et al.** (2024). ["From Human Memory to AI Memory: A Survey on Memory Mechanisms in the Era of LLMs."](https://arxiv.org/abs/2404.15965) *arXiv:2404.15965*.
-
-</details>
-
-<details>
-<summary><strong>Implementation Guides</strong></summary>
-
-12. **Matlin, M.W.** (2012). ["Cognition"](https://books.google.com/books?id=i9i3EAAAQBAJ) (8th ed.). John Wiley & Sons.
-13. **Rasch, B., & Born, J.** (2013). ["About sleep's role in memory."](https://doi.org/10.1152/physrev.00032.2012) *Physiological Reviews*, 93(2), 681-766.
-
-</details>
+| | Document | Description |
+|---|----------|-------------|
+| **API** | [Usage & API Reference](ProjectPlan/UsageDocumentation.md) | Full API, config, dashboard, runtime modes |
+| **SDK** | [Python SDK](packages/py-cml/docs/README.md) | Getting started, API reference, examples |
+| **Eval** | [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
+| **Models** | [Custom Models](packages/models/README.md) | Training, data prep, model pipeline |
+| **Dev** | [Contributing](CONTRIBUTING.md) | Setup, code standards, PR process |
+| **Changelog** | [Release History](CHANGELOG.md) | Version history |
+| **Roadmap** | [Future Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration phases |
 
 ---
 
 ## Future Roadmap
 
-Planned evolution: **intrinsic memory integration** &mdash; injecting memories into the LLM computational graph (steering vectors, KV-cache, logit biases) instead of context-stuffing. See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for phase specifications.
+The next frontier: **intrinsic memory** &mdash; injecting memories directly into the LLM's computational graph (steering vectors, KV-cache manipulation, logit biases) instead of context-window stuffing.
+
+See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the 10-phase specification.
 
 ---
 
-## License
+## References
 
-<p align="center">
-  <img src="https://img.shields.io/badge/License-GPL--3.0-A42E2B?style=for-the-badge&logo=gnu&logoColor=white" alt="GPL-3.0">
-</p>
+<details open>
+<summary><strong>Neuroscience Foundations</strong></summary>
 
-This project is licensed under the **GNU General Public License v3.0**. See [LICENSE](./LICENSE) for details.
+1. McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C. (1995). ["Why there are complementary learning systems in the hippocampus and neocortex."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
+2. Tulving, E. (1983). ["Elements of Episodic Memory."](https://books.google.com/books/about/Elements_of_episodic_memory.html?id=3nQ6AAAAMAAJ) Oxford University Press.
+3. Nader, K., Schafe, G.E., & Le Doux, J.E. (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
+4. Shuai, Y., et al. (2010). ["Forgetting is regulated through Rac activity in Drosophila."](https://doi.org/10.1016/j.cell.2009.12.044) *Cell*, 140(4), 579-589.
+5. Han, J.H., et al. (2007). ["Neuronal competition and selection during memory formation."](https://doi.org/10.1126/science.1139438) *Science*, 316(5823), 457-460.
+6. Miller, G.A. (1956). ["The magical number seven, plus or minus two."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
+7. Bartlett, F.C. (1932). ["Remembering: A Study in Experimental and Social Psychology."](https://archive.org/details/rememberingstudy00bart) Cambridge University Press.
+12. Rasch, B., & Born, J. (2013). ["About sleep's role in memory."](https://doi.org/10.1152/physrev.00032.2012) *Physiological Reviews*, 93(2), 681-766.
+13. Atkinson, R.C. & Shiffrin, R.M. (1968). "Human memory: A proposed system and its control processes." *Psychology of Learning and Motivation*, 2, 89-195.
+
+</details>
+
+<details open>
+<summary><strong>AI Memory Frameworks</strong></summary>
+
+8. HippoRAG (2024). ["Neurobiologically Inspired Long-Term Memory for Large Language Models."](https://arxiv.org/abs/2405.14831) *arXiv:2405.14831*.
+9. Mem0 (2024). ["Mem0: The Memory Layer for AI Applications."](https://github.com/mem0ai/mem0) GitHub.
+10. HawkinsDB (2024). ["HawkinsDB: A Thousand Brains Theory inspired Database."](https://github.com/harishsg993010/HawkinsDB) GitHub.
+11. Wu, T., et al. (2024). ["From Human Memory to AI Memory: A Survey."](https://arxiv.org/abs/2404.15965) *arXiv:2404.15965*.
+14. Li, Y., et al. (2024). ["Locomo-Plus: Beyond-Factual Cognitive Memory Evaluation."](https://arxiv.org/abs/2602.10715) *arXiv:2602.10715*.
+
+</details>
 
 ---
 
-<p align="center">
-  <em>"Memory is the diary that we all carry about with us."</em> &mdash; Oscar Wilde
-</p>
+<div align="center">
 
-<p align="center">
-  <strong>This project transforms that diary into a computational system that learns, consolidates, and gracefully forgets &mdash; just like we do.</strong>
-</p>
+*"Memory is the diary that we all carry about with us."* &mdash; Oscar Wilde
+
+**CML transforms that diary into a computational system that learns, consolidates, and gracefully forgets &mdash; just like we do.**
+
+<br/>
+
+![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-A42E2B?style=for-the-badge&logo=gnu&logoColor=white)
+
+</div>
