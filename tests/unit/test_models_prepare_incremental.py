@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -25,7 +26,7 @@ class _DummyLLM:
         return [(f"{task}:{label}:a{i}", f"{task}:{label}:b{i}") for i in range(n)]
 
 
-def _full_single_df(task_labels: dict[str, list[str]], *, target: int = 1) -> pd.DataFrame:
+def _full_single_df(task_labels: dict[str, list[str]], *, target: int = 1) -> Any:
     rows = []
     for task, labels in task_labels.items():
         for label in labels:
@@ -41,7 +42,7 @@ def _full_single_df(task_labels: dict[str, list[str]], *, target: int = 1) -> pd
     return pd.DataFrame(rows)
 
 
-def _full_pair_df(task_labels: dict[str, list[str]], *, target: int = 1) -> pd.DataFrame:
+def _full_pair_df(task_labels: dict[str, list[str]], *, target: int = 1) -> Any:
     rows = []
     for task, labels in task_labels.items():
         for label in labels:
