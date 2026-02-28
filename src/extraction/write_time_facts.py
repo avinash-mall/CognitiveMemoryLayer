@@ -230,7 +230,7 @@ class WriteTimeFactExtractor:
                         predicate="role",
                         value=" ".join(t.text for t in token.subtree),
                         confidence_boost=0.78,
-                )
+                    )
                 return
 
     @staticmethod
