@@ -127,8 +127,8 @@ class ClaudeMemoryAssistant:
                 model=self.model,
                 max_tokens=4096,
                 system=self.system,
-                tools=MEMORY_TOOLS,
-                messages=self.messages,
+                tools=cast("Any", MEMORY_TOOLS),
+                messages=cast("Any", self.messages),
             )
             if resp.stop_reason == "tool_use":
                 self.messages.append({"role": "assistant", "content": resp.content})

@@ -30,6 +30,7 @@ except ImportError:
     pass
 
 from cml import AsyncCognitiveMemoryLayer
+from cml.models import MemoryType
 
 # Maximum number of concurrent write requests to the server
 # This prevents overwhelming the API and database with too many simultaneous connections
@@ -92,7 +93,7 @@ async def ingest_chunk(
             result = await memory.write(
                 chunk,
                 session_id=session_id,
-                memory_type="semantic_fact",
+                memory_type=MemoryType.SEMANTIC_FACT,
                 context_tags=["bulk-ingestion", "document"],
             )
             return result
