@@ -28,7 +28,7 @@ import pandas as pd
 try:
     import httpx
 except Exception:  # pragma: no cover - optional dependency
-    httpx = None
+    httpx = None  # type: ignore[assignment]
 
 try:
     from tqdm.auto import tqdm as _tqdm
@@ -200,6 +200,23 @@ def _norm_key(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
+# Surrogate code points (U+D800-U+DFFF) are invalid in UTF-8 and break pandas/pyarrow.
+def _sanitize_unicode(s: str) -> str:
+    return s.encode("utf-8", errors="replace").decode("utf-8")
+
+
+def _sanitize_row_dicts(rows: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for row in rows:
+        out.append(
+            {
+                k: _sanitize_unicode(v) if isinstance(v, str) else v
+                for k, v in row.items()
+            }
+        )
+    return out
+
+
 def _sample_df(df: pd.DataFrame, limit: int, seed: int) -> pd.DataFrame:
     if len(df) <= limit:
         return df.copy()
@@ -221,7 +238,7 @@ def _resolve_class_name(value: object, names: list[str]) -> str:
     if not names:
         return _clean(value, 80)
     try:
-        idx = int(value)
+        idx = int(value)  # type: ignore[call-overload]
     except Exception:
         return _clean(value, 80)
     if 0 <= idx < len(names):
@@ -416,7 +433,7 @@ class _HFRegistry:
                 )
             self.status[name]["loaded"] = True
             try:
-                self.status[name]["rows"] = int(ds.num_rows)  # type: ignore[attr-defined]
+                self.status[name]["rows"] = int(ds.num_rows)
             except Exception:
                 self.status[name]["rows"] = None
             self._cache[name] = ds
@@ -584,13 +601,13 @@ def _iter_dataset_rows(dataset: object, *, limit: int, desc: str):
     total = limit
     if hasattr(dataset, "num_rows"):
         try:
-            total = min(limit, int(dataset.num_rows))  # type: ignore[attr-defined]
+            total = min(limit, int(getattr(dataset, "num_rows", 0)))
         except Exception:
             total = limit
     pbar = _progress(total=total, desc=desc, unit="row")
     count = 0
     try:
-        for row in dataset:  # type: ignore[operator]
+        for row in dataset:  # type: ignore[attr-defined]
             if count >= limit:
                 break
             yield row
@@ -981,7 +998,7 @@ def _nli_label_name(raw_label: object, label_names: list[str]) -> str:
             if "contradiction" in name or "conflict" in name:
                 return "contradiction"
     try:
-        idx = int(raw_label)
+        idx = int(raw_label)  # type: ignore[call-overload]
     except Exception:
         text = _clean(raw_label, 80).lower()
         if "entailment" in text:
@@ -1889,7 +1906,7 @@ def main() -> int:
                 llm=llm,
                 existing_df=router_existing_df,
             )
-            router_df = pd.DataFrame(router_rows)
+            router_df = pd.DataFrame(_sanitize_row_dicts(router_rows))
             if router_df.empty:
                 print("Router dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
@@ -1914,7 +1931,7 @@ def main() -> int:
                 llm=llm,
                 existing_df=extractor_existing_df,
             )
-            extractor_df = pd.DataFrame(extractor_rows)
+            extractor_df = pd.DataFrame(_sanitize_row_dicts(extractor_rows))
             if extractor_df.empty:
                 print("Extractor dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
@@ -1940,7 +1957,7 @@ def main() -> int:
                 llm=llm,
                 existing_df=pair_existing_df,
             )
-            pair_df = pd.DataFrame(pair_rows)
+            pair_df = pd.DataFrame(_sanitize_row_dicts(pair_rows))
             if pair_df.empty:
                 print("Pair dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
