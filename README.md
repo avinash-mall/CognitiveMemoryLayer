@@ -11,7 +11,7 @@
 <p align="center">
   <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket" alt="Quick Start"></a>
   <a href="./ProjectPlan/UsageDocumentation.md"><img src="https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook" alt="Documentation"></a>
-  <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-704-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="./tests/README.md"><img src="https://img.shields.io/badge/Tests-761-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
   <img src="https://img.shields.io/badge/version-1.3.6-blue?style=for-the-badge" alt="Version">
 </p>
 
@@ -785,9 +785,7 @@ flowchart LR
 
 ---
 
----
-
-## Quick start
+## Quick Start
 
 ### 1. Install
 
@@ -842,22 +840,22 @@ Notes:
 ### 6. Smoke test
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/health"
+curl -X GET "[REDACTED]/api/v1/health"
 ```
 
 ### API examples (write, read, turn)
 
 ```bash
 # Write (content max 100,000 characters)
-curl -X POST http://localhost:8000/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST [REDACTED]/api/v1/memory/write -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"content": "User prefers vegetarian food and lives in Paris."}'
 
 # Read
-curl -X POST http://localhost:8000/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST [REDACTED]/api/v1/memory/read -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"query": "dietary preferences", "format": "packet"}'
 
 # Seamless turn (retrieve + store in one call)
-curl -X POST http://localhost:8000/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
+curl -X POST [REDACTED]/api/v1/memory/turn -H "Content-Type: application/json" -H "X-API-Key: $AUTH__API_KEY" -H "X-Tenant-ID: demo" \
   -d '{"user_message": "What do I like to eat?", "session_id": "session-001"}'
 ```
 
@@ -928,7 +926,7 @@ pip install cognitive-memory-layer
 
 ```python
 from cml import CognitiveMemoryLayer
-memory = CognitiveMemoryLayer(base_url="http://localhost:8000", api_key="your-key")
+memory = CognitiveMemoryLayer(base_url="[REDACTED]", api_key="your-key")
 memory.write(content="I never eat shellfish because I'm allergic.", tenant_id="demo")
 response = memory.read(query="What should I avoid ordering?", tenant_id="demo")
 turn = memory.turn(user_message="Recommend a restaurant", tenant_id="demo")
@@ -940,7 +938,7 @@ for memory_item in memory.read_stream(query="Tell me everything about the user")
 
 Sync, async, and embedded (SQLite) modes. See [packages/py-cml/docs](packages/py-cml/docs/).
 
-**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `http://localhost:8000/docs` | Dashboard: `http://localhost:8000/dashboard` (requires `AUTH__ADMIN_API_KEY`)
+**API & Dashboard:** [UsageDocumentation](ProjectPlan/UsageDocumentation.md) | Interactive: `[REDACTED]/docs` | Dashboard: `[REDACTED]/dashboard` (requires `AUTH__ADMIN_API_KEY`)
 
 **Project structure:** `src/` (engine), `packages/py-cml/` (SDK), `tests/`, `evaluation/`, `examples/`. See [CONTRIBUTING](CONTRIBUTING.md).
 
