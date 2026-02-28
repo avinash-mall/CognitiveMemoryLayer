@@ -926,21 +926,25 @@ class TestPacketBuilderConstraints:
         assert "dairy" in ctx
 
     def test_markdown_starts_with_active_constraints_and_filters_low_relevance_episodes(self):
-        """Packet markdown starts with Active Constraints; episodes with relevance <= threshold omitted (BUG-02: default 0.5)."""
+        """Packet markdown starts with constraints section; episodes with relevance <= threshold omitted (BUG-02: default 0.5)."""
         builder = MemoryPacketBuilder()
         memories = [
-            _make_retrieved("User must follow budget.", MemoryType.CONSTRAINT, relevance=0.9),
+            _make_retrieved(
+                "User must follow budget.",
+                MemoryType.CONSTRAINT,
+                relevance=0.9,
+                metadata={"constraints": [{"constraint_type": "policy"}]},
+            ),
             _make_retrieved("Low relevance episode.", MemoryType.EPISODIC_EVENT, relevance=0.3),
             _make_retrieved("Another low one.", MemoryType.EPISODIC_EVENT, relevance=0.2),
             _make_retrieved("Relevant episode.", MemoryType.EPISODIC_EVENT, relevance=0.6),
         ]
         packet = builder.build(memories, "query")
         ctx = builder.to_llm_context(packet, max_tokens=1000, format="markdown")
-        assert "Active Constraints" in ctx
+        assert "Constraints" in ctx
         assert "Must Follow" in ctx
         assert "budget" in ctx
-        assert "[!IMPORTANT]" in ctx
-        # Episodes with relevance > threshold (default 0.5) appear in Recent Context
+        assert "Earlier you said" in ctx
         assert "Relevant episode" in ctx
         assert "Low relevance episode" not in ctx
         assert "Another low one" not in ctx
@@ -950,8 +954,18 @@ class TestPacketBuilderConstraints:
         present and not truncated; truncation happens in facts/preferences first."""
         builder = MemoryPacketBuilder()
         memories = [
-            _make_retrieved("User must avoid shellfish.", MemoryType.CONSTRAINT, relevance=0.9),
-            _make_retrieved("User follows a budget.", MemoryType.CONSTRAINT, relevance=0.8),
+            _make_retrieved(
+                "User must avoid shellfish.",
+                MemoryType.CONSTRAINT,
+                relevance=0.9,
+                metadata={"constraints": [{"constraint_type": "policy"}]},
+            ),
+            _make_retrieved(
+                "User follows a budget.",
+                MemoryType.CONSTRAINT,
+                relevance=0.8,
+                metadata={"constraints": [{"constraint_type": "value"}]},
+            ),
         ]
         for i in range(10):
             memories.append(
@@ -971,26 +985,29 @@ class TestPacketBuilderConstraints:
             )
         packet = builder.build(memories, "query")
         ctx = builder.to_llm_context(packet, max_tokens=500, format="markdown")
-        # Constraints section must be present and contain both constraints
-        assert "Active Constraints" in ctx
+        assert "Constraints" in ctx
         assert "shellfish" in ctx
         assert "budget" in ctx
         assert "Must Follow" in ctx
-        # Truncation should happen in facts/preferences, not constraints
         assert ctx.find("shellfish") < ctx.find("... (truncated)") or "... (truncated)" not in ctx
 
     def test_markdown_section_order_constraints_first(self):
-        """Markdown output has Active Constraints before Recent Context and Known Facts."""
+        """Markdown output has constraints before Recent Events and Known Facts."""
         builder = MemoryPacketBuilder()
         memories = [
-            _make_retrieved("User must avoid gluten.", MemoryType.CONSTRAINT, relevance=0.9),
+            _make_retrieved(
+                "User must avoid gluten.",
+                MemoryType.CONSTRAINT,
+                relevance=0.9,
+                metadata={"constraints": [{"constraint_type": "policy"}]},
+            ),
             _make_retrieved("A known fact.", MemoryType.SEMANTIC_FACT, relevance=0.8),
             _make_retrieved("Recent episode.", MemoryType.EPISODIC_EVENT, relevance=0.7),
         ]
         packet = builder.build(memories, "query")
         ctx = builder.to_llm_context(packet, max_tokens=500, format="markdown")
-        constraints_pos = ctx.find("Active Constraints")
-        recent_pos = ctx.find("Recent Context")
+        constraints_pos = ctx.find("Constraints")
+        recent_pos = ctx.find("Recent Events")
         facts_pos = ctx.find("Known Facts")
         assert constraints_pos >= 0
         if recent_pos >= 0:
@@ -1002,8 +1019,18 @@ class TestPacketBuilderConstraints:
         """With tight token budget, constraints appear in full; facts get less space."""
         builder = MemoryPacketBuilder()
         memories = [
-            _make_retrieved("User must avoid shellfish.", MemoryType.CONSTRAINT, relevance=0.9),
-            _make_retrieved("User follows budget.", MemoryType.CONSTRAINT, relevance=0.8),
+            _make_retrieved(
+                "User must avoid shellfish.",
+                MemoryType.CONSTRAINT,
+                relevance=0.9,
+                metadata={"constraints": [{"constraint_type": "policy"}]},
+            ),
+            _make_retrieved(
+                "User follows budget.",
+                MemoryType.CONSTRAINT,
+                relevance=0.8,
+                metadata={"constraints": [{"constraint_type": "value"}]},
+            ),
         ]
         for i in range(20):
             memories.append(
@@ -1016,7 +1043,7 @@ class TestPacketBuilderConstraints:
         packet = builder.build(memories, "query")
         ctx_small = builder.to_llm_context(packet, max_tokens=100, format="markdown")
         ctx_large = builder.to_llm_context(packet, max_tokens=500, format="markdown")
-        assert "Active Constraints" in ctx_small
+        assert "Constraints" in ctx_small
         assert "shellfish" in ctx_small
         assert "budget" in ctx_small
         assert "Must Follow" in ctx_small
