@@ -19,7 +19,7 @@ For a step-by-step runbook (Ollama setup, env vars, DB setup), see [ProjectPlan/
 
 1. **CML API** running (e.g. via Docker; see main project README).
 2. **Embedding** (for CML): project root `.env` — `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS`. If using Ollama embeddings, pull the model and set dimensions; then drop DBs and re-run migrations if changed.
-3. **QA model**: Phase B uses the **LLM** from project root `.env` (`LLM_EVAL__PROVIDER`, `LLM_EVAL__MODEL`, `LLM_EVAL__BASE_URL`, `LLM_EVAL__API_KEY`). Same as [.env.example lines 45–49](../.env.example) — e.g. `openai`, `openai_compatible`, or `ollama` (with `LLM_EVAL__BASE_URL=http://localhost:11434/v1`).
+3. **QA model**: Phase B uses the **LLM** from project root `.env` (`LLM_EVAL__PROVIDER`, `LLM_EVAL__MODEL`, `LLM_EVAL__BASE_URL`, `LLM_EVAL__API_KEY`). Same as [.env.example lines 45–49](../.env.example) — e.g. `openai`, `[REDACTED]`, or `ollama` (with `LLM_EVAL__BASE_URL=[REDACTED]`).
 4. **Python deps**: `requests`, `tqdm`, `openai`; for LLM-as-judge: set OPENAI_API_KEY, or provide an OpenAI-compatible endpoint via OPENAI_BASE_URL / LLM_EVAL__BASE_URL.
 
 ## Configuration
@@ -38,11 +38,11 @@ CML uses [semchunk](https://github.com/isaacus-dev/semchunk) with a Hugging Face
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CML_BASE_URL` | `http://localhost:8000` | CML API base URL |
-| `CML_API_KEY` | `test-key` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
-| `LLM_EVAL__PROVIDER` | `openai` | LLM provider for QA: `openai` \| `openai_compatible` \| `ollama` \| `gemini` \| `claude` (see project root [.env.example](../.env.example) lines 45–49) |
-| `LLM_EVAL__MODEL` | `gpt-4o-mini` | Model for QA (e.g. `gpt-4o-mini`, `gpt-oss:20b` for Ollama) |
-| `LLM_EVAL__BASE_URL` | — | OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1` for Ollama) |
+| `CML_BASE_URL` | `[REDACTED]` | CML API base URL |
+| `CML_API_KEY` | `[REDACTED]` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
+| `LLM_EVAL__PROVIDER` | `openai` | LLM provider for QA: `openai` \| `[REDACTED]` \| `ollama` \| `gemini` \| `claude` (see project root [.env.example](../.env.example) lines 45–49) |
+| `LLM_EVAL__MODEL` | `gpt-4o-mini` | Model for QA (e.g. `gpt-4o-mini`, `[REDACTED]` for Ollama) |
+| `LLM_EVAL__BASE_URL` | — | OpenAI-compatible endpoint (e.g. `[REDACTED]` for Ollama) |
 | `LLM_EVAL__API_KEY` | — | API key (optional for Ollama; server may use `OPENAI_API_KEY`) |
 | `OPENAI_API_KEY` | — | Required for LLM-as-judge; also used for `LLM_EVAL__API_KEY` when not set |
 
@@ -135,7 +135,7 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 python evaluation/scripts/generate_locomo_report.py --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+gpt-4o-mini"
 ```
 
-Use `--method` to match your QA model (same as `LLM_EVAL__MODEL` from .env (or fallback `LLM_INTERNAL__MODEL`), e.g. `CML+gpt-4o-mini` or `CML+gpt-oss:20b`).
+Use `--method` to match your QA model (same as `LLM_EVAL__MODEL` from .env (or fallback `LLM_INTERNAL__MODEL`), e.g. `CML+gpt-4o-mini` or `CML+[REDACTED]`).
 
 ## Level-2 Cognitive Memory
 
@@ -170,6 +170,34 @@ python evaluation/locomo_plus/scripts/run_judge.py --model gpt-4o-mini
 ```
 
 Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/locomo_plus_judged.json`. Set `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`) in `evaluation/locomo_plus/scripts/env.local.sh` or the environment.
+
+---
+
+## CML vs Other Methods (Comparison)
+
+Latest CML evaluation results compared with baselines from the **Locomo-Plus paper** (arXiv:2602.10715, Table 1). Same evaluation protocol: LLM-as-judge, constraint consistency, no task disclosure.
+
+### Latest CML Run
+
+| Metric | Value |
+|--------|--------|
+| **LoCoMo (factual) average** | **31.49%** (single-hop 56.06%, multi-hop 46.10%, temporal 5.92%, commonsense 40.62%, adversarial 8.74%) |
+| **LoCoMo-Plus (Cognitive)** | **21.45%** |
+| **Gap** (factual − cognitive) | **10.04%** |
+| Total samples | 2,387 |
+
+### Key Takeaways
+
+1. **CML's Cognitive score (21.45%)** is above Mem0 (15.80%), SeCom (14.90%), and most RAG baselines.
+2. **CML's gap (10.04%)** is smaller than most baselines (roughly 18–45% in the paper), meaning CML's relative drop from factual to cognitive is smaller.
+3. Paper baselines use GPT-4o / Gemini; CML uses a smaller local QA model, explaining lower absolute factual scores.
+
+Run `python evaluation/scripts/compare_locomo_scores.py` for the full comparison table.
+
+### Reference
+
+- **Locomo-Plus paper:** [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)
+- **Locomo-Plus repo:** [github.com/xjtuleeyf/Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 
 ---
 
