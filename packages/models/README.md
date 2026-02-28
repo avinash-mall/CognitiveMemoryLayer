@@ -83,6 +83,12 @@ LLM_EVAL__BASE_URL=http://localhost:11434/v1
 - `manifest.json`
 
 Per-epoch training logs are printed to console and persisted in epoch stats files.
+Training now supports eval-driven early stopping (`early_stopping_*`), optional
+word+char TF-IDF fusion (`use_char_ngrams`), and task-balancing sample weights
+(`task_weight_power`, `label_weight_power`) for better macro-F1 on smaller tasks.
+Pair-family inputs also include lexical interaction features to improve
+`constraint_rerank`/`scope_match` discrimination.
+Family-specific tuning can be configured with `[train.family_overrides.<family>]`.
 
 ## Usage
 

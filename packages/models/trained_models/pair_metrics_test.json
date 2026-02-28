@@ -3,10 +3,10 @@
   "split": "test",
   "overall": {
     "rows": 4000,
-    "accuracy": 0.5855,
-    "macro_f1": 0.5842780203324183,
-    "weighted_f1": 0.5842780203324183,
-    "micro_f1": 0.5855,
+    "accuracy": 0.649,
+    "macro_f1": 0.6478679757128953,
+    "weighted_f1": 0.6478679757128952,
+    "micro_f1": 0.649,
     "labels": [
       "conflict_detection::conflict",
       "conflict_detection::no_conflict",
@@ -19,18 +19,8 @@
     ],
     "confusion_matrix": [
       [
-        316,
-        179,
-        0,
-        0,
-        0,
-        5,
-        0,
-        0
-      ],
-      [
-        189,
-        311,
+        310,
+        190,
         0,
         0,
         0,
@@ -39,10 +29,10 @@
         0
       ],
       [
+        130,
+        370,
         0,
         0,
-        188,
-        312,
         0,
         0,
         0,
@@ -51,8 +41,18 @@
       [
         0,
         0,
-        255,
-        245,
+        265,
+        235,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        230,
+        270,
         0,
         0,
         0,
@@ -63,20 +63,20 @@
         0,
         0,
         0,
-        358,
-        142,
+        389,
+        111,
         0,
         0
       ],
       [
-        2,
         0,
         0,
         0,
-        210,
-        287,
         0,
-        1
+        185,
+        315,
+        0,
+        0
       ],
       [
         0,
@@ -85,71 +85,63 @@
         0,
         0,
         0,
-        346,
-        154
+        375,
+        125
       ],
       [
-        2,
         0,
         0,
         0,
         0,
-        3,
-        204,
-        291
+        0,
+        0,
+        198,
+        302
       ]
     ]
   },
   "per_task": {
     "conflict_detection": {
       "rows": 1000,
-      "accuracy": 0.627,
-      "macro_f1": 0.4190461832252877,
-      "weighted_f1": 0.6285692748379316,
-      "micro_f1": 0.627,
+      "accuracy": 0.68,
+      "macro_f1": 0.6788438378161381,
+      "weighted_f1": 0.678843837816138,
+      "micro_f1": 0.68,
       "labels": [
         "conflict",
-        "no_conflict",
-        "__wrong_task__"
+        "no_conflict"
       ],
       "confusion_matrix": [
         [
-          316,
-          179,
-          5
+          310,
+          190
         ],
         [
-          189,
-          311,
-          0
-        ],
-        [
-          0,
-          0,
-          0
+          130,
+          370
         ]
       ],
-      "wrong_task_predictions": 5,
-      "wrong_task_rate": 0.005
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
     },
     "constraint_rerank": {
       "rows": 1000,
-      "accuracy": 0.433,
-      "macro_f1": 0.4311518122379611,
-      "weighted_f1": 0.4311518122379611,
-      "micro_f1": 0.433,
+      "accuracy": 0.535,
+      "macro_f1": 0.5349883747093678,
+      "weighted_f1": 0.5349883747093677,
+      "micro_f1": 0.535,
       "labels": [
         "not_relevant",
         "relevant"
       ],
       "confusion_matrix": [
         [
-          188,
-          312
+          265,
+          235
         ],
         [
-          255,
-          245
+          230,
+          270
         ]
       ],
       "wrong_task_predictions": 0,
@@ -157,65 +149,49 @@
     },
     "scope_match": {
       "rows": 1000,
-      "accuracy": 0.645,
-      "macro_f1": 0.42942688700480697,
-      "weighted_f1": 0.6441403305072103,
-      "micro_f1": 0.645,
+      "accuracy": 0.704,
+      "macro_f1": 0.7023701791007557,
+      "weighted_f1": 0.7023701791007556,
+      "micro_f1": 0.704,
       "labels": [
         "match",
-        "no_match",
-        "__wrong_task__"
+        "no_match"
       ],
       "confusion_matrix": [
         [
-          358,
-          142,
-          0
+          389,
+          111
         ],
         [
-          210,
-          287,
-          3
-        ],
-        [
-          0,
-          0,
-          0
+          185,
+          315
         ]
       ],
-      "wrong_task_predictions": 3,
-      "wrong_task_rate": 0.003
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
     },
     "supersession": {
       "rows": 1000,
-      "accuracy": 0.637,
-      "macro_f1": 0.424973544973545,
-      "weighted_f1": 0.6374603174603175,
-      "micro_f1": 0.637,
+      "accuracy": 0.677,
+      "macro_f1": 0.6752695112253198,
+      "weighted_f1": 0.6752695112253198,
+      "micro_f1": 0.677,
       "labels": [
         "no_supersedes",
-        "supersedes",
-        "__wrong_task__"
+        "supersedes"
       ],
       "confusion_matrix": [
         [
-          346,
-          154,
-          0
+          375,
+          125
         ],
         [
-          204,
-          291,
-          5
-        ],
-        [
-          0,
-          0,
-          0
+          198,
+          302
         ]
       ],
-      "wrong_task_predictions": 5,
-      "wrong_task_rate": 0.005
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
     }
   }
 }
