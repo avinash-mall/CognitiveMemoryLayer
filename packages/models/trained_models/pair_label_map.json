@@ -1,0 +1,22 @@
+{
+  "label_to_id": {
+    "conflict_detection::conflict": 0,
+    "conflict_detection::no_conflict": 1,
+    "constraint_rerank::not_relevant": 2,
+    "constraint_rerank::relevant": 3,
+    "scope_match::match": 4,
+    "scope_match::no_match": 5,
+    "supersession::no_supersedes": 6,
+    "supersession::supersedes": 7
+  },
+  "id_to_label": {
+    "0": "conflict_detection::conflict",
+    "1": "conflict_detection::no_conflict",
+    "2": "constraint_rerank::not_relevant",
+    "3": "constraint_rerank::relevant",
+    "4": "scope_match::match",
+    "5": "scope_match::no_match",
+    "6": "supersession::no_supersedes",
+    "7": "supersession::supersedes"
+  }
+}

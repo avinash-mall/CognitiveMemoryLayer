@@ -38,7 +38,7 @@ If model artifacts are not present, runtime uses safe non-LLM defaults for those
 
 1. dataset loading (auto-download via Hugging Face IDs in config)
 2. merge with existing local prepared data when available
-3. missing-only balancing to target counts (default `10000` per task-label)
+3. missing-only balancing to target counts (controlled by `samples_per_task_label` in config; other limits are derived from it)
 4. LLM-only synthetic backfill for deficits
 5. stratified split output (`train`, `test`, `eval`)
 
@@ -96,7 +96,8 @@ python -m packages.models.scripts.train
 Common overrides:
 
 ```bash
-python -m packages.models.scripts.prepare --target-per-task-label 10000 --llm-temperature 1.35
+python -m packages.models.scripts.prepare --samples-per-task-label 100
+python -m packages.models.scripts.prepare --samples-per-task-label 100 --llm-temperature 1.35
 python -m packages.models.scripts.prepare --force-full
 python -m packages.models.scripts.train --max-iter 25 --max-features 250000
 ```

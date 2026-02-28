@@ -37,15 +37,15 @@ train_ratio = 0.80
 test_ratio = 0.10
 eval_ratio = 0.10
 
-# Maximum rows sampled per source dataset (upper bound before balancing)
-max_rows_per_source = 60000
+# Single knob for dataset size: target number of samples per (task, label).
+# target_per_task_label, max_per_task_label, and max_rows_per_source are derived
+# from this in prepare.py when not set explicitly below.
+samples_per_task_label = 5000
 
-# Minimum rows required per (task,label). Existing rows are kept and
-# LLM synthesis fills any gap up to at least this count.
-target_per_task_label = 10000
-
-# Hard cap per (task,label); must be >= target_per_task_label.
-max_per_task_label = 50000
+# Optional overrides (derived from samples_per_task_label when unset):
+# max_rows_per_source = 6000
+# target_per_task_label = 100
+# max_per_task_label = 5000
 
 # If true, required remote datasets are auto-downloaded when missing
 # (through Hugging Face datasets loader).
