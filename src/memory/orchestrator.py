@@ -1,6 +1,7 @@
 """Memory orchestrator: coordinates all memory operations."""
 
 import asyncio
+import inspect
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -401,7 +402,8 @@ class MemoryOrchestrator:
         """Deactivate previous episodic constraints by fact key (supersession)."""
         if not wpc.constraint_extraction or not chunks:
             return
-        if not hasattr(self.hippocampal, "deactivate_constraints_by_key"):
+        deactivate_constraints = getattr(self.hippocampal, "deactivate_constraints_by_key", None)
+        if not callable(deactivate_constraints):
             return
         from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
         from ..memory.neocortical.schemas import FactCategory
@@ -421,7 +423,9 @@ class MemoryOrchestrator:
                     fact_keys.add(ConstraintExtractor.constraint_fact_key(c))
                     new_constraints.append(c)
         for fk in fact_keys:
-            await self.hippocampal.deactivate_constraints_by_key(tenant_id, fk)
+            maybe = deactivate_constraints(tenant_id, fk)
+            if inspect.isawaitable(maybe):
+                await maybe
         # Check existing facts by category: constraints of the same type can supersede
         # each other (e.g. two goals); we fetch current facts per category to compare.
         cat_map = {
@@ -458,11 +462,13 @@ class MemoryOrchestrator:
                         await self.neocortical.facts.invalidate_fact(
                             tenant_id, old.key, reason="superseded"
                         )
-                        await self.hippocampal.deactivate_constraints_by_key(
+                        maybe = deactivate_constraints(
                             tenant_id,
                             old.key,
                             superseded_by_key=new_fact_key,
                         )
+                        if inspect.isawaitable(maybe):
+                            await maybe
             except Exception as e:
                 logger.warning(
                     "supersession_check_failed",

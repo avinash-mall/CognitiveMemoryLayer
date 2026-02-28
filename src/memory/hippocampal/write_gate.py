@@ -71,6 +71,7 @@ class WriteGate:
     ) -> None:
         self.config = config or WriteGateConfig()
         self._known_facts = known_facts_cache or set()
+        self._pii_patterns = [re.compile(p, re.I) for p in self.config.pii_patterns]
         self._secret_patterns = [re.compile(p, re.I) for p in self.config.secret_patterns]
         self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
@@ -186,13 +187,35 @@ class WriteGate:
         return any(pattern.search(text) for pattern in self._secret_patterns)
 
     def _predict_pii(self, text: str) -> bool:
-        if not text.strip() or not self.modelpack.available:
+        if not text.strip():
+            return False
+        if any(pattern.search(text) for pattern in self._pii_patterns):
+            return True
+        if not self.modelpack.available:
             return False
         pred = self.modelpack.predict_single("pii_presence", text)
         if pred is None or not pred.label:
             return False
         label = pred.label.strip().lower()
-        return label in {"pii", "present", "contains_pii", "yes", "true"} and pred.confidence >= 0.5
+        if label not in {"pii", "present", "contains_pii", "yes", "true"}:
+            return False
+        if pred.confidence < 0.85:
+            return False
+        # Guard against false positives from incompatible/noisy modelpack artifacts.
+        pii_cues = (
+            "@",
+            "email",
+            "phone",
+            "ssn",
+            "passport",
+            "license",
+            "address",
+            "credit",
+            "card",
+            "contact",
+        )
+        has_digit_burst = bool(re.search(r"\d{5,}", text))
+        return has_digit_burst or any(cue in text.lower() for cue in pii_cues)
 
     def _predict_importance(
         self,
@@ -200,6 +223,9 @@ class WriteGate:
         context: dict[str, Any] | None = None,
         effective_chunk_type: ChunkType | None = None,
     ) -> float:
+        base_importance = max(0.0, min(1.0, chunk.salience))
+        if base_importance < 0.25:
+            return base_importance
         if self.modelpack.available and chunk.text.strip():
             pred = self.modelpack.predict_single("importance_bin", chunk.text)
             if pred and pred.label:
@@ -211,11 +237,14 @@ class WriteGate:
                     "critical": 0.9,
                 }
                 label = pred.label.strip().lower()
-                if label in mapping:
-                    return mapping[label]
+                if label in mapping and pred.confidence >= 0.8:
+                    predicted_importance = mapping[label]
+                    # Ignore modelpack values that diverge too much from current salience.
+                    if abs(predicted_importance - base_importance) <= 0.35:
+                        return predicted_importance
 
         # No heuristic scoring path: use upstream salience directly.
-        return max(0.0, min(1.0, chunk.salience))
+        return base_importance
 
     def _compute_novelty(
         self,
