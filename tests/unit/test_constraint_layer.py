@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -35,6 +36,7 @@ from src.retrieval.packet_builder import MemoryPacketBuilder
 from src.retrieval.planner import RetrievalPlanner, RetrievalSource
 from src.retrieval.query_types import QueryAnalysis, QueryIntent
 from src.retrieval.reranker import MemoryReranker
+from src.utils.modelpack import ModelPackRuntime
 
 # ═══════════════════════════════════════════════════════════════════
 # Helpers
@@ -547,11 +549,14 @@ class TestQueryClassifierConstraintCheck:
     def _constraint_classifier() -> QueryClassifier:
         return QueryClassifier(
             llm_client=None,
-            modelpack=_StubModelPack(
+            modelpack=cast(
+                "ModelPackRuntime",
+                _StubModelPack(
                 single={
                     "query_intent": ("constraint_check", 0.9),
                     "constraint_dimension": ("policy", 0.8),
                 }
+                ),
             ),
         )
 
@@ -590,7 +595,10 @@ class TestQueryClassifierConstraintCheck:
     async def test_non_decision_query_not_flagged(self):
         classifier = QueryClassifier(
             llm_client=None,
-            modelpack=_StubModelPack(single={"query_intent": ("identity_lookup", 0.9)}),
+            modelpack=cast(
+                "ModelPackRuntime",
+                _StubModelPack(single={"query_intent": ("identity_lookup", 0.9)}),
+            ),
         )
         result = await classifier.classify("What is my name?")
         assert result.is_decision_query is False
