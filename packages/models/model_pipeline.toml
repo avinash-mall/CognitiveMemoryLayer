@@ -68,13 +68,70 @@ min_df = 2
 ngram_min = 1
 ngram_max = 2
 
+# Optional character n-gram branch (FeatureUnion with word TF-IDF)
+use_char_ngrams = true
+char_ngram_min = 3
+char_ngram_max = 5
+char_min_df = 2
+char_max_features = 250000
+
 # SGDClassifier settings
 # `max_iter` behaves like epochs for SGD over sparse features.
 max_iter = 25
 alpha = 0.00001
+sgd_average = true
+
+# Eval-driven early stopping (uses eval split during fit)
+use_early_stopping = true
+early_stopping_metric = "eval_task_macro_f1" # one of: eval_task_macro_f1, eval_macro_f1, eval_accuracy
+early_stopping_patience = 4
+early_stopping_min_delta = 0.0001
+
+# Optional task/class sample weighting for mixed-task families.
+# Helpful when one task dominates row counts (e.g. pii_presence/query_domain).
+task_weight_power = 0.5
+label_weight_power = 0.0
+sample_weight_min = 0.2
+sample_weight_max = 5.0
 
 # Prediction batch size for progress/evaluation
 predict_batch_size = 8192
+
+# Per-family overrides for targeted second-pass tuning.
+[train.family_overrides.router]
+max_iter = 35
+min_df = 1
+ngram_max = 3
+alpha = 0.00001
+task_weight_power = 0.60
+label_weight_power = 0.08
+early_stopping_metric = "eval_focus_macro_f1"
+early_stopping_patience = 7
+task_focus_weights = { memory_type = 2.0 }
+focus_task_weights = { memory_type = 1.0 }
+
+[train.family_overrides.extractor]
+max_iter = 30
+min_df = 1
+ngram_max = 2
+alpha = 0.00001
+task_weight_power = 0.50
+label_weight_power = 0.05
+sample_weight_max = 2.5
+early_stopping_metric = "eval_task_macro_f1"
+early_stopping_patience = 5
+task_focus_weights = { fact_type = 1.3 }
+focus_task_weights = { fact_type = 1.0 }
+
+[train.family_overrides.pair]
+max_iter = 30
+use_char_ngrams = false
+ngram_max = 2
+alpha = 0.0001
+task_weight_power = 0.45
+label_weight_power = 0.05
+early_stopping_metric = "eval_task_macro_f1"
+early_stopping_patience = 5
 
 [synthetic_llm]
 # Synthetic generation is LLM-only.

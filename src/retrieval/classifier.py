@@ -1,6 +1,7 @@
 """Query classifier for retrieval strategy selection."""
 
 import json
+import re
 
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
@@ -58,6 +59,12 @@ class QueryClassifier:
         "factual": QueryIntent.GENERAL_QUESTION,
         "tool_query": QueryIntent.GENERAL_QUESTION,
     }
+    _MIN_MODELPACK_INTENT_CONFIDENCE = 0.55
+    _MIN_MODELPACK_DIMENSION_CONFIDENCE = 0.6
+    _DECISION_QUERY_PATTERN = re.compile(
+        r"\b(should|can\s+i|is\s+it\s+ok|okay|allowed|permit|recommend|ought)\b",
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -100,10 +107,15 @@ class QueryClassifier:
 
         self._enrich_with_modelpack(result)
         result.is_decision_query = result.intent == QueryIntent.CONSTRAINT_CHECK
-        if result.constraint_dimensions and result.intent in {
-            QueryIntent.GENERAL_QUESTION,
-            QueryIntent.UNKNOWN,
-        }:
+        if (
+            result.constraint_dimensions
+            and result.intent
+            in {
+                QueryIntent.GENERAL_QUESTION,
+                QueryIntent.UNKNOWN,
+            }
+            and self._is_decision_query_text(query)
+        ):
             result.intent = QueryIntent.CONSTRAINT_CHECK
             result.is_decision_query = True
             result.suggested_sources = self._get_sources_for_intent(QueryIntent.CONSTRAINT_CHECK)
@@ -118,6 +130,8 @@ class QueryClassifier:
 
         intent_pred = self.modelpack.predict_single("query_intent", query)
         if intent_pred is None or not intent_pred.label:
+            return None
+        if intent_pred.confidence < self._MIN_MODELPACK_INTENT_CONFIDENCE:
             return None
         intent = self._intent_from_label(intent_pred.label)
         if intent is None:
@@ -148,7 +162,12 @@ class QueryClassifier:
 
         if not analysis.constraint_dimensions_from_llm:
             dim_pred = self.modelpack.predict_single("constraint_dimension", query)
-            if dim_pred and dim_pred.label and dim_pred.label != "other":
+            if (
+                dim_pred
+                and dim_pred.label
+                and dim_pred.label != "other"
+                and dim_pred.confidence >= self._MIN_MODELPACK_DIMENSION_CONFIDENCE
+            ):
                 dims = analysis.constraint_dimensions
                 if dims is None:
                     analysis.constraint_dimensions = [dim_pred.label]
@@ -231,6 +250,10 @@ class QueryClassifier:
 
     def _extract_entities(self, query: str) -> list[str]:
         return extract_entity_texts(query, max_entities=12)
+
+    @classmethod
+    def _is_decision_query_text(cls, query: str) -> bool:
+        return bool(cls._DECISION_QUERY_PATTERN.search(query))
 
     def _intent_from_label(self, raw_label: str) -> QueryIntent | None:
         label = raw_label.strip().lower()

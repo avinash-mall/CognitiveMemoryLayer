@@ -13,9 +13,13 @@ Configuration:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
+import math
+import re
 import sys
 import tomllib
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -36,7 +40,7 @@ from sklearn.metrics import (
     f1_score,
     log_loss,
 )
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import FeatureUnion, Pipeline
 
 MODELS_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = MODELS_ROOT.parent.parent
@@ -45,6 +49,7 @@ DEFAULT_CONFIG_PATH = MODELS_ROOT / "model_pipeline.toml"
 FAMILY_SINGLE_TEXT = {"router", "extractor"}
 FAMILY_PAIR_TEXT = {"pair"}
 ALL_FAMILIES = ("router", "extractor", "pair")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 
 
 class _NoopProgress:
@@ -72,6 +77,19 @@ def _resolve_path(path_like: str, *, base: Path) -> Path:
     if value.is_absolute():
         return value
     return (base / value).resolve()
+
+
+def _effective_family_train_cfg(train_cfg: dict, family: str) -> dict:
+    effective = dict(train_cfg)
+    family_overrides = effective.pop("family_overrides", {})
+    if not isinstance(family_overrides, dict):
+        return effective
+    family_cfg = family_overrides.get(family, {})
+    if not isinstance(family_cfg, dict):
+        return effective
+    for key, value in family_cfg.items():
+        effective[key] = value
+    return effective
 
 
 def _load_config(path: Path) -> dict:
@@ -107,6 +125,150 @@ def _split_composite(value: str) -> tuple[str, str]:
         return "unknown", value
     a, b = value.split("::", 1)
     return a, b
+
+
+def _as_bool(value: object, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def _ratio_bucket(value: float) -> str:
+    v = max(0.0, min(1.0, value))
+    if v < 0.1:
+        return "0_10"
+    if v < 0.25:
+        return "10_25"
+    if v < 0.5:
+        return "25_50"
+    if v < 0.75:
+        return "50_75"
+    return "75_100"
+
+
+def _pair_feature_tokens(text_a: str, text_b: str) -> list[str]:
+    tokens_a = _tokenize(text_a)
+    tokens_b = _tokenize(text_b)
+    set_a = set(tokens_a)
+    set_b = set(tokens_b)
+
+    overlap = set_a & set_b
+    union_size = max(1, len(set_a | set_b))
+    overlap_size = len(overlap)
+
+    jaccard = overlap_size / union_size
+    cover_a = overlap_size / max(1, len(set_a))
+    cover_b = overlap_size / max(1, len(set_b))
+    len_ratio = min(len(tokens_a), len(tokens_b)) / max(1, max(len(tokens_a), len(tokens_b)))
+
+    nums_a = {tok for tok in set_a if tok.isdigit()}
+    nums_b = {tok for tok in set_b if tok.isdigit()}
+    shared_num = int(bool(nums_a & nums_b))
+    num_conflict = int(bool(nums_a or nums_b) and not shared_num)
+
+    return [
+        f"pair_jaccard_{_ratio_bucket(jaccard)}",
+        f"pair_cover_a_{_ratio_bucket(cover_a)}",
+        f"pair_cover_b_{_ratio_bucket(cover_b)}",
+        f"pair_len_ratio_{_ratio_bucket(len_ratio)}",
+        f"pair_shared_num_{shared_num}",
+        f"pair_num_conflict_{num_conflict}",
+        f"pair_qmark_a_{int('?' in text_a)}",
+        f"pair_qmark_b_{int('?' in text_b)}",
+        f"pair_overlap_gt_3_{int(overlap_size >= 3)}",
+    ]
+
+
+def _task_balanced_macro_f1(y_true: list[str], y_pred: list[str]) -> float:
+    if not y_true:
+        return 0.0
+
+    true_task, true_label = zip(*[_split_composite(v) for v in y_true], strict=False)
+    pred_task, pred_label = zip(*[_split_composite(v) for v in y_pred], strict=False)
+    tasks = sorted(set(true_task))
+
+    scores: list[float] = []
+    for task in tasks:
+        idx = [i for i, t in enumerate(true_task) if t == task]
+        task_true = [true_label[i] for i in idx]
+        task_pred: list[str] = []
+        for i in idx:
+            if pred_task[i] == task:
+                task_pred.append(pred_label[i])
+            else:
+                task_pred.append("__wrong_task__")
+        task_labels = sorted(set(task_true))
+        task_macro = float(
+            f1_score(task_true, task_pred, labels=task_labels, average="macro", zero_division=0)
+        )
+        scores.append(task_macro)
+
+    if not scores:
+        return 0.0
+    return float(sum(scores) / len(scores))
+
+
+def _build_sample_weights(train_y: list[str], train_cfg: dict) -> list[float] | None:
+    task_weight_power = max(0.0, float(train_cfg.get("task_weight_power", 0.5)))
+    label_weight_power = max(0.0, float(train_cfg.get("label_weight_power", 0.0)))
+    if task_weight_power <= 0.0 and label_weight_power <= 0.0:
+        return None
+
+    task_focus_weights_raw = train_cfg.get("task_focus_weights", {})
+    task_focus_weights: dict[str, float] = {}
+    if isinstance(task_focus_weights_raw, dict):
+        for key, value in task_focus_weights_raw.items():
+            task_name = str(key).strip()
+            if not task_name:
+                continue
+            try:
+                parsed = float(value)
+            except Exception:
+                continue
+            if parsed > 0:
+                task_focus_weights[task_name] = parsed
+
+    sample_weight_min = max(0.01, float(train_cfg.get("sample_weight_min", 0.2)))
+    sample_weight_max = max(sample_weight_min, float(train_cfg.get("sample_weight_max", 5.0)))
+
+    task_counts: Counter[str] = Counter()
+    label_counts: Counter[str] = Counter(train_y)
+    task_for_label: list[str] = []
+    for composite in train_y:
+        task, _ = _split_composite(composite)
+        task_for_label.append(task)
+        task_counts[task] += 1
+
+    if not task_counts:
+        return None
+
+    raw_weights: list[float] = []
+    for composite, task in zip(train_y, task_for_label, strict=False):
+        task_count = max(1, task_counts.get(task, 1))
+        label_count = max(1, label_counts.get(composite, 1))
+        task_term = math.pow(task_count, -task_weight_power) if task_weight_power > 0 else 1.0
+        label_term = math.pow(label_count, -label_weight_power) if label_weight_power > 0 else 1.0
+        focus_term = task_focus_weights.get(task, 1.0)
+        raw_weights.append(task_term * label_term * focus_term)
+
+    mean_weight = sum(raw_weights) / max(1, len(raw_weights))
+    if mean_weight <= 0:
+        return None
+
+    normalized = [w / mean_weight for w in raw_weights]
+    return [float(min(sample_weight_max, max(sample_weight_min, w))) for w in normalized]
 
 
 def _load_split(prepared_dir: Path, family: str, split_name: str) -> pd.DataFrame:
@@ -150,10 +312,11 @@ def _load_split(prepared_dir: Path, family: str, split_name: str) -> pd.DataFram
 def _encode_features(df: pd.DataFrame, family: str) -> list[str]:
     if family in FAMILY_SINGLE_TEXT:
         return [f"task={t} [text] {x}" for t, x in zip(df["task"], df["text"], strict=False)]
-    return [
-        f"task={t} [a] {a} [b] {b}"
-        for t, a, b in zip(df["task"], df["text_a"], df["text_b"], strict=False)
-    ]
+    encoded: list[str] = []
+    for t, a, b in zip(df["task"], df["text_a"], df["text_b"], strict=False):
+        pair_feats = " ".join(_pair_feature_tokens(a, b))
+        encoded.append(f"task={t} [a] {a} [b] {b} [pair] {pair_feats}")
+    return encoded
 
 
 def _encode_targets(df: pd.DataFrame) -> list[str]:
@@ -169,8 +332,14 @@ def _build_pipeline(train_cfg: dict) -> Pipeline:
     ngram_max = max(ngram_min, int(train_cfg.get("ngram_max", 2)))
     alpha = max(1e-8, float(train_cfg["alpha"]))
     seed = int(train_cfg["seed"])
+    use_char_ngrams = _as_bool(train_cfg.get("use_char_ngrams", True), default=True)
+    char_ngram_min = max(2, int(train_cfg.get("char_ngram_min", 3)))
+    char_ngram_max = max(char_ngram_min, int(train_cfg.get("char_ngram_max", 5)))
+    char_min_df = max(1, int(train_cfg.get("char_min_df", 2)))
+    char_max_features = max(1000, int(train_cfg.get("char_max_features", max_features)))
+    sgd_average = _as_bool(train_cfg.get("sgd_average", True), default=True)
 
-    vectorizer = TfidfVectorizer(
+    word_vectorizer = TfidfVectorizer(
         lowercase=True,
         strip_accents="unicode",
         ngram_range=(ngram_min, ngram_max),
@@ -178,6 +347,25 @@ def _build_pipeline(train_cfg: dict) -> Pipeline:
         max_features=max_features,
         sublinear_tf=True,
     )
+    if use_char_ngrams:
+        char_vectorizer = TfidfVectorizer(
+            lowercase=True,
+            strip_accents="unicode",
+            analyzer="char_wb",
+            ngram_range=(char_ngram_min, char_ngram_max),
+            min_df=char_min_df,
+            max_features=char_max_features,
+            sublinear_tf=True,
+        )
+        vectorizer = FeatureUnion(
+            transformer_list=[
+                ("word", word_vectorizer),
+                ("char", char_vectorizer),
+            ]
+        )
+    else:
+        vectorizer = word_vectorizer
+
     classifier = SGDClassifier(
         loss="log_loss",
         penalty="l2",
@@ -188,25 +376,68 @@ def _build_pipeline(train_cfg: dict) -> Pipeline:
         shuffle=True,
         early_stopping=False,
         class_weight="balanced",
+        average=sgd_average,
         random_state=seed,
     )
     return Pipeline(steps=[("vectorizer", vectorizer), ("classifier", classifier)])
 
 
 def _fit_with_epoch_stats(
-    model: Pipeline, train_x: list[str], train_y: list[str], *, epochs: int, family: str
+    model: Pipeline,
+    train_x: list[str],
+    train_y: list[str],
+    *,
+    epochs: int,
+    family: str,
+    train_cfg: dict,
+    eval_x: list[str] | None = None,
+    eval_y: list[str] | None = None,
 ) -> list[dict]:
-    vectorizer: TfidfVectorizer = model.named_steps["vectorizer"]
+    vectorizer = model.named_steps["vectorizer"]
     classifier: SGDClassifier = model.named_steps["classifier"]
 
     x_train = vectorizer.fit_transform(train_x)
     classes = sorted(set(train_y))
+    sample_weights = _build_sample_weights(train_y, train_cfg)
+    x_eval = vectorizer.transform(eval_x) if eval_x is not None else None
+
+    use_early_stopping = _as_bool(train_cfg.get("use_early_stopping", True), default=True)
+    early_stopping_patience = max(1, int(train_cfg.get("early_stopping_patience", 4)))
+    early_stopping_min_delta = max(0.0, float(train_cfg.get("early_stopping_min_delta", 1e-4)))
+    early_stopping_metric = str(
+        train_cfg.get("early_stopping_metric", "eval_task_macro_f1")
+    ).strip()
+    if early_stopping_metric not in {
+        "eval_macro_f1",
+        "eval_task_macro_f1",
+        "eval_focus_macro_f1",
+        "eval_accuracy",
+    }:
+        early_stopping_metric = "eval_task_macro_f1"
+    focus_task_weights_raw = train_cfg.get("focus_task_weights", {})
+    focus_task_weights: dict[str, float] = {}
+    if isinstance(focus_task_weights_raw, dict):
+        for key, value in focus_task_weights_raw.items():
+            name = str(key).strip()
+            if not name:
+                continue
+            try:
+                weight = float(value)
+            except Exception:
+                continue
+            if weight > 0:
+                focus_task_weights[name] = weight
+
     epoch_stats: list[dict] = []
+    best_classifier: SGDClassifier | None = None
+    best_epoch: int | None = None
+    best_metric = float("-inf")
+    epochs_since_improvement = 0
 
     pbar = _progress(total=epochs, desc=f"Epochs {family}", unit="epoch")
     try:
         for epoch in range(1, epochs + 1):
-            classifier.fit(x_train, train_y)
+            classifier.fit(x_train, train_y, sample_weight=sample_weights)
             pred = classifier.predict(x_train).tolist()
             acc = float(accuracy_score(train_y, pred))
             macro = float(f1_score(train_y, pred, average="macro", zero_division=0))
@@ -226,20 +457,124 @@ def _fit_with_epoch_stats(
                 "train_macro_f1": macro,
                 "train_weighted_f1": weighted,
             }
+
+            eval_acc: float | None = None
+            eval_macro: float | None = None
+            eval_task_macro: float | None = None
+            objective: float | None = None
+            if x_eval is not None and eval_y is not None:
+                eval_pred = classifier.predict(x_eval).tolist()
+                eval_acc = float(accuracy_score(eval_y, eval_pred))
+                eval_macro = float(f1_score(eval_y, eval_pred, average="macro", zero_division=0))
+                eval_task_macro = _task_balanced_macro_f1(eval_y, eval_pred)
+                eval_focus_macro: float | None = None
+                if focus_task_weights:
+                    focus_scores: list[tuple[float, float]] = []
+                    true_task, true_label = zip(
+                        *[_split_composite(v) for v in eval_y], strict=False
+                    )
+                    pred_task, pred_label = zip(
+                        *[_split_composite(v) for v in eval_pred], strict=False
+                    )
+                    for task_name, weight in focus_task_weights.items():
+                        idx = [i for i, t in enumerate(true_task) if t == task_name]
+                        if not idx:
+                            continue
+                        task_true = [true_label[i] for i in idx]
+                        task_pred: list[str] = []
+                        for i in idx:
+                            if pred_task[i] == task_name:
+                                task_pred.append(pred_label[i])
+                            else:
+                                task_pred.append("__wrong_task__")
+                        task_labels = sorted(set(task_true))
+                        score = float(
+                            f1_score(
+                                task_true,
+                                task_pred,
+                                labels=task_labels,
+                                average="macro",
+                                zero_division=0,
+                            )
+                        )
+                        focus_scores.append((weight, score))
+                    if focus_scores:
+                        total_weight = sum(w for w, _ in focus_scores)
+                        eval_focus_macro = sum(w * s for w, s in focus_scores) / max(
+                            1e-12, total_weight
+                        )
+
+                if early_stopping_metric == "eval_accuracy":
+                    objective = eval_acc
+                elif early_stopping_metric == "eval_focus_macro_f1":
+                    objective = (
+                        eval_focus_macro if eval_focus_macro is not None else eval_task_macro
+                    )
+                elif early_stopping_metric == "eval_macro_f1":
+                    objective = eval_macro
+                else:
+                    objective = eval_task_macro
+
+                stat["eval_accuracy"] = eval_acc
+                stat["eval_macro_f1"] = eval_macro
+                stat["eval_task_macro_f1"] = eval_task_macro
+                stat["eval_focus_macro_f1"] = eval_focus_macro
+                stat["selection_metric"] = objective
+
+                improved = objective > (best_metric + early_stopping_min_delta)
+                if improved:
+                    best_metric = objective
+                    best_epoch = epoch
+                    best_classifier = copy.deepcopy(classifier)
+                    epochs_since_improvement = 0
+                else:
+                    epochs_since_improvement += 1
+
             epoch_stats.append(stat)
 
-            if loss_value is None:
+            if loss_value is None and objective is None:
                 print(
                     f"[{family}] epoch {epoch}/{epochs} | train_acc={acc:.4f} train_macro_f1={macro:.4f}"
                 )
-            else:
+            elif objective is None:
                 print(
                     f"[{family}] epoch {epoch}/{epochs} | "
                     f"train_loss={loss_value:.4f} train_acc={acc:.4f} train_macro_f1={macro:.4f}"
                 )
+            elif loss_value is None:
+                print(
+                    f"[{family}] epoch {epoch}/{epochs} | "
+                    f"train_acc={acc:.4f} train_macro_f1={macro:.4f} "
+                    f"eval_acc={eval_acc:.4f} eval_macro_f1={eval_macro:.4f} "
+                    f"eval_task_macro_f1={eval_task_macro:.4f}"
+                )
+            else:
+                print(
+                    f"[{family}] epoch {epoch}/{epochs} | "
+                    f"train_loss={loss_value:.4f} train_acc={acc:.4f} train_macro_f1={macro:.4f} "
+                    f"eval_acc={eval_acc:.4f} eval_macro_f1={eval_macro:.4f} "
+                    f"eval_task_macro_f1={eval_task_macro:.4f}"
+                )
+
+            if (
+                use_early_stopping
+                and eval_y is not None
+                and objective is not None
+                and epochs_since_improvement >= early_stopping_patience
+            ):
+                print(
+                    f"[{family}] early stopping at epoch {epoch} "
+                    f"(best_epoch={best_epoch}, {early_stopping_metric}={best_metric:.4f})"
+                )
+                pbar.update(1)
+                break
+
             pbar.update(1)
     finally:
         pbar.close()
+
+    if best_classifier is not None:
+        model.set_params(classifier=best_classifier)
 
     return epoch_stats
 
@@ -358,9 +693,20 @@ def _train_one_family(
     model = _build_pipeline(train_cfg)
     train_x = _encode_features(train_df, family)
     train_y = _encode_targets(train_df)
+    eval_x = _encode_features(eval_df, family)
+    eval_y = _encode_targets(eval_df)
     epochs = max(2, int(train_cfg["max_iter"]))
     print(f"Fitting {family} on {len(train_df)} rows for {epochs} epochs...")
-    epoch_stats = _fit_with_epoch_stats(model, train_x, train_y, epochs=epochs, family=family)
+    epoch_stats = _fit_with_epoch_stats(
+        model,
+        train_x,
+        train_y,
+        epochs=epochs,
+        family=family,
+        train_cfg=train_cfg,
+        eval_x=eval_x,
+        eval_y=eval_y,
+    )
 
     batch_size = max(64, int(train_cfg["predict_batch_size"]))
     metrics_test, reports_test = _evaluate(
@@ -370,9 +716,7 @@ def _train_one_family(
         model, eval_df, family=family, split_name="eval", predict_batch_size=batch_size
     )
 
-    all_labels = sorted(
-        set(train_y) | set(_encode_targets(test_df)) | set(_encode_targets(eval_df))
-    )
+    all_labels = sorted(set(train_y) | set(_encode_targets(test_df)) | set(eval_y))
     label_to_id = {label: i for i, label in enumerate(all_labels)}
     id_to_label = {str(i): label for label, i in label_to_id.items()}
 
@@ -397,6 +741,26 @@ def _train_one_family(
             "alpha": float(train_cfg["alpha"]),
             "seed": int(train_cfg["seed"]),
             "predict_batch_size": int(train_cfg["predict_batch_size"]),
+            "use_char_ngrams": _as_bool(train_cfg.get("use_char_ngrams", True), default=True),
+            "char_ngram_min": int(train_cfg.get("char_ngram_min", 3)),
+            "char_ngram_max": int(train_cfg.get("char_ngram_max", 5)),
+            "char_min_df": int(train_cfg.get("char_min_df", 2)),
+            "char_max_features": int(
+                train_cfg.get("char_max_features", int(train_cfg["max_features"]))
+            ),
+            "sgd_average": _as_bool(train_cfg.get("sgd_average", True), default=True),
+            "use_early_stopping": _as_bool(train_cfg.get("use_early_stopping", True), default=True),
+            "early_stopping_metric": str(
+                train_cfg.get("early_stopping_metric", "eval_task_macro_f1")
+            ),
+            "early_stopping_patience": int(train_cfg.get("early_stopping_patience", 4)),
+            "early_stopping_min_delta": float(train_cfg.get("early_stopping_min_delta", 1e-4)),
+            "task_weight_power": float(train_cfg.get("task_weight_power", 0.5)),
+            "label_weight_power": float(train_cfg.get("label_weight_power", 0.0)),
+            "sample_weight_min": float(train_cfg.get("sample_weight_min", 0.2)),
+            "sample_weight_max": float(train_cfg.get("sample_weight_max", 5.0)),
+            "task_focus_weights": train_cfg.get("task_focus_weights", {}),
+            "focus_task_weights": train_cfg.get("focus_task_weights", {}),
         },
         "epoch_stats": epoch_stats,
     }
@@ -473,6 +837,23 @@ def main() -> int:
     train_cfg.setdefault("max_iter", 25)
     train_cfg.setdefault("alpha", 1e-5)
     train_cfg.setdefault("predict_batch_size", 8192)
+    train_cfg.setdefault("use_char_ngrams", True)
+    train_cfg.setdefault("char_ngram_min", 3)
+    train_cfg.setdefault("char_ngram_max", 5)
+    train_cfg.setdefault("char_min_df", 2)
+    train_cfg.setdefault("char_max_features", train_cfg["max_features"])
+    train_cfg.setdefault("sgd_average", True)
+    train_cfg.setdefault("use_early_stopping", True)
+    train_cfg.setdefault("early_stopping_metric", "eval_task_macro_f1")
+    train_cfg.setdefault("early_stopping_patience", 4)
+    train_cfg.setdefault("early_stopping_min_delta", 1e-4)
+    train_cfg.setdefault("task_weight_power", 0.5)
+    train_cfg.setdefault("label_weight_power", 0.0)
+    train_cfg.setdefault("sample_weight_min", 0.2)
+    train_cfg.setdefault("sample_weight_max", 5.0)
+    train_cfg.setdefault("task_focus_weights", {})
+    train_cfg.setdefault("focus_task_weights", {})
+    train_cfg.setdefault("family_overrides", {})
     train_cfg.setdefault("families", list(ALL_FAMILIES))
 
     if args.seed is not None:
@@ -531,12 +912,14 @@ def main() -> int:
     try:
         for family in families:
             pbar.set_description(f"Train family [{family}]")
+            family_train_cfg = _effective_family_train_cfg(train_cfg, family)
             summary = _train_one_family(
                 family,
                 prepared_dir=prepared_dir,
                 output_dir=output_dir,
-                train_cfg=train_cfg,
+                train_cfg=family_train_cfg,
             )
+            summary["effective_train_config"] = family_train_cfg
             families_summary[family] = summary
             pbar.update(1)
     finally:
