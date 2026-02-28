@@ -49,7 +49,10 @@ class MemoryReranker:
             return []
         max_results = max_results or self.config.max_results
 
-        base_scores = {i: self._calculate_score(mem, memories) for i, mem in enumerate(memories)}
+        word_sets = {i: self._word_set(mem.record.text) for i, mem in enumerate(memories)}
+        base_scores = {
+            i: self._calculate_score(mem, memories, word_sets, i) for i, mem in enumerate(memories)
+        }
 
         constraints = [
             (i, m) for i, m in enumerate(memories) if m.record.type == MemoryType.CONSTRAINT
@@ -108,6 +111,8 @@ class MemoryReranker:
         self,
         memory: RetrievedMemory,
         all_memories: list[RetrievedMemory],
+        word_sets: dict[int, frozenset[str]] | None = None,
+        mem_index: int = -1,
     ) -> float:
         """Calculate combined score for a memory."""
         relevance = memory.relevance_score
@@ -121,21 +126,23 @@ class MemoryReranker:
         recency = 1.0 / (1.0 + age_days * 0.1)
         confidence = memory.record.confidence
 
-        # Compute actual diversity: average dissimilarity to other memories (LOW-13, BUG-07)
-        # Cap pairwise comparisons to avoid O(n^2); skip for small N
         diversity_cap = min(len(all_memories), 20)
         if len(all_memories) <= 5:
             diversity = 1.0
         elif len(all_memories) > 1:
+            my_ws = word_sets[mem_index] if word_sets and mem_index >= 0 else None
             total_sim = 0.0
             count = 0
-            for other in all_memories[:diversity_cap]:
+            for j, other in enumerate(all_memories[:diversity_cap]):
                 if other is memory:
                     continue
-                total_sim += self._text_similarity(memory.record.text, other.record.text)
+                if my_ws is not None and word_sets:
+                    total_sim += self._text_similarity(my_ws, word_sets.get(j, frozenset()))
+                else:
+                    total_sim += self._text_similarity(memory.record.text, other.record.text)
                 count += 1
             avg_sim = total_sim / count if count > 0 else 0.0
-            diversity = 1.0 - avg_sim  # Higher diversity = less similar to others
+            diversity = 1.0 - avg_sim
         else:
             diversity = 1.0
 
@@ -176,10 +183,15 @@ class MemoryReranker:
                 selected.append(candidates.pop(best_idx))
         return selected
 
+    @staticmethod
+    def _word_set(text: str) -> frozenset[str]:
+        """Return a cached-friendly word set for Jaccard computation."""
+        return frozenset(text.lower().split())
+
     def _text_similarity(self, text1: str, text2: str) -> float:
-        """Simple word overlap similarity."""
-        words1 = set(text1.lower().split())
-        words2 = set(text2.lower().split())
+        """Jaccard word-overlap similarity (accepts pre-computed frozensets)."""
+        words1 = text1 if isinstance(text1, frozenset) else self._word_set(text1)
+        words2 = text2 if isinstance(text2, frozenset) else self._word_set(text2)
         if not words1 or not words2:
             return 0.0
         intersection = len(words1 & words2)
