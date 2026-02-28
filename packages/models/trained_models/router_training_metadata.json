@@ -1,0 +1,553 @@
+{
+  "family": "router",
+  "trained_at_utc": "2026-02-28T13:57:20.604537+00:00",
+  "rows": {
+    "train": 8422,
+    "test": 1050,
+    "eval": 1064
+  },
+  "tasks": [
+    "confidence_bin",
+    "constraint_dimension",
+    "context_tag",
+    "decay_profile",
+    "importance_bin",
+    "memory_type",
+    "query_domain",
+    "query_intent",
+    "salience_bin"
+  ],
+  "task_label_counts": {
+    "train": {
+      "confidence_bin": {
+        "high": 82,
+        "low": 80,
+        "medium": 80
+      },
+      "constraint_dimension": {
+        "causal": 80,
+        "goal": 80,
+        "other": 80,
+        "policy": 80,
+        "state": 80,
+        "value": 80
+      },
+      "context_tag": {
+        "finance": 80,
+        "food": 80,
+        "general": 80,
+        "health": 80,
+        "social": 80,
+        "tech": 81,
+        "travel": 80,
+        "work": 80
+      },
+      "decay_profile": {
+        "fast": 80,
+        "medium": 80,
+        "slow": 80,
+        "very_fast": 80,
+        "very_slow": 80
+      },
+      "importance_bin": {
+        "high": 80,
+        "low": 80,
+        "medium": 80
+      },
+      "memory_type": {
+        "constraint": 80,
+        "conversation": 80,
+        "episodic_event": 80,
+        "hypothesis": 80,
+        "knowledge": 80,
+        "message": 80,
+        "observation": 81,
+        "plan": 82,
+        "preference": 87,
+        "procedure": 80,
+        "reasoning_step": 81,
+        "scratch": 80,
+        "semantic_fact": 80,
+        "task_state": 80,
+        "tool_result": 84
+      },
+      "query_domain": {
+        "finance": 4000,
+        "food": 80,
+        "general": 80,
+        "health": 80,
+        "social": 80,
+        "tech": 80,
+        "travel": 80,
+        "work": 82
+      },
+      "query_intent": {
+        "constraint_check": 80,
+        "conversation": 80,
+        "factual": 80,
+        "planning": 80,
+        "tool_query": 80
+      },
+      "salience_bin": {
+        "high": 81,
+        "low": 80,
+        "medium": 81
+      }
+    },
+    "test": {
+      "confidence_bin": {
+        "high": 10,
+        "low": 10,
+        "medium": 10
+      },
+      "constraint_dimension": {
+        "causal": 10,
+        "goal": 10,
+        "other": 10,
+        "policy": 10,
+        "state": 10,
+        "value": 10
+      },
+      "context_tag": {
+        "finance": 10,
+        "food": 10,
+        "general": 10,
+        "health": 10,
+        "social": 10,
+        "tech": 10,
+        "travel": 10,
+        "work": 10
+      },
+      "decay_profile": {
+        "fast": 10,
+        "medium": 10,
+        "slow": 10,
+        "very_fast": 10,
+        "very_slow": 10
+      },
+      "importance_bin": {
+        "high": 10,
+        "low": 10,
+        "medium": 10
+      },
+      "memory_type": {
+        "constraint": 10,
+        "conversation": 10,
+        "episodic_event": 10,
+        "hypothesis": 10,
+        "knowledge": 10,
+        "message": 10,
+        "observation": 10,
+        "plan": 10,
+        "preference": 10,
+        "procedure": 10,
+        "reasoning_step": 10,
+        "scratch": 10,
+        "semantic_fact": 10,
+        "task_state": 10,
+        "tool_result": 10
+      },
+      "query_domain": {
+        "finance": 500,
+        "food": 10,
+        "general": 10,
+        "health": 10,
+        "social": 10,
+        "tech": 10,
+        "travel": 10,
+        "work": 10
+      },
+      "query_intent": {
+        "constraint_check": 10,
+        "conversation": 10,
+        "factual": 10,
+        "planning": 10,
+        "tool_query": 10
+      },
+      "salience_bin": {
+        "high": 10,
+        "low": 10,
+        "medium": 10
+      }
+    },
+    "eval": {
+      "confidence_bin": {
+        "high": 11,
+        "low": 10,
+        "medium": 10
+      },
+      "constraint_dimension": {
+        "causal": 10,
+        "goal": 11,
+        "other": 10,
+        "policy": 10,
+        "state": 10,
+        "value": 10
+      },
+      "context_tag": {
+        "finance": 10,
+        "food": 10,
+        "general": 10,
+        "health": 10,
+        "social": 10,
+        "tech": 11,
+        "travel": 10,
+        "work": 10
+      },
+      "decay_profile": {
+        "fast": 10,
+        "medium": 10,
+        "slow": 10,
+        "very_fast": 10,
+        "very_slow": 10
+      },
+      "importance_bin": {
+        "high": 10,
+        "low": 10,
+        "medium": 10
+      },
+      "memory_type": {
+        "constraint": 10,
+        "conversation": 10,
+        "episodic_event": 10,
+        "hypothesis": 10,
+        "knowledge": 10,
+        "message": 11,
+        "observation": 11,
+        "plan": 11,
+        "preference": 12,
+        "procedure": 10,
+        "reasoning_step": 11,
+        "scratch": 10,
+        "semantic_fact": 10,
+        "task_state": 10,
+        "tool_result": 11
+      },
+      "query_domain": {
+        "finance": 500,
+        "food": 10,
+        "general": 10,
+        "health": 10,
+        "social": 10,
+        "tech": 10,
+        "travel": 10,
+        "work": 11
+      },
+      "query_intent": {
+        "constraint_check": 11,
+        "conversation": 10,
+        "factual": 10,
+        "planning": 10,
+        "tool_query": 10
+      },
+      "salience_bin": {
+        "high": 11,
+        "low": 10,
+        "medium": 11
+      }
+    }
+  },
+  "labels": [
+    "confidence_bin::high",
+    "confidence_bin::low",
+    "confidence_bin::medium",
+    "constraint_dimension::causal",
+    "constraint_dimension::goal",
+    "constraint_dimension::other",
+    "constraint_dimension::policy",
+    "constraint_dimension::state",
+    "constraint_dimension::value",
+    "context_tag::finance",
+    "context_tag::food",
+    "context_tag::general",
+    "context_tag::health",
+    "context_tag::social",
+    "context_tag::tech",
+    "context_tag::travel",
+    "context_tag::work",
+    "decay_profile::fast",
+    "decay_profile::medium",
+    "decay_profile::slow",
+    "decay_profile::very_fast",
+    "decay_profile::very_slow",
+    "importance_bin::high",
+    "importance_bin::low",
+    "importance_bin::medium",
+    "memory_type::constraint",
+    "memory_type::conversation",
+    "memory_type::episodic_event",
+    "memory_type::hypothesis",
+    "memory_type::knowledge",
+    "memory_type::message",
+    "memory_type::observation",
+    "memory_type::plan",
+    "memory_type::preference",
+    "memory_type::procedure",
+    "memory_type::reasoning_step",
+    "memory_type::scratch",
+    "memory_type::semantic_fact",
+    "memory_type::task_state",
+    "memory_type::tool_result",
+    "query_domain::finance",
+    "query_domain::food",
+    "query_domain::general",
+    "query_domain::health",
+    "query_domain::social",
+    "query_domain::tech",
+    "query_domain::travel",
+    "query_domain::work",
+    "query_intent::constraint_check",
+    "query_intent::conversation",
+    "query_intent::factual",
+    "query_intent::planning",
+    "query_intent::tool_query",
+    "salience_bin::high",
+    "salience_bin::low",
+    "salience_bin::medium"
+  ],
+  "label_to_id": {
+    "confidence_bin::high": 0,
+    "confidence_bin::low": 1,
+    "confidence_bin::medium": 2,
+    "constraint_dimension::causal": 3,
+    "constraint_dimension::goal": 4,
+    "constraint_dimension::other": 5,
+    "constraint_dimension::policy": 6,
+    "constraint_dimension::state": 7,
+    "constraint_dimension::value": 8,
+    "context_tag::finance": 9,
+    "context_tag::food": 10,
+    "context_tag::general": 11,
+    "context_tag::health": 12,
+    "context_tag::social": 13,
+    "context_tag::tech": 14,
+    "context_tag::travel": 15,
+    "context_tag::work": 16,
+    "decay_profile::fast": 17,
+    "decay_profile::medium": 18,
+    "decay_profile::slow": 19,
+    "decay_profile::very_fast": 20,
+    "decay_profile::very_slow": 21,
+    "importance_bin::high": 22,
+    "importance_bin::low": 23,
+    "importance_bin::medium": 24,
+    "memory_type::constraint": 25,
+    "memory_type::conversation": 26,
+    "memory_type::episodic_event": 27,
+    "memory_type::hypothesis": 28,
+    "memory_type::knowledge": 29,
+    "memory_type::message": 30,
+    "memory_type::observation": 31,
+    "memory_type::plan": 32,
+    "memory_type::preference": 33,
+    "memory_type::procedure": 34,
+    "memory_type::reasoning_step": 35,
+    "memory_type::scratch": 36,
+    "memory_type::semantic_fact": 37,
+    "memory_type::task_state": 38,
+    "memory_type::tool_result": 39,
+    "query_domain::finance": 40,
+    "query_domain::food": 41,
+    "query_domain::general": 42,
+    "query_domain::health": 43,
+    "query_domain::social": 44,
+    "query_domain::tech": 45,
+    "query_domain::travel": 46,
+    "query_domain::work": 47,
+    "query_intent::constraint_check": 48,
+    "query_intent::conversation": 49,
+    "query_intent::factual": 50,
+    "query_intent::planning": 51,
+    "query_intent::tool_query": 52,
+    "salience_bin::high": 53,
+    "salience_bin::low": 54,
+    "salience_bin::medium": 55
+  },
+  "train_config": {
+    "max_features": 250000,
+    "min_df": 2,
+    "ngram_min": 1,
+    "ngram_max": 2,
+    "max_iter": 25,
+    "alpha": 1e-05,
+    "seed": 42,
+    "predict_batch_size": 8192
+  },
+  "epoch_stats": [
+    {
+      "epoch": 1,
+      "train_loss": 0.29765431771359324,
+      "train_accuracy": 0.9921633816195679,
+      "train_macro_f1": 0.986869776715124,
+      "train_weighted_f1": 0.9922780984217137
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.2299233272278799,
+      "train_accuracy": 0.9967941106625504,
+      "train_macro_f1": 0.9943042807875704,
+      "train_weighted_f1": 0.9968292367935565
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.2387833626605838,
+      "train_accuracy": 0.9963191640940394,
+      "train_macro_f1": 0.9934408177063714,
+      "train_weighted_f1": 0.9963677496533232
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.22419326707249637,
+      "train_accuracy": 0.9966753740204227,
+      "train_macro_f1": 0.994106472502143,
+      "train_weighted_f1": 0.9967232861775465
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.22167199562798204,
+      "train_accuracy": 0.9958442175255284,
+      "train_macro_f1": 0.992564715837619,
+      "train_weighted_f1": 0.9959017334933946
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.21758803344619596,
+      "train_accuracy": 0.9966753740204227,
+      "train_macro_f1": 0.994094149450193,
+      "train_weighted_f1": 0.9967167310513606
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.2153216325946458,
+      "train_accuracy": 0.9958442175255284,
+      "train_macro_f1": 0.9925731006734992,
+      "train_weighted_f1": 0.9959068956810314
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.21475075543508423,
+      "train_accuracy": 0.9966753740204227,
+      "train_macro_f1": 0.9941101067445184,
+      "train_weighted_f1": 0.9967259478226622
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.2113140287403458,
+      "train_accuracy": 0.9957254808834006,
+      "train_macro_f1": 0.9923498776681363,
+      "train_weighted_f1": 0.9957881544005723
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.21398425966663623,
+      "train_accuracy": 0.9966753740204227,
+      "train_macro_f1": 0.9940958610158473,
+      "train_weighted_f1": 0.9967183699475203
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.21003533195306606,
+      "train_accuracy": 0.9958442175255284,
+      "train_macro_f1": 0.9925814285571446,
+      "train_weighted_f1": 0.9959106236600386
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.21274319043039247,
+      "train_accuracy": 0.9964379007361672,
+      "train_macro_f1": 0.993656298874319,
+      "train_weighted_f1": 0.9964838207474049
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.20989609968808762,
+      "train_accuracy": 0.9959629541676561,
+      "train_macro_f1": 0.9928035624408704,
+      "train_weighted_f1": 0.9960302159953447
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.21186661171749857,
+      "train_accuracy": 0.9965566373782949,
+      "train_macro_f1": 0.9938781525718945,
+      "train_weighted_f1": 0.9966018336380648
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.21036615313046647,
+      "train_accuracy": 0.9959629541676561,
+      "train_macro_f1": 0.9928048554970482,
+      "train_weighted_f1": 0.9960301842616769
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.2103577762512139,
+      "train_accuracy": 0.9966753740204227,
+      "train_macro_f1": 0.9941027972111128,
+      "train_weighted_f1": 0.9967213311426598
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.21092800710068946,
+      "train_accuracy": 0.9960816908097839,
+      "train_macro_f1": 0.9930101703277392,
+      "train_weighted_f1": 0.9961401190270679
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.20960458208504515,
+      "train_accuracy": 0.9966753740204227,
+      "train_macro_f1": 0.9939812552491537,
+      "train_weighted_f1": 0.9967148808712315
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.21149829594482908,
+      "train_accuracy": 0.9959629541676561,
+      "train_macro_f1": 0.9927882403785541,
+      "train_weighted_f1": 0.996021346012941
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.20932932084459913,
+      "train_accuracy": 0.9964379007361672,
+      "train_macro_f1": 0.9935347656320087,
+      "train_weighted_f1": 0.9964773751143079
+    },
+    {
+      "epoch": 21,
+      "train_loss": 0.21222530483119498,
+      "train_accuracy": 0.9958442175255284,
+      "train_macro_f1": 0.9925787892239745,
+      "train_weighted_f1": 0.9959099305329463
+    },
+    {
+      "epoch": 22,
+      "train_loss": 0.20818217470777467,
+      "train_accuracy": 0.9960816908097839,
+      "train_macro_f1": 0.9928664310329742,
+      "train_weighted_f1": 0.9961211326572906
+    },
+    {
+      "epoch": 23,
+      "train_loss": 0.21286835254414652,
+      "train_accuracy": 0.9957254808834006,
+      "train_macro_f1": 0.9924805366351855,
+      "train_weighted_f1": 0.9957994487004475
+    },
+    {
+      "epoch": 24,
+      "train_loss": 0.20786562841404554,
+      "train_accuracy": 0.9963191640940394,
+      "train_macro_f1": 0.9933114818999167,
+      "train_weighted_f1": 0.9963578730852058
+    },
+    {
+      "epoch": 25,
+      "train_loss": 0.21270318682224537,
+      "train_accuracy": 0.9957254808834006,
+      "train_macro_f1": 0.9924805366351855,
+      "train_weighted_f1": 0.9957994487004475
+    }
+  ]
+}

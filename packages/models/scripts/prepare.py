@@ -6,6 +6,11 @@ Families prepared:
 2) extractor   (single-text multi-task)
 3) pair        (text-pair multi-task)
 
+Dataset size is controlled by a single config variable: samples_per_task_label
+(in model_pipeline.toml [prepare]). target_per_task_label, max_per_task_label,
+and max_rows_per_source are derived from it when not set explicitly. Optional
+CLI overrides exist for fine-grained control.
+
 Configuration:
   packages/models/model_pipeline.toml
 """
@@ -44,6 +49,21 @@ except Exception:  # pragma: no cover - optional dependency
 MODELS_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = MODELS_ROOT.parent.parent
 DEFAULT_CONFIG_PATH = MODELS_ROOT / "model_pipeline.toml"
+# Used when deriving max_rows_per_source from samples_per_task_label (router has 55 (task,label) pairs).
+_MAX_TASK_LABEL_PAIRS = 60
+
+
+def _derive_prepare_limits_from_samples_per_task_label(
+    samples_per_task_label: int,
+) -> dict[str, int]:
+    """Derive target_per_task_label, max_per_task_label, max_rows_per_source from the single knob."""
+    n = int(samples_per_task_label)
+    return {
+        "target_per_task_label": n,
+        "max_per_task_label": max(n, n * 5),
+        "max_rows_per_source": n * _MAX_TASK_LABEL_PAIRS,
+    }
+
 
 LOCAL_BOOTSTRAP_SPLITS = ("train", "test", "eval")
 ROUTER_TASKS = (
@@ -208,12 +228,7 @@ def _sanitize_unicode(s: str) -> str:
 def _sanitize_row_dicts(rows: list[dict]) -> list[dict]:
     out: list[dict] = []
     for row in rows:
-        out.append(
-            {
-                k: _sanitize_unicode(v) if isinstance(v, str) else v
-                for k, v in row.items()
-            }
-        )
+        out.append({k: _sanitize_unicode(v) if isinstance(v, str) else v for k, v in row.items()})
     return out
 
 
@@ -1596,6 +1611,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=None, help="Override prepare.seed from config.")
     parser.add_argument(
+        "--samples-per-task-label",
+        type=int,
+        default=None,
+        help="Override prepare.samples_per_task_label (single knob for dataset size; derives target/max per label and max_rows_per_source).",
+    )
+    parser.add_argument(
         "--max-rows-per-source",
         type=int,
         default=None,
@@ -1646,6 +1667,8 @@ def main() -> int:
 
     if args.seed is not None:
         prepare_cfg["seed"] = int(args.seed)
+    if args.samples_per_task_label is not None:
+        prepare_cfg["samples_per_task_label"] = int(args.samples_per_task_label)
     if args.max_rows_per_source is not None:
         prepare_cfg["max_rows_per_source"] = int(args.max_rows_per_source)
     if args.max_per_task_label is not None:
@@ -1656,6 +1679,14 @@ def main() -> int:
         synthetic_cfg["temperature"] = float(args.llm_temperature)
     if args.allow_missing_datasets_package:
         prepare_cfg["require_datasets_package"] = False
+
+    # Derive target_per_task_label, max_per_task_label, max_rows_per_source from single knob when set.
+    if "samples_per_task_label" in prepare_cfg:
+        derived = _derive_prepare_limits_from_samples_per_task_label(
+            prepare_cfg["samples_per_task_label"]
+        )
+        for k, v in derived.items():
+            prepare_cfg.setdefault(k, v)
 
     prepare_cfg.setdefault("seed", 42)
     prepare_cfg.setdefault("train_ratio", 0.8)
@@ -1687,6 +1718,9 @@ def main() -> int:
     synthetic_cfg.setdefault("max_attempts_per_label", 80)
     synthetic_cfg.setdefault("local_raw_scan_rows_per_file", 300)
 
+    if "samples_per_task_label" in prepare_cfg and int(prepare_cfg["samples_per_task_label"]) <= 0:
+        print("prepare.samples_per_task_label must be > 0.", file=sys.stderr)
+        return 1
     if int(prepare_cfg["max_rows_per_source"]) <= 0:
         print("prepare.max_rows_per_source must be > 0.", file=sys.stderr)
         return 1
@@ -1997,6 +2031,7 @@ def main() -> int:
             "prepare_settings": {
                 k: prepare_cfg[k]
                 for k in [
+                    "samples_per_task_label",
                     "max_rows_per_source",
                     "target_per_task_label",
                     "max_per_task_label",
@@ -2005,6 +2040,7 @@ def main() -> int:
                     "eval_ratio",
                     "auto_download_missing",
                 ]
+                if k in prepare_cfg
             }
             | {"llm_temperature": synthetic_cfg["temperature"]},
             "synthetic_llm": {
