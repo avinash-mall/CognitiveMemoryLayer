@@ -13,6 +13,7 @@ MEMORIES (from a conversation with a user):
 {memories}
 
 COMMON THEMES: {themes}
+SOURCE MEMORY TYPES: {source_types}
 
 Extract:
 1. The main fact or pattern these memories represent
@@ -45,7 +46,8 @@ Rules:
 - Do not include episodic details (times, specific conversations)
 - Focus on durable, generalizable information
 - Higher confidence if multiple memories support the same conclusion
-- Use "goal"/"value"/"state"/"causal"/"policy" types when memories express constraints, commitments, or conditions that should govern future behavior"""
+- Use "goal"/"value"/"state"/"causal"/"policy" types when memories express constraints, commitments, or conditions that should govern future behavior
+- IMPORTANT: If source memories include "constraint" type, you MUST classify the gist as "goal", "value", "state", "causal", or "policy" — preserving the constraint-governing nature of the original information. Do NOT downgrade constraints to "fact" or "summary"."""
 
 _BATCH_GIST_CLUSTER_SIZE = 8
 
@@ -107,10 +109,12 @@ class GistExtractor:
         themes_str = (
             ", ".join(cluster.common_entities) if cluster.common_entities else "none identified"
         )
+        source_types_str = ", ".join(source_types) if source_types else "unknown"
 
         prompt = GIST_EXTRACTION_PROMPT.format(
             memories=memories_str,
             themes=themes_str,
+            source_types=source_types_str,
         )
 
         try:

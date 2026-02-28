@@ -190,21 +190,43 @@ class MemoryPacketBuilder:
 
         # 1. Constraints first (reserved budget; never truncate mid-constraint)
         if packet.constraints:
-            header = "## Active Constraints (Must Follow)\n"
-            constraint_lines: list[str] = []
+            must_follow = []
+            consider = []
             for c in packet.constraints[:6]:
-                prov = self._constraint_provenance(c)
-                line = f"- [!IMPORTANT] **{c.record.text}** {prov}".rstrip() + "\n"
-                if (
-                    used + len(header) + sum(len(x) for x in constraint_lines) + len(line)
-                    <= constraint_budget
-                ):
-                    constraint_lines.append(line)
+                meta = c.record.metadata or {}
+                cmeta = meta.get("constraints", [])
+                ctype = cmeta[0].get("constraint_type", "") if cmeta else ""
+                if ctype in ("value", "policy", "preference"):
+                    must_follow.append(c)
                 else:
-                    break
+                    consider.append(c)
+
+            constraint_lines: list[str] = []
+            if must_follow:
+                constraint_lines.append("## Constraints (Must Follow)\n")
+                for c in must_follow:
+                    prov = self._constraint_provenance(c)
+                    line = f"- Earlier you said: \"{c.record.text}\" {prov}\n"
+                    if (
+                        used + sum(len(x) for x in constraint_lines) + len(line)
+                        <= constraint_budget
+                    ):
+                        constraint_lines.append(line)
+            if consider:
+                constraint_lines.append("## Other Constraints to Consider\n")
+                for c in consider:
+                    prov = self._constraint_provenance(c)
+                    line = f"- You also mentioned: \"{c.record.text}\" {prov}\n"
+                    if (
+                        used + sum(len(x) for x in constraint_lines) + len(line)
+                        <= constraint_budget
+                    ):
+                        constraint_lines.append(line)
+
             if constraint_lines:
-                sections.append(header + "".join(constraint_lines) + "\n")
-                used += len(sections[-1])
+                block = "".join(constraint_lines) + "\n"
+                sections.append(block)
+                used += len(block)
 
         remaining = sections_budget - used
 
@@ -246,12 +268,10 @@ class MemoryPacketBuilder:
             e for e in packet.recent_episodes if getattr(e, "relevance_score", 1.0) > threshold
         ]
         if relevant_episodes and remaining > 100:
-            header = "## Recent Context\n"
+            header = "## Recent Events\n"
             ep_lines: list[str] = []
             for e in relevant_episodes[:episode_limit]:
-                ts = e.record.timestamp
-                date_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)
-                line = f"- [{date_str}] {e.record.text}\n"
+                line = f"- {e.record.text} (confidence: {e.record.confidence:.2f})\n"
                 if len(header) + sum(len(x) for x in ep_lines) + len(line) <= remaining:
                     ep_lines.append(line)
                 else:
