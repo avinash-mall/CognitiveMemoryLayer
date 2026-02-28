@@ -84,3 +84,4 @@ Thumbs.db
 packages/models/datasets/
 packages/models/prepared_data/
 
+scripts/quality_test_results.json
