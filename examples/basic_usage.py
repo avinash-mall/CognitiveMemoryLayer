@@ -144,4 +144,3 @@ def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
 
 if __name__ == "__main__":
     main()
-

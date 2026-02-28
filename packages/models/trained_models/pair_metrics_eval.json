@@ -1,0 +1,229 @@
+{
+  "family": "pair",
+  "split": "eval",
+  "overall": {
+    "rows": 4000,
+    "accuracy": 0.59725,
+    "macro_f1": 0.596606211330591,
+    "weighted_f1": 0.596606211330591,
+    "micro_f1": 0.59725,
+    "labels": [
+      "conflict_detection::conflict",
+      "conflict_detection::no_conflict",
+      "constraint_rerank::not_relevant",
+      "constraint_rerank::relevant",
+      "scope_match::match",
+      "scope_match::no_match",
+      "supersession::no_supersedes",
+      "supersession::supersedes"
+    ],
+    "confusion_matrix": [
+      [
+        340,
+        158,
+        0,
+        0,
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        174,
+        326,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        203,
+        297,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        270,
+        229,
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        360,
+        140,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        209,
+        290,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        333,
+        166
+      ],
+      [
+        4,
+        0,
+        0,
+        0,
+        0,
+        2,
+        186,
+        308
+      ]
+    ]
+  },
+  "per_task": {
+    "conflict_detection": {
+      "rows": 1000,
+      "accuracy": 0.666,
+      "macro_f1": 0.44440435528615635,
+      "weighted_f1": 0.6666065329292347,
+      "micro_f1": 0.666,
+      "labels": [
+        "conflict",
+        "no_conflict",
+        "__wrong_task__"
+      ],
+      "confusion_matrix": [
+        [
+          340,
+          158,
+          2
+        ],
+        [
+          174,
+          326,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "wrong_task_predictions": 2,
+      "wrong_task_rate": 0.002
+    },
+    "constraint_rerank": {
+      "rows": 1000,
+      "accuracy": 0.432,
+      "macro_f1": 0.2878866497445319,
+      "weighted_f1": 0.43182997461679784,
+      "micro_f1": 0.432,
+      "labels": [
+        "not_relevant",
+        "relevant",
+        "__wrong_task__"
+      ],
+      "confusion_matrix": [
+        [
+          203,
+          297,
+          0
+        ],
+        [
+          270,
+          229,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "wrong_task_predictions": 1,
+      "wrong_task_rate": 0.001
+    },
+    "scope_match": {
+      "rows": 1000,
+      "accuracy": 0.65,
+      "macro_f1": 0.4323941914696012,
+      "weighted_f1": 0.6485912872044016,
+      "micro_f1": 0.65,
+      "labels": [
+        "match",
+        "no_match",
+        "__wrong_task__"
+      ],
+      "confusion_matrix": [
+        [
+          360,
+          140,
+          0
+        ],
+        [
+          209,
+          290,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "wrong_task_predictions": 1,
+      "wrong_task_rate": 0.001
+    },
+    "supersession": {
+      "rows": 1000,
+      "accuracy": 0.641,
+      "macro_f1": 0.4286751583029893,
+      "weighted_f1": 0.643012737454484,
+      "micro_f1": 0.641,
+      "labels": [
+        "no_supersedes",
+        "supersedes",
+        "__wrong_task__"
+      ],
+      "confusion_matrix": [
+        [
+          333,
+          166,
+          1
+        ],
+        [
+          186,
+          308,
+          6
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "wrong_task_predictions": 7,
+      "wrong_task_rate": 0.007
+    }
+  }
+}

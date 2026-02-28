@@ -1,0 +1,853 @@
+{
+  "family": "router",
+  "split": "test",
+  "overall": {
+    "confidence_bin::high": {
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1-score": 0.9473684210526315,
+      "support": 10.0
+    },
+    "confidence_bin::low": {
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1-score": 0.9,
+      "support": 10.0
+    },
+    "confidence_bin::medium": {
+      "precision": 0.8181818181818182,
+      "recall": 0.9,
+      "f1-score": 0.8571428571428571,
+      "support": 10.0
+    },
+    "constraint_dimension::causal": {
+      "precision": 0.42857142857142855,
+      "recall": 0.9,
+      "f1-score": 0.5806451612903226,
+      "support": 10.0
+    },
+    "constraint_dimension::goal": {
+      "precision": 1.0,
+      "recall": 0.4,
+      "f1-score": 0.5714285714285714,
+      "support": 10.0
+    },
+    "constraint_dimension::other": {
+      "precision": 0.8,
+      "recall": 0.8,
+      "f1-score": 0.8,
+      "support": 10.0
+    },
+    "constraint_dimension::policy": {
+      "precision": 0.8888888888888888,
+      "recall": 0.8,
+      "f1-score": 0.8421052631578947,
+      "support": 10.0
+    },
+    "constraint_dimension::state": {
+      "precision": 0.7142857142857143,
+      "recall": 0.5,
+      "f1-score": 0.5882352941176471,
+      "support": 10.0
+    },
+    "constraint_dimension::value": {
+      "precision": 1.0,
+      "recall": 0.7,
+      "f1-score": 0.8235294117647058,
+      "support": 10.0
+    },
+    "context_tag::finance": {
+      "precision": 0.5714285714285714,
+      "recall": 0.8,
+      "f1-score": 0.6666666666666666,
+      "support": 10.0
+    },
+    "context_tag::food": {
+      "precision": 0.75,
+      "recall": 0.9,
+      "f1-score": 0.8181818181818182,
+      "support": 10.0
+    },
+    "context_tag::general": {
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1-score": 0.9,
+      "support": 10.0
+    },
+    "context_tag::health": {
+      "precision": 1.0,
+      "recall": 0.7,
+      "f1-score": 0.8235294117647058,
+      "support": 10.0
+    },
+    "context_tag::social": {
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1-score": 0.9473684210526315,
+      "support": 10.0
+    },
+    "context_tag::tech": {
+      "precision": 0.7777777777777778,
+      "recall": 0.7,
+      "f1-score": 0.7368421052631579,
+      "support": 10.0
+    },
+    "context_tag::travel": {
+      "precision": 0.7,
+      "recall": 0.7,
+      "f1-score": 0.7,
+      "support": 10.0
+    },
+    "context_tag::work": {
+      "precision": 0.8,
+      "recall": 0.8,
+      "f1-score": 0.8,
+      "support": 10.0
+    },
+    "decay_profile::fast": {
+      "precision": 1.0,
+      "recall": 0.4,
+      "f1-score": 0.5714285714285714,
+      "support": 10.0
+    },
+    "decay_profile::medium": {
+      "precision": 0.6923076923076923,
+      "recall": 0.9,
+      "f1-score": 0.782608695652174,
+      "support": 10.0
+    },
+    "decay_profile::slow": {
+      "precision": 0.7272727272727273,
+      "recall": 0.8,
+      "f1-score": 0.7619047619047619,
+      "support": 10.0
+    },
+    "decay_profile::very_fast": {
+      "precision": 0.6923076923076923,
+      "recall": 0.9,
+      "f1-score": 0.782608695652174,
+      "support": 10.0
+    },
+    "decay_profile::very_slow": {
+      "precision": 0.875,
+      "recall": 0.7,
+      "f1-score": 0.7777777777777778,
+      "support": 10.0
+    },
+    "importance_bin::high": {
+      "precision": 1.0,
+      "recall": 0.5,
+      "f1-score": 0.6666666666666666,
+      "support": 10.0
+    },
+    "importance_bin::low": {
+      "precision": 0.5555555555555556,
+      "recall": 1.0,
+      "f1-score": 0.7142857142857143,
+      "support": 10.0
+    },
+    "importance_bin::medium": {
+      "precision": 0.875,
+      "recall": 0.7,
+      "f1-score": 0.7777777777777778,
+      "support": 10.0
+    },
+    "memory_type::constraint": {
+      "precision": 0.5,
+      "recall": 0.9,
+      "f1-score": 0.6428571428571429,
+      "support": 10.0
+    },
+    "memory_type::conversation": {
+      "precision": 0.4375,
+      "recall": 0.7,
+      "f1-score": 0.5384615384615384,
+      "support": 10.0
+    },
+    "memory_type::episodic_event": {
+      "precision": 0.8888888888888888,
+      "recall": 0.8,
+      "f1-score": 0.8421052631578947,
+      "support": 10.0
+    },
+    "memory_type::hypothesis": {
+      "precision": 0.8181818181818182,
+      "recall": 0.9,
+      "f1-score": 0.8571428571428571,
+      "support": 10.0
+    },
+    "memory_type::knowledge": {
+      "precision": 0.7,
+      "recall": 0.7,
+      "f1-score": 0.7,
+      "support": 10.0
+    },
+    "memory_type::message": {
+      "precision": 0.625,
+      "recall": 0.5,
+      "f1-score": 0.5555555555555556,
+      "support": 10.0
+    },
+    "memory_type::observation": {
+      "precision": 1.0,
+      "recall": 0.6,
+      "f1-score": 0.75,
+      "support": 10.0
+    },
+    "memory_type::plan": {
+      "precision": 1.0,
+      "recall": 0.6,
+      "f1-score": 0.75,
+      "support": 10.0
+    },
+    "memory_type::preference": {
+      "precision": 0.2857142857142857,
+      "recall": 0.2,
+      "f1-score": 0.23529411764705882,
+      "support": 10.0
+    },
+    "memory_type::procedure": {
+      "precision": 0.8,
+      "recall": 0.4,
+      "f1-score": 0.5333333333333333,
+      "support": 10.0
+    },
+    "memory_type::reasoning_step": {
+      "precision": 0.375,
+      "recall": 0.9,
+      "f1-score": 0.5294117647058824,
+      "support": 10.0
+    },
+    "memory_type::scratch": {
+      "precision": 0.8571428571428571,
+      "recall": 0.6,
+      "f1-score": 0.7058823529411765,
+      "support": 10.0
+    },
+    "memory_type::semantic_fact": {
+      "precision": 0.5714285714285714,
+      "recall": 0.4,
+      "f1-score": 0.47058823529411764,
+      "support": 10.0
+    },
+    "memory_type::task_state": {
+      "precision": 0.8,
+      "recall": 0.4,
+      "f1-score": 0.5333333333333333,
+      "support": 10.0
+    },
+    "memory_type::tool_result": {
+      "precision": 0.8181818181818182,
+      "recall": 0.9,
+      "f1-score": 0.8571428571428571,
+      "support": 10.0
+    },
+    "query_domain::finance": {
+      "precision": 0.9960159362549801,
+      "recall": 1.0,
+      "f1-score": 0.998003992015968,
+      "support": 500.0
+    },
+    "query_domain::food": {
+      "precision": 0.8333333333333334,
+      "recall": 1.0,
+      "f1-score": 0.9090909090909091,
+      "support": 10.0
+    },
+    "query_domain::general": {
+      "precision": 0.8,
+      "recall": 0.8,
+      "f1-score": 0.8,
+      "support": 10.0
+    },
+    "query_domain::health": {
+      "precision": 0.7272727272727273,
+      "recall": 0.8,
+      "f1-score": 0.7619047619047619,
+      "support": 10.0
+    },
+    "query_domain::social": {
+      "precision": 1.0,
+      "recall": 0.8,
+      "f1-score": 0.8888888888888888,
+      "support": 10.0
+    },
+    "query_domain::tech": {
+      "precision": 1.0,
+      "recall": 0.7,
+      "f1-score": 0.8235294117647058,
+      "support": 10.0
+    },
+    "query_domain::travel": {
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1-score": 0.9473684210526315,
+      "support": 10.0
+    },
+    "query_domain::work": {
+      "precision": 0.75,
+      "recall": 0.9,
+      "f1-score": 0.8181818181818182,
+      "support": 10.0
+    },
+    "query_intent::constraint_check": {
+      "precision": 1.0,
+      "recall": 0.5,
+      "f1-score": 0.6666666666666666,
+      "support": 10.0
+    },
+    "query_intent::conversation": {
+      "precision": 0.5263157894736842,
+      "recall": 1.0,
+      "f1-score": 0.6896551724137931,
+      "support": 10.0
+    },
+    "query_intent::factual": {
+      "precision": 1.0,
+      "recall": 0.7,
+      "f1-score": 0.8235294117647058,
+      "support": 10.0
+    },
+    "query_intent::planning": {
+      "precision": 1.0,
+      "recall": 0.7,
+      "f1-score": 0.8235294117647058,
+      "support": 10.0
+    },
+    "query_intent::tool_query": {
+      "precision": 0.8333333333333334,
+      "recall": 1.0,
+      "f1-score": 0.9090909090909091,
+      "support": 10.0
+    },
+    "salience_bin::high": {
+      "precision": 0.75,
+      "recall": 0.9,
+      "f1-score": 0.8181818181818182,
+      "support": 10.0
+    },
+    "salience_bin::low": {
+      "precision": 0.8,
+      "recall": 0.8,
+      "f1-score": 0.8,
+      "support": 10.0
+    },
+    "salience_bin::medium": {
+      "precision": 1.0,
+      "recall": 0.8,
+      "f1-score": 0.8888888888888888,
+      "support": 10.0
+    },
+    "accuracy": 0.8657142857142858,
+    "macro avg": {
+      "precision": 0.8028551290318601,
+      "recall": 0.7482142857142858,
+      "f1-score": 0.7501021588798775,
+      "support": 1050.0
+    },
+    "weighted avg": {
+      "precision": 0.8929968390693159,
+      "recall": 0.8657142857142858,
+      "f1-score": 0.865789681010053,
+      "support": 1050.0
+    }
+  },
+  "per_task": {
+    "confidence_bin": {
+      "high": {
+        "precision": 1.0,
+        "recall": 0.9,
+        "f1-score": 0.9473684210526315,
+        "support": 10.0
+      },
+      "low": {
+        "precision": 0.9,
+        "recall": 0.9,
+        "f1-score": 0.9,
+        "support": 10.0
+      },
+      "medium": {
+        "precision": 0.8181818181818182,
+        "recall": 0.9,
+        "f1-score": 0.8571428571428571,
+        "support": 10.0
+      },
+      "accuracy": 0.9,
+      "macro avg": {
+        "precision": 0.9060606060606061,
+        "recall": 0.9,
+        "f1-score": 0.9015037593984961,
+        "support": 30.0
+      },
+      "weighted avg": {
+        "precision": 0.906060606060606,
+        "recall": 0.9,
+        "f1-score": 0.9015037593984961,
+        "support": 30.0
+      }
+    },
+    "constraint_dimension": {
+      "causal": {
+        "precision": 0.42857142857142855,
+        "recall": 0.9,
+        "f1-score": 0.5806451612903226,
+        "support": 10.0
+      },
+      "goal": {
+        "precision": 1.0,
+        "recall": 0.4,
+        "f1-score": 0.5714285714285714,
+        "support": 10.0
+      },
+      "other": {
+        "precision": 0.8,
+        "recall": 0.8,
+        "f1-score": 0.8,
+        "support": 10.0
+      },
+      "policy": {
+        "precision": 0.8888888888888888,
+        "recall": 0.8,
+        "f1-score": 0.8421052631578947,
+        "support": 10.0
+      },
+      "state": {
+        "precision": 0.7142857142857143,
+        "recall": 0.5,
+        "f1-score": 0.5882352941176471,
+        "support": 10.0
+      },
+      "value": {
+        "precision": 1.0,
+        "recall": 0.7,
+        "f1-score": 0.8235294117647058,
+        "support": 10.0
+      },
+      "micro avg": {
+        "precision": 0.7068965517241379,
+        "recall": 0.6833333333333333,
+        "f1-score": 0.6949152542372882,
+        "support": 60.0
+      },
+      "macro avg": {
+        "precision": 0.8052910052910054,
+        "recall": 0.6833333333333335,
+        "f1-score": 0.700990616959857,
+        "support": 60.0
+      },
+      "weighted avg": {
+        "precision": 0.8052910052910053,
+        "recall": 0.6833333333333333,
+        "f1-score": 0.7009906169598569,
+        "support": 60.0
+      }
+    },
+    "context_tag": {
+      "finance": {
+        "precision": 0.5714285714285714,
+        "recall": 0.8,
+        "f1-score": 0.6666666666666666,
+        "support": 10.0
+      },
+      "food": {
+        "precision": 0.75,
+        "recall": 0.9,
+        "f1-score": 0.8181818181818182,
+        "support": 10.0
+      },
+      "general": {
+        "precision": 1.0,
+        "recall": 0.9,
+        "f1-score": 0.9473684210526315,
+        "support": 10.0
+      },
+      "health": {
+        "precision": 1.0,
+        "recall": 0.7,
+        "f1-score": 0.8235294117647058,
+        "support": 10.0
+      },
+      "social": {
+        "precision": 1.0,
+        "recall": 0.9,
+        "f1-score": 0.9473684210526315,
+        "support": 10.0
+      },
+      "tech": {
+        "precision": 0.875,
+        "recall": 0.7,
+        "f1-score": 0.7777777777777778,
+        "support": 10.0
+      },
+      "travel": {
+        "precision": 0.7,
+        "recall": 0.7,
+        "f1-score": 0.7,
+        "support": 10.0
+      },
+      "work": {
+        "precision": 0.8,
+        "recall": 0.8,
+        "f1-score": 0.8,
+        "support": 10.0
+      },
+      "micro avg": {
+        "precision": 0.810126582278481,
+        "recall": 0.8,
+        "f1-score": 0.8050314465408805,
+        "support": 80.0
+      },
+      "macro avg": {
+        "precision": 0.8370535714285714,
+        "recall": 0.8,
+        "f1-score": 0.8101115645620289,
+        "support": 80.0
+      },
+      "weighted avg": {
+        "precision": 0.8370535714285715,
+        "recall": 0.8,
+        "f1-score": 0.8101115645620289,
+        "support": 80.0
+      }
+    },
+    "decay_profile": {
+      "fast": {
+        "precision": 1.0,
+        "recall": 0.4,
+        "f1-score": 0.5714285714285714,
+        "support": 10.0
+      },
+      "medium": {
+        "precision": 0.6923076923076923,
+        "recall": 0.9,
+        "f1-score": 0.782608695652174,
+        "support": 10.0
+      },
+      "slow": {
+        "precision": 0.7272727272727273,
+        "recall": 0.8,
+        "f1-score": 0.7619047619047619,
+        "support": 10.0
+      },
+      "very_fast": {
+        "precision": 0.6923076923076923,
+        "recall": 0.9,
+        "f1-score": 0.782608695652174,
+        "support": 10.0
+      },
+      "very_slow": {
+        "precision": 0.875,
+        "recall": 0.7,
+        "f1-score": 0.7777777777777778,
+        "support": 10.0
+      },
+      "micro avg": {
+        "precision": 0.7551020408163265,
+        "recall": 0.74,
+        "f1-score": 0.7474747474747475,
+        "support": 50.0
+      },
+      "macro avg": {
+        "precision": 0.7973776223776223,
+        "recall": 0.74,
+        "f1-score": 0.7352657004830918,
+        "support": 50.0
+      },
+      "weighted avg": {
+        "precision": 0.7973776223776224,
+        "recall": 0.74,
+        "f1-score": 0.7352657004830917,
+        "support": 50.0
+      }
+    },
+    "importance_bin": {
+      "high": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1-score": 0.6666666666666666,
+        "support": 10.0
+      },
+      "low": {
+        "precision": 0.5555555555555556,
+        "recall": 1.0,
+        "f1-score": 0.7142857142857143,
+        "support": 10.0
+      },
+      "medium": {
+        "precision": 1.0,
+        "recall": 0.7,
+        "f1-score": 0.8235294117647058,
+        "support": 10.0
+      },
+      "accuracy": 0.7333333333333333,
+      "macro avg": {
+        "precision": 0.8518518518518517,
+        "recall": 0.7333333333333334,
+        "f1-score": 0.734827264239029,
+        "support": 30.0
+      },
+      "weighted avg": {
+        "precision": 0.8518518518518519,
+        "recall": 0.7333333333333333,
+        "f1-score": 0.7348272642390289,
+        "support": 30.0
+      }
+    },
+    "memory_type": {
+      "constraint": {
+        "precision": 0.5,
+        "recall": 0.9,
+        "f1-score": 0.6428571428571429,
+        "support": 10.0
+      },
+      "conversation": {
+        "precision": 0.4375,
+        "recall": 0.7,
+        "f1-score": 0.5384615384615384,
+        "support": 10.0
+      },
+      "episodic_event": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1-score": 0.8888888888888888,
+        "support": 10.0
+      },
+      "hypothesis": {
+        "precision": 0.8181818181818182,
+        "recall": 0.9,
+        "f1-score": 0.8571428571428571,
+        "support": 10.0
+      },
+      "knowledge": {
+        "precision": 0.7,
+        "recall": 0.7,
+        "f1-score": 0.7,
+        "support": 10.0
+      },
+      "message": {
+        "precision": 0.625,
+        "recall": 0.5,
+        "f1-score": 0.5555555555555556,
+        "support": 10.0
+      },
+      "observation": {
+        "precision": 1.0,
+        "recall": 0.6,
+        "f1-score": 0.75,
+        "support": 10.0
+      },
+      "plan": {
+        "precision": 1.0,
+        "recall": 0.6,
+        "f1-score": 0.75,
+        "support": 10.0
+      },
+      "preference": {
+        "precision": 0.2857142857142857,
+        "recall": 0.2,
+        "f1-score": 0.23529411764705882,
+        "support": 10.0
+      },
+      "procedure": {
+        "precision": 1.0,
+        "recall": 0.4,
+        "f1-score": 0.5714285714285714,
+        "support": 10.0
+      },
+      "reasoning_step": {
+        "precision": 0.375,
+        "recall": 0.9,
+        "f1-score": 0.5294117647058824,
+        "support": 10.0
+      },
+      "scratch": {
+        "precision": 0.8571428571428571,
+        "recall": 0.6,
+        "f1-score": 0.7058823529411765,
+        "support": 10.0
+      },
+      "semantic_fact": {
+        "precision": 0.6666666666666666,
+        "recall": 0.4,
+        "f1-score": 0.5,
+        "support": 10.0
+      },
+      "task_state": {
+        "precision": 0.8,
+        "recall": 0.4,
+        "f1-score": 0.5333333333333333,
+        "support": 10.0
+      },
+      "tool_result": {
+        "precision": 0.8181818181818182,
+        "recall": 0.9,
+        "f1-score": 0.8571428571428571,
+        "support": 10.0
+      },
+      "micro avg": {
+        "precision": 0.6462585034013606,
+        "recall": 0.6333333333333333,
+        "f1-score": 0.6397306397306397,
+        "support": 150.0
+      },
+      "macro avg": {
+        "precision": 0.7255591630591631,
+        "recall": 0.6333333333333334,
+        "f1-score": 0.6410265986736575,
+        "support": 150.0
+      },
+      "weighted avg": {
+        "precision": 0.7255591630591631,
+        "recall": 0.6333333333333333,
+        "f1-score": 0.6410265986736575,
+        "support": 150.0
+      }
+    },
+    "query_domain": {
+      "finance": {
+        "precision": 0.9960159362549801,
+        "recall": 1.0,
+        "f1-score": 0.998003992015968,
+        "support": 500.0
+      },
+      "food": {
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1-score": 0.9090909090909091,
+        "support": 10.0
+      },
+      "general": {
+        "precision": 0.8,
+        "recall": 0.8,
+        "f1-score": 0.8,
+        "support": 10.0
+      },
+      "health": {
+        "precision": 0.8888888888888888,
+        "recall": 0.8,
+        "f1-score": 0.8421052631578947,
+        "support": 10.0
+      },
+      "social": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1-score": 0.8888888888888888,
+        "support": 10.0
+      },
+      "tech": {
+        "precision": 1.0,
+        "recall": 0.7,
+        "f1-score": 0.8235294117647058,
+        "support": 10.0
+      },
+      "travel": {
+        "precision": 1.0,
+        "recall": 0.9,
+        "f1-score": 0.9473684210526315,
+        "support": 10.0
+      },
+      "work": {
+        "precision": 0.9,
+        "recall": 0.9,
+        "f1-score": 0.9,
+        "support": 10.0
+      },
+      "micro avg": {
+        "precision": 0.9858906525573192,
+        "recall": 0.980701754385965,
+        "f1-score": 0.9832893579595426,
+        "support": 570.0
+      },
+      "macro avg": {
+        "precision": 0.9272797698096502,
+        "recall": 0.8625,
+        "f1-score": 0.8886233607463747,
+        "support": 570.0
+      },
+      "weighted avg": {
+        "precision": 0.9863687549994951,
+        "recall": 0.980701754385965,
+        "f1-score": 0.9826523244693584,
+        "support": 570.0
+      }
+    },
+    "query_intent": {
+      "constraint_check": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1-score": 0.6666666666666666,
+        "support": 10.0
+      },
+      "conversation": {
+        "precision": 0.5263157894736842,
+        "recall": 1.0,
+        "f1-score": 0.6896551724137931,
+        "support": 10.0
+      },
+      "factual": {
+        "precision": 1.0,
+        "recall": 0.7,
+        "f1-score": 0.8235294117647058,
+        "support": 10.0
+      },
+      "planning": {
+        "precision": 1.0,
+        "recall": 0.7,
+        "f1-score": 0.8235294117647058,
+        "support": 10.0
+      },
+      "tool_query": {
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1-score": 0.9090909090909091,
+        "support": 10.0
+      },
+      "accuracy": 0.78,
+      "macro avg": {
+        "precision": 0.8719298245614034,
+        "recall": 0.78,
+        "f1-score": 0.782494314340156,
+        "support": 50.0
+      },
+      "weighted avg": {
+        "precision": 0.8719298245614036,
+        "recall": 0.78,
+        "f1-score": 0.782494314340156,
+        "support": 50.0
+      }
+    },
+    "salience_bin": {
+      "high": {
+        "precision": 0.75,
+        "recall": 0.9,
+        "f1-score": 0.8181818181818182,
+        "support": 10.0
+      },
+      "low": {
+        "precision": 0.8,
+        "recall": 0.8,
+        "f1-score": 0.8,
+        "support": 10.0
+      },
+      "medium": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1-score": 0.8888888888888888,
+        "support": 10.0
+      },
+      "accuracy": 0.8333333333333334,
+      "macro avg": {
+        "precision": 0.85,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8356902356902357,
+        "support": 30.0
+      },
+      "weighted avg": {
+        "precision": 0.85,
+        "recall": 0.8333333333333334,
+        "f1-score": 0.8356902356902356,
+        "support": 30.0
+      }
+    }
+  }
+}
