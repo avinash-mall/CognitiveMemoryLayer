@@ -16,7 +16,7 @@ import argparse
 import json
 import sys
 import tomllib
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import joblib
@@ -105,7 +105,8 @@ def _composite_label(task: str, label: str) -> str:
 def _split_composite(value: str) -> tuple[str, str]:
     if "::" not in value:
         return "unknown", value
-    return value.split("::", 1)
+    a, b = value.split("::", 1)
+    return a, b
 
 
 def _load_split(prepared_dir: Path, family: str, split_name: str) -> pd.DataFrame:
@@ -195,8 +196,8 @@ def _build_pipeline(train_cfg: dict) -> Pipeline:
 def _fit_with_epoch_stats(
     model: Pipeline, train_x: list[str], train_y: list[str], *, epochs: int, family: str
 ) -> list[dict]:
-    vectorizer: TfidfVectorizer = model.named_steps["vectorizer"]  # type: ignore[assignment]
-    classifier: SGDClassifier = model.named_steps["classifier"]  # type: ignore[assignment]
+    vectorizer: TfidfVectorizer = model.named_steps["vectorizer"]
+    classifier: SGDClassifier = model.named_steps["classifier"]
 
     x_train = vectorizer.fit_transform(train_x)
     classes = sorted(set(train_y))
@@ -377,7 +378,7 @@ def _train_one_family(
 
     metadata = {
         "family": family,
-        "trained_at_utc": datetime.now(datetime.UTC).isoformat(),
+        "trained_at_utc": datetime.now(UTC).isoformat(),
         "rows": {"train": len(train_df), "test": len(test_df), "eval": len(eval_df)},
         "tasks": sorted(set(train_df["task"]) | set(test_df["task"]) | set(eval_df["task"])),
         "task_label_counts": {
@@ -517,12 +518,13 @@ def main() -> int:
         print("No model families selected for training.", file=sys.stderr)
         return 1
 
+    families_summary: dict[str, dict] = {}
     manifest = {
         "config_path": str(args.config.resolve()),
-        "trained_at_utc": datetime.now(datetime.UTC).isoformat(),
+        "trained_at_utc": datetime.now(UTC).isoformat(),
         "paths": {"prepared_dir": str(prepared_dir), "trained_models_dir": str(output_dir)},
         "train_settings": train_cfg,
-        "families": {},
+        "families": families_summary,
     }
 
     pbar = _progress(total=len(families), desc="Model training", unit="family")
@@ -535,7 +537,7 @@ def main() -> int:
                 output_dir=output_dir,
                 train_cfg=train_cfg,
             )
-            manifest["families"][family] = summary
+            families_summary[family] = summary
             pbar.update(1)
     finally:
         pbar.close()
