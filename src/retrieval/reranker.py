@@ -188,7 +188,7 @@ class MemoryReranker:
         """Return a cached-friendly word set for Jaccard computation."""
         return frozenset(text.lower().split())
 
-    def _text_similarity(self, text1: str | frozenset[str], text2: str | frozenset[str]) -> float:
+    def _text_similarity(self, text1: str, text2: str) -> float:
         """Jaccard word-overlap similarity (accepts pre-computed frozensets)."""
         words1 = text1 if isinstance(text1, frozenset) else self._word_set(text1)
         words2 = text2 if isinstance(text2, frozenset) else self._word_set(text2)

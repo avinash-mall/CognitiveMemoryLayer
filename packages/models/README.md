@@ -38,7 +38,7 @@ If model artifacts are not present, runtime uses safe non-LLM defaults for those
 
 1. dataset loading (auto-download via Hugging Face IDs in config)
 2. merge with existing local prepared data when available
-3. missing-only balancing to target counts (controlled by `samples_per_task_label` in config; other limits are derived from it)
+3. missing-only balancing to target counts (default `10000` per task-label)
 4. LLM-only synthetic backfill for deficits
 5. stratified split output (`train`, `test`, `eval`)
 
@@ -83,12 +83,6 @@ LLM_EVAL__BASE_URL=http://localhost:11434/v1
 - `manifest.json`
 
 Per-epoch training logs are printed to console and persisted in epoch stats files.
-Training now supports eval-driven early stopping (`early_stopping_*`), optional
-word+char TF-IDF fusion (`use_char_ngrams`), and task-balancing sample weights
-(`task_weight_power`, `label_weight_power`) for better macro-F1 on smaller tasks.
-Pair-family inputs also include lexical interaction features to improve
-`constraint_rerank`/`scope_match` discrimination.
-Family-specific tuning can be configured with `[train.family_overrides.<family>]`.
 
 ## Usage
 
@@ -102,8 +96,7 @@ python -m packages.models.scripts.train
 Common overrides:
 
 ```bash
-python -m packages.models.scripts.prepare --samples-per-task-label 100
-python -m packages.models.scripts.prepare --samples-per-task-label 100 --llm-temperature 1.35
+python -m packages.models.scripts.prepare --target-per-task-label 10000 --llm-temperature 1.35
 python -m packages.models.scripts.prepare --force-full
 python -m packages.models.scripts.train --max-iter 25 --max-features 250000
 ```

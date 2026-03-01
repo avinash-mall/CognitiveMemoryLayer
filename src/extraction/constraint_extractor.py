@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
@@ -51,31 +50,6 @@ _CHUNK_TYPE_TO_CONSTRAINT: dict[str, str] = {
     "constraint": "policy",
     "preference": "preference",
 }
-
-_CONSTRAINT_TEXT_HINTS = (
-    "must",
-    "should",
-    "shouldn't",
-    "shouldnt",
-    "need to",
-    "have to",
-    "trying to",
-    "focused on",
-    "in order to",
-    "because",
-    "never",
-    "always",
-    "currently",
-    "dealing with",
-    "can't",
-    "cannot",
-    "value",
-    "prefer",
-    "avoid",
-    "goal",
-    "policy",
-    "allergic",
-)
 
 _SUPERSESSION_PROMPT = """Determine whether NEW constraint supersedes OLD constraint.
 
@@ -148,7 +122,7 @@ class ConstraintExtractor:
             pred = self._modelpack.predict_single("constraint_type", text)
             if pred and pred.label:
                 label = pred.label.strip().lower()
-                if label in _ALLOWED_CONSTRAINT_TYPES and self._looks_like_constraint_text(text):
+                if label in _ALLOWED_CONSTRAINT_TYPES:
                     return label, max(self._base_confidence, min(1.0, pred.confidence))
 
         chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
@@ -156,15 +130,6 @@ class ConstraintExtractor:
         if mapped:
             return mapped, self._base_confidence
         return None, self._base_confidence
-
-    @staticmethod
-    def _looks_like_constraint_text(text: str) -> bool:
-        lowered = text.lower()
-        if any(hint in lowered for hint in _CONSTRAINT_TEXT_HINTS):
-            return True
-        return bool(re.search(r"\b(i|we|my|our)\b", lowered)) and bool(
-            re.search(r"\b(try|plan|must|need|prefer|avoid|value|want|can't|cannot)\b", lowered)
-        )
 
     # ------------------------------------------------------------------
     # Supersession helpers

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -49,15 +48,6 @@ _MODEL_FILE = {
     "extractor": "extractor_model.joblib",
     "pair": "pair_model.joblib",
 }
-
-try:  # pragma: no cover - optional dependency surface
-    from sklearn.exceptions import InconsistentVersionWarning
-except Exception:  # pragma: no cover - sklearn may be unavailable
-
-    class InconsistentVersionWarning(Warning):  # type: ignore[no-redef]
-        """Fallback warning type when sklearn is unavailable."""
-
-        pass
 
 
 def _split_composite_label(raw: str) -> tuple[str, str]:
@@ -137,19 +127,7 @@ class ModelPackRuntime:
             if not path.exists():
                 continue
             try:
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")
-                    payload = joblib.load(path)
-
-                version_mismatch = any(
-                    isinstance(w.message, InconsistentVersionWarning) for w in caught
-                )
-                if version_mismatch:
-                    self._load_errors.append(
-                        f"{family}: skipped due sklearn version mismatch for {path.name}"
-                    )
-                    continue
-
+                payload = joblib.load(path)
                 model = payload.get("model") if isinstance(payload, dict) else payload
                 if model is None:
                     self._load_errors.append(f"{family}: missing model key")
