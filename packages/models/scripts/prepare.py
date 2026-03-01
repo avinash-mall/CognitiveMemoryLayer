@@ -20,6 +20,7 @@ import re
 import sys
 import time
 import tomllib
+import warnings
 from collections import defaultdict
 from pathlib import Path
 
@@ -39,6 +40,15 @@ try:
     from datasets import load_dataset as _hf_load_dataset
 except Exception:  # pragma: no cover - optional dependency
     _hf_load_dataset = None
+
+# Some model outputs may trigger parser fallback paths in third-party code that emit
+# SyntaxWarning ("invalid escape sequence ...") for raw backslashes in free-form text.
+# These warnings are noisy and non-actionable during long synth runs.
+warnings.filterwarnings(
+    "ignore",
+    category=SyntaxWarning,
+    message=r"invalid escape sequence .*",
+)
 
 
 MODELS_ROOT = Path(__file__).resolve().parent.parent
@@ -208,12 +218,7 @@ def _sanitize_unicode(s: str) -> str:
 def _sanitize_row_dicts(rows: list[dict]) -> list[dict]:
     out: list[dict] = []
     for row in rows:
-        out.append(
-            {
-                k: _sanitize_unicode(v) if isinstance(v, str) else v
-                for k, v in row.items()
-            }
-        )
+        out.append({k: _sanitize_unicode(v) if isinstance(v, str) else v for k, v in row.items()})
     return out
 
 

@@ -317,16 +317,25 @@ Memory retrieval is not lookup &mdash; it is **ecphory**: the interaction betwee
 
 CML supports 15 memory types, each with a biological analog and distinct decay profile:
 
-| Type | Description | Decay | Type | Description | Decay |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `episodic_event` | What happened | Fast | `conversation` | Chat turn | Session |
-| `semantic_fact` | Distilled facts | Slow | `message` | Single message | Session |
-| `preference` | Likes/dislikes | Medium | `tool_result` | Function output | Task |
-| `constraint` | Rules/policies/goals | Stable | `reasoning_step` | CoT step | Session |
-| `procedure` | How-to | Stable | `scratch` | Working notes | Fast |
-| `hypothesis` | Uncertain belief | Confirm | `knowledge` | World knowledge | Stable |
-| `task_state` | Progress | Very Fast | `observation` | Environment | Session |
-| `plan` | Goals/plans | Task | | | |
+| Type | Description | Decay |
+| :--- | :--- | :--- |
+| `episodic_event` | A specific personal event anchored in time/place. | Fast |
+| `semantic_fact` | A factual statement about the world or domain knowledge. | Slow |
+| `procedure` | Step-by-step instructions or process knowledge. | Stable |
+| `constraint` | A hard/soft rule, policy, must/never condition. | Stable |
+| `hypothesis` | A tentative explanation or guess. | Confirm |
+| `preference` | A stable like/dislike or personal choice. | Medium |
+| `task_state` | Current progress/status of a task. | Very Fast |
+| `conversation` | General conversational turn with little durable content. | Session |
+| `message` | Message-like communication content. | Session |
+| `tool_result` | Output or observation from a tool/API/query. | Task |
+| `reasoning_step` | Intermediate reasoning or derivation step. | Session |
+| `scratch` | Temporary short-term note. | Fast |
+| `knowledge` | Domain information suitable for long-term memory. | Stable |
+| `observation` | Observed condition or signal. | Session |
+| `plan` | Future actions or strategy. | Task |
+
+Types are defined in `src/core/enums.py` as `MemoryType`. **Decay**: Fast/Very Fast = short-lived; Slow/Stable = long-lived (higher retention); Session = per conversation; Task = per task; Confirm = until confirmed or rejected. **Implementation**: type assignment at write in `src/memory/hippocampal/write_gate.py` (`_determine_memory_types()`); retention by type in `src/forgetting/scorer.py` (`ScorerConfig.type_bonuses`).
 
 ---
 
