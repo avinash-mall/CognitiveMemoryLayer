@@ -5,10 +5,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+import structlog
+
 from ..core.enums import MemoryStatus
 from ..memory.neocortical.store import NeocorticalStore
 from ..storage.base import MemoryStoreBase
 from .schema_aligner import AlignmentResult
+
+_logger = structlog.get_logger(__name__)
 
 
 def _stable_fact_key(prefix: str, text: str) -> str:
@@ -89,7 +93,7 @@ class ConsolidationMigrator:
                     if alignment and getattr(alignment, "gist", None):
                         gist_preview = (getattr(alignment.gist, "text", None) or "unknown")[:50]
                 except Exception:
-                    pass
+                    _logger.debug("gist_preview_extraction_failed")
                 result.errors.append(f"Failed to migrate gist '{gist_preview}': {e}")
 
         return result

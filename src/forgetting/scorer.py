@@ -143,10 +143,23 @@ class RelevanceScorer:
         dep_counts = dependency_counts or {}
         return [self.score(r, dep_counts.get(str(r.id), 0)) for r in records]
 
+    _PROTECTED_TYPES = frozenset({
+        MemoryType.CONSTRAINT.value,
+        MemoryType.PREFERENCE.value,
+        MemoryType.PROCEDURE.value,
+    })
+
     def _suggest_action(self, score: float, memory_type: str) -> str:
-        """Suggest forgetting action based on score."""
-        if memory_type == MemoryType.CONSTRAINT.value:
-            return "keep"
+        """Suggest forgetting action based on score.
+
+        Constraints, preferences, and procedures are protected from deletion
+        and compression — they can only decay or be kept. This prevents
+        safety-critical information (allergies, policies) from being lost.
+        """
+        if memory_type in self._PROTECTED_TYPES:
+            if score >= self.config.decay_threshold:
+                return "keep"
+            return "decay"
         if score >= self.config.keep_threshold:
             return "keep"
         if score >= self.config.decay_threshold:
