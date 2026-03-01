@@ -158,7 +158,9 @@ def create_memory_chain(
         api_key = (
             os.environ.get("LLM_INTERNAL__API_KEY") or os.environ.get("OPENAI_API_KEY") or "dummy"
         )
-        llm = ChatOpenAI(model=model, temperature=0.7, base_url=llm_base, api_key=SecretStr(api_key))
+        llm = ChatOpenAI(
+            model=model, temperature=0.7, base_url=llm_base, api_key=SecretStr(api_key)
+        )
     else:
         llm = ChatOpenAI(model=model, temperature=0.7)
     return ConversationChain(llm=llm, memory=memory, prompt=PROMPT, verbose=False)
