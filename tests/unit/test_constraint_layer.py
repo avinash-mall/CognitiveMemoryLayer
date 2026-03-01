@@ -552,10 +552,10 @@ class TestQueryClassifierConstraintCheck:
             modelpack=cast(
                 "ModelPackRuntime",
                 _StubModelPack(
-                    single={
-                        "query_intent": ("constraint_check", 0.9),
-                        "constraint_dimension": ("policy", 0.8),
-                    }
+                single={
+                    "query_intent": ("constraint_check", 0.9),
+                    "constraint_dimension": ("policy", 0.8),
+                }
                 ),
             ),
         )
