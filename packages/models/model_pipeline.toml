@@ -160,6 +160,10 @@ max_retries = 3
 # Retry budget per (task,label) while filling missing rows.
 max_attempts_per_label = 80
 
+# Persist accepted LLM rows during generation so cancelled/failed runs can resume.
+resume_checkpoint_enabled = true
+resume_checkpoint_flush_every = 1
+
 # Only the first N rows/lines from each local raw dataset file are scanned
 # to build seed pools (fast structure probing).
 local_raw_scan_rows_per_file = 300
