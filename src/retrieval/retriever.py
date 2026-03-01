@@ -480,13 +480,6 @@ class HybridRetriever:
         # 2. Semantic fact lookup for cognitive constraint categories
         from ..memory.neocortical.schemas import FactCategory
 
-        default_categories: list[FactCategory] = [
-            FactCategory.GOAL,
-            FactCategory.STATE,
-            FactCategory.VALUE,
-            FactCategory.CAUSAL,
-            FactCategory.POLICY,
-        ]
         cognitive_categories: list[FactCategory] = []
         if step.constraint_categories:
             for cat_str in step.constraint_categories:
@@ -494,11 +487,14 @@ class HybridRetriever:
                     cognitive_categories.append(FactCategory(cat_str.lower()))
                 except ValueError:
                     pass
-            # Keep user-requested categories first, but include the full cognitive set
-            # so noisy classification doesn't suppress relevant policy/state constraints.
-            cognitive_categories = list(dict.fromkeys(cognitive_categories + default_categories))
         else:
-            cognitive_categories = default_categories
+            cognitive_categories = [
+                FactCategory.GOAL,
+                FactCategory.STATE,
+                FactCategory.VALUE,
+                FactCategory.CAUSAL,
+                FactCategory.POLICY,
+            ]
 
         try:
             facts = []

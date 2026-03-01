@@ -6,11 +6,6 @@ Families prepared:
 2) extractor   (single-text multi-task)
 3) pair        (text-pair multi-task)
 
-Dataset size is controlled by a single config variable: samples_per_task_label
-(in model_pipeline.toml [prepare]). target_per_task_label, max_per_task_label,
-and max_rows_per_source are derived from it when not set explicitly. Optional
-CLI overrides exist for fine-grained control.
-
 Configuration:
   packages/models/model_pipeline.toml
 """
@@ -18,7 +13,6 @@ Configuration:
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import os
 import random
@@ -27,7 +21,6 @@ import sys
 import time
 import tomllib
 from collections import defaultdict
-from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -51,21 +44,6 @@ except Exception:  # pragma: no cover - optional dependency
 MODELS_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = MODELS_ROOT.parent.parent
 DEFAULT_CONFIG_PATH = MODELS_ROOT / "model_pipeline.toml"
-# Used when deriving max_rows_per_source from samples_per_task_label (router has 55 (task,label) pairs).
-_MAX_TASK_LABEL_PAIRS = 60
-
-
-def _derive_prepare_limits_from_samples_per_task_label(
-    samples_per_task_label: int,
-) -> dict[str, int]:
-    """Derive target_per_task_label, max_per_task_label, max_rows_per_source from the single knob."""
-    n = int(samples_per_task_label)
-    return {
-        "target_per_task_label": n,
-        "max_per_task_label": max(n, n * 5),
-        "max_rows_per_source": n * _MAX_TASK_LABEL_PAIRS,
-    }
-
 
 LOCAL_BOOTSTRAP_SPLITS = ("train", "test", "eval")
 ROUTER_TASKS = (
@@ -175,21 +153,6 @@ def _warn(msg: str) -> None:
     print(f"[prepare] {msg}", file=sys.stderr)
 
 
-def _to_bool(value: object, *, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, (int, float)):
-        return bool(value)
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "y", "on"}:
-        return True
-    if text in {"0", "false", "no", "n", "off"}:
-        return False
-    return default
-
-
 def _resolve_path(path_like: str, *, base: Path) -> Path:
     value = Path(path_like)
     if value.is_absolute():
@@ -245,7 +208,12 @@ def _sanitize_unicode(s: str) -> str:
 def _sanitize_row_dicts(rows: list[dict]) -> list[dict]:
     out: list[dict] = []
     for row in rows:
-        out.append({k: _sanitize_unicode(v) if isinstance(v, str) else v for k, v in row.items()})
+        out.append(
+            {
+                k: _sanitize_unicode(v) if isinstance(v, str) else v
+                for k, v in row.items()
+            }
+        )
     return out
 
 
@@ -364,115 +332,6 @@ def _seed_pair_store_from_df(rows: _PairTaskStore, df: pd.DataFrame) -> None:
             str(getattr(item, "label", "")),
             str(getattr(item, "source", "prepared:existing")),
         )
-
-
-def _empty_family_df(family: str) -> pd.DataFrame:
-    if family in {"router", "extractor"}:
-        return pd.DataFrame(columns=["text", "task", "label", "source"])
-    if family == "pair":
-        return pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"])
-    raise ValueError(f"Unknown family: {family}")
-
-
-def _resume_checkpoint_path(prepared_dir: Path, family: str) -> Path:
-    return prepared_dir / f".{family}_llm_resume.jsonl"
-
-
-def _load_resume_checkpoint_df(prepared_dir: Path, family: str) -> pd.DataFrame:
-    path = _resume_checkpoint_path(prepared_dir, family)
-    if not path.exists():
-        return _empty_family_df(family)
-
-    rows: list[dict] = []
-    invalid_lines = 0
-    with open(path, encoding="utf-8", errors="ignore") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                item = json.loads(line)
-            except Exception:
-                invalid_lines += 1
-                continue
-            if not isinstance(item, dict):
-                invalid_lines += 1
-                continue
-
-            # Backward/forward-compatible shape support: either a row dict or {"row": {...}}.
-            row = item.get("row", item)
-            if not isinstance(row, dict):
-                invalid_lines += 1
-                continue
-
-            task = _clean(row.get("task", ""), 80)
-            label = _clean(row.get("label", ""), 80)
-            source = _clean(row.get("source", ""), 200) or "llm:resume"
-            if family in {"router", "extractor"}:
-                text = _clean(row.get("text", ""), 1000)
-                if text and task and label:
-                    rows.append({"text": text, "task": task, "label": label, "source": source})
-            elif family == "pair":
-                text_a = _clean(row.get("text_a", ""), 700)
-                text_b = _clean(row.get("text_b", ""), 700)
-                if text_a and text_b and task and label:
-                    rows.append(
-                        {
-                            "text_a": text_a,
-                            "text_b": text_b,
-                            "task": task,
-                            "label": label,
-                            "source": source,
-                        }
-                    )
-            else:
-                raise ValueError(f"Unknown family: {family}")
-
-    if invalid_lines:
-        _warn(f"Ignored {invalid_lines} invalid resume checkpoint lines in {path.name}.")
-    if rows:
-        print(f"Loaded resume checkpoint rows for {family}: {len(rows)} ({path.name})")
-    return pd.DataFrame(rows)
-
-
-def _concat_existing_and_resume(existing_df: pd.DataFrame, resume_df: pd.DataFrame) -> pd.DataFrame:
-    if existing_df.empty:
-        return resume_df.copy()
-    if resume_df.empty:
-        return existing_df.copy()
-    return pd.concat([existing_df, resume_df], ignore_index=True)
-
-
-def _remove_resume_checkpoint(prepared_dir: Path, family: str) -> None:
-    path = _resume_checkpoint_path(prepared_dir, family)
-    if path.exists():
-        try:
-            path.unlink()
-        except Exception as exc:
-            _warn(f"Failed to remove resume checkpoint {path.name}: {exc}")
-
-
-class _ResumeCheckpointWriter:
-    def __init__(self, *, path: Path, flush_every: int) -> None:
-        self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.flush_every = max(1, int(flush_every))
-        self._pending = 0
-        self._file = self.path.open("a", encoding="utf-8")
-
-    def append(self, row: dict) -> None:
-        # Persist rows as JSONL so interrupted runs can resume deterministically.
-        self._file.write(json.dumps(row, ensure_ascii=False) + "\n")
-        self._pending += 1
-        if self._pending >= self.flush_every:
-            self._file.flush()
-            self._pending = 0
-
-    def close(self) -> None:
-        try:
-            self._file.flush()
-        finally:
-            self._file.close()
 
 
 class _HFRegistry:
@@ -600,216 +459,21 @@ def _parse_json_content(content: str) -> dict[str, object] | None:
         return None
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.DOTALL)
     candidate = fenced.group(1) if fenced else text
+    try:
+        payload = json.loads(candidate)
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
 
-    candidates: list[str] = [candidate]
-    match_obj = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if match_obj:
-        candidates.append(match_obj.group(0))
-    match_arr = re.search(r"\[.*\]", text, flags=re.DOTALL)
-    if match_arr:
-        candidates.append(match_arr.group(0))
-
-    for raw in candidates:
-        raw = raw.strip()
-        if not raw:
-            continue
-        payload_obj: object | None = None
-        try:
-            payload_obj = json.loads(raw)
-        except Exception:
-            payload_obj = None
-        if payload_obj is None:
-            try:
-                payload_obj = ast.literal_eval(raw)
-            except Exception:
-                payload_obj = None
-
-        if isinstance(payload_obj, dict):
-            return payload_obj
-        if isinstance(payload_obj, list):
-            return {"samples": payload_obj}
-    return None
-
-
-def _strip_markdown_fences(text: str) -> str:
-    return re.sub(r"```(?:json)?\s*|\s*```", "", text, flags=re.IGNORECASE)
-
-
-def _normalize_bullet_line(line: str) -> str:
-    value = line.strip()
-    value = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", value)
-    value = value.strip().strip('"').strip("'").strip()
-    return value
-
-
-def _extract_single_samples_from_payload(payload: dict[str, object]) -> list[str]:
-    out: list[str] = []
-    containers: list[object] = []
-    for key in ("samples", "items", "data", "examples", "texts", "outputs", "result"):
-        if key in payload:
-            containers.append(payload.get(key))
-    if not containers:
-        containers.append(payload)
-
-    for container in containers:
-        if isinstance(container, list):
-            for item in container:
-                if isinstance(item, dict):
-                    text = _clean(
-                        item.get("text")
-                        or item.get("content")
-                        or item.get("sample")
-                        or item.get("output")
-                        or "",
-                        1000,
-                    )
-                else:
-                    text = _clean(item, 1000)
-                if text:
-                    out.append(text)
-        elif isinstance(container, dict):
-            text = _clean(
-                container.get("text")
-                or container.get("content")
-                or container.get("sample")
-                or container.get("output")
-                or "",
-                1000,
-            )
-            if text:
-                out.append(text)
-        else:
-            text = _clean(container, 1000)
-            if text:
-                out.append(text)
-    return out
-
-
-def _extract_pair_samples_from_payload(payload: dict[str, object]) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    containers: list[object] = []
-    for key in ("samples", "items", "data", "examples", "pairs", "outputs", "result"):
-        if key in payload:
-            containers.append(payload.get(key))
-    if not containers:
-        containers.append(payload)
-
-    for container in containers:
-        if isinstance(container, list):
-            for item in container:
-                if not isinstance(item, dict):
-                    continue
-                a = _clean(
-                    item.get("text_a")
-                    or item.get("a")
-                    or item.get("left")
-                    or item.get("query")
-                    or "",
-                    700,
-                )
-                b = _clean(
-                    item.get("text_b")
-                    or item.get("b")
-                    or item.get("right")
-                    or item.get("candidate")
-                    or "",
-                    700,
-                )
-                if a and b:
-                    out.append((a, b))
-        elif isinstance(container, dict):
-            a = _clean(
-                container.get("text_a")
-                or container.get("a")
-                or container.get("left")
-                or container.get("query")
-                or "",
-                700,
-            )
-            b = _clean(
-                container.get("text_b")
-                or container.get("b")
-                or container.get("right")
-                or container.get("candidate")
-                or "",
-                700,
-            )
-            if a and b:
-                out.append((a, b))
-    return out
-
-
-def _extract_single_samples_from_text(content: str) -> list[str]:
-    text = _strip_markdown_fences(content)
-    out: list[str] = []
-
-    # Common malformed "JSON-ish" fallbacks.
-    for m in re.finditer(r'["\']text["\']\s*:\s*["\'](.+?)["\']', text, flags=re.DOTALL):
-        value = _clean(m.group(1), 1000)
-        if value:
-            out.append(value)
-
-    if out:
-        return list(dict.fromkeys(out))
-
-    for raw in text.splitlines():
-        line = _normalize_bullet_line(raw)
-        if not line:
-            continue
-        low = line.lower()
-        if low.startswith(("here are", "samples:", "example:", "examples:")):
-            continue
-        if line.endswith(":") and len(line) <= 40:
-            continue
-        if low in {"samples", "sample", "output", "outputs"}:
-            continue
-        if line.startswith("{") or line.startswith("}") or line.startswith("[") or line.startswith("]"):
-            continue
-        if ":" in line and len(line.split(":", 1)[0]) <= 16 and low.split(":", 1)[0] in {
-            "task",
-            "label",
-            "count",
-            "text",
-            "note",
-        }:
-            line = line.split(":", 1)[1].strip()
-        cleaned = _clean(line, 1000)
-        if cleaned:
-            out.append(cleaned)
-    return list(dict.fromkeys(out))
-
-
-def _extract_pair_samples_from_text(content: str) -> list[tuple[str, str]]:
-    text = _strip_markdown_fences(content)
-    out: list[tuple[str, str]] = []
-
-    # Try explicit text_a/text_b pairs first.
-    pair_pattern = re.compile(
-        r'["\']text_a["\']\s*:\s*["\'](.+?)["\']\s*,\s*["\']text_b["\']\s*:\s*["\'](.+?)["\']',
-        flags=re.DOTALL,
-    )
-    for m in pair_pattern.finditer(text):
-        a = _clean(m.group(1), 700)
-        b = _clean(m.group(2), 700)
-        if a and b:
-            out.append((a, b))
-    if out:
-        return list(dict.fromkeys(out))
-
-    # Fallback: one pair per line using common delimiters.
-    for raw in text.splitlines():
-        line = _normalize_bullet_line(raw)
-        if not line:
-            continue
-        for sep in (" || ", " | ", "\t", " => ", " -> "):
-            if sep in line:
-                left, right = line.split(sep, 1)
-                a = _clean(left, 700)
-                b = _clean(right, 700)
-                if a and b:
-                    out.append((a, b))
-                break
-    return list(dict.fromkeys(out))
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not match:
+        return None
+    try:
+        payload = json.loads(match.group(0))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 class _LLMGenerator:
@@ -850,55 +514,6 @@ class _LLMGenerator:
 
         self.url = self.base_url.rstrip("/") + "/chat/completions"
         self.client = httpx.Client(timeout=self.timeout_seconds)
-        self._soft_fail_count = 0
-        self._recovered_non_json_count = 0
-
-    def _warn_soft_failure(self, reason: str) -> None:
-        self._soft_fail_count += 1
-        if self._soft_fail_count <= 5 or self._soft_fail_count % 50 == 0:
-            _warn(f"LLM synth soft failure #{self._soft_fail_count}: {reason}")
-
-    def _note_recovery(self, reason: str) -> None:
-        self._recovered_non_json_count += 1
-        # Keep recovery logs sparse; recovery is expected with chatty local models.
-        if self._recovered_non_json_count <= 3 or self._recovered_non_json_count % 200 == 0:
-            _warn(f"LLM synth recovered non-json #{self._recovered_non_json_count}: {reason}")
-
-    def runtime_stats(self) -> dict[str, int]:
-        return {
-            "soft_failures": int(self._soft_fail_count),
-            "recovered_non_json": int(self._recovered_non_json_count),
-        }
-
-    def _extract_content(self, data: object) -> str:
-        if not isinstance(data, dict):
-            return ""
-        choices = data.get("choices")
-        if not isinstance(choices, list) or not choices:
-            return ""
-        first = choices[0]
-        if not isinstance(first, dict):
-            return ""
-        message = first.get("message")
-        content: object = ""
-        if isinstance(message, dict):
-            content = message.get("content", "")
-        elif "text" in first:
-            content = first.get("text", "")
-
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            parts: list[str] = []
-            for item in content:
-                if isinstance(item, dict):
-                    text = item.get("text", "")
-                    if isinstance(text, str) and text:
-                        parts.append(text)
-                elif isinstance(item, str):
-                    parts.append(item)
-            return "\n".join([p for p in parts if p]).strip()
-        return ""
 
     def _request(self, system_prompt: str, user_prompt: str) -> str:
         headers = {"Content-Type": "application/json"}
@@ -922,7 +537,7 @@ class _LLMGenerator:
                 resp = self.client.post(self.url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
-                content = self._extract_content(data)
+                content = data["choices"][0]["message"]["content"]
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("Empty LLM response content.")
                 return content
@@ -931,67 +546,54 @@ class _LLMGenerator:
                 if attempt >= self.max_retries:
                     break
                 time.sleep(min(6, attempt * 1.5))
-        self._warn_soft_failure(
-            f"request failed after {self.max_retries} attempts; returning empty batch. last_error={last_err}"
-        )
-        return ""
+        raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_err}")
 
     def generate_single(self, *, task: str, label: str, seed_text: str, n: int) -> list[str]:
-        system = (
-            "Generate synthetic classification data. "
-            "Return STRICT JSON only with key `samples`. "
-            "Do not include markdown/code fences or any commentary."
-        )
+        system = "Generate synthetic classification data. Return STRICT JSON only."
         user = (
             f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
             f"Seed example from related dataset (do not copy): {seed_text}\n\n"
             'Return exactly: {"samples":[{"text":"..."}]}\n'
             "Each sample must match target label exactly and be diverse."
         )
-        response = self._request(system, user)
-        if not response:
+        payload = _parse_json_content(self._request(system, user))
+        if not payload:
             return []
-        payload = _parse_json_content(response)
-        out = _extract_single_samples_from_payload(payload) if payload else []
-        if not out:
-            out = _extract_single_samples_from_text(response)
-            if out:
-                self._note_recovery(f"single {task}::{label}")
-            else:
-                self._warn_soft_failure(f"non-json single response for {task}::{label}")
-                return []
-        if len(out) > n:
-            out = out[:n]
+        out: list[str] = []
+        samples = payload.get("samples", [])
+        if isinstance(samples, list):
+            for item in samples:
+                if isinstance(item, dict):
+                    text = _clean(item.get("text", ""), 1000)
+                else:
+                    text = _clean(item, 1000)
+                if text:
+                    out.append(text)
         return out
 
     def generate_pair(
         self, *, task: str, label: str, seed_a: str, seed_b: str, n: int
     ) -> list[tuple[str, str]]:
-        system = (
-            "Generate synthetic text-pair classification data. "
-            "Return STRICT JSON only with key `samples`. "
-            "Do not include markdown/code fences or any commentary."
-        )
+        system = "Generate synthetic text-pair classification data. Return STRICT JSON only."
         user = (
             f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
             f"Seed pair from related dataset (do not copy): A={seed_a} | B={seed_b}\n\n"
             'Return exactly: {"samples":[{"text_a":"...","text_b":"..."}]}\n'
             "Every pair must match target label exactly and be diverse."
         )
-        response = self._request(system, user)
-        if not response:
+        payload = _parse_json_content(self._request(system, user))
+        if not payload:
             return []
-        payload = _parse_json_content(response)
-        out = _extract_pair_samples_from_payload(payload) if payload else []
-        if not out:
-            out = _extract_pair_samples_from_text(response)
-            if out:
-                self._note_recovery(f"pair {task}::{label}")
-            else:
-                self._warn_soft_failure(f"non-json pair response for {task}::{label}")
-                return []
-        if len(out) > n:
-            out = out[:n]
+        out: list[tuple[str, str]] = []
+        samples = payload.get("samples", [])
+        if isinstance(samples, list):
+            for item in samples:
+                if not isinstance(item, dict):
+                    continue
+                a = _clean(item.get("text_a", ""), 700)
+                b = _clean(item.get("text_b", ""), 700)
+                if a and b:
+                    out.append((a, b))
         return out
 
 
@@ -1591,19 +1193,13 @@ def _fill_single_task_with_llm(
     single_pools: dict[str, list[str]],
     rng: random.Random,
     max_attempts_per_label: int,
-    on_accept: Callable[[dict], None] | None = None,
 ) -> None:
     total_missing = 0
-    total_target = 0
     for task, labels in task_labels.items():
         for label in labels:
-            total_target += target_per_task_label
             total_missing += max(0, target_per_task_label - rows.count(task, label))
 
-    already_filled = max(0, total_target - total_missing)
-    pbar = _progress(total=total_target, desc=f"LLM synth [{family}]", unit="sample")
-    if already_filled > 0:
-        pbar.update(already_filled)
+    pbar = _progress(total=total_missing, desc=f"LLM synth [{family}]", unit="sample")
     try:
         for task, labels in task_labels.items():
             for label in labels:
@@ -1629,13 +1225,8 @@ def _fill_single_task_with_llm(
 
                     accepted = 0
                     for text in generated:
-                        source = f"llm:{task}:{label}"
-                        if rows.add(task, text, label, source):
+                        if rows.add(task, text, label, f"llm:{task}:{label}"):
                             accepted += 1
-                            if on_accept is not None:
-                                on_accept(
-                                    {"text": text, "task": task, "label": label, "source": source}
-                                )
 
                     if accepted == 0:
                         attempts += 1
@@ -1664,19 +1255,13 @@ def _fill_pair_task_with_llm(
     single_pools: dict[str, list[str]],
     rng: random.Random,
     max_attempts_per_label: int,
-    on_accept: Callable[[dict], None] | None = None,
 ) -> None:
     total_missing = 0
-    total_target = 0
     for task, labels in task_labels.items():
         for label in labels:
-            total_target += target_per_task_label
             total_missing += max(0, target_per_task_label - rows.count(task, label))
 
-    already_filled = max(0, total_target - total_missing)
-    pbar = _progress(total=total_target, desc="LLM synth [pair]", unit="sample")
-    if already_filled > 0:
-        pbar.update(already_filled)
+    pbar = _progress(total=total_missing, desc="LLM synth [pair]", unit="sample")
     try:
         for task, labels in task_labels.items():
             for label in labels:
@@ -1701,19 +1286,8 @@ def _fill_pair_task_with_llm(
 
                     accepted = 0
                     for text_a, text_b in generated:
-                        source = f"llm:{task}:{label}"
-                        if rows.add(task, text_a, text_b, label, source):
+                        if rows.add(task, text_a, text_b, label, f"llm:{task}:{label}"):
                             accepted += 1
-                            if on_accept is not None:
-                                on_accept(
-                                    {
-                                        "text_a": text_a,
-                                        "text_b": text_b,
-                                        "task": task,
-                                        "label": label,
-                                        "source": source,
-                                    }
-                                )
 
                     if accepted == 0:
                         attempts += 1
@@ -1741,7 +1315,6 @@ def _build_router_rows(
     single_pools: dict[str, list[str]],
     llm: _LLMGenerator,
     existing_df: pd.DataFrame | None = None,
-    resume_writer: _ResumeCheckpointWriter | None = None,
 ) -> list[dict]:
     cap = max(int(prepare_cfg["max_per_task_label"]), int(prepare_cfg["target_per_task_label"]))
     rows = _SingleTaskStore(cap)
@@ -1778,7 +1351,6 @@ def _build_router_rows(
         single_pools=single_pools,
         rng=rng,
         max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-        on_accept=resume_writer.append if resume_writer is not None else None,
     )
     return rows.rows
 
@@ -1791,7 +1363,6 @@ def _build_extractor_rows(
     single_pools: dict[str, list[str]],
     llm: _LLMGenerator,
     existing_df: pd.DataFrame | None = None,
-    resume_writer: _ResumeCheckpointWriter | None = None,
 ) -> list[dict]:
     cap = max(int(prepare_cfg["max_per_task_label"]), int(prepare_cfg["target_per_task_label"]))
     rows = _SingleTaskStore(cap)
@@ -1824,7 +1395,6 @@ def _build_extractor_rows(
         single_pools=single_pools,
         rng=rng,
         max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-        on_accept=resume_writer.append if resume_writer is not None else None,
     )
     return rows.rows
 
@@ -1838,7 +1408,6 @@ def _build_pair_rows(
     pair_pool: list[tuple[str, str]],
     llm: _LLMGenerator,
     existing_df: pd.DataFrame | None = None,
-    resume_writer: _ResumeCheckpointWriter | None = None,
 ) -> list[dict]:
     cap = max(int(prepare_cfg["max_per_task_label"]), int(prepare_cfg["target_per_task_label"]))
     rows = _PairTaskStore(cap)
@@ -1865,7 +1434,6 @@ def _build_pair_rows(
         single_pools=single_pools,
         rng=rng,
         max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-        on_accept=resume_writer.append if resume_writer is not None else None,
     )
     return rows.rows
 
@@ -2028,12 +1596,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=None, help="Override prepare.seed from config.")
     parser.add_argument(
-        "--samples-per-task-label",
-        type=int,
-        default=None,
-        help="Override prepare.samples_per_task_label (single knob for dataset size; derives target/max per label and max_rows_per_source).",
-    )
-    parser.add_argument(
         "--max-rows-per-source",
         type=int,
         default=None,
@@ -2084,8 +1646,6 @@ def main() -> int:
 
     if args.seed is not None:
         prepare_cfg["seed"] = int(args.seed)
-    if args.samples_per_task_label is not None:
-        prepare_cfg["samples_per_task_label"] = int(args.samples_per_task_label)
     if args.max_rows_per_source is not None:
         prepare_cfg["max_rows_per_source"] = int(args.max_rows_per_source)
     if args.max_per_task_label is not None:
@@ -2096,14 +1656,6 @@ def main() -> int:
         synthetic_cfg["temperature"] = float(args.llm_temperature)
     if args.allow_missing_datasets_package:
         prepare_cfg["require_datasets_package"] = False
-
-    # Derive target_per_task_label, max_per_task_label, max_rows_per_source from single knob when set.
-    if "samples_per_task_label" in prepare_cfg:
-        derived = _derive_prepare_limits_from_samples_per_task_label(
-            prepare_cfg["samples_per_task_label"]
-        )
-        for k, v in derived.items():
-            prepare_cfg.setdefault(k, v)
 
     prepare_cfg.setdefault("seed", 42)
     prepare_cfg.setdefault("train_ratio", 0.8)
@@ -2134,12 +1686,7 @@ def main() -> int:
     synthetic_cfg.setdefault("max_retries", 3)
     synthetic_cfg.setdefault("max_attempts_per_label", 80)
     synthetic_cfg.setdefault("local_raw_scan_rows_per_file", 300)
-    synthetic_cfg.setdefault("resume_checkpoint_enabled", True)
-    synthetic_cfg.setdefault("resume_checkpoint_flush_every", 1)
 
-    if "samples_per_task_label" in prepare_cfg and int(prepare_cfg["samples_per_task_label"]) <= 0:
-        print("prepare.samples_per_task_label must be > 0.", file=sys.stderr)
-        return 1
     if int(prepare_cfg["max_rows_per_source"]) <= 0:
         print("prepare.max_rows_per_source must be > 0.", file=sys.stderr)
         return 1
@@ -2173,39 +1720,17 @@ def main() -> int:
         cache_dir.mkdir(parents=True, exist_ok=True)
     prepared_dir.mkdir(parents=True, exist_ok=True)
 
-    resume_enabled = _to_bool(
-        synthetic_cfg.get("resume_checkpoint_enabled", True),
-        default=True,
-    )
-    resume_flush_every = max(1, int(synthetic_cfg.get("resume_checkpoint_flush_every", 1)))
-
     target_per_task_label = int(prepare_cfg["target_per_task_label"])
 
     if args.force_full:
         print("Force-full mode: ignoring existing prepared splits.")
-        router_existing_df = _empty_family_df("router")
-        extractor_existing_df = _empty_family_df("extractor")
-        pair_existing_df = _empty_family_df("pair")
-        _remove_resume_checkpoint(prepared_dir, "router")
-        _remove_resume_checkpoint(prepared_dir, "extractor")
-        _remove_resume_checkpoint(prepared_dir, "pair")
+        router_existing_df = pd.DataFrame(columns=["text", "task", "label", "source"])
+        extractor_existing_df = pd.DataFrame(columns=["text", "task", "label", "source"])
+        pair_existing_df = pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"])
     else:
         router_existing_df = _load_existing_family_df(prepared_dir, "router")
         extractor_existing_df = _load_existing_family_df(prepared_dir, "extractor")
         pair_existing_df = _load_existing_family_df(prepared_dir, "pair")
-        if resume_enabled:
-            router_existing_df = _concat_existing_and_resume(
-                router_existing_df,
-                _load_resume_checkpoint_df(prepared_dir, "router"),
-            )
-            extractor_existing_df = _concat_existing_and_resume(
-                extractor_existing_df,
-                _load_resume_checkpoint_df(prepared_dir, "extractor"),
-            )
-            pair_existing_df = _concat_existing_and_resume(
-                pair_existing_df,
-                _load_resume_checkpoint_df(prepared_dir, "pair"),
-            )
 
     router_missing, router_missing_total = _missing_task_labels(
         router_existing_df,
@@ -2247,10 +1772,6 @@ def main() -> int:
     ratios = {k: v / total_ratio for k, v in ratios.items()}
 
     if not (needs_router or needs_extractor or needs_pair):
-        if resume_enabled:
-            _remove_resume_checkpoint(prepared_dir, "router")
-            _remove_resume_checkpoint(prepared_dir, "extractor")
-            _remove_resume_checkpoint(prepared_dir, "pair")
         manifest = {
             "config_path": str(args.config.resolve()),
             "seed": int(prepare_cfg["seed"]),
@@ -2376,28 +1897,15 @@ def main() -> int:
     try:
         if needs_router:
             print("Preparing router dataset (missing-only mode)...")
-            router_writer = (
-                _ResumeCheckpointWriter(
-                    path=_resume_checkpoint_path(prepared_dir, "router"),
-                    flush_every=resume_flush_every,
-                )
-                if resume_enabled
-                else None
+            router_rows = _build_router_rows(
+                local_rows=local_rows,
+                registry=registry,
+                prepare_cfg=prepare_cfg,
+                synthetic_cfg=synthetic_cfg,
+                single_pools=single_pools,
+                llm=llm,
+                existing_df=router_existing_df,
             )
-            try:
-                router_rows = _build_router_rows(
-                    local_rows=local_rows,
-                    registry=registry,
-                    prepare_cfg=prepare_cfg,
-                    synthetic_cfg=synthetic_cfg,
-                    single_pools=single_pools,
-                    llm=llm,
-                    existing_df=router_existing_df,
-                    resume_writer=router_writer,
-                )
-            finally:
-                if router_writer is not None:
-                    router_writer.close()
             router_df = pd.DataFrame(_sanitize_row_dicts(router_rows))
             if router_df.empty:
                 print("Router dataset is empty; cannot continue.", file=sys.stderr)
@@ -2409,35 +1917,20 @@ def main() -> int:
                 seed=int(prepare_cfg["seed"]),
                 ratios=ratios,
             )
-            if resume_enabled:
-                _remove_resume_checkpoint(prepared_dir, "router")
         else:
             router_df = router_existing_df
             router_splits = _existing_split_counts(prepared_dir, "router")
 
         if needs_extractor:
             print("Preparing extractor dataset (missing-only mode)...")
-            extractor_writer = (
-                _ResumeCheckpointWriter(
-                    path=_resume_checkpoint_path(prepared_dir, "extractor"),
-                    flush_every=resume_flush_every,
-                )
-                if resume_enabled
-                else None
+            extractor_rows = _build_extractor_rows(
+                registry=registry,
+                prepare_cfg=prepare_cfg,
+                synthetic_cfg=synthetic_cfg,
+                single_pools=single_pools,
+                llm=llm,
+                existing_df=extractor_existing_df,
             )
-            try:
-                extractor_rows = _build_extractor_rows(
-                    registry=registry,
-                    prepare_cfg=prepare_cfg,
-                    synthetic_cfg=synthetic_cfg,
-                    single_pools=single_pools,
-                    llm=llm,
-                    existing_df=extractor_existing_df,
-                    resume_writer=extractor_writer,
-                )
-            finally:
-                if extractor_writer is not None:
-                    extractor_writer.close()
             extractor_df = pd.DataFrame(_sanitize_row_dicts(extractor_rows))
             if extractor_df.empty:
                 print("Extractor dataset is empty; cannot continue.", file=sys.stderr)
@@ -2449,36 +1942,21 @@ def main() -> int:
                 seed=int(prepare_cfg["seed"]),
                 ratios=ratios,
             )
-            if resume_enabled:
-                _remove_resume_checkpoint(prepared_dir, "extractor")
         else:
             extractor_df = extractor_existing_df
             extractor_splits = _existing_split_counts(prepared_dir, "extractor")
 
         if needs_pair:
             print("Preparing pair dataset (missing-only mode)...")
-            pair_writer = (
-                _ResumeCheckpointWriter(
-                    path=_resume_checkpoint_path(prepared_dir, "pair"),
-                    flush_every=resume_flush_every,
-                )
-                if resume_enabled
-                else None
+            pair_rows = _build_pair_rows(
+                registry=registry,
+                prepare_cfg=prepare_cfg,
+                synthetic_cfg=synthetic_cfg,
+                single_pools=single_pools,
+                pair_pool=pair_pool,
+                llm=llm,
+                existing_df=pair_existing_df,
             )
-            try:
-                pair_rows = _build_pair_rows(
-                    registry=registry,
-                    prepare_cfg=prepare_cfg,
-                    synthetic_cfg=synthetic_cfg,
-                    single_pools=single_pools,
-                    pair_pool=pair_pool,
-                    llm=llm,
-                    existing_df=pair_existing_df,
-                    resume_writer=pair_writer,
-                )
-            finally:
-                if pair_writer is not None:
-                    pair_writer.close()
             pair_df = pd.DataFrame(_sanitize_row_dicts(pair_rows))
             if pair_df.empty:
                 print("Pair dataset is empty; cannot continue.", file=sys.stderr)
@@ -2490,8 +1968,6 @@ def main() -> int:
                 seed=int(prepare_cfg["seed"]),
                 ratios=ratios,
             )
-            if resume_enabled:
-                _remove_resume_checkpoint(prepared_dir, "pair")
         else:
             pair_df = pair_existing_df
             pair_splits = _existing_split_counts(prepared_dir, "pair")
@@ -2521,7 +1997,6 @@ def main() -> int:
             "prepare_settings": {
                 k: prepare_cfg[k]
                 for k in [
-                    "samples_per_task_label",
                     "max_rows_per_source",
                     "target_per_task_label",
                     "max_per_task_label",
@@ -2530,7 +2005,6 @@ def main() -> int:
                     "eval_ratio",
                     "auto_download_missing",
                 ]
-                if k in prepare_cfg
             }
             | {"llm_temperature": synthetic_cfg["temperature"]},
             "synthetic_llm": {
@@ -2543,9 +2017,6 @@ def main() -> int:
                 "max_tokens": llm.max_tokens,
                 "max_attempts_per_label": int(synthetic_cfg["max_attempts_per_label"]),
                 "local_raw_scan_rows_per_file": int(synthetic_cfg["local_raw_scan_rows_per_file"]),
-                "resume_checkpoint_enabled": resume_enabled,
-                "resume_checkpoint_flush_every": resume_flush_every,
-                "runtime": llm.runtime_stats(),
             },
             "datasets": registry.status,
             "router": {

@@ -206,7 +206,7 @@ class MemoryPacketBuilder:
                 constraint_lines.append("## Constraints (Must Follow)\n")
                 for c in must_follow:
                     prov = self._constraint_provenance(c)
-                    line = f'- Earlier you said: "{c.record.text}" {prov}\n'
+                    line = f"- Earlier you said: \"{c.record.text}\" {prov}\n"
                     if (
                         used + sum(len(x) for x in constraint_lines) + len(line)
                         <= constraint_budget
@@ -216,7 +216,7 @@ class MemoryPacketBuilder:
                 constraint_lines.append("## Other Constraints to Consider\n")
                 for c in consider:
                     prov = self._constraint_provenance(c)
-                    line = f'- You also mentioned: "{c.record.text}" {prov}\n'
+                    line = f"- You also mentioned: \"{c.record.text}\" {prov}\n"
                     if (
                         used + sum(len(x) for x in constraint_lines) + len(line)
                         <= constraint_budget
