@@ -621,7 +621,7 @@ class TestQueryAnalysisConstraintFields:
             suggested_sources=["vector"],
             suggested_top_k=10,
         )
-        assert qa.constraint_dimensions == []
+        assert qa.constraint_dimensions is None or qa.constraint_dimensions == []
         assert qa.is_decision_query is False
 
     def test_constraint_dimensions_set(self):

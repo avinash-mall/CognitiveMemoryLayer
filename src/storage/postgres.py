@@ -220,8 +220,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                 if settings.features.hnsw_ef_search_tuning:
                     ef_search = max(settings.retrieval.hnsw_ef_search, top_k)
                     await session.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
-            except Exception:
-                pass  # Non-critical; use pgvector default
+            except Exception as exc:
+                _logger.debug("hnsw_ef_search_set_failed", error=str(exc))
 
             base = and_(
                 MemoryRecordModel.tenant_id == tenant_id,
@@ -382,9 +382,15 @@ class PostgresMemoryStore(MemoryStoreBase):
                 else:
                     q = q.where(MemoryRecordModel.type == t)
 
-            # Additional safety: ensure at least one filter besides tenant_id is applied
-            # to prevent accidental wipe of all tenant data if filters is empty?
-            # The interface implies filters are required, but let's trust the caller for now.
+            has_specific_filter = any(
+                k in filters for k in ("context_tags", "source_session_id", "status", "type")
+            )
+            if not has_specific_filter:
+                _logger.warning(
+                    "delete_by_filter_blocked_no_specific_filter",
+                    extra={"tenant_id": tenant_id, "filters": list(filters.keys())},
+                )
+                return 0
 
             r = await session.execute(q)
             await session.commit()
