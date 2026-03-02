@@ -106,8 +106,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 admin_key = get_settings().auth.admin_api_key
                 if admin_key and api_key == admin_key:
                     return await call_next(request)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("admin_key_bypass_check_failed", error=str(exc))
         if api_key:
             key = f"apikey:{hashlib.sha256(api_key.encode()).hexdigest()[:16]}"
         else:
