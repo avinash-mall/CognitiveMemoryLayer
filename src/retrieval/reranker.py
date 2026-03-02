@@ -260,8 +260,12 @@ Constraints:
                             and isinstance(score, (int, float))
                         ):
                             results[i + idx_raw] = min(1.0, max(0.0, float(score)))
-            except Exception:
-                pass
+            except Exception as exc:
+                from ..utils.logging_config import get_logger
+
+                get_logger(__name__).debug(
+                    "llm_constraint_scoring_failed", error=str(exc)
+                )
 
         return results
 

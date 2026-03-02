@@ -61,11 +61,24 @@ class TestRelevanceScorer:
         score = scorer.score(rec)
         assert score.suggested_action == "keep"
 
-    def test_score_constraint_always_keep(self):
+    def test_score_constraint_never_deleted(self):
+        """Constraints are protected from deletion/compression but may decay."""
         scorer = RelevanceScorer()
         rec = _make_record(
             importance=0.0,
             confidence=0.0,
+            memory_type=MemoryType.CONSTRAINT,
+        )
+        score = scorer.score(rec)
+        assert score.suggested_action in ("keep", "decay")
+        assert score.suggested_action not in ("silence", "compress", "delete")
+
+    def test_score_constraint_high_importance_keeps(self):
+        """Constraints with reasonable scores are always kept."""
+        scorer = RelevanceScorer()
+        rec = _make_record(
+            importance=0.7,
+            confidence=0.8,
             memory_type=MemoryType.CONSTRAINT,
         )
         score = scorer.score(rec)
