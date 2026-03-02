@@ -152,6 +152,10 @@ class ConsolidationMigrator:
                     patch["status"] = MemoryStatus.COMPRESSED.value
                 await self.episodic.update(ep_uuid, patch, increment_version=False)
                 marked += 1
-            except Exception:
+            except Exception as e:
+                _logger.warning(
+                    "mark_episode_consolidated_failed",
+                    extra={"episode_id": ep_id, "error": str(e)},
+                )
                 continue
         return marked

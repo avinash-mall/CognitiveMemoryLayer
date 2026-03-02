@@ -220,8 +220,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                 if settings.features.hnsw_ef_search_tuning:
                     ef_search = max(settings.retrieval.hnsw_ef_search, top_k)
                     await session.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
-            except Exception:
-                pass  # Non-critical; use pgvector default
+            except Exception as exc:
+                _logger.debug("hnsw_ef_search_set_failed", error=str(exc))
 
             base = and_(
                 MemoryRecordModel.tenant_id == tenant_id,

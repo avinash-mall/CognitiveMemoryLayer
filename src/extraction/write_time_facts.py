@@ -231,7 +231,7 @@ class WriteTimeFactExtractor:
                         value=" ".join(t.text for t in token.subtree),
                         confidence_boost=0.78,
                     )
-                return
+                    return
 
     @staticmethod
     def _has_first_person(sent: Any) -> bool:
