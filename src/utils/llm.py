@@ -223,7 +223,7 @@ def _gemini_client(api_key: str, model: str) -> LLMClient:
                 None,
                 lambda: self._model.generate_content(
                     contents,
-                    generation_config=generation_config,  # type: ignore[arg-type]
+                    generation_config=generation_config,
                 ),
             )
             if not response or not response.text:
