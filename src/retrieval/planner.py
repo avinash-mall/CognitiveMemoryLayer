@@ -69,6 +69,16 @@ class RetrievalPlanner:
             steps.append(self._create_fact_lookup_step(analysis))
             steps.append(
                 RetrievalStep(
+                    source=RetrievalSource.CONSTRAINTS,
+                    query=analysis.original_query,
+                    top_k=5,
+                    priority=1,
+                    constraint_categories=analysis.constraint_dimensions,
+                    query_domain=analysis.query_domain,
+                )
+            )
+            steps.append(
+                RetrievalStep(
                     source=RetrievalSource.VECTOR,
                     query=analysis.original_query,
                     top_k=5,
@@ -76,7 +86,7 @@ class RetrievalPlanner:
                     skip_if_found=True,
                 )
             )
-            parallel_groups = [[0], [1]]
+            parallel_groups = [[0, 1], [2]]
 
         elif analysis.intent == QueryIntent.MULTI_HOP:
             if analysis.entities:
@@ -117,7 +127,17 @@ class RetrievalPlanner:
                     priority=2,
                 )
             )
-            parallel_groups = [[0]]
+            steps.append(
+                RetrievalStep(
+                    source=RetrievalSource.CONSTRAINTS,
+                    query=analysis.original_query,
+                    top_k=3,
+                    priority=0,
+                    constraint_categories=analysis.constraint_dimensions,
+                    query_domain=analysis.query_domain,
+                )
+            )
+            parallel_groups = [[0, 1]]
 
         elif (
             analysis.intent == QueryIntent.CONSTRAINT_CHECK
