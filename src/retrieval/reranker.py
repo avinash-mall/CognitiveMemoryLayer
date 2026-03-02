@@ -263,9 +263,7 @@ Constraints:
             except Exception as exc:
                 from ..utils.logging_config import get_logger
 
-                get_logger(__name__).debug(
-                    "llm_constraint_scoring_failed", error=str(exc)
-                )
+                get_logger(__name__).debug("llm_constraint_scoring_failed", error=str(exc))
 
         return results
 

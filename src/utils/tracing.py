@@ -29,8 +29,8 @@ try:
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False
-    _tracer = None  # type: ignore[assignment]
-    StatusCode = None  # type: ignore[assignment,misc]
+    _tracer = None
+    StatusCode = None
 
 
 def is_tracing_enabled() -> bool:

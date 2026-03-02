@@ -143,11 +143,13 @@ class RelevanceScorer:
         dep_counts = dependency_counts or {}
         return [self.score(r, dep_counts.get(str(r.id), 0)) for r in records]
 
-    _PROTECTED_TYPES = frozenset({
-        MemoryType.CONSTRAINT.value,
-        MemoryType.PREFERENCE.value,
-        MemoryType.PROCEDURE.value,
-    })
+    _PROTECTED_TYPES = frozenset(
+        {
+            MemoryType.CONSTRAINT.value,
+            MemoryType.PREFERENCE.value,
+            MemoryType.PROCEDURE.value,
+        }
+    )
 
     def _suggest_action(self, score: float, memory_type: str) -> str:
         """Suggest forgetting action based on score.

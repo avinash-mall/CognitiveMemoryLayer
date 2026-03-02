@@ -65,9 +65,9 @@ async def dashboard_facts(
             items = [
                 FactItem(
                     id=str(r.id),
-                    tenant_id=r.tenant_id,
-                    category=r.category,
-                    key=r.key,
+                    tenant_id=str(r.tenant_id),
+                    category=str(r.category),
+                    key=str(r.key),
                     value=str(r.value),
                     confidence=float(r.confidence),
                     evidence_count=int(r.evidence_count),
@@ -109,7 +109,7 @@ async def dashboard_invalidate_fact(
                 )
             )
             await session.commit()
-            if result.rowcount == 0:
+            if getattr(result, "rowcount", 0) == 0:
                 raise HTTPException(status_code=404, detail=f"Fact {fact_id} not found")
             return {"success": True, "message": f"Fact {fact_id} invalidated"}
     except HTTPException:
