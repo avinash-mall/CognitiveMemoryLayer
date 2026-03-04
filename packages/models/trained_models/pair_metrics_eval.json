@@ -2,11 +2,11 @@
   "family": "pair",
   "split": "eval",
   "overall": {
-    "rows": 4000,
-    "accuracy": 0.65225,
-    "macro_f1": 0.6511392568038393,
-    "weighted_f1": 0.6511392568038393,
-    "micro_f1": 0.65225,
+    "rows": 40000,
+    "accuracy": 0.660975,
+    "macro_f1": 0.6596491307932304,
+    "weighted_f1": 0.6596491307932305,
+    "micro_f1": 0.660975,
     "labels": [
       "conflict_detection::conflict",
       "conflict_detection::no_conflict",
@@ -19,8 +19,8 @@
     ],
     "confusion_matrix": [
       [
-        325,
-        174,
+        3389,
+        1610,
         0,
         0,
         0,
@@ -29,8 +29,8 @@
         0
       ],
       [
-        129,
-        371,
+        1325,
+        3675,
         0,
         0,
         0,
@@ -39,42 +39,32 @@
         0
       ],
       [
+        1,
         0,
+        2235,
+        2763,
         0,
-        265,
-        235,
-        0,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        247,
-        253,
-        0,
-        0,
+        1,
         0,
         0
       ],
       [
         0,
         0,
+        1985,
+        3013,
         0,
+        1,
         0,
-        396,
-        104,
-        0,
-        0
+        1
       ],
       [
         0,
         0,
         0,
         0,
-        196,
-        304,
+        3864,
+        1136,
         0,
         0
       ],
@@ -83,10 +73,10 @@
         0,
         0,
         0,
+        1840,
+        3160,
         0,
-        0,
-        378,
-        122
+        0
       ],
       [
         0,
@@ -95,18 +85,28 @@
         0,
         0,
         0,
-        183,
-        317
+        3787,
+        1213
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1684,
+        3316
       ]
     ]
   },
   "per_task": {
     "conflict_detection": {
-      "rows": 1000,
-      "accuracy": 0.696,
-      "macro_f1": 0.46379652198917337,
-      "weighted_f1": 0.6956947829837601,
-      "micro_f1": 0.696,
+      "rows": 10000,
+      "accuracy": 0.7064,
+      "macro_f1": 0.470796258989935,
+      "weighted_f1": 0.7061943884849026,
+      "micro_f1": 0.7064,
       "labels": [
         "conflict",
         "no_conflict",
@@ -114,13 +114,13 @@
       ],
       "confusion_matrix": [
         [
-          325,
-          174,
+          3389,
+          1610,
           1
         ],
         [
-          129,
-          371,
+          1325,
+          3675,
           0
         ],
         [
@@ -130,72 +130,80 @@
         ]
       ],
       "wrong_task_predictions": 1,
-      "wrong_task_rate": 0.001
+      "wrong_task_rate": 0.0001
     },
     "constraint_rerank": {
-      "rows": 1000,
-      "accuracy": 0.518,
-      "macro_f1": 0.5179305820038085,
-      "weighted_f1": 0.5179305820038086,
-      "micro_f1": 0.518,
+      "rows": 10000,
+      "accuracy": 0.5248,
+      "macro_f1": 0.3480070867963461,
+      "weighted_f1": 0.5220106301945192,
+      "micro_f1": 0.5248,
       "labels": [
         "not_relevant",
-        "relevant"
+        "relevant",
+        "__wrong_task__"
       ],
       "confusion_matrix": [
         [
-          265,
-          235
+          2235,
+          2763,
+          2
         ],
         [
-          247,
-          253
+          1985,
+          3013,
+          2
+        ],
+        [
+          0,
+          0,
+          0
         ]
       ],
-      "wrong_task_predictions": 0,
-      "wrong_task_rate": 0.0
+      "wrong_task_predictions": 4,
+      "wrong_task_rate": 0.0004
     },
     "scope_match": {
-      "rows": 1000,
-      "accuracy": 0.7,
-      "macro_f1": 0.6974391247519001,
-      "weighted_f1": 0.6974391247519001,
-      "micro_f1": 0.7,
+      "rows": 10000,
+      "accuracy": 0.7024,
+      "macro_f1": 0.700917700269367,
+      "weighted_f1": 0.7009177002693671,
+      "micro_f1": 0.7024,
       "labels": [
         "match",
         "no_match"
       ],
       "confusion_matrix": [
         [
-          396,
-          104
+          3864,
+          1136
         ],
         [
-          196,
-          304
+          1840,
+          3160
         ]
       ],
       "wrong_task_predictions": 0,
       "wrong_task_rate": 0.0
     },
     "supersession": {
-      "rows": 1000,
-      "accuracy": 0.695,
-      "macro_f1": 0.6938608562460917,
-      "weighted_f1": 0.6938608562460917,
-      "micro_f1": 0.695,
+      "rows": 10000,
+      "accuracy": 0.7103,
+      "macro_f1": 0.7096558977401056,
+      "weighted_f1": 0.7096558977401057,
+      "micro_f1": 0.7103,
       "labels": [
         "no_supersedes",
         "supersedes"
       ],
       "confusion_matrix": [
         [
-          378,
-          122
+          3787,
+          1213
         ],
         [
-          183,
-          317
+          1684,
+          3316
         ]
       ],
       "wrong_task_predictions": 0,
