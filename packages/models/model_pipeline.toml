@@ -97,11 +97,22 @@ temperature = 1.35
 top_p = 0.95
 max_tokens = 1024
 batch_size = 24
+
+# Number of concurrent chat-completion requests during synthetic fill.
+# Increase for higher throughput on multi-GPU vLLM backends.
+concurrency = 8
+
 timeout_seconds = 120
 max_retries = 3
 
 # Retry budget per (task,label) while filling missing rows.
 max_attempts_per_label = 80
+
+# Telemetry cadence for long synth runs.
+log_stats_every_seconds = 10.0
+log_zero_progress_every = 5
+parse_failure_log_every = 20
+log_request_failures = true
 
 # Only the first N rows/lines from each local raw dataset file are scanned
 # to build seed pools (fast structure probing).

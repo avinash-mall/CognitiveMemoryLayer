@@ -60,13 +60,32 @@ Flow:
 2. Prompt LLM for target `(task, label)` generation.
 3. Parse/validate and keep accepted rows until target count is reached.
 
-Expected env settings (example):
+Current behavior:
+
+1. Requests are sent concurrently (`synthetic_llm.concurrency`).
+2. Per-label generation uses adaptive batch sizing when outputs are repeatedly unparseable.
+3. Best-effort recovery extracts `text` / `text_a` / `text_b` from partial JSON responses.
+4. Periodic LLM telemetry is printed with request, parse, and acceptance stats.
+
+Expected env settings (OpenAI-compatible endpoint example, including vLLM):
 
 ```bash
-LLM_EVAL__PROVIDER=ollama
-LLM_EVAL__MODEL=gemma3:12b
-LLM_EVAL__BASE_URL=http://localhost:11434/v1
+LLM_EVAL__PROVIDER=openai_compatible
+LLM_EVAL__MODEL=meta-llama/Llama-3.2-3B-Instruct
+LLM_EVAL__BASE_URL=http://localhost:8001/v1
 ```
+
+Example telemetry line:
+
+```text
+[prepare] LLM stats: req=... fail=... retries=... parse_fail=... req/s=... gen=... acc=... parse_recovered=... finish_reason=stop:...,length:...
+```
+
+Quick interpretation:
+
+1. `parse_fail` high: output format is breaking badly; lower `temperature` and `batch_size`.
+2. `finish_reason=length` high: responses are getting truncated; lower `batch_size` or `max_tokens`.
+3. `acc/gen` low: many candidates are duplicates/invalid for the label; reduce randomness and inspect seed diversity.
 
 ## Training
 
@@ -97,6 +116,7 @@ Common overrides:
 
 ```bash
 python -m packages.models.scripts.prepare --target-per-task-label 10000 --llm-temperature 1.35
+python -m packages.models.scripts.prepare --target-per-task-label 5002 --llm-temperature 0.3 --llm-concurrency 32
 python -m packages.models.scripts.prepare --force-full
 python -m packages.models.scripts.train --max-iter 25 --max-features 250000
 ```
@@ -110,3 +130,15 @@ All settings are in `packages/models/model_pipeline.toml`:
 - training hyperparameters
 - synthetic LLM parameters
 - dataset source definitions (links + IDs + required/optional)
+
+Key synthetic knobs:
+
+- `batch_size`
+- `concurrency`
+- `max_tokens`
+- `temperature`
+- `max_attempts_per_label`
+- `log_stats_every_seconds`
+- `log_zero_progress_every`
+- `parse_failure_log_every`
+- `log_request_failures`
