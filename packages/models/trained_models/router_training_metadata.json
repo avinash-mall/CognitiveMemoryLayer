@@ -1,10 +1,10 @@
 {
   "family": "router",
-  "trained_at_utc": "2026-02-28T16:24:26.694005+00:00",
+  "trained_at_utc": "2026-03-04T13:09:27.377795+00:00",
   "rows": {
-    "train": 8422,
-    "test": 1050,
-    "eval": 1064
+    "train": 448000,
+    "test": 56000,
+    "eval": 56000
   },
   "tasks": [
     "confidence_bin",
@@ -20,230 +20,230 @@
   "task_label_counts": {
     "train": {
       "confidence_bin": {
-        "high": 82,
-        "low": 80,
-        "medium": 80
+        "high": 8000,
+        "low": 8000,
+        "medium": 8000
       },
       "constraint_dimension": {
-        "causal": 80,
-        "goal": 80,
-        "other": 80,
-        "policy": 80,
-        "state": 80,
-        "value": 80
+        "causal": 8000,
+        "goal": 8000,
+        "other": 8000,
+        "policy": 8000,
+        "state": 8000,
+        "value": 8000
       },
       "context_tag": {
-        "finance": 80,
-        "food": 80,
-        "general": 80,
-        "health": 80,
-        "social": 80,
-        "tech": 81,
-        "travel": 80,
-        "work": 80
+        "finance": 8000,
+        "food": 8000,
+        "general": 8000,
+        "health": 8000,
+        "social": 8000,
+        "tech": 8000,
+        "travel": 8000,
+        "work": 8000
       },
       "decay_profile": {
-        "fast": 80,
-        "medium": 80,
-        "slow": 80,
-        "very_fast": 80,
-        "very_slow": 80
+        "fast": 8000,
+        "medium": 8000,
+        "slow": 8000,
+        "very_fast": 8000,
+        "very_slow": 8000
       },
       "importance_bin": {
-        "high": 80,
-        "low": 80,
-        "medium": 80
+        "high": 8000,
+        "low": 8000,
+        "medium": 8000
       },
       "memory_type": {
-        "constraint": 80,
-        "conversation": 80,
-        "episodic_event": 80,
-        "hypothesis": 80,
-        "knowledge": 80,
-        "message": 80,
-        "observation": 81,
-        "plan": 82,
-        "preference": 87,
-        "procedure": 80,
-        "reasoning_step": 81,
-        "scratch": 80,
-        "semantic_fact": 80,
-        "task_state": 80,
-        "tool_result": 84
+        "constraint": 8000,
+        "conversation": 8000,
+        "episodic_event": 8000,
+        "hypothesis": 8000,
+        "knowledge": 8000,
+        "message": 8000,
+        "observation": 8000,
+        "plan": 8000,
+        "preference": 8000,
+        "procedure": 8000,
+        "reasoning_step": 8000,
+        "scratch": 8000,
+        "semantic_fact": 8000,
+        "task_state": 8000,
+        "tool_result": 8000
       },
       "query_domain": {
-        "finance": 4000,
-        "food": 80,
-        "general": 80,
-        "health": 80,
-        "social": 80,
-        "tech": 80,
-        "travel": 80,
-        "work": 82
+        "finance": 8000,
+        "food": 8000,
+        "general": 8000,
+        "health": 8000,
+        "social": 8000,
+        "tech": 8000,
+        "travel": 8000,
+        "work": 8000
       },
       "query_intent": {
-        "constraint_check": 80,
-        "conversation": 80,
-        "factual": 80,
-        "planning": 80,
-        "tool_query": 80
+        "constraint_check": 8000,
+        "conversation": 8000,
+        "factual": 8000,
+        "planning": 8000,
+        "tool_query": 8000
       },
       "salience_bin": {
-        "high": 81,
-        "low": 80,
-        "medium": 81
+        "high": 8000,
+        "low": 8000,
+        "medium": 8000
       }
     },
     "test": {
       "confidence_bin": {
-        "high": 10,
-        "low": 10,
-        "medium": 10
+        "high": 1000,
+        "low": 1000,
+        "medium": 1000
       },
       "constraint_dimension": {
-        "causal": 10,
-        "goal": 10,
-        "other": 10,
-        "policy": 10,
-        "state": 10,
-        "value": 10
+        "causal": 1000,
+        "goal": 1000,
+        "other": 1000,
+        "policy": 1000,
+        "state": 1000,
+        "value": 1000
       },
       "context_tag": {
-        "finance": 10,
-        "food": 10,
-        "general": 10,
-        "health": 10,
-        "social": 10,
-        "tech": 10,
-        "travel": 10,
-        "work": 10
+        "finance": 1000,
+        "food": 1000,
+        "general": 1000,
+        "health": 1000,
+        "social": 1000,
+        "tech": 1000,
+        "travel": 1000,
+        "work": 1000
       },
       "decay_profile": {
-        "fast": 10,
-        "medium": 10,
-        "slow": 10,
-        "very_fast": 10,
-        "very_slow": 10
+        "fast": 1000,
+        "medium": 1000,
+        "slow": 1000,
+        "very_fast": 1000,
+        "very_slow": 1000
       },
       "importance_bin": {
-        "high": 10,
-        "low": 10,
-        "medium": 10
+        "high": 1000,
+        "low": 1000,
+        "medium": 1000
       },
       "memory_type": {
-        "constraint": 10,
-        "conversation": 10,
-        "episodic_event": 10,
-        "hypothesis": 10,
-        "knowledge": 10,
-        "message": 10,
-        "observation": 10,
-        "plan": 10,
-        "preference": 10,
-        "procedure": 10,
-        "reasoning_step": 10,
-        "scratch": 10,
-        "semantic_fact": 10,
-        "task_state": 10,
-        "tool_result": 10
+        "constraint": 1000,
+        "conversation": 1000,
+        "episodic_event": 1000,
+        "hypothesis": 1000,
+        "knowledge": 1000,
+        "message": 1000,
+        "observation": 1000,
+        "plan": 1000,
+        "preference": 1000,
+        "procedure": 1000,
+        "reasoning_step": 1000,
+        "scratch": 1000,
+        "semantic_fact": 1000,
+        "task_state": 1000,
+        "tool_result": 1000
       },
       "query_domain": {
-        "finance": 500,
-        "food": 10,
-        "general": 10,
-        "health": 10,
-        "social": 10,
-        "tech": 10,
-        "travel": 10,
-        "work": 10
+        "finance": 1000,
+        "food": 1000,
+        "general": 1000,
+        "health": 1000,
+        "social": 1000,
+        "tech": 1000,
+        "travel": 1000,
+        "work": 1000
       },
       "query_intent": {
-        "constraint_check": 10,
-        "conversation": 10,
-        "factual": 10,
-        "planning": 10,
-        "tool_query": 10
+        "constraint_check": 1000,
+        "conversation": 1000,
+        "factual": 1000,
+        "planning": 1000,
+        "tool_query": 1000
       },
       "salience_bin": {
-        "high": 10,
-        "low": 10,
-        "medium": 10
+        "high": 1000,
+        "low": 1000,
+        "medium": 1000
       }
     },
     "eval": {
       "confidence_bin": {
-        "high": 11,
-        "low": 10,
-        "medium": 10
+        "high": 1000,
+        "low": 1000,
+        "medium": 1000
       },
       "constraint_dimension": {
-        "causal": 10,
-        "goal": 11,
-        "other": 10,
-        "policy": 10,
-        "state": 10,
-        "value": 10
+        "causal": 1000,
+        "goal": 1000,
+        "other": 1000,
+        "policy": 1000,
+        "state": 1000,
+        "value": 1000
       },
       "context_tag": {
-        "finance": 10,
-        "food": 10,
-        "general": 10,
-        "health": 10,
-        "social": 10,
-        "tech": 11,
-        "travel": 10,
-        "work": 10
+        "finance": 1000,
+        "food": 1000,
+        "general": 1000,
+        "health": 1000,
+        "social": 1000,
+        "tech": 1000,
+        "travel": 1000,
+        "work": 1000
       },
       "decay_profile": {
-        "fast": 10,
-        "medium": 10,
-        "slow": 10,
-        "very_fast": 10,
-        "very_slow": 10
+        "fast": 1000,
+        "medium": 1000,
+        "slow": 1000,
+        "very_fast": 1000,
+        "very_slow": 1000
       },
       "importance_bin": {
-        "high": 10,
-        "low": 10,
-        "medium": 10
+        "high": 1000,
+        "low": 1000,
+        "medium": 1000
       },
       "memory_type": {
-        "constraint": 10,
-        "conversation": 10,
-        "episodic_event": 10,
-        "hypothesis": 10,
-        "knowledge": 10,
-        "message": 11,
-        "observation": 11,
-        "plan": 11,
-        "preference": 12,
-        "procedure": 10,
-        "reasoning_step": 11,
-        "scratch": 10,
-        "semantic_fact": 10,
-        "task_state": 10,
-        "tool_result": 11
+        "constraint": 1000,
+        "conversation": 1000,
+        "episodic_event": 1000,
+        "hypothesis": 1000,
+        "knowledge": 1000,
+        "message": 1000,
+        "observation": 1000,
+        "plan": 1000,
+        "preference": 1000,
+        "procedure": 1000,
+        "reasoning_step": 1000,
+        "scratch": 1000,
+        "semantic_fact": 1000,
+        "task_state": 1000,
+        "tool_result": 1000
       },
       "query_domain": {
-        "finance": 500,
-        "food": 10,
-        "general": 10,
-        "health": 10,
-        "social": 10,
-        "tech": 10,
-        "travel": 10,
-        "work": 11
+        "finance": 1000,
+        "food": 1000,
+        "general": 1000,
+        "health": 1000,
+        "social": 1000,
+        "tech": 1000,
+        "travel": 1000,
+        "work": 1000
       },
       "query_intent": {
-        "constraint_check": 11,
-        "conversation": 10,
-        "factual": 10,
-        "planning": 10,
-        "tool_query": 10
+        "constraint_check": 1000,
+        "conversation": 1000,
+        "factual": 1000,
+        "planning": 1000,
+        "tool_query": 1000
       },
       "salience_bin": {
-        "high": 11,
-        "low": 10,
-        "medium": 11
+        "high": 1000,
+        "low": 1000,
+        "medium": 1000
       }
     }
   },
@@ -365,274 +365,189 @@
   },
   "train_config": {
     "max_features": 250000,
-    "min_df": 1,
+    "min_df": 2,
     "ngram_min": 1,
-    "ngram_max": 3,
-    "max_iter": 35,
+    "ngram_max": 2,
+    "max_iter": 25,
     "alpha": 1e-05,
     "seed": 42,
-    "predict_batch_size": 8192,
-    "use_char_ngrams": true,
-    "char_ngram_min": 3,
-    "char_ngram_max": 5,
-    "char_min_df": 2,
-    "char_max_features": 250000,
-    "sgd_average": true,
-    "use_early_stopping": true,
-    "early_stopping_metric": "eval_focus_macro_f1",
-    "early_stopping_patience": 7,
-    "early_stopping_min_delta": 0.0001,
-    "task_weight_power": 0.6,
-    "label_weight_power": 0.08,
-    "sample_weight_min": 0.2,
-    "sample_weight_max": 5.0,
-    "task_focus_weights": {
-      "memory_type": 2.0
-    },
-    "focus_task_weights": {
-      "memory_type": 1.0
-    }
+    "predict_batch_size": 8192
   },
   "epoch_stats": [
     {
       "epoch": 1,
-      "train_loss": 0.19530908724973886,
-      "train_accuracy": 0.9701971028259321,
-      "train_macro_f1": 0.9532645774416323,
-      "train_weighted_f1": 0.9704063631060345,
-      "eval_accuracy": 0.8261278195488722,
-      "eval_macro_f1": 0.6914429513971128,
-      "eval_task_macro_f1": 0.7482047743909948,
-      "eval_focus_macro_f1": 0.6672429938905912,
-      "selection_metric": 0.6672429938905912
+      "train_loss": 1.4914833967408858,
+      "train_accuracy": 0.71734375,
+      "train_macro_f1": 0.7172995157099591,
+      "train_weighted_f1": 0.7172995157099592
     },
     {
       "epoch": 2,
-      "train_loss": 0.11333555144860366,
-      "train_accuracy": 0.992519591545951,
-      "train_macro_f1": 0.988770696772763,
-      "train_weighted_f1": 0.9925399371819338,
-      "eval_accuracy": 0.856203007518797,
-      "eval_macro_f1": 0.7413919701395321,
-      "eval_task_macro_f1": 0.7922841896823631,
-      "eval_focus_macro_f1": 0.6946026167388395,
-      "selection_metric": 0.6946026167388395
+      "train_loss": 1.4895410419233348,
+      "train_accuracy": 0.7181026785714286,
+      "train_macro_f1": 0.718078203132853,
+      "train_weighted_f1": 0.7180782031328532
     },
     {
       "epoch": 3,
-      "train_loss": 0.11101048903510233,
-      "train_accuracy": 0.9976252671574448,
-      "train_macro_f1": 0.9961976940462431,
-      "train_weighted_f1": 0.9976213163442276,
-      "eval_accuracy": 0.8787593984962406,
-      "eval_macro_f1": 0.7794165748485061,
-      "eval_task_macro_f1": 0.8048783546903971,
-      "eval_focus_macro_f1": 0.7441168137735644,
-      "selection_metric": 0.7441168137735644
+      "train_loss": 1.4894883018705152,
+      "train_accuracy": 0.718109375,
+      "train_macro_f1": 0.7180866853472269,
+      "train_weighted_f1": 0.7180866853472271
     },
     {
       "epoch": 4,
-      "train_loss": 0.12686686675533043,
-      "train_accuracy": 0.9985751602944669,
-      "train_macro_f1": 0.9977573224796176,
-      "train_weighted_f1": 0.9985735684550657,
-      "eval_accuracy": 0.8890977443609023,
-      "eval_macro_f1": 0.7964934481957063,
-      "eval_task_macro_f1": 0.8135238798301256,
-      "eval_focus_macro_f1": 0.7614590172942576,
-      "selection_metric": 0.7614590172942576
+      "train_loss": 1.4894860660605167,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 5,
-      "train_loss": 0.13725976932834894,
-      "train_accuracy": 0.9986938969365946,
-      "train_macro_f1": 0.9978789556077567,
-      "train_weighted_f1": 0.998692794287789,
-      "eval_accuracy": 0.8862781954887218,
-      "eval_macro_f1": 0.794639349226714,
-      "eval_task_macro_f1": 0.8108713961543222,
-      "eval_focus_macro_f1": 0.737110544192251,
-      "selection_metric": 0.737110544192251
+      "train_loss": 1.48948595078588,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 6,
-      "train_loss": 0.1411598520201673,
-      "train_accuracy": 0.9990501068629779,
-      "train_macro_f1": 0.9985471519681115,
-      "train_weighted_f1": 0.9990489535360954,
-      "eval_accuracy": 0.893796992481203,
-      "eval_macro_f1": 0.8071151608250374,
-      "eval_task_macro_f1": 0.8243454114029222,
-      "eval_focus_macro_f1": 0.7416124183674093,
-      "selection_metric": 0.7416124183674093
+      "train_loss": 1.489485944454672,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 7,
-      "train_loss": 0.13698244513679877,
-      "train_accuracy": 0.9984564236523391,
-      "train_macro_f1": 0.9977708845169803,
-      "train_weighted_f1": 0.9984577772704032,
-      "eval_accuracy": 0.8881578947368421,
-      "eval_macro_f1": 0.7984934890581139,
-      "eval_task_macro_f1": 0.816262471499152,
-      "eval_focus_macro_f1": 0.7265735776315936,
-      "selection_metric": 0.7265735776315936
+      "train_loss": 1.4894859440922934,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 8,
-      "train_loss": 0.13529322633482482,
-      "train_accuracy": 0.9991688435051057,
-      "train_macro_f1": 0.9987704350461277,
-      "train_weighted_f1": 0.9991677547133148,
-      "eval_accuracy": 0.8919172932330827,
-      "eval_macro_f1": 0.8030136567031765,
-      "eval_task_macro_f1": 0.8162186101743052,
-      "eval_focus_macro_f1": 0.7535977468586164,
-      "selection_metric": 0.7535977468586164
+      "train_loss": 1.4894859440708663,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 9,
-      "train_loss": 0.13255546439491242,
-      "train_accuracy": 0.999525053431489,
-      "train_macro_f1": 0.9993258678139895,
-      "train_weighted_f1": 0.9995243316985649,
-      "eval_accuracy": 0.8919172932330827,
-      "eval_macro_f1": 0.8046084812238927,
-      "eval_task_macro_f1": 0.8189137342837806,
-      "eval_focus_macro_f1": 0.7325948230870382,
-      "selection_metric": 0.7325948230870382
+      "train_loss": 1.4894859440695614,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 10,
-      "train_loss": 0.13291427280483822,
-      "train_accuracy": 0.9988126335787224,
-      "train_macro_f1": 0.9981007405130303,
-      "train_weighted_f1": 0.9988122454626881,
-      "eval_accuracy": 0.900375939849624,
-      "eval_macro_f1": 0.8202673966067069,
-      "eval_task_macro_f1": 0.8324645034474867,
-      "eval_focus_macro_f1": 0.7709962693380829,
-      "selection_metric": 0.7709962693380829
+      "train_loss": 1.4894859440694803,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 11,
-      "train_loss": 0.13017523615050813,
-      "train_accuracy": 0.9989313702208501,
-      "train_macro_f1": 0.9983253569880696,
-      "train_weighted_f1": 0.9989316843499085,
-      "eval_accuracy": 0.8909774436090225,
-      "eval_macro_f1": 0.8041074667559919,
-      "eval_task_macro_f1": 0.8182838832775043,
-      "eval_focus_macro_f1": 0.7458594026982773,
-      "selection_metric": 0.7458594026982773
+      "train_loss": 1.489485944069475,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 12,
-      "train_loss": 0.12835521276928089,
-      "train_accuracy": 0.9991688435051057,
-      "train_macro_f1": 0.9986631217290337,
-      "train_weighted_f1": 0.9991688295901119,
-      "eval_accuracy": 0.8956766917293233,
-      "eval_macro_f1": 0.8128522774701692,
-      "eval_task_macro_f1": 0.8292622022478774,
-      "eval_focus_macro_f1": 0.7541249016260458,
-      "selection_metric": 0.7541249016260458
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 13,
-      "train_loss": 0.12708478652022653,
-      "train_accuracy": 0.9991688435051057,
-      "train_macro_f1": 0.9986603241565979,
-      "train_weighted_f1": 0.9991681170200263,
-      "eval_accuracy": 0.8984962406015038,
-      "eval_macro_f1": 0.8169843761010009,
-      "eval_task_macro_f1": 0.8297507180530069,
-      "eval_focus_macro_f1": 0.7719422882298101,
-      "selection_metric": 0.7719422882298101
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 14,
-      "train_loss": 0.12487918682383461,
-      "train_accuracy": 0.9988126335787224,
-      "train_macro_f1": 0.9980979582910362,
-      "train_weighted_f1": 0.9988107654870846,
-      "eval_accuracy": 0.900375939849624,
-      "eval_macro_f1": 0.8202720064662049,
-      "eval_task_macro_f1": 0.8369460328310141,
-      "eval_focus_macro_f1": 0.7609600534787415,
-      "selection_metric": 0.7609600534787415
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 15,
-      "train_loss": 0.12472502899840568,
-      "train_accuracy": 0.9990501068629779,
-      "train_macro_f1": 0.99854580849632,
-      "train_weighted_f1": 0.9990497417088309,
-      "eval_accuracy": 0.893796992481203,
-      "eval_macro_f1": 0.8066464326063164,
-      "eval_task_macro_f1": 0.822336051807333,
-      "eval_focus_macro_f1": 0.7424210117816255,
-      "selection_metric": 0.7424210117816255
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 16,
-      "train_loss": 0.12431172655702673,
-      "train_accuracy": 0.9983376870102113,
-      "train_macro_f1": 0.9973372701304822,
-      "train_weighted_f1": 0.9983361654614162,
-      "eval_accuracy": 0.8928571428571429,
-      "eval_macro_f1": 0.8080479806972324,
-      "eval_task_macro_f1": 0.8229457293883441,
-      "eval_focus_macro_f1": 0.7453938590437447,
-      "selection_metric": 0.7453938590437447
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 17,
-      "train_loss": 0.1220219781531759,
-      "train_accuracy": 0.9990501068629779,
-      "train_macro_f1": 0.9985458172159686,
-      "train_weighted_f1": 0.999049746347162,
-      "eval_accuracy": 0.8947368421052632,
-      "eval_macro_f1": 0.8098415412588563,
-      "eval_task_macro_f1": 0.8292913411350044,
-      "eval_focus_macro_f1": 0.7464463742690728,
-      "selection_metric": 0.7464463742690728
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 18,
-      "train_loss": 0.12097399352141165,
-      "train_accuracy": 0.9989313702208501,
-      "train_macro_f1": 0.9984367953450828,
-      "train_weighted_f1": 0.9989320845818312,
-      "eval_accuracy": 0.8928571428571429,
-      "eval_macro_f1": 0.8062472836381439,
-      "eval_task_macro_f1": 0.8251551991292184,
-      "eval_focus_macro_f1": 0.7405389085188969,
-      "selection_metric": 0.7405389085188969
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 19,
-      "train_loss": 0.11951560798887062,
-      "train_accuracy": 0.9991688435051057,
-      "train_macro_f1": 0.9987690402213316,
-      "train_weighted_f1": 0.9991677409142663,
-      "eval_accuracy": 0.893796992481203,
-      "eval_macro_f1": 0.8078102693470612,
-      "eval_task_macro_f1": 0.8302071225767725,
-      "eval_focus_macro_f1": 0.7280649186841136,
-      "selection_metric": 0.7280649186841136
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     },
     {
       "epoch": 20,
-      "train_loss": 0.119890176744908,
-      "train_accuracy": 0.9986938969365946,
-      "train_macro_f1": 0.9978747158411428,
-      "train_weighted_f1": 0.9986927169409372,
-      "eval_accuracy": 0.8928571428571429,
-      "eval_macro_f1": 0.8055601832773469,
-      "eval_task_macro_f1": 0.823575966067619,
-      "eval_focus_macro_f1": 0.7445983011469617,
-      "selection_metric": 0.7445983011469617
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
+    },
+    {
+      "epoch": 21,
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
+    },
+    {
+      "epoch": 22,
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
+    },
+    {
+      "epoch": 23,
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
+    },
+    {
+      "epoch": 24,
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
+    },
+    {
+      "epoch": 25,
+      "train_loss": 1.4894859440694745,
+      "train_accuracy": 0.7181049107142857,
+      "train_macro_f1": 0.7180822232124372,
+      "train_weighted_f1": 0.7180822232124374
     }
   ]
 }
