@@ -141,3 +141,81 @@ def test_build_pair_rows_skips_llm_if_existing_complete():
     )
     assert len(rows) == len(existing)
     assert llm.pair_calls == 0
+
+
+def test_extract_json_string_fields_recovers_from_truncated_payload():
+    raw = (
+        '{"samples":[{"text":"My family\\\'s plane needed maintenance and they grounded us."},'
+        '{"text":"Forgot my wallet at the coffee shop and spent the evening searching."}'
+    )
+    recovered = p._extract_json_string_fields(content=raw, field="text", limit=1000, max_items=10)
+    assert len(recovered) == 2
+    assert "plane needed maintenance" in recovered[0]
+    assert "coffee shop" in recovered[1]
+
+
+def test_generate_single_recovers_without_valid_json():
+    class _FakeLLM:
+        def __init__(self, response: str) -> None:
+            self._response = response
+            self.recovered = 0
+            self.failed = 0
+
+        def _request(self, system_prompt: str, user_prompt: str) -> str:
+            return self._response
+
+        def record_parse_recovery(self, *, recovered_count: int) -> None:
+            self.recovered += int(recovered_count)
+
+        def record_parse_failure(self, *, task: str, label: str, content: str) -> None:
+            self.failed += 1
+
+    fake = _FakeLLM(
+        '{"samples":[{"text":"I missed my bus this morning and arrived late to work."},'
+        '{"text":"I misplaced my keys before dinner and searched for thirty minutes."}'
+    )
+    out = p._LLMGenerator.generate_single(
+        fake,
+        task="memory_type",
+        label="episodic_event",
+        seed_text="seed",
+        n=4,
+    )
+    assert len(out) == 2
+    assert fake.recovered == 2
+    assert fake.failed == 0
+
+
+def test_generate_pair_recovers_without_valid_json():
+    class _FakeLLM:
+        def __init__(self, response: str) -> None:
+            self._response = response
+            self.recovered = 0
+            self.failed = 0
+
+        def _request(self, system_prompt: str, user_prompt: str) -> str:
+            return self._response
+
+        def record_parse_recovery(self, *, recovered_count: int) -> None:
+            self.recovered += int(recovered_count)
+
+        def record_parse_failure(self, *, task: str, label: str, content: str) -> None:
+            self.failed += 1
+
+    fake = _FakeLLM(
+        '{"samples":[{"text_a":"I like tea in the morning.",'
+        '"text_b":"She prefers coffee at breakfast."},'
+        '{"text_a":"I run daily after work.","text_b":"I sit all day and avoid exercise."}'
+    )
+    out = p._LLMGenerator.generate_pair(
+        fake,
+        task="scope_match",
+        label="no_match",
+        seed_a="seed-a",
+        seed_b="seed-b",
+        n=4,
+    )
+    assert len(out) == 2
+    assert out[0][0].startswith("I like tea")
+    assert fake.recovered == 2
+    assert fake.failed == 0

@@ -18,10 +18,12 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 import tomllib
 import warnings
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pandas as pd
@@ -481,6 +483,40 @@ def _parse_json_content(content: str) -> dict[str, object] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _decode_json_string(raw: str) -> str:
+    try:
+        return str(json.loads(f'"{raw}"'))
+    except Exception:
+        # Best-effort fallback for partially escaped fragments.
+        return (
+            str(raw)
+            .replace("\\n", " ")
+            .replace("\\t", " ")
+            .replace('\\"', '"')
+            .replace("\\/", "/")
+        )
+
+
+def _extract_json_string_fields(
+    *, content: str, field: str, limit: int, max_items: int | None = None
+) -> list[str]:
+    pattern = re.compile(rf'"{re.escape(field)}"\s*:\s*"((?:\\.|[^"\\])*)"', flags=re.DOTALL)
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(content):
+        text = _clean(_decode_json_string(match.group(1)), limit)
+        if not text:
+            continue
+        key = _norm_key(text)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+        if max_items is not None and len(out) >= max_items:
+            break
+    return out
+
+
 class _LLMGenerator:
     def __init__(self, cfg: dict) -> None:
         if httpx is None:
@@ -504,8 +540,13 @@ class _LLMGenerator:
         self.top_p = float(cfg.get("top_p", 0.95))
         self.max_tokens = int(cfg.get("max_tokens", 2048))
         self.batch_size = max(1, int(cfg.get("batch_size", 32)))
+        self.concurrency = max(1, int(cfg.get("concurrency", 8)))
         self.timeout_seconds = max(10, int(cfg.get("timeout_seconds", 120)))
         self.max_retries = max(1, int(cfg.get("max_retries", 3)))
+        self.log_stats_every_seconds = max(1.0, float(cfg.get("log_stats_every_seconds", 10.0)))
+        self.log_zero_progress_every = max(1, int(cfg.get("log_zero_progress_every", 5)))
+        self.parse_failure_log_every = max(1, int(cfg.get("parse_failure_log_every", 20)))
+        self.log_request_failures = bool(cfg.get("log_request_failures", True))
 
         if not self.model:
             raise ValueError("LLM model missing. Set LLM_EVAL__MODEL or synthetic_llm.model.")
@@ -514,11 +555,93 @@ class _LLMGenerator:
                 "LLM base URL missing. Set LLM_EVAL__BASE_URL or synthetic_llm.base_url."
             )
 
-        if self.provider and self.provider != "ollama":
-            _warn(f"LLM provider is `{self.provider}`. Expected `ollama`.")
+        supported = {"", "ollama", "openai", "openai_compatible", "vllm", "sglang"}
+        if self.provider not in supported:
+            _warn(
+                f"LLM provider is `{self.provider}`; expected one of "
+                "{ollama, openai, openai_compatible, vllm, sglang}."
+            )
 
         self.url = self.base_url.rstrip("/") + "/chat/completions"
-        self.client = httpx.Client(timeout=self.timeout_seconds)
+        limits = httpx.Limits(
+            max_connections=max(64, self.concurrency * 8),
+            max_keepalive_connections=max(32, self.concurrency * 4),
+        )
+        self.client = httpx.Client(timeout=self.timeout_seconds, limits=limits)
+
+        self._stats_lock = threading.Lock()
+        self._started = time.perf_counter()
+        self._last_report = self._started
+        self._requests_total = 0
+        self._requests_failed = 0
+        self._retries_total = 0
+        self._generated_total = 0
+        self._accepted_total = 0
+        self._parse_fail_total = 0
+        self._parse_recovered_total = 0
+        self._finish_reason_counts: dict[str, int] = defaultdict(int)
+
+    def _record_request(self, *, success: bool, retries: int, finish_reason: str = "") -> None:
+        with self._stats_lock:
+            self._requests_total += 1
+            self._retries_total += max(0, retries)
+            if not success:
+                self._requests_failed += 1
+            if finish_reason:
+                self._finish_reason_counts[finish_reason] += 1
+
+    def record_batch_result(self, *, generated: int, accepted: int) -> None:
+        with self._stats_lock:
+            self._generated_total += max(0, int(generated))
+            self._accepted_total += max(0, int(accepted))
+
+    def record_parse_failure(self, *, task: str, label: str, content: str) -> None:
+        with self._stats_lock:
+            self._parse_fail_total += 1
+            count = self._parse_fail_total
+        if count == 1 or count % self.parse_failure_log_every == 0:
+            snippet = _clean(content, 220)
+            _warn(
+                f"LLM parse failure #{count} for {task}::{label}. "
+                f"sample_response={snippet!r}"
+            )
+
+    def record_parse_recovery(self, *, recovered_count: int) -> None:
+        with self._stats_lock:
+            self._parse_recovered_total += max(0, int(recovered_count))
+
+    def maybe_report(self, *, context: str = "", force: bool = False) -> None:
+        now = time.perf_counter()
+        with self._stats_lock:
+            elapsed = max(1e-6, now - self._started)
+            interval = now - self._last_report
+            if not force and interval < self.log_stats_every_seconds:
+                return
+            self._last_report = now
+            req_total = self._requests_total
+            req_failed = self._requests_failed
+            retries = self._retries_total
+            generated = self._generated_total
+            accepted = self._accepted_total
+            parse_fails = self._parse_fail_total
+            parse_recovered = self._parse_recovered_total
+            finish_reasons = dict(self._finish_reason_counts)
+
+        req_per_s = req_total / elapsed
+        gen_per_s = generated / elapsed
+        acc_per_s = accepted / elapsed
+        accept_ratio = (accepted / generated) if generated > 0 else 0.0
+        scope = f" [{context}]" if context else ""
+        finish_reason_text = ""
+        if finish_reasons:
+            top = sorted(finish_reasons.items(), key=lambda kv: kv[1], reverse=True)[:3]
+            finish_reason_text = " finish_reason=" + ",".join(f"{k}:{v}" for k, v in top)
+        _warn(
+            f"LLM stats{scope}: req={req_total} fail={req_failed} retries={retries} "
+            f"parse_fail={parse_fails} req/s={req_per_s:.2f} gen={generated} "
+            f"acc={accepted} gen/s={gen_per_s:.2f} acc/s={acc_per_s:.2f} "
+            f"acc/gen={accept_ratio:.2%} parse_recovered={parse_recovered}{finish_reason_text}"
+        )
 
     def _request(self, system_prompt: str, user_prompt: str) -> str:
         headers = {"Content-Type": "application/json"}
@@ -542,27 +665,52 @@ class _LLMGenerator:
                 resp = self.client.post(self.url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
-                content = data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                content = choice["message"]["content"]
+                finish_reason = str(choice.get("finish_reason", "")).strip().lower()
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("Empty LLM response content.")
+                self._record_request(
+                    success=True,
+                    retries=attempt - 1,
+                    finish_reason=finish_reason,
+                )
+                self.maybe_report()
                 return content
             except Exception as exc:
                 last_err = str(exc)
                 if attempt >= self.max_retries:
                     break
                 time.sleep(min(6, attempt * 1.5))
+        self._record_request(success=False, retries=self.max_retries - 1)
+        self.maybe_report()
         raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_err}")
 
     def generate_single(self, *, task: str, label: str, seed_text: str, n: int) -> list[str]:
-        system = "Generate synthetic classification data. Return STRICT JSON only."
+        system = (
+            "Generate synthetic classification data. "
+            "Return STRICT JSON only, no markdown fences."
+        )
         user = (
             f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
             f"Seed example from related dataset (do not copy): {seed_text}\n\n"
             'Return exactly: {"samples":[{"text":"..."}]}\n'
-            "Each sample must match target label exactly and be diverse."
+            "Each sample must match target label exactly, be diverse, "
+            "and be one concise sentence (8-22 words)."
         )
-        payload = _parse_json_content(self._request(system, user))
+        raw = self._request(system, user)
+        payload = _parse_json_content(raw)
         if not payload:
+            recovered = _extract_json_string_fields(
+                content=raw,
+                field="text",
+                limit=1000,
+                max_items=max(1, n * 2),
+            )
+            if recovered:
+                self.record_parse_recovery(recovered_count=len(recovered))
+                return recovered
+            self.record_parse_failure(task=task, label=label, content=raw)
             return []
         out: list[str] = []
         samples = payload.get("samples", [])
@@ -579,15 +727,37 @@ class _LLMGenerator:
     def generate_pair(
         self, *, task: str, label: str, seed_a: str, seed_b: str, n: int
     ) -> list[tuple[str, str]]:
-        system = "Generate synthetic text-pair classification data. Return STRICT JSON only."
+        system = (
+            "Generate synthetic text-pair classification data. "
+            "Return STRICT JSON only, no markdown fences."
+        )
         user = (
             f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
             f"Seed pair from related dataset (do not copy): A={seed_a} | B={seed_b}\n\n"
             'Return exactly: {"samples":[{"text_a":"...","text_b":"..."}]}\n'
-            "Every pair must match target label exactly and be diverse."
+            "Every pair must match target label exactly and be diverse. "
+            "Each field should be one concise sentence (6-20 words)."
         )
-        payload = _parse_json_content(self._request(system, user))
+        raw = self._request(system, user)
+        payload = _parse_json_content(raw)
         if not payload:
+            recovered_a = _extract_json_string_fields(
+                content=raw,
+                field="text_a",
+                limit=700,
+                max_items=max(1, n * 2),
+            )
+            recovered_b = _extract_json_string_fields(
+                content=raw,
+                field="text_b",
+                limit=700,
+                max_items=max(1, n * 2),
+            )
+            recovered_pairs = list(zip(recovered_a, recovered_b, strict=False))
+            if recovered_pairs:
+                self.record_parse_recovery(recovered_count=len(recovered_pairs))
+                return recovered_pairs
+            self.record_parse_failure(task=task, label=label, content=raw)
             return []
         out: list[tuple[str, str]] = []
         samples = payload.get("samples", [])
@@ -1206,46 +1376,114 @@ def _fill_single_task_with_llm(
 
     pbar = _progress(total=total_missing, desc=f"LLM synth [{family}]", unit="sample")
     try:
-        for task, labels in task_labels.items():
-            for label in labels:
-                missing = max(0, target_per_task_label - rows.count(task, label))
-                if missing <= 0:
-                    continue
-
-                attempts = 0
-                while missing > 0 and attempts < max_attempts_per_label:
-                    seed_text = _pick_seed_text(single_pools, family, rng)
-                    guidance = _label_guidance(task, label)
-                    batch = min(llm.batch_size, missing)
-                    prompt_seed = (
-                        f"{seed_text}\n\nLabel guidance: {guidance}" if guidance else seed_text
-                    )
-
-                    generated = llm.generate_single(
-                        task=task, label=label, seed_text=prompt_seed, n=batch
-                    )
-                    if not generated:
-                        attempts += 1
+        with ThreadPoolExecutor(max_workers=llm.concurrency) as executor:
+            for task, labels in task_labels.items():
+                for label in labels:
+                    missing = max(0, target_per_task_label - rows.count(task, label))
+                    if missing <= 0:
                         continue
 
-                    accepted = 0
-                    for text in generated:
-                        if rows.add(task, text, label, f"llm:{task}:{label}"):
-                            accepted += 1
-
-                    if accepted == 0:
-                        attempts += 1
-                        continue
-
-                    missing -= accepted
-                    pbar.update(accepted)
-                    attempts = 0
-
-                if missing > 0:
                     _warn(
-                        f"LLM underfilled {task}::{label}. "
-                        f"missing={missing}, current={rows.count(task, label)}."
+                        f"LLM fill start [{family}] {task}::{label} "
+                        f"missing={missing} batch_size={llm.batch_size} "
+                        f"concurrency={llm.concurrency}."
                     )
+                    attempts = 0
+                    rounds = 0
+                    label_batch_size = llm.batch_size
+                    while missing > 0 and attempts < max_attempts_per_label:
+                        rounds += 1
+                        jobs = min(
+                            llm.concurrency,
+                            max(1, (missing + label_batch_size - 1) // label_batch_size),
+                        )
+                        futures = []
+                        for _ in range(jobs):
+                            seed_text = _pick_seed_text(single_pools, family, rng)
+                            guidance = _label_guidance(task, label)
+                            batch = min(label_batch_size, missing)
+                            prompt_seed = (
+                                f"{seed_text}\n\nLabel guidance: {guidance}" if guidance else seed_text
+                            )
+                            futures.append(
+                                executor.submit(
+                                    llm.generate_single,
+                                    task=task,
+                                    label=label,
+                                    seed_text=prompt_seed,
+                                    n=batch,
+                                )
+                            )
+
+                        round_generated = 0
+                        round_accepted = 0
+                        round_errors = 0
+                        for future in as_completed(futures):
+                            try:
+                                generated = future.result()
+                            except Exception as exc:
+                                round_errors += 1
+                                if llm.log_request_failures:
+                                    _warn(f"LLM request error for {task}::{label}: {exc}")
+                                continue
+
+                            round_generated += len(generated)
+                            accepted = 0
+                            for text in generated:
+                                if rows.count(task, label) >= target_per_task_label:
+                                    break
+                                if rows.add(task, text, label, f"llm:{task}:{label}"):
+                                    accepted += 1
+                            if accepted > 0:
+                                round_accepted += accepted
+                                pbar.update(accepted)
+
+                        llm.record_batch_result(generated=round_generated, accepted=round_accepted)
+                        missing = max(0, target_per_task_label - rows.count(task, label))
+                        if round_accepted <= 0:
+                            attempts += 1
+                        else:
+                            attempts = 0
+
+                        if round_generated == 0 and round_errors == 0 and label_batch_size > 1:
+                            new_batch = max(1, label_batch_size // 2)
+                            if new_batch != label_batch_size:
+                                _warn(
+                                    f"LLM reducing batch size for {task}::{label}: "
+                                    f"{label_batch_size} -> {new_batch} (no parseable outputs)."
+                                )
+                            label_batch_size = new_batch
+                        elif round_accepted > 0 and label_batch_size < llm.batch_size:
+                            label_batch_size = min(llm.batch_size, label_batch_size * 2)
+
+                        should_log_round = (
+                            rounds == 1
+                            or missing == 0
+                            or round_accepted > 0
+                            or attempts == 1
+                            or attempts % llm.log_zero_progress_every == 0
+                        )
+                        if should_log_round:
+                            _warn(
+                                f"LLM fill [{family}] {task}::{label} "
+                                f"round={rounds} jobs={jobs} generated={round_generated} "
+                                f"accepted={round_accepted} errors={round_errors} "
+                                f"missing={missing} attempts_without_progress={attempts} "
+                                f"batch_size={label_batch_size}."
+                            )
+                        llm.maybe_report(context=f"{family}:{task}::{label}")
+
+                    llm.maybe_report(context=f"{family}:{task}::{label}", force=True)
+                    if missing > 0:
+                        _warn(
+                            f"LLM underfilled {task}::{label}. "
+                            f"missing={missing}, current={rows.count(task, label)}."
+                        )
+                    else:
+                        _warn(
+                            f"LLM fill complete [{family}] {task}::{label}. "
+                            f"current={rows.count(task, label)}."
+                        )
     finally:
         pbar.close()
 
@@ -1268,45 +1506,114 @@ def _fill_pair_task_with_llm(
 
     pbar = _progress(total=total_missing, desc="LLM synth [pair]", unit="sample")
     try:
-        for task, labels in task_labels.items():
-            for label in labels:
-                missing = max(0, target_per_task_label - rows.count(task, label))
-                if missing <= 0:
-                    continue
-
-                attempts = 0
-                while missing > 0 and attempts < max_attempts_per_label:
-                    seed_a, seed_b = _pick_seed_pair(pair_pool, single_pools, rng)
-                    guidance = _label_guidance(task, label)
-                    batch = min(llm.batch_size, missing)
-                    if guidance:
-                        seed_a = f"{seed_a}\n\nLabel guidance: {guidance}"
-
-                    generated = llm.generate_pair(
-                        task=task, label=label, seed_a=seed_a, seed_b=seed_b, n=batch
-                    )
-                    if not generated:
-                        attempts += 1
+        with ThreadPoolExecutor(max_workers=llm.concurrency) as executor:
+            for task, labels in task_labels.items():
+                for label in labels:
+                    missing = max(0, target_per_task_label - rows.count(task, label))
+                    if missing <= 0:
                         continue
 
-                    accepted = 0
-                    for text_a, text_b in generated:
-                        if rows.add(task, text_a, text_b, label, f"llm:{task}:{label}"):
-                            accepted += 1
-
-                    if accepted == 0:
-                        attempts += 1
-                        continue
-
-                    missing -= accepted
-                    pbar.update(accepted)
-                    attempts = 0
-
-                if missing > 0:
                     _warn(
-                        f"LLM underfilled {task}::{label}. "
-                        f"missing={missing}, current={rows.count(task, label)}."
+                        f"LLM fill start [pair] {task}::{label} "
+                        f"missing={missing} batch_size={llm.batch_size} "
+                        f"concurrency={llm.concurrency}."
                     )
+                    attempts = 0
+                    rounds = 0
+                    label_batch_size = llm.batch_size
+                    while missing > 0 and attempts < max_attempts_per_label:
+                        rounds += 1
+                        jobs = min(
+                            llm.concurrency,
+                            max(1, (missing + label_batch_size - 1) // label_batch_size),
+                        )
+                        futures = []
+                        for _ in range(jobs):
+                            seed_a, seed_b = _pick_seed_pair(pair_pool, single_pools, rng)
+                            guidance = _label_guidance(task, label)
+                            batch = min(label_batch_size, missing)
+                            if guidance:
+                                seed_a = f"{seed_a}\n\nLabel guidance: {guidance}"
+                            futures.append(
+                                executor.submit(
+                                    llm.generate_pair,
+                                    task=task,
+                                    label=label,
+                                    seed_a=seed_a,
+                                    seed_b=seed_b,
+                                    n=batch,
+                                )
+                            )
+
+                        round_generated = 0
+                        round_accepted = 0
+                        round_errors = 0
+                        for future in as_completed(futures):
+                            try:
+                                generated = future.result()
+                            except Exception as exc:
+                                round_errors += 1
+                                if llm.log_request_failures:
+                                    _warn(f"LLM request error for {task}::{label}: {exc}")
+                                continue
+
+                            round_generated += len(generated)
+                            accepted = 0
+                            for text_a, text_b in generated:
+                                if rows.count(task, label) >= target_per_task_label:
+                                    break
+                                if rows.add(task, text_a, text_b, label, f"llm:{task}:{label}"):
+                                    accepted += 1
+                            if accepted > 0:
+                                round_accepted += accepted
+                                pbar.update(accepted)
+
+                        llm.record_batch_result(generated=round_generated, accepted=round_accepted)
+                        missing = max(0, target_per_task_label - rows.count(task, label))
+                        if round_accepted <= 0:
+                            attempts += 1
+                        else:
+                            attempts = 0
+
+                        if round_generated == 0 and round_errors == 0 and label_batch_size > 1:
+                            new_batch = max(1, label_batch_size // 2)
+                            if new_batch != label_batch_size:
+                                _warn(
+                                    f"LLM reducing batch size for {task}::{label}: "
+                                    f"{label_batch_size} -> {new_batch} (no parseable outputs)."
+                                )
+                            label_batch_size = new_batch
+                        elif round_accepted > 0 and label_batch_size < llm.batch_size:
+                            label_batch_size = min(llm.batch_size, label_batch_size * 2)
+
+                        should_log_round = (
+                            rounds == 1
+                            or missing == 0
+                            or round_accepted > 0
+                            or attempts == 1
+                            or attempts % llm.log_zero_progress_every == 0
+                        )
+                        if should_log_round:
+                            _warn(
+                                f"LLM fill [pair] {task}::{label} "
+                                f"round={rounds} jobs={jobs} generated={round_generated} "
+                                f"accepted={round_accepted} errors={round_errors} "
+                                f"missing={missing} attempts_without_progress={attempts} "
+                                f"batch_size={label_batch_size}."
+                            )
+                        llm.maybe_report(context=f"pair:{task}::{label}")
+
+                    llm.maybe_report(context=f"pair:{task}::{label}", force=True)
+                    if missing > 0:
+                        _warn(
+                            f"LLM underfilled {task}::{label}. "
+                            f"missing={missing}, current={rows.count(task, label)}."
+                        )
+                    else:
+                        _warn(
+                            f"LLM fill complete [pair] {task}::{label}. "
+                            f"current={rows.count(task, label)}."
+                        )
     finally:
         pbar.close()
 
@@ -1622,6 +1929,12 @@ def parse_args() -> argparse.Namespace:
         help="Override synthetic_llm.temperature.",
     )
     parser.add_argument(
+        "--llm-concurrency",
+        type=int,
+        default=None,
+        help="Override synthetic_llm.concurrency.",
+    )
+    parser.add_argument(
         "--disable-download",
         action="store_true",
         help="Do not pre-fetch required remote datasets before processing.",
@@ -1659,6 +1972,8 @@ def main() -> int:
         prepare_cfg["target_per_task_label"] = int(args.target_per_task_label)
     if args.llm_temperature is not None:
         synthetic_cfg["temperature"] = float(args.llm_temperature)
+    if args.llm_concurrency is not None:
+        synthetic_cfg["concurrency"] = int(args.llm_concurrency)
     if args.allow_missing_datasets_package:
         prepare_cfg["require_datasets_package"] = False
 
@@ -1687,9 +2002,14 @@ def main() -> int:
     synthetic_cfg.setdefault("top_p", 0.95)
     synthetic_cfg.setdefault("max_tokens", 1024)
     synthetic_cfg.setdefault("batch_size", 24)
+    synthetic_cfg.setdefault("concurrency", 8)
     synthetic_cfg.setdefault("timeout_seconds", 120)
     synthetic_cfg.setdefault("max_retries", 3)
     synthetic_cfg.setdefault("max_attempts_per_label", 80)
+    synthetic_cfg.setdefault("log_stats_every_seconds", 10.0)
+    synthetic_cfg.setdefault("log_zero_progress_every", 5)
+    synthetic_cfg.setdefault("parse_failure_log_every", 20)
+    synthetic_cfg.setdefault("log_request_failures", True)
     synthetic_cfg.setdefault("local_raw_scan_rows_per_file", 300)
 
     if int(prepare_cfg["max_rows_per_source"]) <= 0:
@@ -1700,6 +2020,12 @@ def main() -> int:
         return 1
     if int(prepare_cfg["max_per_task_label"]) <= 0:
         print("prepare.max_per_task_label must be > 0.", file=sys.stderr)
+        return 1
+    if int(synthetic_cfg["concurrency"]) <= 0:
+        print("synthetic_llm.concurrency must be > 0.", file=sys.stderr)
+        return 1
+    if int(synthetic_cfg["max_attempts_per_label"]) <= 0:
+        print("synthetic_llm.max_attempts_per_label must be > 0.", file=sys.stderr)
         return 1
 
     prepared_dir = _resolve_path(
@@ -1897,7 +2223,9 @@ def main() -> int:
         return 1
     print(
         "Using synthetic LLM provider="
-        f"{llm.provider or 'unknown'} model={llm.model} base_url={llm.base_url} temperature={llm.temperature}"
+        f"{llm.provider or 'unknown'} model={llm.model} base_url={llm.base_url} "
+        f"temperature={llm.temperature} batch_size={llm.batch_size} "
+        f"concurrency={llm.concurrency} timeout={llm.timeout_seconds}s"
     )
     try:
         if needs_router:
@@ -2019,8 +2347,13 @@ def main() -> int:
                 "temperature": llm.temperature,
                 "top_p": llm.top_p,
                 "batch_size": llm.batch_size,
+                "concurrency": llm.concurrency,
                 "max_tokens": llm.max_tokens,
                 "max_attempts_per_label": int(synthetic_cfg["max_attempts_per_label"]),
+                "log_stats_every_seconds": float(synthetic_cfg["log_stats_every_seconds"]),
+                "log_zero_progress_every": int(synthetic_cfg["log_zero_progress_every"]),
+                "parse_failure_log_every": int(synthetic_cfg["parse_failure_log_every"]),
+                "log_request_failures": bool(synthetic_cfg["log_request_failures"]),
                 "local_raw_scan_rows_per_file": int(synthetic_cfg["local_raw_scan_rows_per_file"]),
             },
             "datasets": registry.status,
@@ -2056,6 +2389,10 @@ def main() -> int:
         print(f"Manifest: {manifest_path}")
         return 0
     finally:
+        try:
+            llm.maybe_report(context="final", force=True)
+        except Exception:
+            pass
         try:
             llm.client.close()
         except Exception:
