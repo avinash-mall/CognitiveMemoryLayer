@@ -11,14 +11,35 @@ Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Iss
 
 ### Added
 
+- **`cml.eval` module** — New optional evaluation module (`pip install "cognitive-memory-layer[eval]"`). Wraps LoCoMo-Plus evaluation workflows into importable Python APIs (`run_locomo_plus`, `run_full_eval`, `validate_outputs`, `generate_locomo_report`, `compare_locomo_scores`) and a `cml-eval` CLI with subcommands (`run-full`, `run-locomo`, `validate`, `report`, `compare`). Typed dataclass configs (`LocomoEvalConfig`, `FullEvalConfig`). Legacy evaluation scripts remain as thin wrappers.
+- **`cml.modeling` module** — New optional modeling module (`pip install "cognitive-memory-layer[modeling]"`). Wraps model data preparation and training into importable Python APIs (`prepare_data`, `train_models`, `run_pipeline`) and a `cml-models` CLI with subcommands (`prepare`, `train`, `pipeline`). Typed dataclass configs (`PrepareConfig`, `TrainConfig`). Legacy scripts remain as thin wrappers.
+
+### Fixed
+
+- **Lazy imports for eval/modeling CLIs** — `cml-eval` and `cml-models` entry points now use lazy imports for heavy dependencies. Running either CLI without the corresponding optional extras installed produces a clear error message with install instructions instead of a raw `ImportError` traceback.
+- **`cml.eval.__init__` lazy loading** — Public API functions in `cml.eval` are now lazy-loaded wrappers to avoid importing heavy dependencies (requests, tqdm, openai) at package load time.
+- **`cml.modeling.__init__` lazy loading** — Public API functions in `cml.modeling` are now lazy-loaded wrappers to avoid importing heavy dependencies (pandas, scikit-learn) at package load time.
+- **`locomo.py` standalone fallback** — `run_locomo_plus` now works outside the CML repository by providing a built-in `_load_unified_samples_builtin` fallback for sample loading. `phase_c_judge` raises a clear `ImportError` with instructions when the repo-local `task_eval` module is unavailable.
+- **`locomo.py` retry error handling** — `_dashboard_post` and `_cml_read` now handle the case where the retry loop exhausts without binding `resp`, avoiding potential `UnboundLocalError`.
+- **`locomo.py` main() error handling** — `main()` now catches `FileNotFoundError`, `ImportError`, and general exceptions, printing clear error messages to stderr and returning non-zero exit codes.
+- **`train.py` token_classification stub** — `_train_token_classification` now raises `NotImplementedError` with a descriptive message instead of silently returning. The `_train_task` dispatcher catches this and logs a skip message to stderr.
+- **`modeling/cli.py` pipeline command** — The `pipeline` subcommand now correctly uses `cml.modeling.pipeline.run_pipeline` with typed `PrepareConfig`/`TrainConfig` instead of bypassing it with raw argv delegation.
+
+
+
 - **Client API Synchronization** — `py-cml` (sync and async clients) is now fully synchronized with the CML server API. Added missing dashboard and admin endpoints (e.g., `dashboard_overview`, `dashboard_memories`, `dashboard_timeline`, `dashboard_neo4j_config`, `reset_database`). Updated all new and existing methods to use properly typed Pydantic models from `cml.models` instead of generic dictionaries, providing better typing and autocomplete support. Added missing Pydantic models to `requests.py` and `responses.py`. Update documentation in `api-reference.md`.
 - **ReadResponse.retrieval_meta** — Optional `retrieval_meta: dict | None` field for server parity. When the CML server returns retrieval metadata (sources completed/timed out, elapsed ms), it is exposed here.
+- **Additional dashboard/admin helpers** — Added `dashboard_facts()`, `dashboard_invalidate_fact()`, `dashboard_export_memories()`, `graph_overview()`, `admin_consolidate()`, and `admin_forget()` to sync/async clients and namespaced wrappers for API parity.
+- **Dashboard fact models** — Added `DashboardFactItem` and `DashboardFactListResponse` and exported them from `cml.models`.
 
 ### Changed
 
 - **CSRF header for dashboard requests** — HTTP transport now automatically adds `X-Requested-With: XMLHttpRequest` for dashboard POST, PUT, DELETE, and PATCH requests. Required for compatibility with CML servers that enforce CSRF protection on dashboard state-changing endpoints. Methods affected: `consolidate()`, `run_forgetting()`, `reconsolidate()`, `dashboard_bulk_action()`, `dashboard_config_update()`, `test_retrieval()`, `reset_database()`.
 - **WriteRequest content validation** — `content` now enforces `min_length=1` and `max_length=100_000` (aligns with server). Validates before sending; raises Pydantic `ValidationError` for invalid content.
 - **SessionScope read behavior** — `SessionScope.read()` and `AsyncSessionScope.read()` now call the session-scoped route (`POST /api/v1/session/{session_id}/read`) instead of tenant-wide `POST /api/v1/memory/read`, aligning SDK behavior with documented session isolation.
+- **SessionScope write behavior** — `SessionScope.write()` and `AsyncSessionScope.write()` now call `POST /api/v1/session/{session_id}/write` for session-scoped writes.
+- **Wrapper argument parity** — `NamespacedClient` and `AsyncNamespacedClient` now forward `user_timezone` on read/get_context/search and `timestamp`/`user_timezone` on turn.
+- **Embedded packet mapping parity** — Embedded `ReadResponse.memories` now includes constraints/procedures from packets and sets `ReadResponse.constraints` consistently.
 
 ### Documentation
 
@@ -27,12 +48,14 @@ Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Iss
 - **Server plugin registry** — The CML server now has an `ExtractorRegistry` (`src/extraction/registry.py`) enabling third-party custom extractors. No SDK API changes.
 - **Server per-tenant feature flags** — The CML server supports per-tenant feature flag overrides via Redis (`src/core/tenant_flags.py`). Enables A/B testing of LLM features per tenant. No SDK API changes.
 - **VALIDATION_REPORT.md** — New report documenting py-cml compatibility with recent server changes (CSRF, retrieval_meta, content validation).
+- **SDK docs refreshed** — Updated `README.md`, `docs/api-reference.md`, and `docs/getting-started.md` to document session-scoped write routing, new dashboard/admin helpers, and updated wrapper parameter behavior.
 
 ### Tests
 
 - **CSRF header** — Unit tests for `_add_dashboard_csrf_if_needed` (adds header for dashboard POST/PUT, skips for GET and non-dashboard); transport test verifies dashboard POST sends X-Requested-With.
 - **WriteRequest content validation** — `test_write_request_content_empty_raises`, `test_write_request_content_max_length_raises`, `test_write_request_content_at_limit_accepted`.
 - **ReadResponse retrieval_meta** — `test_read_response_parses_retrieval_meta`.
+- **SDK parity coverage** — Added unit tests for session-scoped write route usage, dashboard facts/graph overview/admin helpers, namespaced timestamp/timezone forwarding, and embedded constraint/procedure packet mapping.
 
 ## [1.3.3] - 2026-02-22
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from ..memory.neocortical.schemas import FactCategory
 from ..memory.neocortical.store import FactStoreLike
+from ..utils.modelpack import get_modelpack_runtime
 from .summarizer import ExtractedGist
 
 
@@ -33,6 +34,7 @@ class SchemaAligner:
     ):
         self.fact_store = fact_store
         self.threshold = rapid_integration_threshold
+        self.modelpack = get_modelpack_runtime()
 
     # Cognitive gist types that map to FactCategory constraint schemas
     _COGNITIVE_TYPE_MAP = {
@@ -135,6 +137,19 @@ class SchemaAligner:
 
     def _calculate_similarity(self, text1: str, text2: Any) -> float:
         text2_str = str(text2)
+
+        # --- model path: semantic match scoring ---
+        try:
+            if getattr(self.modelpack, "has_task_model", lambda _: False)("schema_match_pair"):
+                score_pred = self.modelpack.predict_score_pair(
+                    "schema_match_pair", text1, text2_str,
+                )
+                if score_pred is not None:
+                    return score_pred.score
+        except Exception:
+            pass
+
+        # --- heuristic path: Jaccard similarity ---
         words1 = set(text1.lower().split())
         words2 = set(text2_str.lower().split())
         if not words1 or not words2:

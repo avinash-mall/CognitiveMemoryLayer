@@ -20,7 +20,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![Tests](https://img.shields.io/badge/Tests-175-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
 [![Version](https://img.shields.io/badge/version-1.3.6-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
-**What's new (1.3.x):** `ReadResponse.constraints`, `user_timezone` on read/turn, `reconsolidate()`, eval_mode for write, embedded read filter passthrough. Dashboard admin methods (1.1.0): sessions, rate limits, knowledge graph, config, retrieval test, bulk actions. See [CHANGELOG](CHANGELOG.md).
+**What's new (1.3.x):** session-scoped `write` route support in `SessionScope`/`AsyncSessionScope`, new dashboard/admin helpers (`dashboard_facts`, `dashboard_invalidate_fact`, `dashboard_export_memories`, `graph_overview`, `admin_consolidate`, `admin_forget`), and wrapper parity updates for `user_timezone`/`timestamp`. See [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -114,7 +114,7 @@ with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as
         session.turn(user_message="Any good places nearby?", assistant_response="...")
 ```
 
-`SessionScope.read()` and `AsyncSessionScope.read()` call the session-scoped server route (`/session/{session_id}/read`) so reads stay isolated to that session.
+`SessionScope.write()`/`AsyncSessionScope.write()` call `/session/{session_id}/write`, and `SessionScope.read()`/`AsyncSessionScope.read()` call `/session/{session_id}/read`, so session wrappers stay path-scoped on both write and read.
 
 **More usage:** Timezone-aware retrieval with `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")`. Batch operations: `batch_write([{"content": "..."}, ...])` and `batch_read(["query1", "query2"])` for multiple writes or reads.
 
@@ -147,15 +147,15 @@ Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(
 | **Client** | Sync and async HTTP clients for a running CML server; context managers |
 | **Embedded** | In-process engine (lite mode: SQLite + local embeddings); no server. Embedded `read()` passes `memory_types`, `since`, and `until` to the orchestrator. |
 
-**Memory API:** `write`, `read`, `read_stream`, `read_safe`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`, `remember` (alias for write), `search` (alias for read), `health`. Options: `user_timezone` on `read()` and `turn()` for timezone-aware "today"/"yesterday"; `timestamp` on `write()`, `turn()`, `remember()` for event time; `eval_mode` on `write()`/`remember()` for benchmark responses. Write supports `context_tags`, `session_id`, `memory_type`, `namespace`, `metadata`, `agent_id`. Read supports `memory_types`, `since`, `until`, `response_format` (`packet` | `list` | `llm_context`).
+**Memory API:** `write`, `read`, `read_stream`, `read_safe`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`, `remember` (alias for write), `search` (alias for read), `health`. Options: `user_timezone` on `read()`, `get_context()`, `search()`, and `turn()` for timezone-aware "today"/"yesterday"; `timestamp` on `write()`, `turn()`, and `remember()` for event time; `eval_mode` on `write()`/`remember()` for benchmark responses. Write supports `context_tags`, `session_id`, `memory_type`, `namespace`, `metadata`, `agent_id`. Read supports `memory_types`, `since`, `until`, `response_format` (`packet` | `list` | `llm_context`).
 
 **Response shape:** `ReadResponse` has `memories`, `facts`, `preferences`, `episodes`, `constraints` (when the server has constraint extraction), and `context` (formatted string for LLM injection).
 
 **Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them. The server can use LLM-based extraction (constraints, facts, salience, importance) when `FEATURES__USE_LLM_*` flags are enabled; see [UsageDocumentation](../../ProjectPlan/UsageDocumentation.md) § Configuration Reference.
 
-**Session and namespace:** `memory.session(name=...)` (SessionScope) scopes writes/reads/turns to a session. `with_namespace(namespace)` returns a `NamespacedClient` (and async `AsyncNamespacedClient`) that injects namespace into write, update, and batch_write.
+**Session and namespace:** `memory.session(name=...)` (SessionScope) scopes writes/reads/turns to a session via session-scoped routes. `with_namespace(namespace)` returns a `NamespacedClient` (and async `AsyncNamespacedClient`) that injects namespace into write, update, and batch_write, and forwards `user_timezone`/`timestamp` on read/turn helpers.
 
-**Admin & batch:** `batch_write`, `batch_read`, `consolidate`, `run_forgetting`, `reconsolidate`, `with_namespace`, `iter_memories`, `list_tenants`, `get_events`, `component_health`. Dashboard admin (require `CML_ADMIN_API_KEY`): `get_sessions` (active sessions from Redis), `get_rate_limits` (rate-limit usage per API key), `get_request_stats` (hourly request volume), `get_graph_stats` (Neo4j node/edge stats), `explore_graph` / `search_graph` (knowledge graph), `get_config` / `update_config` (runtime config), `get_labile_status` (reconsolidation status), `test_retrieval` (retrieval test), `get_jobs` (consolidation/forgetting/reconsolidation job history), `bulk_memory_action` (archive/silence/delete in bulk).
+**Admin & batch:** `batch_write`, `batch_read`, `consolidate`, `run_forgetting`, `reconsolidate`, `admin_consolidate`, `admin_forget`, `with_namespace`, `iter_memories`, `list_tenants`, `get_events`, `component_health`. Dashboard admin (require `CML_ADMIN_API_KEY`): `dashboard_overview`, `dashboard_memories`, `dashboard_memory_detail`, `dashboard_facts`, `dashboard_invalidate_fact`, `dashboard_export_memories`, `dashboard_timeline`, `get_sessions` (active sessions from Redis), `get_rate_limits` (rate-limit usage per API key), `get_request_stats` (hourly request volume), `get_graph_stats`, `graph_overview`, `explore_graph`, `search_graph`, `dashboard_neo4j_config`, `get_config`/`update_config`, `get_labile_status`, `test_retrieval`, `get_jobs`, `bulk_memory_action`, `reset_database`.
 
 **Embedded extras:** `EmbeddedConfig` for storage_mode, embedding/LLM, `auto_consolidate`, `auto_forget`. Export/import: `export_memories`, `import_memories` (and async `export_memories_async`, `import_memories_async`) for migration between embedded and server.
 
@@ -186,6 +186,8 @@ response = helper.chat("What should I eat tonight?", session_id="s1")
 - [Configuration](docs/configuration.md)
 - [Examples](docs/examples.md)
 - [Temporal Fidelity](docs/temporal-fidelity.md)
+- [Evaluation Module](docs/evaluation.md) — `cml-eval` CLI and Python API
+- [Modeling Module](docs/modeling.md) — `cml-models` CLI and Python API
 - [Security policy](../../SECURITY.md)
 
 [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues, server setup
@@ -223,3 +225,49 @@ Some integration, embedded, and e2e tests skip when the CML server or embedding 
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
+
+---
+
+## Optional Modules (Eval and Modeling)
+
+Install optional modules depending on your workflow:
+
+```bash
+# Evaluation utilities (`cml.eval`, `cml-eval`)
+pip install "cognitive-memory-layer[eval]"
+
+# Custom model prep/training (`cml.modeling`, `cml-models`)
+pip install "cognitive-memory-layer[modeling]"
+
+# Both modules
+pip install "cognitive-memory-layer[eval,modeling]"
+```
+
+Each extra installs only its own dependencies. Running `cml-eval` or `cml-models` without the corresponding extra produces a clear error message with install instructions.
+
+**Evaluation CLI** — run LoCoMo-Plus benchmarks, validate outputs, and generate comparison reports:
+
+```bash
+cml-eval run-full --repo-root .              # Full pipeline (Docker + ingest + QA + judge)
+cml-eval run-locomo --limit-samples 10       # Quick test with 10 samples
+cml-eval validate --outputs-dir evaluation/outputs
+cml-eval report --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json
+cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json
+```
+
+**Modeling CLI** — prepare training data and train custom TF-IDF models:
+
+```bash
+cml-models prepare --config packages/models/model_pipeline.toml
+cml-models train --config packages/models/model_pipeline.toml --families router,pair
+cml-models pipeline --config packages/models/model_pipeline.toml  # prepare + train
+```
+
+**Python API** — both modules expose typed dataclass configs for programmatic use:
+
+```python
+from cml.eval import LocomoEvalConfig, run_locomo_plus
+from cml.modeling import PrepareConfig, TrainConfig, run_pipeline
+```
+
+See [Evaluation Module](docs/evaluation.md) and [Modeling Module](docs/modeling.md) for full CLI flags, Python API reference, and dataclass field documentation.

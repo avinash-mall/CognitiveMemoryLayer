@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryRecord
+from ..utils.modelpack import get_modelpack_runtime
 
 
 @dataclass
@@ -84,6 +85,7 @@ class RelevanceScorer:
     def __init__(self, config: ScorerConfig | None = None) -> None:
         self.config = config or ScorerConfig()
         self.config.weights.validate()
+        self.modelpack = get_modelpack_runtime()
 
     def score(
         self,
@@ -120,7 +122,7 @@ class RelevanceScorer:
             + w.dependency * dependency
         )
 
-        suggested = self._suggest_action(total, record_type)
+        suggested = self._suggest_action(total, record_type, text=record.text)
 
         return RelevanceScore(
             memory_id=str(record.id),
@@ -151,13 +153,29 @@ class RelevanceScorer:
         }
     )
 
-    def _suggest_action(self, score: float, memory_type: str) -> str:
+    _VALID_ACTIONS = frozenset({"keep", "decay", "silence", "compress", "delete"})
+
+    def _suggest_action(self, score: float, memory_type: str, *, text: str = "") -> str:
         """Suggest forgetting action based on score.
 
         Constraints, preferences, and procedures are protected from deletion
         and compression — they can only decay or be kept. This prevents
         safety-critical information (allergies, policies) from being lost.
         """
+        # --- model path: policy prediction ---
+        try:
+            if text and getattr(self.modelpack, "has_task_model", lambda _: False)("forgetting_action_policy"):
+                pred = self.modelpack.predict_single("forgetting_action_policy", text)
+                if pred is not None and pred.label in self._VALID_ACTIONS:
+                    action = pred.label
+                    if memory_type in self._PROTECTED_TYPES:
+                        if action not in {"keep", "decay"}:
+                            action = "keep" if score >= self.config.decay_threshold else "decay"
+                    return action
+        except Exception:
+            pass
+
+        # --- heuristic path: threshold chain ---
         if memory_type in self._PROTECTED_TYPES:
             if score >= self.config.decay_threshold:
                 return "keep"

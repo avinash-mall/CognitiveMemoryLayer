@@ -231,6 +231,115 @@ class SemanticFactStore:
                 bucket.append(fact)
         return grouped
 
+    async def get_fact_lineage(
+        self,
+        tenant_id: str,
+        *,
+        key: str | None = None,
+        fact_id: str | None = None,
+    ) -> list[dict]:
+        """Return the full supersession chain for a fact.
+
+        Walks backwards from the most recent version through ``supersedes_id``
+        links, then reverses the list so the oldest ancestor comes first.
+
+        Returns a list of dicts ordered from oldest to newest:
+        [{"fact_id": ..., "key": ..., "value": ..., "supersedes_id": ..., "created_at": ...}, ...]
+        """
+        if not key and not fact_id:
+            return []
+
+        async with self.session_factory() as session:
+            query = select(SemanticFactModel).where(
+                SemanticFactModel.tenant_id == tenant_id
+            )
+            if fact_id:
+                query = query.where(SemanticFactModel.id == fact_id)
+            elif key:
+                query = query.where(SemanticFactModel.key == key)
+
+            result = await session.execute(
+                query.order_by(SemanticFactModel.created_at.desc()).limit(1)
+            )
+            current = result.scalar_one_or_none()
+            if current is None:
+                return []
+
+            chain: list[dict] = []
+            visited: set[str] = set()
+            while current is not None and str(current.id) not in visited:
+                visited.add(str(current.id))
+                chain.append({
+                    "fact_id": str(current.id),
+                    "key": typing_cast("str", current.key),
+                    "value": current.value,
+                    "supersedes_id": (
+                        str(current.supersedes_id) if current.supersedes_id else None
+                    ),
+                    "created_at": (
+                        current.created_at.isoformat() if current.created_at else None
+                    ),
+                    "is_current": typing_cast("bool", current.is_current),
+                    "version": typing_cast("int", current.version),
+                })
+                if not current.supersedes_id:
+                    break
+                result = await session.execute(
+                    select(SemanticFactModel).where(
+                        SemanticFactModel.id == current.supersedes_id
+                    )
+                )
+                current = result.scalar_one_or_none()
+
+            chain.reverse()
+            return chain
+
+    async def get_superseded_chain(
+        self,
+        tenant_id: str,
+        fact_id: str,
+    ) -> list[dict]:
+        """Return all facts that were superseded by the given fact (forward chain).
+
+        Starting from *fact_id*, walks forward by finding the fact whose
+        ``supersedes_id`` equals the current id, repeating until no successor
+        is found.
+        """
+        async with self.session_factory() as session:
+            chain: list[dict] = []
+            visited: set[str] = set()
+
+            current_id = fact_id
+            while current_id and current_id not in visited:
+                visited.add(current_id)
+                result = await session.execute(
+                    select(SemanticFactModel).where(
+                        and_(
+                            SemanticFactModel.tenant_id == tenant_id,
+                            SemanticFactModel.supersedes_id == current_id,
+                        )
+                    )
+                )
+                successor = result.scalar_one_or_none()
+                if successor is None:
+                    break
+                chain.append({
+                    "fact_id": str(successor.id),
+                    "key": typing_cast("str", successor.key),
+                    "value": successor.value,
+                    "supersedes_id": (
+                        str(successor.supersedes_id) if successor.supersedes_id else None
+                    ),
+                    "created_at": (
+                        successor.created_at.isoformat() if successor.created_at else None
+                    ),
+                    "is_current": typing_cast("bool", successor.is_current),
+                    "version": typing_cast("int", successor.version),
+                })
+                current_id = str(successor.id)
+
+            return chain
+
     async def invalidate_fact(
         self,
         tenant_id: str,

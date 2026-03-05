@@ -234,7 +234,19 @@ code, .mono {
     color: var(--accent);
 }
 
-.nav-icon { font-size: 1.15rem; width: 24px; text-align: center; }
+.nav-icon {
+    font-size: 1.15rem;
+    width: 24px;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.nav-icon svg {
+    width: 18px;
+    height: 18px;
+}
 
 .sidebar-footer {
     padding: 12px 14px;
@@ -394,14 +406,27 @@ label {
 .kpi-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
     border-radius: var(--radius-md);
     padding: 18px 20px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
 }
-.kpi-card:hover { border-color: var(--border-light); }
+.kpi-card:hover {
+    border-color: var(--border-light);
+    box-shadow: 0 0 16px rgba(108, 140, 255, 0.08);
+    transform: translateY(-1px);
+}
+
+.kpi-card:nth-child(2) { border-left-color: var(--success); }
+.kpi-card:nth-child(3) { border-left-color: var(--warning); }
+.kpi-card:nth-child(4) { border-left-color: var(--purple); }
+.kpi-card:nth-child(5) { border-left-color: var(--teal); }
+.kpi-card:nth-child(6) { border-left-color: var(--pink); }
+.kpi-card:nth-child(7) { border-left-color: var(--orange); }
+.kpi-card:nth-child(8) { border-left-color: var(--info); }
 
 .kpi-label {
     font-size: 0.78rem;
@@ -1222,4 +1247,182 @@ tr.event-expanded .event-payload { display: block; }
     .bulk-action-bar {
         flex-wrap: wrap;
     }
+}
+
+/* --- Table Row Transitions --- */
+.data-table tbody tr {
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.data-table tbody tr:hover {
+    background: var(--bg-tertiary);
+}
+tr.clickable-row {
+    transition: background-color 0.15s ease;
+}
+
+/* --- Enhanced Empty States --- */
+.empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-muted);
+}
+.empty-state-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    opacity: 0.5;
+    animation: emptyPulse 3s ease-in-out infinite;
+}
+@keyframes emptyPulse {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.05); }
+}
+.empty-state p {
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.6;
+}
+
+/* --- Page Description --- */
+.page-desc {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+}
+
+/* --- Lineage Chain --- */
+.lineage-chain {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.lineage-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.lineage-node:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(108, 140, 255, 0.15);
+}
+.lineage-node-current {
+    border-color: var(--purple);
+    background: var(--purple-muted);
+}
+.lineage-node-prev {
+    border-color: var(--border-light);
+}
+.lineage-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+}
+.lineage-arrow {
+    font-size: 1.2rem;
+    color: var(--text-muted);
+}
+
+/* --- Card hover enhancement --- */
+.card {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* --- Component card status indicator --- */
+.component-card {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.component-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+/* --- Nav item subtle improvements --- */
+.nav-item {
+    transition: all 0.15s ease;
+    position: relative;
+}
+.nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+}
+
+/* --- Sidebar footer improvements --- */
+.sidebar-footer {
+    gap: 8px;
+}
+
+/* --- Filter bar polish --- */
+.filter-bar {
+    transition: border-color 0.2s;
+}
+.filter-bar:focus-within {
+    border-color: var(--accent);
+}
+
+/* --- Badge enhancements --- */
+.badge {
+    transition: opacity 0.15s;
+}
+.badge:hover {
+    opacity: 0.85;
+}
+
+/* --- Retrieval result card hover --- */
+.retrieval-result-card {
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.retrieval-result-card:hover {
+    border-left-color: var(--accent-hover);
+    box-shadow: var(--shadow-md);
+}
+
+/* --- Management panel hover --- */
+.management-panel {
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.management-panel:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* --- Smooth page transitions --- */
+.page {
+    animation: pageIn 0.2s ease-out;
+}
+@keyframes pageIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Loading spinner enhancement --- */
+.loading-overlay {
+    animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* --- Toast enhancement --- */
+.toast {
+    backdrop-filter: blur(8px);
 }

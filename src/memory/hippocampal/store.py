@@ -29,6 +29,7 @@ from .write_gate import WriteDecision, WriteGate, WriteGateResult
 
 if TYPE_CHECKING:
     from ...extraction.constraint_extractor import ConstraintExtractor
+    from ...extraction.local_unified_extractor import LocalUnifiedWriteExtractor
     from ...extraction.unified_write_extractor import (
         UnifiedExtractionResult,
         UnifiedWritePathExtractor,
@@ -81,6 +82,7 @@ class HippocampalStore:
         redactor: PIIRedactor | None = None,
         constraint_extractor: ConstraintExtractor | None = None,
         unified_extractor: UnifiedWritePathExtractor | None = None,
+        local_extractor: LocalUnifiedWriteExtractor | None = None,
     ) -> None:
         from ...extraction.constraint_extractor import ConstraintExtractor as _ConstraintExtractor
 
@@ -92,6 +94,7 @@ class HippocampalStore:
         self.redactor = redactor or PIIRedactor()
         self.constraint_extractor = constraint_extractor or _ConstraintExtractor()
         self.unified_extractor = unified_extractor
+        self.local_extractor = local_extractor
 
     def _use_unified_write_path(self) -> bool:
         """True when use_llm_enabled and any write-path LLM flag is enabled and we have a unified extractor."""
@@ -129,6 +132,17 @@ class HippocampalStore:
         unified_result: UnifiedExtractionResult | None = None
         if self._use_unified_write_path() and self.unified_extractor:
             unified_result = await self.unified_extractor.extract(chunk)
+
+        # Local model fallback: when LLM is disabled, use local extractors
+        # for importance scoring if available.
+        local_result: dict | None = None
+        if unified_result is None and self.local_extractor and self.local_extractor.available:
+            text_for_local = getattr(chunk, "text", None)
+            if isinstance(text_for_local, str) and text_for_local.strip():
+                try:
+                    local_result = await self.local_extractor.extract(text_for_local)
+                except Exception:
+                    pass
 
         gate_result = self.write_gate.evaluate(
             chunk,
@@ -225,10 +239,12 @@ class HippocampalStore:
         else:
             key = self._generate_key(chunk, memory_type) or ""
 
-        # Importance: unified or gate
+        # Importance: unified LLM, local model, or gate
         importance = gate_result.importance
         if unified_result and settings.use_llm_enabled and settings.use_llm_write_gate_importance:
             importance = unified_result.importance
+        elif local_result and "importance" in local_result:
+            importance = local_result["importance"]
 
         # Merge request-level metadata with system metadata; request metadata wins on conflict
         system_metadata: dict[str, Any] = {

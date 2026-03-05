@@ -16,9 +16,16 @@ def _chunk(
     return SemanticChunk(id="1", text=text, chunk_type=chunk_type, salience=salience)
 
 
+class _NoModelPack:
+    available = False
+
+    def predict_single(self, task: str, text: str):
+        return None
+
+
 class TestWriteGate:
     def test_skip_low_importance(self):
-        gate = WriteGate(WriteGateConfig(min_importance=0.5))
+        gate = WriteGate(WriteGateConfig(min_importance=0.5), modelpack=_NoModelPack())
         chunk = SemanticChunk(
             id="1",
             text="Just saying hello.",
@@ -30,7 +37,7 @@ class TestWriteGate:
         assert "threshold" in result.reason.lower()
 
     def test_store_sync_high_importance(self):
-        gate = WriteGate(WriteGateConfig(sync_importance_threshold=0.5))
+        gate = WriteGate(WriteGateConfig(sync_importance_threshold=0.5), modelpack=_NoModelPack())
         chunk = SemanticChunk(
             id="2",
             text="My name is Alice and I live in Paris.",
@@ -83,6 +90,24 @@ class TestWriteGate:
         chunk = SemanticChunk(
             id="5",
             text="My email is test@example.com",
+            chunk_type=ChunkType.FACT,
+            salience=0.8,
+        )
+        result = gate.evaluate(chunk)
+        assert result.redaction_required is True
+        assert "contains_pii" in result.risk_flags
+
+    def test_pii_regex_fallback_without_modelpack(self):
+        class _NoModelPack:
+            available = False
+
+            def predict_single(self, task: str, text: str):  # pragma: no cover - never used
+                return None
+
+        gate = WriteGate(modelpack=_NoModelPack())
+        chunk = SemanticChunk(
+            id="6",
+            text="Reach me at +1 (415) 555-0101.",
             chunk_type=ChunkType.FACT,
             salience=0.8,
         )
@@ -219,6 +244,13 @@ class TestPIIRedactor:
         res = r.redact("Call 555-123-4567")
         assert res.has_redactions
         assert "555-123-4567" not in res.redacted_text
+
+    def test_redact_regional_phone_and_address(self):
+        r = PIIRedactor()
+        res = r.redact("Phone: +44 20 7946 0958, Address: 221B Baker Street, London")
+        assert res.has_redactions
+        assert "+44 20 7946 0958" not in res.redacted_text
+        assert "Baker Street" not in res.redacted_text
 
     def test_no_redaction_clean_text(self):
         r = PIIRedactor()

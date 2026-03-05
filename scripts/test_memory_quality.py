@@ -10,7 +10,7 @@ A single, self-contained script that:
   4. Prints a detailed report: precision, recall, constraint consistency, latency.
 
 Requirements:
-  - CML API running (default [REDACTED]).
+  - CML API running (default http://localhost:8000).
   - .env with LLM_EVAL__PROVIDER, LLM_EVAL__MODEL, LLM_EVAL__BASE_URL (and optionally
     LLM_EVAL__API_KEY / OPENAI_API_KEY).
   - ``pip install requests openai`` (both already in project deps).
@@ -48,10 +48,22 @@ except ImportError:
 
 import requests
 
+# Ensure UTF-8 output on Windows (cp1252 cannot encode Unicode symbols used below).
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-CML_BASE_URL = os.environ.get("CML_BASE_URL", "[REDACTED]").rstrip("/")
+CML_BASE_URL = os.environ.get("CML_BASE_URL", "http://localhost:8000").rstrip("/")
 CML_API_KEY = os.environ.get("AUTH__API_KEY") or os.environ.get("CML_API_KEY") or "test-api-key"
 TENANT_ID = f"quality-test-{int(time.time())}"
 MAX_RETRIES = 5
@@ -441,7 +453,7 @@ PROBES: list[Probe] = [
 
 _LLM_DEFAULT_BASE: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
-    "ollama": "[REDACTED]",
+    "ollama": "http://localhost:11434/v1",
 }
 
 

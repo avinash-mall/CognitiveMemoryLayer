@@ -230,6 +230,29 @@ class DashboardMemoryListResponse(BaseModel):
     total_pages: int
 
 
+class DashboardFactItem(BaseModel):
+    """Semantic fact row for dashboard facts view."""
+
+    id: str
+    tenant_id: str
+    category: str
+    key: str
+    value: str
+    confidence: float
+    evidence_count: int
+    is_current: bool
+    version: int
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class DashboardFactListResponse(BaseModel):
+    """List response for dashboard semantic facts."""
+
+    items: list[DashboardFactItem] = Field(default_factory=list)
+    total: int = 0
+
+
 class DashboardMemoryDetail(BaseModel):
     """Full memory detail for dashboard."""
 
@@ -506,6 +529,7 @@ class RetrievalResultItem(BaseModel):
     relevance_score: float
     retrieval_source: str = ""
     timestamp: datetime | None = None
+    supersedes_id: UUID | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

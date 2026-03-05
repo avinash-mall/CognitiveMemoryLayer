@@ -7,7 +7,7 @@ from ..core.schemas import MemoryRecord, MemoryRecordCreate, Provenance
 from ..storage.base import MemoryStoreBase
 from ..utils.llm import LLMClient
 from .actions import ForgettingAction, ForgettingOperation, ForgettingResult
-from .compression import summarize_for_compression
+from .compression import SummarizerBackend, summarize_for_compression
 
 
 class ForgettingExecutor:
@@ -18,11 +18,13 @@ class ForgettingExecutor:
         store: MemoryStoreBase,
         archive_store: MemoryStoreBase | None = None,
         compression_llm_client: LLMClient | None = None,
+        compression_summarizer: SummarizerBackend | None = None,
         compression_max_chars: int = 100,
     ) -> None:
         self.store = store
         self.archive_store = archive_store
         self.compression_llm_client = compression_llm_client
+        self.compression_summarizer = compression_summarizer
         self.compression_max_chars = compression_max_chars
 
     async def execute(
@@ -108,17 +110,18 @@ class ForgettingExecutor:
         return result is not None
 
     async def _execute_compress(self, op: ForgettingOperation) -> bool:
-        """Compress memory to gist only (LLM summarization when client provided)."""
+        """Compress memory to gist-only text via summarizer API/LLM fallback."""
         record = await self.store.get_by_id(op.memory_id)
         if not record:
             return False
         if op.compressed_text:
             compressed = op.compressed_text
-        elif self.compression_llm_client and len(record.text) > self.compression_max_chars:
+        elif len(record.text) > self.compression_max_chars:
             compressed = await summarize_for_compression(
                 record.text,
                 max_chars=self.compression_max_chars,
                 llm_client=self.compression_llm_client,
+                summarizer_backend=self.compression_summarizer,
             )
         else:
             compressed = record.text[: self.compression_max_chars]

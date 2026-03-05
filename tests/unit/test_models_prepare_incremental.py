@@ -97,7 +97,8 @@ def test_load_existing_family_df_reads_splits(tmp_path: Path):
 
 
 def test_build_router_rows_skips_llm_if_existing_complete():
-    existing = _full_single_df(p.ROUTER_TASK_LABELS, target=1)
+    all_labels = {**p.ROUTER_TASK_LABELS, **getattr(p, "NEW_SINGLE_TASK_LABELS", {})}
+    existing = _full_single_df(all_labels, target=1)
     llm = _DummyLLM()
     rows = p._build_router_rows(
         local_rows=[],
@@ -128,7 +129,8 @@ def test_build_extractor_rows_skips_llm_if_existing_complete():
 
 
 def test_build_pair_rows_skips_llm_if_existing_complete():
-    existing = _full_pair_df(p.PAIR_TASK_LABELS, target=1)
+    all_labels = {**p.PAIR_TASK_LABELS, **getattr(p, "NEW_PAIR_TASK_LABELS", {})}
+    existing = _full_pair_df(all_labels, target=1)
     llm = _DummyLLM()
     rows = p._build_pair_rows(
         registry=object(),  # unused when fully satisfied

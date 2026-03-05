@@ -575,6 +575,7 @@ class RetrievalResultItem(BaseModel):
     relevance_score: float
     retrieval_source: str = ""
     timestamp: datetime | None = None
+    supersedes_id: UUID | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

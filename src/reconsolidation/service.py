@@ -9,7 +9,8 @@ from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
 from ..storage.base import MemoryStoreBase
 from ..utils.logging_config import get_logger
-from .belief_revision import RevisionOperation, RevisionPlan
+from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
+from .belief_revision import RevisionOperation, RevisionPlan, RevisionStrategy
 from .conflict_detector import ConflictDetector
 from .labile_tracker import LabileStateTracker
 
@@ -55,6 +56,7 @@ class ReconsolidationService:
         llm_client: Any | None = None,
         fact_extractor: Any | None = None,
         redis_client: Any | None = None,
+        modelpack: ModelPackRuntime | None = None,
     ):
         self.store = memory_store
         self.labile_tracker = LabileStateTracker(redis_client=redis_client)
@@ -63,6 +65,7 @@ class ReconsolidationService:
 
         self.revision_engine = BeliefRevisionEngine()
         self.fact_extractor = fact_extractor
+        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     # Maximum memories to run LLM conflict detection against per new fact.
     # Memories are ranked by word-overlap similarity to the new fact before
@@ -84,9 +87,31 @@ class ReconsolidationService:
         memories: list[MemoryRecord],
         k: int,
     ) -> list[MemoryRecord]:
-        """Return the k memories most similar (by word overlap) to fact_text."""
+        """Return the k memories most similar to fact_text."""
         if len(memories) <= k:
             return memories
+
+        # Model path: use dedicated pair model for candidate ranking
+        if getattr(self.modelpack, "has_task_model", lambda _: False)("reconsolidation_candidate_pair"):
+            try:
+                model_scores: list[tuple[MemoryRecord, float]] = []
+                scored_any = False
+                for mem in memories:
+                    pred = self.modelpack.predict_score_pair(
+                        "reconsolidation_candidate_pair", fact_text, mem.text
+                    )
+                    if pred is not None:
+                        scored_any = True
+                        model_scores.append((mem, pred.score))
+                    else:
+                        model_scores.append((mem, 0.0))
+                if scored_any:
+                    model_scores.sort(key=lambda x: x[1], reverse=True)
+                    return [m for m, _ in model_scores[:k]]
+            except Exception:
+                pass  # fall through to heuristic
+
+        # Heuristic fallback: Jaccard word-overlap ranking
         scored = sorted(
             memories,
             key=lambda m: self._word_overlap(fact_text, m.text),
@@ -162,16 +187,29 @@ class ReconsolidationService:
                     evidence_id=turn_id,
                 )
 
+                plan_old_id: str | None = None
+                plan_new_id: str | None = None
                 for op in plan.operations:
-                    result = await self._apply_operation(op)
-                    operations_applied.append(
-                        {
-                            "operation": op.op_type.value,
-                            "target_id": str(op.target_id) if op.target_id else None,
-                            "reason": op.reason,
-                            "success": result,
-                        }
-                    )
+                    success, new_id = await self._apply_operation(op)
+                    entry: dict[str, Any] = {
+                        "operation": op.op_type.value,
+                        "target_id": str(op.target_id) if op.target_id else None,
+                        "reason": op.reason,
+                        "success": success,
+                    }
+                    if new_id:
+                        entry["new_memory_id"] = new_id
+                        plan_new_id = new_id
+                    if op.op_type in (OperationType.UPDATE, OperationType.DELETE) and op.target_id:
+                        plan_old_id = str(op.target_id)
+                    operations_applied.append(entry)
+
+                if (
+                    plan.strategy == RevisionStrategy.TIME_SLICE
+                    and plan_old_id
+                    and plan_new_id
+                ):
+                    await self._backpatch_lineage_id(plan_old_id, plan_new_id)
 
         await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
@@ -194,6 +232,31 @@ class ReconsolidationService:
             text = f"User: {user_message}\nAssistant: {assistant_response}"
             facts = await self.fact_extractor.extract(text)
             return [{"text": f.text, "type": getattr(f, "type", "semantic_fact")} for f in facts]
+
+        try:
+            if getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "fact_extraction_structured"
+            ):
+                combined = f"{user_message} {assistant_response or ''}".strip()
+                span_pred = self.modelpack.predict_spans(
+                    "fact_extraction_structured", combined
+                )
+                if span_pred is not None and span_pred.spans:
+                    facts = []
+                    for s in span_pred.spans:
+                        span_text = (
+                            combined[s[0] : s[1]]
+                            if s[0] < len(combined) and s[1] <= len(combined)
+                            else ""
+                        )
+                        if span_text:
+                            facts.append(
+                                {"text": span_text, "type": s[2] or "semantic_fact"}
+                            )
+                    if facts:
+                        return facts
+        except Exception:
+            pass  # fall through to regex fallback
 
         # BUG-09: include assistant_response in fallback; split on . ! ? ;
         facts = []
@@ -227,13 +290,18 @@ class ReconsolidationService:
                 )
         return facts
 
-    async def _apply_operation(self, op: RevisionOperation) -> bool:
-        """Apply a single revision operation."""
+    async def _apply_operation(self, op: RevisionOperation) -> tuple[bool, str | None]:
+        """Apply a single revision operation.
+
+        Returns ``(success, new_record_id)`` where *new_record_id* is populated
+        only for ADD operations that create a new episodic memory.
+        """
         try:
             if op.op_type == OperationType.ADD:
                 if op.new_record:
-                    await self.store.upsert(op.new_record)
-                return True
+                    record = await self.store.upsert(op.new_record)
+                    return True, str(record.id) if record else None
+                return True, None
             if op.op_type in (
                 OperationType.UPDATE,
                 OperationType.REINFORCE,
@@ -241,17 +309,39 @@ class ReconsolidationService:
             ):
                 if op.target_id and op.patch:
                     await self.store.update(op.target_id, op.patch)
-                return True
+                return True, None
             if op.op_type == OperationType.DELETE:
                 if op.target_id:
                     await self.store.delete(op.target_id, hard=False)
-                return True
+                return True, None
             # BUG-14: unknown operation type — do not report success
             logger.warning("revision_unknown_operation_type op_type=%s", op.op_type.value)
-            return False
+            return False, None
         except Exception as e:
             logger.error(
                 "revision_operation_failed",
                 extra={"op_type": op.op_type.value, "error": str(e)},
             )
-            return False
+            return False, None
+
+    async def _backpatch_lineage_id(self, old_id: str, new_id: str) -> None:
+        """Best-effort: add the new record's ID into the old memory's supersession_lineage."""
+        try:
+            from uuid import UUID as _UUID
+
+            record = await self.store.get_by_id(_UUID(old_id))
+            if not record:
+                return
+            meta = dict(record.metadata or {})
+            lineage = meta.get("supersession_lineage", [])
+            if isinstance(lineage, list) and lineage:
+                lineage[-1]["superseded_by_id"] = new_id
+                meta["supersession_lineage"] = lineage
+                await self.store.update(
+                    _UUID(old_id), {"metadata": meta}, increment_version=False
+                )
+        except Exception:
+            logger.debug(
+                "backpatch_lineage_failed",
+                extra={"old_id": old_id, "new_id": new_id},
+            )

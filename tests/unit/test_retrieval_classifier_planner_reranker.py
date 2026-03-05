@@ -28,6 +28,15 @@ class TestQueryClassifier:
                 return SimpleNamespace(label=self._dimension, confidence=0.86)
             return None
 
+    class _NoModelPack:
+        available = False
+
+        @staticmethod
+        def predict_single(task: str, text: str):
+            _ = task
+            _ = text
+            return None
+
     @pytest.mark.asyncio
     async def test_modelpack_preference_lookup(self):
         classifier = QueryClassifier(
@@ -50,7 +59,7 @@ class TestQueryClassifier:
 
     @pytest.mark.asyncio
     async def test_classifier_returns_general_or_unknown_for_random_query_without_llm(self):
-        classifier = QueryClassifier(llm_client=None)
+        classifier = QueryClassifier(llm_client=None, modelpack=self._NoModelPack())
         result = await classifier.classify("xyz random query abc")
         assert result.intent in (QueryIntent.GENERAL_QUESTION, QueryIntent.UNKNOWN)
         assert result.suggested_top_k == 10

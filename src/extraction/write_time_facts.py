@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..memory.neocortical.schemas import FactCategory
+from ..utils.modelpack import get_modelpack_runtime
 from ..utils.ner import parse_text
 
 if TYPE_CHECKING:
@@ -49,6 +50,9 @@ _WRITE_TIME_CONFIDENCE_BASE: float = 0.6
 class WriteTimeFactExtractor:
     """Extract structured facts from chunks at write-time."""
 
+    def __init__(self) -> None:
+        self.modelpack = get_modelpack_runtime()
+
     def extract(self, chunk: SemanticChunk) -> list[ExtractedFact]:
         from ..memory.working.models import ChunkType
 
@@ -64,9 +68,42 @@ class WriteTimeFactExtractor:
         if not text:
             return []
 
+        # --- model path: structured span extraction ---
+        try:
+            if getattr(self.modelpack, "has_task_model", lambda _: False)("fact_extraction_structured"):
+                span_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
+                if span_pred is not None and span_pred.spans:
+                    facts: list[ExtractedFact] = []
+                    seen: set[tuple[str, str]] = set()
+                    for start, end, label in span_pred.spans:
+                        value = text[start:end].strip().strip(".")
+                        if not value:
+                            continue
+                        predicate = _derive_predicate(value)
+                        category = _label_to_category(label)
+                        key = f"user:{category.value}:{predicate}"
+                        dedupe_key = (key, value.lower())
+                        if dedupe_key in seen:
+                            continue
+                        seen.add(dedupe_key)
+                        facts.append(
+                            ExtractedFact(
+                                key=key,
+                                category=category,
+                                predicate=predicate,
+                                value=value,
+                                confidence=min(1.0, span_pred.confidence * 0.85),
+                            )
+                        )
+                    if facts:
+                        return facts
+        except Exception:
+            pass
+
+        # --- heuristic path (regex / spaCy) ---
         doc = parse_text(text)
-        facts: list[ExtractedFact] = []
-        seen: set[tuple[str, str]] = set()
+        facts = []
+        seen = set()
         if doc is None:
             self._extract_facts_without_nlp(text, facts, seen)
             return facts
@@ -308,6 +345,24 @@ class WriteTimeFactExtractor:
     @staticmethod
     def _clean_match_value(value: str) -> str:
         return value.strip().strip(".,!?;:")
+
+
+_LABEL_CATEGORY_MAP: dict[str, FactCategory] = {
+    "preference": FactCategory.PREFERENCE,
+    "identity": FactCategory.IDENTITY,
+    "location": FactCategory.LOCATION,
+    "occupation": FactCategory.OCCUPATION,
+    "attribute": FactCategory.ATTRIBUTE,
+    "goal": FactCategory.GOAL,
+    "value": FactCategory.VALUE,
+    "state": FactCategory.STATE,
+    "causal": FactCategory.CAUSAL,
+    "policy": FactCategory.POLICY,
+}
+
+
+def _label_to_category(label: str) -> FactCategory:
+    return _LABEL_CATEGORY_MAP.get(label.lower(), FactCategory.CUSTOM)
 
 
 def _derive_predicate(value: str) -> str:

@@ -17,6 +17,7 @@ from cml.models import (
     DashboardComponentsResponse,
     DashboardConfigResponse,
     DashboardEventListResponse,
+    DashboardFactListResponse,
     DashboardJobsResponse,
     DashboardLabileResponse,
     DashboardMemoryDetail,
@@ -159,6 +160,40 @@ class CognitiveMemoryLayer:
         ).model_dump(exclude_none=True, mode="json")
         extra = {"X-Eval-Mode": "true"} if eval_mode else None
         data = self._transport.request("POST", "/memory/write", json=body, extra_headers=extra)
+        return WriteResponse(**data)
+
+    def _write_session(
+        self,
+        session_id: str,
+        content: str,
+        *,
+        context_tags: list[str] | None = None,
+        memory_type: MemoryType | None = None,
+        namespace: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        turn_id: str | None = None,
+        agent_id: str | None = None,
+        timestamp: datetime | None = None,
+        eval_mode: bool = False,
+    ) -> WriteResponse:
+        """Store a memory using the session-scoped write endpoint."""
+        body = WriteRequest(
+            content=content,
+            context_tags=context_tags,
+            memory_type=memory_type,
+            namespace=namespace,
+            metadata=metadata or {},
+            turn_id=turn_id,
+            agent_id=agent_id,
+            timestamp=timestamp,
+        ).model_dump(exclude_none=True, mode="json")
+        extra = {"X-Eval-Mode": "true"} if eval_mode else None
+        data = self._transport.request(
+            "POST",
+            f"/session/{session_id}/write",
+            json=body,
+            extra_headers=extra,
+        )
         return WriteResponse(**data)
 
     def read(
@@ -518,6 +553,7 @@ class CognitiveMemoryLayer:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> str:
         """Convenience: retrieve memories formatted as LLM context string.
 
@@ -528,6 +564,7 @@ class CognitiveMemoryLayer:
             memory_types: Optional types.
             since: Optional start of time range.
             until: Optional end of time range.
+            user_timezone: Optional IANA timezone for "today"/"yesterday" filters.
 
         Returns:
             Formatted context string (result.context).
@@ -539,6 +576,7 @@ class CognitiveMemoryLayer:
             memory_types=memory_types,
             since=since,
             until=until,
+            user_timezone=user_timezone,
             response_format="llm_context",
         )
         return result.context
@@ -581,6 +619,7 @@ class CognitiveMemoryLayer:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
         """Alias for read(): retrieve memories by query."""
         return self.read(
@@ -591,6 +630,7 @@ class CognitiveMemoryLayer:
             since=since,
             until=until,
             response_format=response_format,
+            user_timezone=user_timezone,
         )
 
     # ---- Phase 5: Admin operations ----
@@ -689,6 +729,23 @@ class CognitiveMemoryLayer:
             "POST",
             "/dashboard/reconsolidate",
             json=payload,
+            use_admin_key=True,
+        )
+
+    def admin_consolidate(self, user_id: str) -> dict[str, Any]:
+        """Trigger admin consolidate endpoint directly for a specific user."""
+        return self._transport.request(
+            "POST",
+            f"/admin/consolidate/{user_id}",
+            use_admin_key=True,
+        )
+
+    def admin_forget(self, user_id: str, *, dry_run: bool = True) -> dict[str, Any]:
+        """Trigger admin forgetting endpoint directly for a specific user."""
+        return self._transport.request(
+            "POST",
+            f"/admin/forget/{user_id}",
+            params={"dry_run": dry_run},
             use_admin_key=True,
         )
 
@@ -827,6 +884,49 @@ class CognitiveMemoryLayer:
         )
         return DashboardMemoryListResponse(**data)
 
+    def dashboard_facts(
+        self,
+        *,
+        tenant_id: str | None = None,
+        category: str | None = None,
+        current_only: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> DashboardFactListResponse:
+        """Get semantic facts from dashboard API (admin only)."""
+        params: dict[str, Any] = {
+            "current_only": current_only,
+            "limit": limit,
+            "offset": offset,
+        }
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        if category is not None:
+            params["category"] = category
+        data = self._transport.request("GET", "/dashboard/facts", params=params, use_admin_key=True)
+        return DashboardFactListResponse(**data)
+
+    def dashboard_invalidate_fact(self, fact_id: str) -> dict[str, Any]:
+        """Invalidate a semantic fact by id (admin only)."""
+        return self._transport.request(
+            "POST",
+            f"/dashboard/facts/{fact_id}/invalidate",
+            use_admin_key=True,
+        )
+
+    def dashboard_export_memories(self, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        """Export memories as JSON (admin only)."""
+        params: dict[str, Any] = {}
+        if tenant_id is not None:
+            params["tenant_id"] = tenant_id
+        data = self._transport.request(
+            "GET",
+            "/dashboard/export/memories",
+            params=params,
+            use_admin_key=True,
+        )
+        return cast("list[dict[str, Any]]", data)
+
     def dashboard_memory_detail(self, memory_id: UUID) -> DashboardMemoryDetail:
         """Get full detail for a single memory record (admin only)."""
         data = self._transport.request(
@@ -940,6 +1040,24 @@ class CognitiveMemoryLayer:
             use_admin_key=True,
         )
         return GraphStatsResponse(**data)
+
+    def graph_overview(
+        self,
+        *,
+        tenant_id: str | None = None,
+        scope_id: str | None = None,
+    ) -> GraphExploreResponse:
+        """Get graph overview for a tenant (admin only)."""
+        params: dict[str, Any] = {"tenant_id": tenant_id or self._config.tenant_id}
+        if scope_id is not None:
+            params["scope_id"] = scope_id
+        data = self._transport.request(
+            "GET",
+            "/dashboard/graph/overview",
+            params=params,
+            use_admin_key=True,
+        )
+        return GraphExploreResponse(**data)
 
     def explore_graph(
         self,
@@ -1186,10 +1304,10 @@ class SessionScope:
         agent_id: str | None = None,
         timestamp: datetime | None = None,
     ) -> WriteResponse:
-        return self._parent.write(
+        return self._parent._write_session(
+            self.session_id,
             content,
             context_tags=context_tags,
-            session_id=self.session_id,
             memory_type=memory_type,
             namespace=namespace,
             metadata=metadata,
@@ -1306,6 +1424,7 @@ class NamespacedClient:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
         return self._parent.read(
             query,
@@ -1315,6 +1434,7 @@ class NamespacedClient:
             since=since,
             until=until,
             response_format=response_format,
+            user_timezone=user_timezone,
         )
 
     def read_stream(
@@ -1326,6 +1446,7 @@ class NamespacedClient:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> Iterator[MemoryItem]:
         return self._parent.read_stream(
             query,
@@ -1334,6 +1455,7 @@ class NamespacedClient:
             memory_types=memory_types,
             since=since,
             until=until,
+            user_timezone=user_timezone,
         )
 
     def turn(
@@ -1343,12 +1465,16 @@ class NamespacedClient:
         assistant_response: str | None = None,
         session_id: str | None = None,
         max_context_tokens: int = 1500,
+        timestamp: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> TurnResponse:
         return self._parent.turn(
             user_message,
             assistant_response=assistant_response,
             session_id=session_id,
             max_context_tokens=max_context_tokens,
+            timestamp=timestamp,
+            user_timezone=user_timezone,
         )
 
     def update(
@@ -1416,6 +1542,7 @@ class NamespacedClient:
         memory_types: list[MemoryType] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        user_timezone: str | None = None,
     ) -> str:
         return self._parent.get_context(
             query,
@@ -1424,6 +1551,7 @@ class NamespacedClient:
             memory_types=memory_types,
             since=since,
             until=until,
+            user_timezone=user_timezone,
         )
 
     def remember(
@@ -1437,6 +1565,7 @@ class NamespacedClient:
         metadata: dict[str, Any] | None = None,
         turn_id: str | None = None,
         agent_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> WriteResponse:
         return self.write(
             content,
@@ -1447,6 +1576,7 @@ class NamespacedClient:
             metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
+            timestamp=timestamp,
         )
 
     def search(
@@ -1459,6 +1589,7 @@ class NamespacedClient:
         since: datetime | None = None,
         until: datetime | None = None,
         response_format: Literal["packet", "list", "llm_context"] = "packet",
+        user_timezone: str | None = None,
     ) -> ReadResponse:
         return self.read(
             query,
@@ -1468,6 +1599,7 @@ class NamespacedClient:
             since=since,
             until=until,
             response_format=response_format,
+            user_timezone=user_timezone,
         )
 
     def consolidate(
@@ -1566,6 +1698,29 @@ class NamespacedClient:
     def dashboard_memory_detail(self, memory_id: UUID) -> DashboardMemoryDetail:
         return self._parent.dashboard_memory_detail(memory_id)
 
+    def dashboard_facts(
+        self,
+        *,
+        tenant_id: str | None = None,
+        category: str | None = None,
+        current_only: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> DashboardFactListResponse:
+        return self._parent.dashboard_facts(
+            tenant_id=tenant_id,
+            category=category,
+            current_only=current_only,
+            limit=limit,
+            offset=offset,
+        )
+
+    def dashboard_invalidate_fact(self, fact_id: str) -> dict[str, Any]:
+        return self._parent.dashboard_invalidate_fact(fact_id)
+
+    def dashboard_export_memories(self, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        return self._parent.dashboard_export_memories(tenant_id=tenant_id)
+
     def get_events(
         self,
         *,
@@ -1617,6 +1772,14 @@ class NamespacedClient:
 
     def get_graph_stats(self) -> GraphStatsResponse:
         return self._parent.get_graph_stats()
+
+    def graph_overview(
+        self,
+        *,
+        tenant_id: str | None = None,
+        scope_id: str | None = None,
+    ) -> GraphExploreResponse:
+        return self._parent.graph_overview(tenant_id=tenant_id, scope_id=scope_id)
 
     def explore_graph(
         self,
@@ -1678,3 +1841,9 @@ class NamespacedClient:
         self, memory_ids: list[UUID], action: Literal["archive", "silence", "delete"]
     ) -> dict[str, Any]:
         return self._parent.bulk_memory_action(memory_ids, action)
+
+    def admin_consolidate(self, user_id: str) -> dict[str, Any]:
+        return self._parent.admin_consolidate(user_id)
+
+    def admin_forget(self, user_id: str, *, dry_run: bool = True) -> dict[str, Any]:
+        return self._parent.admin_forget(user_id, dry_run=dry_run)

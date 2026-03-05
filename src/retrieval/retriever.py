@@ -564,10 +564,30 @@ class HybridRetriever:
             return rows
 
         modelpack_ready = self.modelpack.available and bool(query.strip())
+
+        use_relevance_model = getattr(
+            self.modelpack, "has_task_model", lambda _: False
+        )("retrieval_constraint_relevance_pair")
+
         for row in rows:
             base = float(row.get("relevance", 0.7))
             text = str(row.get("text", "") or "")
-            score = base + self._domain_bonus(query_domain=query_domain, row=row)
+
+            relevance_bonus: float | None = None
+            if use_relevance_model and text:
+                try:
+                    pred = self.modelpack.predict_score_pair(
+                        "retrieval_constraint_relevance_pair", query, text
+                    )
+                    if pred is not None:
+                        relevance_bonus = pred.score
+                except Exception:
+                    pass
+
+            if relevance_bonus is not None:
+                score = base + relevance_bonus
+            else:
+                score = base + self._domain_bonus(query_domain=query_domain, row=row)
 
             if modelpack_ready and text:
                 rel_pred = self.modelpack.predict_pair("constraint_rerank", query, text)

@@ -29,7 +29,7 @@ function buildPage(tenantId) {
     ).join('');
 
     return `
-        <p style="color:var(--text-secondary);margin-bottom:20px;">
+        <p class="page-desc">
             Test memory retrieval using the same read API the application uses.
             Useful to debug "why didn't the assistant remember X?"
         </p>
@@ -132,6 +132,7 @@ function buildResults(data) {
                     <span style="font-weight:600;color:var(--text-primary)">#${i + 1}</span>
                     <span class="badge badge-type" style="margin-left:8px">${escapeHtml(r.type)}</span>
                     ${r.retrieval_source ? `<span class="badge badge-ok" style="margin-left:4px">${escapeHtml(r.retrieval_source)}</span>` : ''}
+                    ${r.supersedes_id ? `<span class="badge badge-labile" style="margin-left:4px" title="Supersedes ${escapeHtml(r.supersedes_id)}">supersedes</span>` : ''}
                 </div>
                 <div style="text-align:right">
                     <div class="retrieval-score">
@@ -143,9 +144,10 @@ function buildResults(data) {
                 </div>
             </div>
             <div style="color:var(--text-primary);font-size:0.9rem;line-height:1.6;margin-bottom:8px;">${escapeHtml(r.text)}</div>
-            <div style="display:flex;gap:16px;font-size:0.8rem;color:var(--text-muted);">
+            <div style="display:flex;gap:16px;font-size:0.8rem;color:var(--text-muted);flex-wrap:wrap;">
                 <span>Confidence: ${formatFloat(r.confidence, 3)}</span>
                 <span>${formatDate(r.timestamp)}</span>
+                ${r.supersedes_id ? `<span>Supersedes: <a href="#detail/${r.supersedes_id}" style="color:var(--accent)">${escapeHtml(r.supersedes_id.substring(0, 12))}...</a></span>` : ''}
             </div>
         </div>
     `).join('');

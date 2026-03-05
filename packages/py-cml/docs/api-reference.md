@@ -7,7 +7,7 @@
 ```python
 CognitiveMemoryLayer(
     api_key: str | None = None,
-    base_url: str = "",   # from CML_BASE_URL in .env when unset; no hardcoded default
+    base_url: str = "http://localhost:8000",
     tenant_id: str = "default",
     *,
     config: CMLConfig | None = None,
@@ -18,7 +18,7 @@ CognitiveMemoryLayer(
 )
 ```
 
-Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with CognitiveMemoryLayer(...) as memory:` or call `memory.close()` when done.
+Set `CML_API_KEY` in `.env` or pass it directly. Use `with CognitiveMemoryLayer(...) as memory:` or call `memory.close()` when done. To source base URL from env, create `CMLConfig()` (which reads `CML_BASE_URL`) and pass `config=...`.
 
 ### Methods
 
@@ -31,10 +31,10 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **forget(\*, memory_ids, query, before, action="delete")** → `ForgetResponse` — Forget memories. At least one of memory_ids, query, before required.
 - **stats()** → `StatsResponse` — Memory statistics.
 - **health()** → `HealthResponse` — Server health check.
-- **get_context(query, \*, max_results=10, ...)** → `str` — Formatted LLM context string.
+- **get_context(query, \*, max_results=10, context_filter, memory_types, since, until, user_timezone)** → `str` — Formatted LLM context string.
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
 - **get_session_context(session_id)** → `SessionContextResponse` — Session context is scoped to memories with that `session_id` when provided.
-- **session(\*, name, ttl_hours=24, metadata)** → context manager yielding `SessionScope`/`AsyncSessionScope` — session wrapper methods inject `session_id`; `SessionScope.read()` uses `/session/{session_id}/read` for session-scoped retrieval.
+- **session(\*, name, ttl_hours=24, metadata)** → context manager yielding `SessionScope`/`AsyncSessionScope` — session wrapper methods inject `session_id`; `SessionScope.write()` uses `/session/{session_id}/write` and `SessionScope.read()` uses `/session/{session_id}/read` for session-scoped behavior. (Server currently marks the session read route as deprecated but still supported.)
 - **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True. Requires admin API key. Server implements DELETE /api/v1/memory/all.
 - **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` and `eval_mode` parameters.
 - **search(query, \*\*kwargs)** — Alias for read.
@@ -43,14 +43,16 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 
 **Existing admin methods:**
 
-- **consolidate(\*, tenant_id, user_id)** → `dict` — Trigger memory consolidation (episodic → semantic). Requires admin API key.
-- **run_forgetting(\*, tenant_id, user_id, dry_run=True, max_memories=5000)** → `dict` — Trigger active forgetting cycle.
-- **reconsolidate(\*, tenant_id, user_id)** → `dict` — Release all labile state for a tenant (no belief revision). Requires admin API key.
+- **consolidate(\*, tenant_id, user_id)** → `dict[str, Any]` — Trigger memory consolidation (episodic → semantic). Requires admin API key.
+- **run_forgetting(\*, tenant_id, user_id, dry_run=True, max_memories=5000)** → `dict[str, Any]` — Trigger active forgetting cycle.
+- **reconsolidate(\*, tenant_id, user_id)** → `dict[str, Any]` — Release all labile state for a tenant (no belief revision). Requires admin API key.
+- **admin_consolidate(user_id)** → `dict[str, Any]` — Direct admin route helper for `POST /admin/consolidate/{user_id}`.
+- **admin_forget(user_id, \*, dry_run=True)** → `dict[str, Any]` — Direct admin route helper for `POST /admin/forget/{user_id}`.
 - **batch_write(items, \*, session_id, namespace)** → `list[WriteResponse]` — Write multiple memories sequentially.
 - **batch_read(queries, \*, max_results, response_format)** → `list[ReadResponse]` — Execute multiple read queries.
-- **list_tenants()** → `list[dict]` — List all tenants with memory/fact/event counts and last activity.
-- **get_events(\*, limit, page, event_type, since)** → `dict` — Query the event log with pagination.
-- **component_health()** → `dict` — Detailed health status of all CML components.
+- **list_tenants()** → `DashboardTenantsResponse` — List all tenants with memory/fact/event counts and last activity.
+- **get_events(\*, limit, page, event_type, since)** → `DashboardEventListResponse` — Query the event log with pagination.
+- **component_health()** → `DashboardComponentsResponse` — Detailed health status of all CML components.
 - **with_namespace(namespace)** → `NamespacedClient` — Create a namespace-scoped view.
 - **iter_memories(\*, memory_types, status, batch_size)** → `Iterator[MemoryItem]` — Paginated iteration over memories.
 
@@ -59,12 +61,16 @@ Set `CML_BASE_URL` and `CML_API_KEY` in `.env` or pass them. Use `with Cognitive
 - **dashboard_overview(\*, tenant_id)** → `DashboardOverview` — Get comprehensive dashboard overview stats.
 - **dashboard_memories(\*, tenant_id, page=1, per_page=25, type, status, search, sort_by="written_at", order="desc")** → `DashboardMemoryListResponse` — Paginated memories list.
 - **dashboard_memory_detail(memory_id)** → `DashboardMemoryDetail` — Full detail for a single memory record.
+- **dashboard_facts(\*, tenant_id, category, current_only=True, limit=50, offset=0)** → `DashboardFactListResponse` — List semantic facts for dashboard.
+- **dashboard_invalidate_fact(fact_id)** → `dict[str, Any]` — Invalidate a semantic fact.
+- **dashboard_export_memories(\*, tenant_id)** → `list[dict[str, Any]]` — Export memories as JSON rows.
 - **dashboard_timeline(\*, tenant_id, days=30, metric="memories")** → `DashboardTimelineResponse` — Timeline data for charts.
 - **dashboard_neo4j_config()** → `GraphNeo4jConfigResponse` — Neo4j connection configuration for frontend graph visualizer.
 - **get_sessions(\*, tenant_id)** → `DashboardSessionsResponse` — List active sessions from Redis with TTL and counts.
 - **get_rate_limits()** → `DashboardRateLimitsResponse` — Current rate-limit bucket usage per API key.
 - **get_request_stats(\*, hours=24)** → `RequestStatsResponse` — Hourly request volume over the last N hours.
 - **get_graph_stats()** → `GraphStatsResponse` — Knowledge graph statistics from Neo4j.
+- **graph_overview(\*, tenant_id, scope_id=None)** → `GraphExploreResponse` — Tenant overview subgraph for quick visualization.
 - **explore_graph(\*, tenant_id, entity, scope_id="default", depth=2)** → `GraphExploreResponse` — Explore knowledge graph neighborhood.
 - **search_graph(query, \*, tenant_id, limit=25)** → `GraphSearchResponse` — Search entities by name pattern.
 - **get_config()** → `DashboardConfigResponse` — Application configuration snapshot.
@@ -131,6 +137,7 @@ Same API as async client. Use `async with EmbeddedCognitiveMemoryLayer()` or pas
 - **MemoryItem** — id, text, type, confidence, relevance, timestamp, metadata
 - **WriteResponse** — success, memory_id, chunks_created, message; when eval_mode was used, optional eval_outcome ("stored"|"skipped") and eval_reason.
 - **ReadResponse** — context, memories; when format is "packet": categorized into `facts`, `preferences`, `episodes`, and `constraints` (list of `MemoryItem`, default empty). The `constraints` field contains cognitive constraints (goals, values, policies, states, causal rules) extracted and stored by the server when `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` is true.
+- **DashboardFactItem / DashboardFactListResponse** — typed semantic fact responses used by `dashboard_facts()`.
 - **TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in cml.models.
 
 ## Exceptions

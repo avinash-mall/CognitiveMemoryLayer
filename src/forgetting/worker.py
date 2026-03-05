@@ -16,6 +16,7 @@ from .actions import (
     ForgettingPolicyEngine,
     ForgettingResult,
 )
+from .compression import SummarizerBackend
 from .executor import ForgettingExecutor
 from .interference import InterferenceDetector, InterferenceResult
 from .scorer import RelevanceScorer, ScorerConfig
@@ -48,6 +49,7 @@ class ForgettingWorker:
         scorer_config: ScorerConfig | None = None,
         archive_store: MemoryStoreBase | None = None,
         compression_llm_client: LLMClient | None = None,
+        compression_summarizer: SummarizerBackend | None = None,
         compression_max_chars: int = 100,
     ) -> None:
         self.store = store
@@ -59,6 +61,7 @@ class ForgettingWorker:
             store,
             archive_store,
             compression_llm_client=compression_llm_client,
+            compression_summarizer=compression_summarizer,
             compression_max_chars=compression_max_chars,
         )
         self.interference = InterferenceDetector()

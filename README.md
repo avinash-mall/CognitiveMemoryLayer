@@ -337,6 +337,69 @@ CML supports 15 memory types, each with a biological analog and distinct decay p
 
 Types are defined in `src/core/enums.py` as `MemoryType`. **Decay**: Fast/Very Fast = short-lived; Slow/Stable = long-lived (higher retention); Session = per conversation; Task = per task; Confirm = until confirmed or rejected. **Implementation**: type assignment at write in `src/memory/hippocampal/write_gate.py` (`_determine_memory_types()`); retention by type in `src/forgetting/scorer.py` (`ScorerConfig.type_bonuses`).
 
+### Custom Models & NER
+
+CML includes a custom model pipeline (`packages/models/`) that trains lightweight task-specific models to replace heuristic and rule-based logic throughout the runtime. Models are served via the `ModelPack` adapter in `src/utils/modelpack.py`.
+
+<details>
+<summary><strong>Task-specific models</strong> &mdash; 10 models replacing heuristics with learned behavior</summary>
+
+| Model | What It Replaces | Location |
+| :--- | :--- | :--- |
+| `retrieval_constraint_relevance_pair` | Domain keyword bonus | `src/retrieval/retriever.py` |
+| `memory_rerank_pair` | Weighted reranker with hard-coded stability rules | `src/retrieval/reranker.py` |
+| `novelty_pair` | Jaccard novelty and cosine-threshold duplicate detection | `src/memory/hippocampal/write_gate.py`, `src/forgetting/interference.py` |
+| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
+| `schema_match_pair` | Jaccard schema similarity | `src/consolidation/schema_aligner.py` |
+| `reconsolidation_candidate_pair` | Word-overlap top-k candidate selection | `src/reconsolidation/service.py` |
+| `write_importance_regression` | Fixed importance bins | `src/memory/hippocampal/write_gate.py` |
+| `pii_span_detection` | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
+| `consolidation_gist_quality` | String-match gist blacklist | `src/consolidation/worker.py` |
+| `forgetting_action_policy` | Heuristic action choice | `src/forgetting/scorer.py` |
+
+All model-assisted paths preserve deterministic fallbacks: if a model is unavailable, the original heuristic runs unchanged. Safety-critical paths (secret detection, PII regex baseline, deterministic key generation) are never delegated to models.
+
+</details>
+
+<details>
+<summary><strong>NER & relation extraction</strong> &mdash; spaCy-based entity and relation extraction</summary>
+
+| Component | Code | Location |
+| :--- | :--- | :--- |
+| Entity extraction | `extract_entities()` with alias normalization (`_ENTITY_ALIAS_MAP`) | `src/utils/ner.py` |
+| Relation extraction | `extract_relations()` with dependency-based S-V-O parsing | `src/utils/ner.py` |
+| Fact extraction | `extract()` with predicate derivation and fact schema mapping | `src/extraction/write_time_facts.py` |
+| Constraint extraction | 5 cognitive constraint types (goal/value/policy/state/causal) | `src/extraction/constraint_extractor.py` |
+| PII redaction | Regex patterns + NER entity spans + model spans | `src/memory/hippocampal/redactor.py` |
+
+When `fact_extraction_structured` is trained and loaded, `extract_relations()` and `write_time_facts.extract()` prefer the model-based span extraction path, falling back to the spaCy dependency parse on any failure.
+
+</details>
+
+<details>
+<summary><strong>Training & data preparation</strong> &mdash; TF-IDF baselines with LLM-generated synthetic data</summary>
+
+The pipeline trains 3 model families (router, extractor, pair) and 10 task-specific models using TF-IDF + SGDClassifier/SGDRegressor. Data preparation supports:
+
+- Auto-download from 15+ public NLP datasets via Hugging Face
+- LLM-only synthetic data generation for domain-specific tasks
+- Missing-only balancing with configurable target counts
+- Stratified train/test/eval splits
+
+```bash
+# Via cml-models CLI (requires `pip install "cognitive-memory-layer[modeling]"`)
+cml-models prepare --config packages/models/model_pipeline.toml
+cml-models train --config packages/models/model_pipeline.toml
+
+# Legacy scripts (still work)
+python -m packages.models.scripts.prepare
+python -m packages.models.scripts.train
+```
+
+Full details: [packages/models/README.md](packages/models/README.md) &#8226; SDK docs: [Modeling Module](packages/py-cml/docs/modeling.md)
+
+</details>
+
 ---
 
 ## Quick Start
@@ -398,7 +461,7 @@ Evaluated on **LoCoMo-Plus** &mdash; the first benchmark that tests *cognitive* 
 
 > CML's gap between factual and cognitive performance is the **smallest** of any system tested &mdash; meaning it retains constraint-consistency better than alternatives.
 
-Full results: [evaluation/README.md](evaluation/README.md) &#8226; Run: `python evaluation/scripts/run_full_eval.py`
+Full results: [evaluation/README.md](evaluation/README.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
 
 ---
 
@@ -416,6 +479,29 @@ Details: [tests/README.md](tests/README.md)
 
 ---
 
+## Admin Dashboard
+
+CML ships a built-in admin dashboard at `/dashboard/`. It provides real-time observability and management across all subsystems:
+
+| Page | What It Shows |
+| :--- | :--- |
+| **Overview** | KPI cards (memories, facts, events, tenants), request sparkline, reconsolidation queue status |
+| **Tenants** | Per-tenant memory/fact/event counts, last activity, quick-link filters |
+| **Sessions** | Active Redis sessions with TTL, memory counts per session |
+| **Memory Explorer** | Searchable memory list with bulk actions, JSON export, detail view with lineage chain |
+| **Facts Explorer** | Semantic facts with category/tenant filters, current-only toggle, inline invalidation |
+| **Knowledge Graph** | Interactive neovis.js graph with entity search, depth control, edge labels |
+| **Events** | Event log with type/tenant filters |
+| **API Usage** | Rate-limit buckets, hourly request volume chart |
+| **Components** | Service health, custom model (ModelPack) status with family/task model details |
+| **Retrieval Test** | Interactive query tool with scored results, supersession badges, lineage links |
+| **Configuration** | Read-only config snapshot with inline editing for safe settings |
+| **Management** | Consolidation, forgetting, reconsolidation triggers with job history |
+
+The dashboard requires admin authentication (`AUTH__ADMIN_API_KEY`). State-changing requests require a CSRF header (`X-Requested-With: XMLHttpRequest`). See [Usage Documentation](ProjectPlan/UsageDocumentation.md) for full API details.
+
+---
+
 ## Documentation
 
 | | Document | Description |
@@ -423,7 +509,9 @@ Details: [tests/README.md](tests/README.md)
 | **API** | [Usage & API Reference](ProjectPlan/UsageDocumentation.md) | Full API, config, dashboard, runtime modes |
 | **SDK** | [Python SDK](packages/py-cml/docs/README.md) | Getting started, API reference, examples |
 | **Eval** | [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
+| **SDK Eval** | [Eval Module](packages/py-cml/docs/evaluation.md) | `cml-eval` CLI, Python API, typed configs |
 | **Models** | [Custom Models](packages/models/README.md) | Training, data prep, model pipeline |
+| **SDK Models** | [Modeling Module](packages/py-cml/docs/modeling.md) | `cml-models` CLI, Python API, typed configs |
 | **Dev** | [Contributing](CONTRIBUTING.md) | Setup, code standards, PR process |
 | **Changelog** | [Release History](CHANGELOG.md) | Version history |
 | **Roadmap** | [Future Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration phases |

@@ -168,15 +168,17 @@ def test_session_context_manager_injects_session_id(cml_config: CMLConfig) -> No
     client.create_session = MagicMock(  # type: ignore[method-assign]
         return_value=MagicMock(session_id="sess-123")
     )
-    client.write = MagicMock(  # type: ignore[method-assign]
+    client._write_session = MagicMock(  # type: ignore[method-assign]
         return_value=WriteResponse(success=True, memory_id=uuid4(), chunks_created=1)
     )
     with client.session(name="onboarding") as sess:
         assert sess.session_id == "sess-123"
         sess.write("Hello")
-    client.write.assert_called_once()
-    call_kw = client.write.call_args[1]
-    assert call_kw["session_id"] == "sess-123"
+    client._write_session.assert_called_once()
+    call_args, call_kw = client._write_session.call_args
+    assert call_args[0] == "sess-123"
+    assert call_args[1] == "Hello"
+    assert call_kw["context_tags"] is None
 
 
 # ---- Deprecation ----

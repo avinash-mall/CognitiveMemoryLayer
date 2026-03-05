@@ -1,8 +1,9 @@
 """Gist extraction from episode clusters."""
 
+import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from ..utils.llm import LLMClient
 from .clusterer import EpisodeCluster
@@ -88,16 +89,33 @@ class ExtractedGist:
     source_memory_types: list[str] | None = None
 
 
-class GistExtractor:
-    """Extracts semantic gist from episode clusters using LLM only."""
+class SummarizerBackend(Protocol):
+    """Async summarizer backend contract used in non-LLM mode."""
 
-    def __init__(self, llm_client: LLMClient | None):
+    async def summarize(self, text: str, *, max_chars: int | None = None) -> str: ...
+
+
+class GistExtractor:
+    """Extracts semantic gists from episode clusters.
+
+    Primary path: LLM JSON extraction.
+    Fallback path: local summarizer backend (e.g., Hugging Face model).
+    """
+
+    def __init__(
+        self,
+        llm_client: LLMClient | None,
+        fallback_summarizer: SummarizerBackend | None = None,
+    ):
         self.llm = llm_client
+        self.fallback_summarizer = fallback_summarizer
 
     async def extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
         """Extract gists from a single cluster."""
-        if not cluster.episodes or self.llm is None:
+        if not cluster.episodes:
             return []
+        if self.llm is None:
+            return await self._fallback_extract_gist(cluster)
 
         memory_texts = []
         source_types = self._cluster_source_types(cluster)
@@ -160,13 +178,16 @@ class GistExtractor:
     async def extract_from_clusters(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist]:
         """Extract gists from all clusters."""
         all_gists: list[ExtractedGist] = []
-        if not clusters or self.llm is None:
+        if not clusters:
+            return all_gists
+        if self.llm is None:
+            fallback = await asyncio.gather(*[self.extract_gist(c) for c in clusters])
+            for gist_list in fallback:
+                all_gists.extend(gist_list)
             return all_gists
 
         if len(clusters) == 1:
             return await self.extract_gist(clusters[0])
-
-        import asyncio
 
         for i in range(0, len(clusters), _BATCH_GIST_CLUSTER_SIZE):
             batch = clusters[i : i + _BATCH_GIST_CLUSTER_SIZE]
@@ -257,3 +278,45 @@ class GistExtractor:
                 ]
             )
         )
+
+    async def _fallback_extract_gist(self, cluster: EpisodeCluster) -> list[ExtractedGist]:
+        """Fallback gist extraction using local summarizer backend."""
+        if self.fallback_summarizer is None:
+            return []
+
+        source_types = self._cluster_source_types(cluster)
+        lines: list[str] = []
+        for i, ep in enumerate(cluster.episodes[:8], 1):
+            mem_type = ep.type.value if hasattr(ep.type, "value") else str(ep.type)
+            lines.append(f"{i}. [{mem_type}] {ep.text}")
+
+        combined = "\n".join(lines)
+        try:
+            gist_text = await self.fallback_summarizer.summarize(combined, max_chars=None)
+        except Exception:
+            gist_text = ""
+
+        if not gist_text:
+            gist_text = cluster.episodes[0].text[:320]
+
+        gist_type = self._fallback_gist_type(source_types)
+        confidence = max(0.45, min(0.85, cluster.avg_confidence * 0.8))
+        return [
+            ExtractedGist(
+                text=gist_text,
+                gist_type=gist_type,
+                confidence=confidence,
+                supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
+                source_memory_types=source_types,
+            )
+        ]
+
+    @staticmethod
+    def _fallback_gist_type(source_types: list[str]) -> str:
+        if "constraint" in source_types:
+            return "policy"
+        if "preference" in source_types:
+            return "preference"
+        if "semantic_fact" in source_types:
+            return "fact"
+        return "summary"

@@ -5,7 +5,7 @@
 - Python 3.11+
 - A running CML server (for client mode), or use embedded mode to run without a server
 
-The CML server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), write `metadata` and optional `memory_type`, session-scoped context via `get_session_context(session_id)`, and `delete_all` (admin API key).
+The CML server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), write `metadata` and optional `memory_type`, session-scoped routes (`/session/{session_id}/write`, `/session/{session_id}/read`), session-scoped context via `get_session_context(session_id)`, and `delete_all` (admin API key).
 
 ## Installation
 
@@ -24,7 +24,7 @@ pip install cognitive-memory-layer[embedded]
 1. **Install** — `pip install cognitive-memory-layer`
 2. **Start the CML server** — See the CognitiveMemoryLayer project for server setup (or use embedded mode and skip this). From the repo root: `docker compose -f docker/docker-compose.yml up -d postgres neo4j redis api`. The server and tests read configuration (including `EMBEDDING_INTERNAL__DIMENSIONS`) from the project root `.env`; copy `.env.example` to `.env` and set values as needed (Docker does not override them).
 3. **Get your API key** — From your CML server or dashboard. For local development, the project `.env.example` uses `AUTH__API_KEY=test-key`; copy to `.env` so the server accepts that key.
-4. **Create the client** — Set `CML_BASE_URL` and `CML_API_KEY` in `.env`, then `CognitiveMemoryLayer(api_key="...", base_url="...")` (or omit `base_url` to use `CML_BASE_URL` from env).
+4. **Create the client** — Set `CML_API_KEY` in `.env`, then `CognitiveMemoryLayer(api_key="...", base_url="...")`. Default `base_url` is `http://localhost:8000`; to load from `CML_BASE_URL`, create `CMLConfig()` and pass `config=...`.
 5. **Write and read** — `memory.write("...")` then `memory.read("query")` or `memory.get_context("query")`
 
 ## Connect to a Server (detailed)
@@ -111,10 +111,38 @@ for c in result.constraints:
 
 See [API Reference — Models](api-reference.md#models) for the `ReadResponse.constraints` field, and [Configuration — Server-side feature flags](configuration.md#server-side-feature-flags-and-retrieval) for the server flag.
 
+## Optional Modules
+
+The SDK includes two optional modules for evaluation and model training workflows. They are installed separately to keep the base SDK lightweight:
+
+```bash
+# Evaluation: LoCoMo-Plus benchmark runner, validation, reports
+pip install "cognitive-memory-layer[eval]"
+
+# Modeling: data prep and custom model training
+pip install "cognitive-memory-layer[modeling]"
+```
+
+Quick examples:
+
+```bash
+cml-eval run-full --repo-root .
+cml-models pipeline --config packages/models/model_pipeline.toml
+```
+
+```python
+from cml.eval import LocomoEvalConfig, run_locomo_plus
+from cml.modeling import PrepareConfig, prepare_data
+```
+
+See [Evaluation Module](evaluation.md) and [Modeling Module](modeling.md) for full documentation.
+
 ## Next Steps
 
 - [API Reference](api-reference.md) — All operations and types
 - [Examples](examples.md) — Quickstart, chat, async, embedded, agent, temporal fidelity
+- [Evaluation Module](evaluation.md) — LoCoMo-Plus benchmarks and reports
+- [Modeling Module](modeling.md) — Custom model preparation and training
 - Embedded mode — See README and examples/embedded_mode.py
 
 

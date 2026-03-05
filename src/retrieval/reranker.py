@@ -51,7 +51,8 @@ class MemoryReranker:
 
         word_sets = {i: self._word_set(mem.record.text) for i, mem in enumerate(memories)}
         base_scores = {
-            i: self._calculate_score(mem, memories, word_sets, i) for i, mem in enumerate(memories)
+            i: self._calculate_score(mem, memories, word_sets, i, query=query)
+            for i, mem in enumerate(memories)
         }
 
         constraints = [
@@ -113,9 +114,23 @@ class MemoryReranker:
         all_memories: list[RetrievedMemory],
         word_sets: dict[int, frozenset[str]] | None = None,
         mem_index: int = -1,
+        query: str = "",
     ) -> float:
         """Calculate combined score for a memory."""
-        relevance = memory.relevance_score
+        relevance: float | None = None
+        if query and memory.record.text:
+            try:
+                if getattr(self.modelpack, "has_task_model", lambda _: False)("memory_rerank_pair"):
+                    pred = self.modelpack.predict_score_pair(
+                        "memory_rerank_pair", query, memory.record.text
+                    )
+                    if pred is not None:
+                        relevance = pred.score
+            except Exception:
+                pass
+
+        if relevance is None:
+            relevance = memory.relevance_score
         ts = memory.record.timestamp
         if isinstance(ts, datetime):
             now = datetime.now(UTC)
@@ -218,7 +233,7 @@ class MemoryReranker:
         from ..core.config import get_settings
 
         feat = get_settings().features
-        if not (feat.use_llm_enabled and feat.use_llm_constraint_reranker):
+        if not feat.use_llm_enabled:
             return [0.0 for _ in constraint_texts]
 
         import asyncio

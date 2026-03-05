@@ -43,6 +43,7 @@ function renderTable(el) {
     const mostActive = tenantsData.length ? tenantsData.reduce((a, b) => a.memory_count > b.memory_count ? a : b) : null;
 
     el.innerHTML = `
+        <p class="page-desc">All registered tenants with memory, fact, and event counts. Click column headers to sort, or use quick links to drill into a specific tenant.</p>
         <div class="kpi-grid">
             <div class="kpi-card"><div class="kpi-label">Total Tenants</div><div class="kpi-value">${formatNumber(tenantsData.length)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Total Memories</div><div class="kpi-value">${formatNumber(totalMemories)}</div></div>

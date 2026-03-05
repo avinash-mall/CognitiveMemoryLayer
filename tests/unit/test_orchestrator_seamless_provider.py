@@ -544,6 +544,32 @@ class TestMemoryOrchestrator:
 class TestOrchestratorFactory:
     """Tests for MemoryOrchestrator.create() factory wiring."""
 
+    @staticmethod
+    def _make_settings(*, use_llm_enabled: bool):
+        """Construct minimal settings object for orchestrator factory tests."""
+        settings = MagicMock()
+        settings.features.cached_embeddings_enabled = False
+        settings.features.use_llm_enabled = use_llm_enabled
+        settings.features.use_llm_constraint_extractor = False
+        settings.features.use_llm_write_time_facts = False
+        settings.features.use_llm_salience_refinement = False
+        settings.features.use_llm_pii_redaction = False
+        settings.features.use_llm_write_gate_importance = False
+        settings.summarizer_internal.provider = "huggingface"
+        settings.summarizer_internal.model = "Falconsai/text_summarization"
+        settings.summarizer_internal.task = "summarization"
+        settings.summarizer_internal.max_input_chars = 2400
+        settings.summarizer_internal.max_output_chars = 320
+        settings.summarizer_internal.min_length = 24
+        settings.summarizer_internal.max_length = 96
+        settings.summarizer_internal.device = -1
+        mock_chunker = MagicMock()
+        mock_chunker.tokenizer = "google/flan-t5-base"
+        mock_chunker.chunk_size = 500
+        mock_chunker.overlap_percent = 0.15
+        settings.chunker = mock_chunker
+        return settings
+
     @pytest.mark.asyncio
     async def test_create_wires_entity_and_relation_extractors(self):
         """orchestrator.create() should inject EntityExtractor and RelationExtractor
@@ -558,18 +584,7 @@ class TestOrchestratorFactory:
         mock_db.redis = None
 
         # Ensure create() wires extractors
-        mock_settings = MagicMock()
-        mock_settings.features.cached_embeddings_enabled = False
-        mock_chunker = MagicMock()
-        mock_chunker.tokenizer = "google/flan-t5-base"
-        mock_chunker.chunk_size = 500
-        mock_chunker.overlap_percent = 0.15
-        mock_settings.chunker = mock_chunker
-        mock_settings.features.use_llm_constraint_extractor = False
-        mock_settings.features.use_llm_write_time_facts = False
-        mock_settings.features.use_llm_salience_refinement = False
-        mock_settings.features.use_llm_pii_redaction = False
-        mock_settings.features.use_llm_write_gate_importance = False
+        mock_settings = self._make_settings(use_llm_enabled=True)
 
         with (
             patch("src.core.config.get_settings", return_value=mock_settings),
@@ -591,3 +606,133 @@ class TestOrchestratorFactory:
             assert orch.hippocampal.relation_extractor is not None
             assert isinstance(orch.hippocampal.entity_extractor, EntityExtractor)
             assert isinstance(orch.hippocampal.relation_extractor, RelationExtractor)
+
+    @pytest.mark.asyncio
+    async def test_create_uses_hf_summarizer_when_llm_disabled(self):
+        """When LLM is disabled, create() should wire HF fallback summarizer."""
+        from src.memory.orchestrator import MemoryOrchestrator
+
+        mock_db = MagicMock()
+        mock_db.pg_session = MagicMock()
+        mock_db.neo4j_driver = MagicMock()
+        mock_db.redis = None
+
+        mock_settings = self._make_settings(use_llm_enabled=False)
+        fake_summarizer = object()
+
+        with (
+            patch("src.core.config.get_settings", return_value=mock_settings),
+            patch("src.memory.orchestrator.get_internal_llm_client") as mock_llm,
+            patch("src.memory.orchestrator.get_embedding_client") as mock_emb,
+            patch("src.memory.orchestrator.Neo4jGraphStore"),
+            patch("src.memory.orchestrator.PostgresMemoryStore"),
+            patch("src.memory.orchestrator.SemanticFactStore"),
+            patch(
+                "src.utils.hf_summarizer.get_hf_summarizer", return_value=fake_summarizer
+            ) as mock_get_hf,
+        ):
+            mock_llm.return_value = MagicMock()
+            mock_emb_instance = MagicMock()
+            mock_emb_instance.dimensions = 1024
+            mock_emb.return_value = mock_emb_instance
+
+            orch = await MemoryOrchestrator.create(mock_db)
+
+            mock_get_hf.assert_called_once_with(
+                model="Falconsai/text_summarization",
+                task="summarization",
+                max_input_chars=2400,
+                max_output_chars=320,
+                min_length=24,
+                max_length=96,
+                device=-1,
+            )
+            assert orch.consolidation.extractor.fallback_summarizer is fake_summarizer
+            assert orch.forgetting.executor.compression_summarizer is fake_summarizer
+
+    @pytest.mark.asyncio
+    async def test_create_does_not_use_hf_summarizer_when_llm_enabled(self):
+        """When LLM is enabled, create() should not initialize HF fallback summarizer."""
+        from src.memory.orchestrator import MemoryOrchestrator
+
+        mock_db = MagicMock()
+        mock_db.pg_session = MagicMock()
+        mock_db.neo4j_driver = MagicMock()
+        mock_db.redis = None
+
+        mock_settings = self._make_settings(use_llm_enabled=True)
+
+        with (
+            patch("src.core.config.get_settings", return_value=mock_settings),
+            patch("src.memory.orchestrator.get_internal_llm_client") as mock_llm,
+            patch("src.memory.orchestrator.get_embedding_client") as mock_emb,
+            patch("src.memory.orchestrator.Neo4jGraphStore"),
+            patch("src.memory.orchestrator.PostgresMemoryStore"),
+            patch("src.memory.orchestrator.SemanticFactStore"),
+            patch("src.utils.hf_summarizer.get_hf_summarizer") as mock_get_hf,
+        ):
+            mock_llm.return_value = MagicMock()
+            mock_emb_instance = MagicMock()
+            mock_emb_instance.dimensions = 1024
+            mock_emb.return_value = mock_emb_instance
+
+            orch = await MemoryOrchestrator.create(mock_db)
+
+            mock_get_hf.assert_not_called()
+            assert orch.consolidation.extractor.fallback_summarizer is None
+            assert orch.forgetting.executor.compression_summarizer is None
+
+    @pytest.mark.asyncio
+    async def test_create_lite_ignores_passed_llm_when_master_llm_disabled(self):
+        """create_lite() should not wire LLM clients when master LLM flag is disabled."""
+        from src.memory.orchestrator import MemoryOrchestrator
+
+        mock_settings = self._make_settings(use_llm_enabled=False)
+        fake_summarizer = object()
+        fake_llm = object()
+
+        with (
+            patch("src.core.config.get_settings", return_value=mock_settings),
+            patch(
+                "src.utils.hf_summarizer.get_hf_summarizer", return_value=fake_summarizer
+            ) as mock_get_hf,
+        ):
+            orch = await MemoryOrchestrator.create_lite(
+                episodic_store=MagicMock(),
+                embedding_client=MagicMock(),
+                llm_client=fake_llm,  # Should be ignored in non-LLM mode
+            )
+
+            mock_get_hf.assert_called_once()
+            assert orch.retriever.classifier.llm is None
+            assert orch.reconsolidation.conflict_detector.llm is None
+            assert orch.consolidation.extractor.llm is None
+            assert orch.forgetting.executor.compression_llm_client is None
+            assert orch.consolidation.extractor.fallback_summarizer is fake_summarizer
+            assert orch.forgetting.executor.compression_summarizer is fake_summarizer
+
+    @pytest.mark.asyncio
+    async def test_create_lite_wires_llm_when_master_llm_enabled(self):
+        """create_lite() should wire provided LLM client when master flag is enabled."""
+        from src.memory.orchestrator import MemoryOrchestrator
+
+        mock_settings = self._make_settings(use_llm_enabled=True)
+        fake_llm = object()
+
+        with (
+            patch("src.core.config.get_settings", return_value=mock_settings),
+            patch("src.utils.hf_summarizer.get_hf_summarizer") as mock_get_hf,
+        ):
+            orch = await MemoryOrchestrator.create_lite(
+                episodic_store=MagicMock(),
+                embedding_client=MagicMock(),
+                llm_client=fake_llm,
+            )
+
+            mock_get_hf.assert_not_called()
+            assert orch.retriever.classifier.llm is fake_llm
+            assert orch.reconsolidation.conflict_detector.llm is fake_llm
+            assert orch.consolidation.extractor.llm is fake_llm
+            assert orch.forgetting.executor.compression_llm_client is fake_llm
+            assert orch.consolidation.extractor.fallback_summarizer is None
+            assert orch.forgetting.executor.compression_summarizer is None

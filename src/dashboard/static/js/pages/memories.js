@@ -49,6 +49,7 @@ export async function renderMemories({ tenantId } = {}) {
 
 function buildShell() {
     return `
+        <p class="page-desc">Browse, filter, and manage all memory records. Use bulk actions to archive, silence, or delete memories. Click a row to view full details.</p>
         <div class="filter-bar">
             <input type="text" id="mem-search" class="input-sm" placeholder="Search memory text..." value="${escapeHtml(state.search)}">
             <select id="mem-type" class="select-sm">

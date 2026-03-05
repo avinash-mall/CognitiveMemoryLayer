@@ -1,7 +1,7 @@
 """Unit tests for forgetting executor."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -119,3 +119,32 @@ class TestForgettingExecutor:
         assert result.deleted == 1
         assert result.errors == []
         mock_store.delete.assert_called_once_with(rec.id, hard=False)
+
+    @pytest.mark.asyncio
+    async def test_execute_compress_passes_summarizer_backend_to_compression_api(self):
+        rec = _make_record(text="This is a long memory text for compression testing.")
+        mock_store = MagicMock()
+        mock_store.get_by_id = AsyncMock(return_value=rec)
+        mock_store.update = AsyncMock(return_value=rec)
+        backend = object()
+        executor = ForgettingExecutor(
+            store=mock_store,
+            compression_summarizer=backend,
+            compression_max_chars=20,
+        )
+        op = ForgettingOperation(action=ForgettingAction.COMPRESS, memory_id=rec.id)
+
+        with patch(
+            "src.forgetting.executor.summarize_for_compression",
+            new=AsyncMock(return_value="compressed summary"),
+        ) as mock_compress:
+            result = await executor.execute(operations=[op])
+
+        assert result.compressed == 1
+        mock_compress.assert_awaited_once()
+        kwargs = mock_compress.await_args.kwargs
+        assert kwargs["summarizer_backend"] is backend
+        assert kwargs["max_chars"] == 20
+        patch_arg = mock_store.update.call_args[0][1]
+        assert patch_arg["text"] == "compressed summary"
+        assert patch_arg["status"] == "compressed"
