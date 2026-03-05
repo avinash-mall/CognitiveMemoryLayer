@@ -31,6 +31,7 @@ export async function renderEvents({ tenantId } = {}) {
 
 function buildShell() {
     return `
+        <p class="page-desc">Audit trail of all system events including writes, reads, consolidation, forgetting, and reconsolidation operations.</p>
         <div class="filter-bar">
             <input type="text" id="evt-type-filter" class="input-sm" placeholder="Event type filter..." value="${escapeHtml(state.eventType)}">
             <input type="text" id="evt-op-filter" class="input-sm" placeholder="Operation filter..." value="${escapeHtml(state.operation)}">

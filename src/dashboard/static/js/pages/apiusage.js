@@ -33,6 +33,7 @@ function buildPage(rl, stats) {
     const avgUtil = rl.entries.length ? (rl.entries.reduce((s, e) => s + e.utilization_pct, 0) / rl.entries.length) : 0;
 
     return `
+        <p class="page-desc">API request volume and rate-limit utilization. Monitors per-key bucket usage and hourly request trends.</p>
         <div class="kpi-grid">
             <div class="kpi-card"><div class="kpi-label">Active Rate-Limit Keys</div><div class="kpi-value">${formatNumber(rl.entries.length)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Avg Utilization</div><div class="kpi-value">${avgUtil.toFixed(1)}%</div></div>

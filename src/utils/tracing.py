@@ -20,17 +20,22 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+# Module-level defaults keep optional OpenTelemetry imports type-safe.
+trace: Any | None = None
+_tracer: Any | None = None
+StatusCode: Any = None
+
 # Attempt to import OpenTelemetry; fall back to no-ops if not installed
 try:
-    from opentelemetry import trace
-    from opentelemetry.trace import StatusCode
+    from opentelemetry import trace as _otel_trace
+    from opentelemetry.trace import StatusCode as _StatusCode
 
+    trace = _otel_trace
+    StatusCode = _StatusCode
     _tracer = trace.get_tracer("cognitive-memory-layer")
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False
-    _tracer = None
-    StatusCode = None
 
 
 def is_tracing_enabled() -> bool:
@@ -86,6 +91,9 @@ def configure_tracing(service_name: str = "cognitive-memory-layer") -> None:
     """
     if not _OTEL_AVAILABLE:
         logger.info("otel_not_installed", msg="OpenTelemetry not installed; tracing disabled")
+        return
+    if trace is None:
+        logger.warning("otel_trace_unavailable")
         return
 
     try:

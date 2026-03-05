@@ -70,6 +70,22 @@ class LLMEvalSettings(PydanticBaseModel):
     api_key: str | None = Field(default=None)
 
 
+class SummarizerInternalSettings(PydanticBaseModel):
+    """Local summarizer settings for non-LLM summarization paths."""
+
+    provider: str = Field(default="huggingface")
+    model: str = Field(default="Falconsai/text_summarization")
+    task: str = Field(default="summarization")
+    max_input_chars: int = Field(default=2400)
+    max_output_chars: int = Field(default=320)
+    min_length: int = Field(default=24)
+    max_length: int = Field(default=96)
+    device: int = Field(
+        default=-1,
+        description="-1 = CPU, >=0 = CUDA device index for transformers pipeline",
+    )
+
+
 class ChunkerSettings(PydanticBaseModel):
     """Chunker configuration (semchunk; Hugging Face tokenizer)."""
 
@@ -156,10 +172,6 @@ class FeatureFlags(PydanticBaseModel):
         default=True,
         description="Use LLM (via unified extractor) for write-time fact extraction instead of NER parser path",
     )
-    use_llm_query_classifier_only: bool = Field(
-        default=False,
-        description="Bypass modelpack classifier and always use LLM for query classification",
-    )
     use_llm_salience_refinement: bool = Field(
         default=True,
         description="Use LLM salience from unified extractor instead of non-LLM salience/modelpack signal",
@@ -191,11 +203,6 @@ class FeatureFlags(PydanticBaseModel):
     use_llm_conflict_detection_only: bool = Field(
         default=False,
         description="Bypass modelpack conflict detector and always use LLM for conflict detection",
-    )
-    use_llm_constraint_reranker: bool = Field(
-        default=False,
-        description="Use LLM to score constraint relevance during reranking (1 call per read); "
-        "when False, modelpack scoring is used when available",
     )
 
 
@@ -248,6 +255,9 @@ class Settings(BaseSettings):
     embedding_internal: EmbeddingInternalSettings = Field(default_factory=EmbeddingInternalSettings)
     llm_internal: LLMInternalSettings = Field(default_factory=LLMInternalSettings)
     llm_eval: LLMEvalSettings = Field(default_factory=LLMEvalSettings)
+    summarizer_internal: SummarizerInternalSettings = Field(
+        default_factory=SummarizerInternalSettings
+    )
     auth: AuthSettings = Field(default_factory=AuthSettings)
     chunker: ChunkerSettings = Field(default_factory=ChunkerSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)

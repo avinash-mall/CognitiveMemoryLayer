@@ -143,6 +143,7 @@ async def dashboard_retrieval(
                     relevance_score=mem.relevance_score,
                     retrieval_source=mem.retrieval_source,
                     timestamp=mem.record.timestamp,
+                    supersedes_id=getattr(mem.record, "supersedes_id", None),
                     metadata=mem.record.metadata if hasattr(mem.record, "metadata") else {},
                 )
             )

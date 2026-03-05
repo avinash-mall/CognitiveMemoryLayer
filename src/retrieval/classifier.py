@@ -77,11 +77,9 @@ class QueryClassifier:
         from ..core.config import get_settings
 
         settings = get_settings().features
-        llm_forced = settings.use_llm_enabled and settings.use_llm_query_classifier_only
 
         result: QueryAnalysis | None = None
-        if not llm_forced:
-            result = self._modelpack_classify(query)
+        result = self._modelpack_classify(query)
 
         if result is None and self.llm and settings.use_llm_enabled:
             result = await self._llm_classify(query, recent_context=recent_context)

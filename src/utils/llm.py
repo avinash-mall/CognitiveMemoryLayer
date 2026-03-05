@@ -218,7 +218,10 @@ def _gemini_client(api_key: str, model: str) -> LLMClient:
             contents = prompt
             if system_prompt:
                 contents = f"{system_prompt}\n\n{prompt}"
-            generation_config = {"temperature": temperature, "max_output_tokens": max_tokens}
+            generation_config = genai.types.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            )
             response = await loop.run_in_executor(
                 None,
                 lambda: self._model.generate_content(

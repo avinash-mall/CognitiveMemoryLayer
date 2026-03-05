@@ -42,7 +42,21 @@ Thank you for your interest in contributing. This document outlines how to get s
 
 ## Project structure
 
-- `src/` — Application code: `core`, `api`, `dashboard`, `memory`, `storage`, `retrieval`, `consolidation`, `forgetting`, `reconsolidation`, `extraction`, `utils`.
+- `src/` — Application code:
+  - `core` — Settings, config, enums, tenant flags.
+  - `api` — FastAPI routes and middleware.
+  - `api/dashboard/` — Dashboard API routes: `overview_routes`, `memory_routes`, `events_routes`, `graph_routes`, `config_routes`, `jobs_routes`, `fact_routes`, `models_routes`, `_shared`.
+  - `dashboard/` — Static SPA (HTML, CSS, JS pages).
+  - `memory` — Sensory, working, hippocampal, and neocortical stores.
+  - `storage` — PostgreSQL + pgvector and Neo4j adapters.
+  - `retrieval` — Query classification, retrieval planning, hybrid retrieval, reranking.
+  - `consolidation` — Episodic-to-semantic consolidation (sampler, clusterer, summarizer, migrator).
+  - `forgetting` — Active forgetting (scorer, interference, compression, actions, executor, worker).
+  - `reconsolidation` — Labile state tracking, conflict detection, belief revision.
+  - `extraction` — Entity, relation, constraint, and fact extractors; `local_unified_extractor.py` (model-based alternative to LLM extractor).
+  - `evaluation` — Offline evaluation tools: `conflict_eval.py` (heuristic vs. model conflict detection).
+  - `utils` — Embedding client, LLM client, NER, modelpack runtime adapter, `shadow_logger.py` (shadow mode comparison).
+- `packages/models/` — Custom model pipeline: data preparation, training, and 10 task-specific models. See [packages/models/README.md](packages/models/README.md).
 - `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
 - `tests/` — Pytest tests (unit, integration, e2e); see [tests/README.md](tests/README.md).
 - `scripts/` — Dev scripts: `update_readme_badges.py` (refresh version and test count in README badges), `run_examples.py` (run examples; see script docstring or examples/README), `init_structure.py` (bootstrap directory structure; optional for new contributors).

@@ -144,6 +144,23 @@ def test_sync_get_context_returns_str(cml_config: CMLConfig) -> None:
     assert result == "## Memory\n(none)"
 
 
+def test_sync_get_context_passes_user_timezone(cml_config: CMLConfig) -> None:
+    """Sync client get_context() passes user_timezone through read request body."""
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "query": "x",
+            "memories": [],
+            "llm_context": "",
+            "total_count": 0,
+            "elapsed_ms": 0.5,
+        }
+    )
+    client.get_context("x", user_timezone="America/Los_Angeles")
+    call = client._transport.request.call_args
+    assert call[1]["json"]["user_timezone"] == "America/Los_Angeles"
+
+
 def test_sync_remember_delegates_to_write(cml_config: CMLConfig) -> None:
     """Sync client remember() delegates to write()."""
     config = cml_config
@@ -245,6 +262,30 @@ async def test_async_session_scope_read_uses_session_scoped_endpoint(
 
 
 @pytest.mark.asyncio
+async def test_async_session_scope_write_uses_session_scoped_endpoint(
+    cml_config: CMLConfig,
+) -> None:
+    """AsyncSessionScope.write() uses /session/{id}/write."""
+    from cml.async_client import AsyncSessionScope
+
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "success": True,
+            "memory_id": str(uuid4()),
+            "chunks_created": 1,
+            "message": "",
+        }
+    )
+    scope = AsyncSessionScope(client, "sess-999")
+    result = await scope.write("hello")
+    assert isinstance(result, WriteResponse)
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/session/sess-999/write")
+    assert call[1]["json"]["content"] == "hello"
+
+
+@pytest.mark.asyncio
 async def test_async_forget_raises_without_selector(cml_config: CMLConfig) -> None:
     """Async client forget() raises ValueError when no selector provided."""
     config = cml_config
@@ -279,6 +320,24 @@ async def test_async_get_context_returns_str(cml_config: CMLConfig) -> None:
     result = await client.get_context("x")
     assert isinstance(result, str)
     assert result == "## Memory\n(none)"
+
+
+@pytest.mark.asyncio
+async def test_async_get_context_passes_user_timezone(cml_config: CMLConfig) -> None:
+    """Async client get_context() passes user_timezone through read request body."""
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "query": "x",
+            "memories": [],
+            "llm_context": "",
+            "total_count": 0,
+            "elapsed_ms": 0.5,
+        }
+    )
+    await client.get_context("x", user_timezone="America/Los_Angeles")
+    call = client._transport.request.call_args
+    assert call[1]["json"]["user_timezone"] == "America/Los_Angeles"
 
 
 # ---- Sync update / forget / read params ----

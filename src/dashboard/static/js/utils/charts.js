@@ -39,6 +39,10 @@ function baseOptions(title = '') {
     return {
         responsive: true,
         maintainAspectRatio: true,
+        animation: {
+            duration: 600,
+            easing: 'easeOutQuart',
+        },
         plugins: {
             title: {
                 display: !!title,
@@ -57,13 +61,17 @@ function baseOptions(title = '') {
                 },
             },
             tooltip: {
-                backgroundColor: 'rgba(20, 24, 40, 0.95)',
+                backgroundColor: 'rgba(15, 17, 23, 0.96)',
                 titleColor: '#e4e7f0',
                 bodyColor: '#9197b3',
-                borderColor: 'rgba(50, 56, 85, 0.8)',
+                borderColor: 'rgba(108, 140, 255, 0.3)',
                 borderWidth: 1,
                 cornerRadius: 8,
-                padding: 10,
+                padding: 12,
+                titleFont: { weight: '600', size: 12 },
+                bodyFont: { size: 11 },
+                displayColors: true,
+                boxPadding: 4,
             },
         },
         scales: {},
@@ -82,6 +90,7 @@ function destroyExisting(canvas) {
 export function createDoughnutChart(canvas, labels, data, title = '') {
     destroyExisting(canvas);
     const palette = getChartPalette();
+    const opts = baseOptions(title);
     const chart = new Chart(canvas, {
         type: 'doughnut',
         data: {
@@ -90,17 +99,35 @@ export function createDoughnutChart(canvas, labels, data, title = '') {
                 data,
                 backgroundColor: palette.slice(0, data.length),
                 borderWidth: 0,
-                hoverOffset: 6,
+                hoverOffset: 8,
+                hoverBorderWidth: 2,
+                hoverBorderColor: 'rgba(255,255,255,0.3)',
             }],
         },
         options: {
-            ...baseOptions(title),
+            ...opts,
             cutout: '65%',
+            animation: {
+                animateRotate: true,
+                animateScale: true,
+                duration: 800,
+                easing: 'easeOutQuart',
+            },
             plugins: {
-                ...baseOptions(title).plugins,
+                ...opts.plugins,
                 legend: {
-                    ...baseOptions(title).plugins.legend,
+                    ...opts.plugins.legend,
                     position: 'right',
+                },
+                tooltip: {
+                    ...opts.plugins.tooltip,
+                    callbacks: {
+                        label: (ctx) => {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : '0';
+                            return ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${pct}%)`;
+                        },
+                    },
                 },
             },
         },
@@ -115,7 +142,9 @@ export function createBarChart(canvas, labels, data, title = '', color = null) {
     const c = getThemeColors();
     const palette = getChartPalette();
     const bgColors = color ? Array(data.length).fill(color) : palette.slice(0, data.length);
+    const hoverColors = bgColors.map(c => c + 'cc');
 
+    const opts = baseOptions(title);
     const chart = new Chart(canvas, {
         type: 'bar',
         data: {
@@ -123,15 +152,23 @@ export function createBarChart(canvas, labels, data, title = '', color = null) {
             datasets: [{
                 data,
                 backgroundColor: bgColors,
-                borderRadius: 4,
+                hoverBackgroundColor: hoverColors,
+                borderRadius: 6,
                 maxBarThickness: 50,
+                borderSkipped: false,
             }],
         },
         options: {
-            ...baseOptions(title),
+            ...opts,
             plugins: {
-                ...baseOptions(title).plugins,
+                ...opts.plugins,
                 legend: { display: false },
+                tooltip: {
+                    ...opts.plugins.tooltip,
+                    callbacks: {
+                        label: (ctx) => ` ${ctx.label}: ${ctx.parsed.y.toLocaleString()}`,
+                    },
+                },
             },
             scales: {
                 x: {
@@ -140,7 +177,7 @@ export function createBarChart(canvas, labels, data, title = '', color = null) {
                 },
                 y: {
                     ticks: { color: c.textMuted, font: { size: 11 } },
-                    grid: { color: c.border + '40' },
+                    grid: { color: c.border + '30', lineWidth: 0.8 },
                     beginAtZero: true,
                 },
             },
@@ -150,12 +187,19 @@ export function createBarChart(canvas, labels, data, title = '', color = null) {
     return chart;
 }
 
-/** Create a line chart */
+/** Create a line chart with gradient fill */
 export function createLineChart(canvas, labels, data, title = '', color = null) {
     destroyExisting(canvas);
     const c = getThemeColors();
     const lineColor = color || c.accent;
 
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.parentElement?.clientHeight || 280);
+    gradient.addColorStop(0, lineColor + '40');
+    gradient.addColorStop(0.6, lineColor + '10');
+    gradient.addColorStop(1, lineColor + '00');
+
+    const opts = baseOptions(title);
     const chart = new Chart(canvas, {
         type: 'line',
         data: {
@@ -163,20 +207,28 @@ export function createLineChart(canvas, labels, data, title = '', color = null) 
             datasets: [{
                 data,
                 borderColor: lineColor,
-                backgroundColor: lineColor + '20',
+                backgroundColor: gradient,
                 fill: true,
-                tension: 0.3,
-                pointRadius: 3,
+                tension: 0.35,
+                pointRadius: 2,
                 pointHoverRadius: 6,
                 pointBackgroundColor: lineColor,
-                borderWidth: 2,
+                pointBorderColor: 'transparent',
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 2,
+                borderWidth: 2.5,
             }],
         },
         options: {
-            ...baseOptions(title),
+            ...opts,
             plugins: {
-                ...baseOptions(title).plugins,
+                ...opts.plugins,
                 legend: { display: false },
+                tooltip: {
+                    ...opts.plugins.tooltip,
+                    intersect: false,
+                    mode: 'index',
+                },
             },
             scales: {
                 x: {
@@ -185,7 +237,7 @@ export function createLineChart(canvas, labels, data, title = '', color = null) 
                 },
                 y: {
                     ticks: { color: c.textMuted, font: { size: 11 } },
-                    grid: { color: c.border + '40' },
+                    grid: { color: c.border + '30', lineWidth: 0.8 },
                     beginAtZero: true,
                 },
             },

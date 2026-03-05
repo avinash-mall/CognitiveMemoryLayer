@@ -249,6 +249,61 @@ class TestCompression:
         assert "pizza" in out.lower()
         assert len(out) <= 100
 
+    @pytest.mark.asyncio
+    async def test_summarize_for_compression_uses_summarizer_backend_first(self):
+        from src.forgetting.compression import summarize_for_compression
+        from src.utils.llm import MockLLMClient
+
+        class _Backend:
+            def __init__(self):
+                self.calls = 0
+
+            async def summarize(self, text: str, *, max_chars: int | None = None) -> str:
+                self.calls += 1
+                _ = text
+                _ = max_chars
+                return "Backend summary sentence."
+
+        backend = _Backend()
+        llm = MockLLMClient(fixed_response="LLM fallback summary.")
+        long_text = (
+            "This memory is long enough that compression must summarize it, "
+            "because it contains additional trailing details and context."
+        )
+        out = await summarize_for_compression(
+            long_text,
+            max_chars=60,
+            llm_client=llm,
+            summarizer_backend=backend,
+        )
+        assert out == "Backend summary sentence."
+        assert backend.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_summarize_for_compression_backend_failure_falls_back_to_llm(self):
+        from src.forgetting.compression import summarize_for_compression
+        from src.utils.llm import MockLLMClient
+
+        class _FailingBackend:
+            async def summarize(self, text: str, *, max_chars: int | None = None) -> str:
+                _ = text
+                _ = max_chars
+                raise RuntimeError("backend unavailable")
+
+        llm = MockLLMClient(fixed_response="LLM summary survives fallback.")
+        long_text = (
+            "This memory should still be summarized even if backend fails, "
+            "and it is intentionally verbose to exceed the max chars."
+        )
+        out = await summarize_for_compression(
+            long_text,
+            max_chars=60,
+            llm_client=llm,
+            summarizer_backend=_FailingBackend(),
+        )
+        assert "llm summary" in out.lower()
+        assert len(out) <= 60
+
 
 # PostgresMemoryStore.count_references_to and ForgettingExecutor dependency checks
 # are integration tests (require real Postgres); see tests/integration/test_forgetting_flow.py

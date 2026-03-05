@@ -143,7 +143,6 @@ _EDITABLE_SETTINGS = frozenset(
         "features.constraint_extraction_enabled",
         "features.use_llm_constraint_extractor",
         "features.use_llm_write_time_facts",
-        "features.use_llm_query_classifier_only",
         "features.use_llm_salience_refinement",
         "features.use_llm_pii_redaction",
         "features.use_llm_write_gate_importance",
@@ -152,7 +151,6 @@ _EDITABLE_SETTINGS = frozenset(
         "features.use_llm_context_tags",
         "features.use_llm_decay_rate",
         "features.use_llm_conflict_detection_only",
-        "features.use_llm_constraint_reranker",
     }
 )
 
@@ -216,7 +214,6 @@ for _fk in (
     "constraint_extraction_enabled",
     "use_llm_constraint_extractor",
     "use_llm_write_time_facts",
-    "use_llm_query_classifier_only",
     "use_llm_salience_refinement",
     "use_llm_pii_redaction",
     "use_llm_write_gate_importance",
@@ -225,7 +222,6 @@ for _fk in (
     "use_llm_context_tags",
     "use_llm_decay_rate",
     "use_llm_conflict_detection_only",
-    "use_llm_constraint_reranker",
 ):
     _CONFIG_KEY_TO_ENV[f"features.{_fk}"] = f"FEATURES__{_fk.upper()}"
 

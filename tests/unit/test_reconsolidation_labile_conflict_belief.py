@@ -125,6 +125,16 @@ class TestConflictDetector:
         assert result.conflict_type == ConflictType.TEMPORAL_CHANGE
         assert result.is_superseding is True
 
+    @pytest.mark.asyncio
+    async def test_modelpack_generic_conflict_label_maps_to_contradiction(self):
+        detector = ConflictDetector(
+            llm_client=None,
+            modelpack=self._StubModelPack(label="conflict", confidence=0.84),
+        )
+        old = _make_memory("I work in New York City.")
+        result = await detector.detect(old, "I work in San Francisco.")
+        assert result.conflict_type == ConflictType.DIRECT_CONTRADICTION
+
 
 class TestBeliefRevisionEngine:
     def test_belief_revision_reinforcement_plan(self):

@@ -59,6 +59,25 @@ async def _get_or_create_db_manager():
     return db
 
 
+def _get_configured_summarizer_backend():
+    """Return configured summarizer backend for non-LLM summarization paths."""
+    settings = get_settings()
+    cfg = settings.summarizer_internal
+    if cfg.provider.lower() != "huggingface":
+        return None
+    from .utils.hf_summarizer import get_hf_summarizer
+
+    return get_hf_summarizer(
+        model=cfg.model,
+        task=cfg.task,
+        max_input_chars=cfg.max_input_chars,
+        max_output_chars=cfg.max_output_chars,
+        min_length=cfg.min_length,
+        max_length=cfg.max_length,
+        device=cfg.device,
+    )
+
+
 def _get_all_tenant_user_pairs() -> list[tuple[str, str]]:
     """Discover all tenant (and user) pairs from the memory store for fan-out."""
     from sqlalchemy import distinct, select
@@ -122,7 +141,10 @@ def run_forgetting_task(
 
         db = await _get_or_create_db_manager()
         store = PostgresMemoryStore(db.pg_session_factory)
-        worker = ForgettingWorker(store)
+        worker = ForgettingWorker(
+            store,
+            compression_summarizer=_get_configured_summarizer_backend(),
+        )
 
         report = await worker.run_forgetting(
             tenant_id=tenant_id,

@@ -38,8 +38,8 @@ function buildManagement(jobsData, labileData) {
     ).join('');
 
     return `
-        <p style="color:var(--text-secondary);margin-bottom:20px;">
-            Trigger maintenance operations for memory consolidation and active forgetting.
+        <p class="page-desc">
+            Trigger maintenance operations for memory consolidation, active forgetting, and reconsolidation.
             These operations run server-side and may take a few seconds to complete.
         </p>
 

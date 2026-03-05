@@ -1,6 +1,7 @@
 """Memory orchestrator: coordinates all memory operations."""
 
 import asyncio
+import inspect
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -122,6 +123,24 @@ class MemoryOrchestrator:
 
         settings = get_settings()
         internal_llm = get_internal_llm_client() if settings.features.use_llm_enabled else None
+        fallback_summarizer = None
+        if not settings.features.use_llm_enabled:
+            try:
+                from ..utils.hf_summarizer import get_hf_summarizer
+
+                summarizer_cfg = settings.summarizer_internal
+                if summarizer_cfg.provider.lower() == "huggingface":
+                    fallback_summarizer = get_hf_summarizer(
+                        model=summarizer_cfg.model,
+                        task=summarizer_cfg.task,
+                        max_input_chars=summarizer_cfg.max_input_chars,
+                        max_output_chars=summarizer_cfg.max_output_chars,
+                        min_length=summarizer_cfg.min_length,
+                        max_length=summarizer_cfg.max_length,
+                        device=summarizer_cfg.device,
+                    )
+            except Exception as exc:
+                logger.warning("fallback_summarizer_init_failed", extra={"error": str(exc)})
         embedding_client: EmbeddingClient = get_embedding_client()
 
         # Phase 2.3: wrap with Redis cache when available and enabled
@@ -189,11 +208,13 @@ class MemoryOrchestrator:
             episodic_store=episodic_store,
             neocortical_store=neocortical,
             llm_client=internal_llm,
+            summarizer_backend=fallback_summarizer,
         )
 
         forgetting = ForgettingWorker(
             store=episodic_store,
             compression_llm_client=internal_llm,
+            compression_summarizer=fallback_summarizer,
         )
 
         scratch_pad = ScratchPad(store=episodic_store)
@@ -220,7 +241,7 @@ class MemoryOrchestrator:
         cls,
         episodic_store: MemoryStoreBase,
         embedding_client: EmbeddingClient,
-        llm_client: LLMClient,
+        llm_client: LLMClient | None = None,
     ) -> "MemoryOrchestrator":
         """Factory for embedded lite mode: no PostgreSQL/Neo4j/Redis; uses provided episodic store and clients."""
         graph_store = NoOpGraphStore()
@@ -232,11 +253,30 @@ class MemoryOrchestrator:
         from ..core.config import get_settings
 
         settings = get_settings()
+        runtime_llm = llm_client if settings.features.use_llm_enabled else None
+        fallback_summarizer = None
+        if not settings.features.use_llm_enabled:
+            try:
+                from ..utils.hf_summarizer import get_hf_summarizer
+
+                summarizer_cfg = settings.summarizer_internal
+                if summarizer_cfg.provider.lower() == "huggingface":
+                    fallback_summarizer = get_hf_summarizer(
+                        model=summarizer_cfg.model,
+                        task=summarizer_cfg.task,
+                        max_input_chars=summarizer_cfg.max_input_chars,
+                        max_output_chars=summarizer_cfg.max_output_chars,
+                        min_length=summarizer_cfg.min_length,
+                        max_length=summarizer_cfg.max_length,
+                        device=summarizer_cfg.device,
+                    )
+            except Exception as exc:
+                logger.warning("fallback_summarizer_init_failed", extra={"error": str(exc)})
         entity_extractor = EntityExtractor(
-            llm_client if settings.features.use_llm_enabled else None
+            runtime_llm if settings.features.use_llm_enabled else None
         )
         relation_extractor = RelationExtractor(
-            llm_client if settings.features.use_llm_enabled else None
+            runtime_llm if settings.features.use_llm_enabled else None
         )
 
         hippocampal = HippocampalStore(
@@ -251,25 +291,27 @@ class MemoryOrchestrator:
         retriever = MemoryRetriever(
             hippocampal=hippocampal,
             neocortical=neocortical,
-            llm_client=llm_client,
+            llm_client=runtime_llm,
         )
 
         reconsolidation = ReconsolidationService(
             memory_store=episodic_store,
-            llm_client=llm_client,
-            fact_extractor=LLMFactExtractor(llm_client),
+            llm_client=runtime_llm,
+            fact_extractor=LLMFactExtractor(runtime_llm),
             redis_client=None,
         )
 
         consolidation = ConsolidationWorker(
             episodic_store=episodic_store,
             neocortical_store=neocortical,
-            llm_client=llm_client,
+            llm_client=runtime_llm,
+            summarizer_backend=fallback_summarizer,
         )
 
         forgetting = ForgettingWorker(
             store=episodic_store,
-            compression_llm_client=llm_client,
+            compression_llm_client=runtime_llm,
+            compression_summarizer=fallback_summarizer,
         )
 
         scratch_pad = ScratchPad(store=episodic_store)
@@ -401,7 +443,10 @@ class MemoryOrchestrator:
         """Deactivate previous episodic constraints by fact key (supersession)."""
         if not wpc.constraint_extraction or not chunks:
             return
-        if not hasattr(self.hippocampal, "deactivate_constraints_by_key"):
+        deactivate_constraints_by_key = getattr(
+            self.hippocampal, "deactivate_constraints_by_key", None
+        )
+        if deactivate_constraints_by_key is None:
             return
         from ..extraction.constraint_extractor import ConstraintExtractor, ConstraintObject
         from ..memory.neocortical.schemas import FactCategory
@@ -421,7 +466,9 @@ class MemoryOrchestrator:
                     fact_keys.add(ConstraintExtractor.constraint_fact_key(c))
                     new_constraints.append(c)
         for fk in fact_keys:
-            await self.hippocampal.deactivate_constraints_by_key(tenant_id, fk)
+            maybe_await = deactivate_constraints_by_key(tenant_id, fk)
+            if inspect.isawaitable(maybe_await):
+                await maybe_await
         # Check existing facts by category: constraints of the same type can supersede
         # each other (e.g. two goals); we fetch current facts per category to compare.
         cat_map = {
@@ -458,11 +505,13 @@ class MemoryOrchestrator:
                         await self.neocortical.facts.invalidate_fact(
                             tenant_id, old.key, reason="superseded"
                         )
-                        await self.hippocampal.deactivate_constraints_by_key(
+                        maybe_await = deactivate_constraints_by_key(
                             tenant_id,
                             old.key,
                             superseded_by_key=new_fact_key,
                         )
+                        if inspect.isawaitable(maybe_await):
+                            await maybe_await
             except Exception as e:
                 logger.warning(
                     "supersession_check_failed",

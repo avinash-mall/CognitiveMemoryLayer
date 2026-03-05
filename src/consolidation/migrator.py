@@ -72,10 +72,10 @@ class ConsolidationMigrator:
                 gist = alignment.gist
 
                 if alignment.can_integrate_rapidly and alignment.integration_key:
-                    await self._update_existing_fact(tenant_id, alignment)
+                    fact_key = await self._update_existing_fact(tenant_id, alignment)
                     result.facts_updated += 1
                 else:
-                    await self._create_new_fact(tenant_id, alignment)
+                    fact_key = await self._create_new_fact(tenant_id, alignment)
                     result.facts_created += 1
 
                 result.gists_processed += 1
@@ -84,6 +84,7 @@ class ConsolidationMigrator:
                     marked = await self._mark_episodes_consolidated(
                         gist.supporting_episode_ids,
                         compress_episodes,
+                        fact_key=fact_key,
                     )
                     result.episodes_marked += marked
 
@@ -102,21 +103,25 @@ class ConsolidationMigrator:
         self,
         tenant_id: str,
         alignment: AlignmentResult,
-    ):
+    ) -> str:
+        """Update an existing semantic fact and return its key."""
         gist = alignment.gist
+        key = alignment.integration_key or gist.key or "user:custom:unknown"
         await self.semantic.store_fact(
             tenant_id=tenant_id,
-            key=alignment.integration_key or gist.key or "user:custom:unknown",
+            key=key,
             value=gist.value if gist.value is not None else gist.text,
             confidence=gist.confidence,
             evidence_ids=gist.supporting_episode_ids,
         )
+        return key
 
     async def _create_new_fact(
         self,
         tenant_id: str,
         alignment: AlignmentResult,
-    ):
+    ) -> str:
+        """Create a new semantic fact and return its key."""
         gist = alignment.gist
         schema = alignment.suggested_schema or {}
         key = schema.get("key") or gist.key or _stable_fact_key("user:custom", gist.text)
@@ -127,11 +132,13 @@ class ConsolidationMigrator:
             confidence=gist.confidence,
             evidence_ids=gist.supporting_episode_ids,
         )
+        return key
 
     async def _mark_episodes_consolidated(
         self,
         episode_ids: list[str],
         compress: bool = False,
+        fact_key: str | None = None,
     ) -> int:
         marked = 0
         now_iso = datetime.now(UTC).isoformat()
@@ -147,6 +154,8 @@ class ConsolidationMigrator:
                     "consolidated": True,
                     "consolidated_at": now_iso,
                 }
+                if fact_key:
+                    merged_metadata["consolidated_into_fact_key"] = fact_key
                 patch: dict = {"metadata": merged_metadata}
                 if compress:
                     patch["status"] = MemoryStatus.COMPRESSED.value

@@ -9,7 +9,7 @@ from typing import Any
 
 from ..memory.working.models import SemanticChunk
 from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
-from ..utils.ner import extract_entities
+from ..utils.ner import extract_entities, normalize_scope_values
 
 
 @dataclass
@@ -146,6 +146,10 @@ class ConstraintExtractor:
             return False
         if old.status != "active":
             return False
+        old_scope = set(normalize_scope_values(list(old.scope or [])))
+        new_scope = set(normalize_scope_values(list(new.scope or [])))
+        if old_scope and new_scope and old_scope.isdisjoint(new_scope):
+            return False
 
         modelpack = get_modelpack_runtime()
         if modelpack.available:
@@ -177,7 +181,8 @@ class ConstraintExtractor:
 
         Format: ``user:{type}:{scope_hash}``
         """
-        scope_str = ",".join(sorted(constraint.scope)) if constraint.scope else "general"
+        canonical_scope = normalize_scope_values(list(constraint.scope or []))
+        scope_str = ",".join(sorted(canonical_scope)) if canonical_scope else "general"
         scope_hash = hashlib.sha256(scope_str.encode()).hexdigest()[:12]
         return f"user:{constraint.constraint_type}:{scope_hash}"
 
@@ -202,7 +207,7 @@ class ConstraintExtractor:
 
         if chunk_entities:
             out.extend([str(e).strip() for e in chunk_entities if str(e).strip()])
-        return list(dict.fromkeys(out))[:8]
+        return normalize_scope_values(out)[:8]
 
     @staticmethod
     def _extract_subject(chunk: SemanticChunk) -> str:

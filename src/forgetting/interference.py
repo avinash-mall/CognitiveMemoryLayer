@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from ..core.schemas import MemoryRecord
+from ..utils.modelpack import get_modelpack_runtime
 
 
 @dataclass
@@ -43,6 +44,7 @@ class InterferenceDetector:
         self.embeddings = embedding_client
         self.similarity_threshold = similarity_threshold
         self.conflict_threshold = conflict_threshold
+        self.modelpack = get_modelpack_runtime()
 
     def detect_duplicates(
         self,
@@ -56,7 +58,20 @@ class InterferenceDetector:
 
         for i, id1 in enumerate(ids):
             for id2 in ids[i + 1 :]:
-                sim = _cosine_similarity(vecs[id1], vecs[id2])
+                sim: float | None = None
+                try:
+                    if getattr(self.modelpack, "has_task_model", lambda _: False)("novelty_pair"):
+                        r1_txt = next(r for r in records if str(r.id) == id1).text
+                        r2_txt = next(r for r in records if str(r.id) == id2).text
+                        score_pred = self.modelpack.predict_score_pair(
+                            "novelty_pair", r1_txt, r2_txt,
+                        )
+                        if score_pred is not None:
+                            sim = score_pred.score
+                except Exception:
+                    pass
+                if sim is None:
+                    sim = _cosine_similarity(vecs[id1], vecs[id2])
                 if sim >= self.similarity_threshold:
                     r1 = next(r for r in records if str(r.id) == id1)
                     r2 = next(r for r in records if str(r.id) == id2)
@@ -83,7 +98,18 @@ class InterferenceDetector:
         results: list[InterferenceResult] = []
         for i, r1 in enumerate(records):
             for r2 in records[i + 1 :]:
-                overlap = self._text_overlap(r1.text, r2.text)
+                overlap: float | None = None
+                try:
+                    if getattr(self.modelpack, "has_task_model", lambda _: False)("novelty_pair"):
+                        score_pred = self.modelpack.predict_score_pair(
+                            "novelty_pair", r1.text, r2.text,
+                        )
+                        if score_pred is not None:
+                            overlap = score_pred.score
+                except Exception:
+                    pass
+                if overlap is None:
+                    overlap = self._text_overlap(r1.text, r2.text)
                 if overlap >= text_overlap_threshold:
                     rec = self._recommend_resolution(r1, r2)
                     keep_id = self._resolve_keep_id(r1, r2, rec)

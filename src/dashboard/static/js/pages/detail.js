@@ -142,8 +142,26 @@ function buildDetail(mem) {
             </div>
         </div>
 
-        <!-- Provenance -->
-        <h3 class="section-title">Provenance</h3>
+        <!-- Provenance & Lineage -->
+        <h3 class="section-title">Provenance & Lineage</h3>
+        ${mem.supersedes_id || mem.version > 1 ? `
+        <div class="card lineage-card" style="margin-bottom:16px;border-left:3px solid var(--purple);">
+            <div class="card-title">Version Lineage</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                ${mem.supersedes_id ? `
+                <div class="lineage-chain">
+                    <a href="#detail/${mem.supersedes_id}" class="lineage-node lineage-node-prev" title="Previous version">
+                        <span class="lineage-label">Previous</span>
+                        <span class="mono" style="font-size:0.78rem">${mem.supersedes_id.substring(0, 12)}...</span>
+                    </a>
+                    <span class="lineage-arrow">&#8594;</span>
+                </div>` : ''}
+                <div class="lineage-node lineage-node-current">
+                    <span class="lineage-label">Current (v${mem.version})</span>
+                    <span class="mono" style="font-size:0.78rem">${mem.id.substring(0, 12)}...</span>
+                </div>
+            </div>
+        </div>` : ''}
         <div class="detail-grid">
             <div class="card">
                 <div class="detail-field">

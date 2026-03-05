@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
-from cml import CognitiveMemoryLayer, NamespacedClient
+from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer, NamespacedClient
 from cml.config import CMLConfig
 from cml.integrations import CMLOpenAIHelper
 from cml.models import MemoryItem, ReadResponse, TurnResponse, WriteResponse
@@ -105,6 +105,31 @@ def test_reconsolidate_calls_dashboard_reconsolidate(cml_config: CMLConfig) -> N
     assert call[1]["use_admin_key"] is True
 
 
+def test_admin_consolidate_calls_admin_route(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"status": "consolidation_completed", "user_id": "u1"}
+    )
+    out = client.admin_consolidate("u1")
+    assert out["status"] == "consolidation_completed"
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/admin/consolidate/u1")
+    assert call[1]["use_admin_key"] is True
+
+
+def test_admin_forget_calls_admin_route(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"status": "forgetting_completed", "user_id": "u1", "dry_run": False}
+    )
+    out = client.admin_forget("u1", dry_run=False)
+    assert out["status"] == "forgetting_completed"
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/admin/forget/u1")
+    assert call[1]["params"]["dry_run"] is False
+    assert call[1]["use_admin_key"] is True
+
+
 # ---- Batch operations ----
 
 
@@ -192,6 +217,63 @@ def test_list_tenants_calls_dashboard_tenants(cml_config: CMLConfig) -> None:
     assert call[1]["use_admin_key"] is True
 
 
+def test_dashboard_facts_calls_endpoint(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "items": [
+                {
+                    "id": str(uuid4()),
+                    "tenant_id": "t1",
+                    "category": "identity",
+                    "key": "user:name",
+                    "value": "Alice",
+                    "confidence": 0.9,
+                    "evidence_count": 3,
+                    "is_current": True,
+                    "version": 1,
+                }
+            ],
+            "total": 1,
+        }
+    )
+    out = client.dashboard_facts(tenant_id="t1", category="identity", limit=10, offset=5)
+    assert out.total == 1
+    call = client._transport.request.call_args
+    assert call[0] == ("GET", "/dashboard/facts")
+    assert call[1]["params"]["tenant_id"] == "t1"
+    assert call[1]["params"]["category"] == "identity"
+    assert call[1]["params"]["limit"] == 10
+    assert call[1]["params"]["offset"] == 5
+    assert call[1]["use_admin_key"] is True
+
+
+def test_dashboard_invalidate_fact_calls_endpoint(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"success": True, "message": "ok"}
+    )
+    out = client.dashboard_invalidate_fact("fact-123")
+    assert out["success"] is True
+    call = client._transport.request.call_args
+    assert call[0] == ("POST", "/dashboard/facts/fact-123/invalidate")
+    assert call[1]["use_admin_key"] is True
+
+
+def test_dashboard_export_memories_calls_endpoint(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value=[{"id": "m1", "text": "hello"}]
+    )
+    out = client.dashboard_export_memories(tenant_id="t1")
+    assert len(out) == 1
+    assert out[0]["id"] == "m1"
+    call = client._transport.request.call_args
+    assert call[0] == ("GET", "/dashboard/export/memories")
+    assert call[1]["params"]["tenant_id"] == "t1"
+    assert call[1]["use_admin_key"] is True
+
+
 # ---- Event log ----
 
 
@@ -251,6 +333,20 @@ def test_component_health_calls_dashboard_components(cml_config: CMLConfig) -> N
     assert call[1]["use_admin_key"] is True
 
 
+def test_graph_overview_calls_endpoint(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"nodes": [], "edges": [], "center_entity": None}
+    )
+    out = client.graph_overview(tenant_id="t-graph", scope_id="scope-1")
+    assert out.center_entity is None
+    call = client._transport.request.call_args
+    assert call[0] == ("GET", "/dashboard/graph/overview")
+    assert call[1]["params"]["tenant_id"] == "t-graph"
+    assert call[1]["params"]["scope_id"] == "scope-1"
+    assert call[1]["use_admin_key"] is True
+
+
 # ---- Namespace isolation ----
 
 
@@ -287,9 +383,30 @@ def test_namespaced_client_read_delegates(cml_config: CMLConfig) -> None:
         return_value={"query": "q", "memories": [], "total_count": 0, "elapsed_ms": 1.0}
     )
     ns = client.with_namespace("ns1")
-    ns.read("query")
+    ns.read("query", user_timezone="America/New_York")
     client._transport.request.assert_called_once()
     assert client._transport.request.call_args[0] == ("POST", "/memory/read")
+    assert client._transport.request.call_args[1]["json"]["user_timezone"] == "America/New_York"
+
+
+def test_namespaced_client_turn_forwards_timestamp_and_timezone(cml_config: CMLConfig) -> None:
+    client = CognitiveMemoryLayer(config=cml_config)
+    client.turn = MagicMock(  # type: ignore[method-assign]
+        return_value=TurnResponse(
+            memory_context="",
+            memories_retrieved=0,
+            memories_stored=0,
+            reconsolidation_applied=False,
+        )
+    )
+    ns = client.with_namespace("ns1")
+    ts = datetime(2025, 2, 1, 9, 0, 0)
+    ns.turn("hello", timestamp=ts, user_timezone="Asia/Tokyo")
+    client.turn.assert_called_once()
+    call_args, call_kw = client.turn.call_args
+    assert call_args[0] == "hello"
+    assert call_kw["timestamp"] == ts
+    assert call_kw["user_timezone"] == "Asia/Tokyo"
 
 
 # ---- Memory iteration ----
@@ -371,6 +488,22 @@ def test_session_scope_turn_injects_session_id(cml_config: CMLConfig) -> None:
     assert call_kw["assistant_response"] == "Assistant replied"
 
 
+def test_session_scope_write_uses_session_scoped_write_endpoint(cml_config: CMLConfig) -> None:
+    """SessionScope.write() uses /session/{id}/write."""
+    from cml.client import SessionScope
+
+    parent = CognitiveMemoryLayer(config=cml_config)
+    parent._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"success": True, "memory_id": str(uuid4()), "chunks_created": 1, "message": ""}
+    )
+    scope = SessionScope(parent, "sess-456")
+    scope.write("hello")
+
+    call = parent._transport.request.call_args
+    assert call[0] == ("POST", "/session/sess-456/write")
+    assert call[1]["json"]["content"] == "hello"
+
+
 def test_session_scope_read_uses_session_scoped_endpoint(cml_config: CMLConfig) -> None:
     """SessionScope.read() uses /session/{id}/read (not tenant-wide /memory/read)."""
     from cml.client import SessionScope
@@ -430,3 +563,54 @@ def test_openai_helper_chat_flow(cml_config: CMLConfig) -> None:
     assert "Relevant Memories" in messages[0]["content"]
     assert messages[-1]["role"] == "user"
     assert messages[-1]["content"] == "What should I eat?"
+
+
+@pytest.mark.asyncio
+async def test_async_dashboard_facts_calls_endpoint(cml_config: CMLConfig) -> None:
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={"items": [], "total": 0}
+    )
+    out = await client.dashboard_facts(tenant_id="t1")
+    assert out.total == 0
+    call = client._transport.request.call_args
+    assert call[0] == ("GET", "/dashboard/facts")
+    assert call[1]["params"]["tenant_id"] == "t1"
+    assert call[1]["use_admin_key"] is True
+
+
+@pytest.mark.asyncio
+async def test_async_graph_overview_calls_endpoint(cml_config: CMLConfig) -> None:
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
+    client._transport.request = AsyncMock(  # type: ignore[method-assign]
+        return_value={"nodes": [], "edges": [], "center_entity": None}
+    )
+    out = await client.graph_overview()
+    assert out.center_entity is None
+    call = client._transport.request.call_args
+    assert call[0] == ("GET", "/dashboard/graph/overview")
+    assert call[1]["params"]["tenant_id"] == cml_config.tenant_id
+    assert call[1]["use_admin_key"] is True
+
+
+@pytest.mark.asyncio
+async def test_async_namespaced_turn_forwards_timestamp_and_timezone(
+    cml_config: CMLConfig,
+) -> None:
+    client = AsyncCognitiveMemoryLayer(config=cml_config)
+    client.turn = AsyncMock(  # type: ignore[method-assign]
+        return_value=TurnResponse(
+            memory_context="",
+            memories_retrieved=0,
+            memories_stored=0,
+            reconsolidation_applied=False,
+        )
+    )
+    ns = client.with_namespace("ns1")
+    ts = datetime(2025, 3, 1, 11, 0, 0)
+    await ns.turn("hello", timestamp=ts, user_timezone="America/Chicago")
+    client.turn.assert_awaited_once()
+    call_args, call_kw = client.turn.call_args
+    assert call_args[0] == "hello"
+    assert call_kw["timestamp"] == ts
+    assert call_kw["user_timezone"] == "America/Chicago"

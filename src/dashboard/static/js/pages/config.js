@@ -25,7 +25,7 @@ export async function renderConfig() {
 
 function buildConfig(data) {
     return `
-        <p style="color:var(--text-secondary);margin-bottom:20px;">
+        <p class="page-desc">
             Effective application configuration. Secret values are masked. Editable settings are persisted to <code>.env</code>.
             Restart the server for most changes to take effect.
         </p>

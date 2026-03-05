@@ -403,6 +403,13 @@ class TestConstraintFactKey:
         expected_hash = hashlib.sha256(b"general").hexdigest()[:12]
         assert key == f"user:policy:{expected_hash}"
 
+    def test_alias_scopes_hash_to_same_key(self):
+        co1 = ConstraintObject("goal", "user", "Move to NYC", scope=["NYC"])
+        co2 = ConstraintObject("goal", "user", "Move to New York City", scope=["new york city"])
+        assert ConstraintExtractor.constraint_fact_key(co1) == ConstraintExtractor.constraint_fact_key(
+            co2
+        )
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Phase 2c: Write gate maps CONSTRAINT chunk type

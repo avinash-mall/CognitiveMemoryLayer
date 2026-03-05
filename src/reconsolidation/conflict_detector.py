@@ -134,6 +134,8 @@ class ConflictDetector:
         mapping = {
             "none": ConflictType.NONE,
             "no_conflict": ConflictType.NONE,
+            "conflict": ConflictType.DIRECT_CONTRADICTION,
+            "generic_conflict": ConflictType.DIRECT_CONTRADICTION,
             "temporal_change": ConflictType.TEMPORAL_CHANGE,
             "change": ConflictType.TEMPORAL_CHANGE,
             "contradiction": ConflictType.DIRECT_CONTRADICTION,

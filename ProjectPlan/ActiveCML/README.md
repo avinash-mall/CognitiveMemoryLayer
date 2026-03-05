@@ -16,4 +16,4 @@ Intrinsic roadmap phases (planned):
 For current implemented server behavior, use:
 
 - [../UsageDocumentation.md](../UsageDocumentation.md)
-- [../BaseCML/PENDING_ISSUES.md](../BaseCML/PENDING_ISSUES.md)
+- [../../packages/models/README.md](../../packages/models/README.md) (custom model pipeline, task-level models, rollout plan)

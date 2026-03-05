@@ -64,6 +64,21 @@ RETURN sn, r, en
 
 function buildNeovisConfig(neo4jConfig, pageEl) {
     const vizContainerId = 'graph-viz';
+    const defaultRelConfig = {
+        label: 'predicate',
+        [NeoVis.NEOVIS_ADVANCED_CONFIG]: {
+            function: {
+                title: (edge) => {
+                    const props = edge.properties || {};
+                    const pred = props.predicate || edge.type || 'RELATED';
+                    const conf = props.confidence != null ? ` (${Number(props.confidence).toFixed(2)})` : '';
+                    const div = document.createElement('div');
+                    div.innerHTML = `<div style="padding:6px;max-width:200px"><strong>${escapeHtml(String(pred))}</strong>${conf}</div>`;
+                    return div;
+                },
+            },
+        },
+    };
     return {
         containerId: vizContainerId,
         neo4j: {
@@ -91,6 +106,11 @@ function buildNeovisConfig(neo4jConfig, pageEl) {
                 },
             },
         },
+        relationships: {
+            [NeoVis.NEOVIS_DEFAULT_CONFIG]: defaultRelConfig,
+            RELATES_TO: defaultRelConfig,
+            RELATED_TO: defaultRelConfig,
+        },
         visConfig: {
             groups: Object.fromEntries(
                 Object.entries(TYPE_COLORS).map(([k, v]) => [k, { color: { background: v, border: v } }])
@@ -106,6 +126,8 @@ function buildNeovisConfig(neo4jConfig, pageEl) {
                 },
                 borderWidth: 2,
                 shadow: true,
+                shape: 'dot',
+                size: 18,
             },
             edges: {
                 font: {
@@ -117,15 +139,18 @@ function buildNeovisConfig(neo4jConfig, pageEl) {
                 },
                 color: { color: 'rgba(108, 140, 255, 0.7)', highlight: '#6c8cff' },
                 smooth: { type: 'cubicBezier', roundness: 0.5 },
-                arrows: { to: { enabled: true } },
+                arrows: { to: { enabled: true, scaleFactor: 0.8 } },
+                width: 1.5,
             },
             physics: {
                 solver: 'forceAtlas2Based',
                 forceAtlas2Based: {
-                    springLength: 120,
-                    springConstant: 0.05,
+                    springLength: 140,
+                    springConstant: 0.04,
+                    gravitationalConstant: -60,
+                    damping: 0.4,
                 },
-                stabilization: { iterations: 200 },
+                stabilization: { iterations: 250, fit: true },
             },
         },
     };
@@ -211,9 +236,12 @@ export async function renderGraph({ tenantId } = {}) {
 
         const vizDiv = document.createElement('div');
         vizDiv.id = 'graph-viz';
-        vizDiv.style.cssText = 'width:100%;height:500px;min-height:400px;';
+        vizDiv.style.cssText = 'width:100%;height:100%;min-height:400px;';
         graphContainer.innerHTML = '';
         graphContainer.appendChild(vizDiv);
+
+        // Ensure DOM is flushed before NeoVis reads containerId
+        await new Promise(r => requestAnimationFrame(r));
 
         const config = buildNeovisConfig(neo4jConfig, el);
         neoViz = new NeoVis(config);
@@ -260,6 +288,7 @@ function buildPage(stats, tenantId) {
         : 'No graph data yet. Select a tenant and add memories to build the knowledge graph.';
 
     return `
+        <p class="page-desc">Interactive knowledge graph powered by Neo4j. Select a tenant and search for entities to explore semantic relationships between memory concepts.</p>
         <div class="kpi-grid">
             <div class="kpi-card"><div class="kpi-label">Total Nodes</div><div class="kpi-value">${formatNumber(stats.total_nodes)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Total Edges</div><div class="kpi-value">${formatNumber(stats.total_edges)}</div></div>

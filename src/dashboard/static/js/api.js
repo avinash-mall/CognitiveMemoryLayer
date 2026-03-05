@@ -24,6 +24,7 @@ export function clearApiKey() {
 function headers() {
     const h = {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
     };
     const key = getApiKey();
     if (key) {
@@ -252,4 +253,18 @@ export function getJobs(tenantId, jobType, limit = 50) {
 export function exportMemories(tenantId) {
     const params = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '';
     window.open(`${API_BASE}/export/memories${params}`, '_blank');
+}
+
+export function getFacts({ tenantId, category, currentOnly = true, limit = 50, offset = 0 } = {}) {
+    return request('GET', '/facts', {
+        params: { tenant_id: tenantId, category, current_only: currentOnly, limit, offset },
+    });
+}
+
+export function invalidateFact(factId) {
+    return request('POST', `/facts/${factId}/invalidate`);
+}
+
+export function getModelsStatus() {
+    return request('GET', '/models/status');
 }

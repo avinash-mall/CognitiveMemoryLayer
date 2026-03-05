@@ -42,6 +42,7 @@ function buildSessions(data) {
     const dbOnlySessions = data.sessions.filter(s => s.ttl_seconds <= 0 && s.memory_count > 0);
 
     return `
+        <p class="page-desc">Active and historical sessions tracked via Redis TTL and database records. Click a session ID to view its associated memories.</p>
         <div class="kpi-grid">
             <div class="kpi-card"><div class="kpi-label">Active Sessions</div><div class="kpi-value">${formatNumber(data.total_active)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Total Sessions</div><div class="kpi-value">${formatNumber(data.sessions.length)}</div></div>
@@ -98,9 +99,6 @@ function attachListeners(el) {
     el.querySelectorAll('.session-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            // Navigate to memories page filtered by source_session_id
-            window.location.hash = `#memories`;
-            // Store the session ID for the memories page to pick up
             sessionStorage.setItem('cml_filter_session_id', link.dataset.sid);
             navigateTo('memories');
         });

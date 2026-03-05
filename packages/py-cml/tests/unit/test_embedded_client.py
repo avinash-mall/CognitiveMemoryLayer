@@ -1,6 +1,7 @@
 """Unit tests for embedded CML client (config and mocked orchestrator)."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -92,9 +93,104 @@ async def test_embedded_read_passes_filters_and_user_timezone() -> None:
     assert call_kw["user_timezone"] == "America/New_York"
 
 
+def test_packet_to_read_response_includes_constraints_and_procedures() -> None:
+    """Embedded packet mapping includes constraints/procedures in memories and constraints field."""
+    from cml.embedded import _packet_to_read_response
+
+    now = datetime.now(UTC)
+
+    def _retrieved(text: str, mem_type: str) -> SimpleNamespace:
+        record = SimpleNamespace(
+            id=uuid4(),
+            text=text,
+            type=SimpleNamespace(value=mem_type),
+            confidence=0.9,
+            timestamp=now,
+            metadata={},
+        )
+        return SimpleNamespace(record=record, relevance_score=0.8)
+
+    fact = _retrieved("Fact memory", "semantic_fact")
+    preference = _retrieved("Preference memory", "preference")
+    episode = _retrieved("Episode memory", "episodic_event")
+    procedure = _retrieved("Procedure memory", "procedure")
+    constraint = _retrieved("Constraint memory", "constraint")
+    packet = SimpleNamespace(
+        facts=[fact],
+        preferences=[preference],
+        recent_episodes=[episode],
+        procedures=[procedure],
+        constraints=[constraint],
+        all_memories=[fact, preference, episode, procedure, constraint],
+    )
+
+    result = _packet_to_read_response("q", packet, elapsed_ms=2.0)
+    texts = [m.text for m in result.memories]
+    assert "Procedure memory" in texts
+    assert "Constraint memory" in texts
+    assert len(result.constraints) == 1
+    assert result.constraints[0].text == "Constraint memory"
+
+
 @pytest.mark.asyncio
 async def test_embedded_ensure_initialized_raises() -> None:
     """write() raises if not initialized."""
     client = EmbeddedCognitiveMemoryLayer()
     with pytest.raises(RuntimeError, match="not initialized"):
         await client.write("x")
+
+
+@pytest.mark.asyncio
+async def test_embedded_initialize_skips_llm_client_when_master_llm_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """initialize() should pass llm_client=None into create_lite when master LLM flag is off."""
+    config = EmbeddedConfig(tenant_id="test-tenant")
+    client = EmbeddedCognitiveMemoryLayer(config=config)
+
+    fake_store = MagicMock()
+    fake_store.initialize = AsyncMock(return_value=None)
+    fake_store.close = AsyncMock(return_value=None)
+    fake_orchestrator = MagicMock()
+    mock_create_lite = AsyncMock(return_value=fake_orchestrator)
+
+    class _Features:
+        use_llm_enabled = False
+
+    class _LLMInternal:
+        base_url = None
+        model = ""
+        provider = "openai"
+
+    class _Settings:
+        features = _Features()
+        llm_internal = _LLMInternal()
+
+    monkeypatch.setattr("cml.embedded._check_embedded_deps", lambda: None)
+    monkeypatch.setattr(
+        "cml.storage.sqlite_store.SQLiteMemoryStore",
+        lambda db_path: fake_store,
+    )
+    monkeypatch.setattr(
+        "src.utils.embeddings.get_embedding_client",
+        lambda: MagicMock(),
+    )
+    monkeypatch.setattr(
+        "src.memory.orchestrator.MemoryOrchestrator.create_lite",
+        mock_create_lite,
+    )
+    monkeypatch.setattr(
+        "src.core.config.get_settings",
+        lambda: _Settings(),
+    )
+    monkeypatch.setattr(
+        "src.utils.llm.OpenAICompatibleClient",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("OpenAICompatibleClient must not be constructed in non-LLM mode")
+        ),
+    )
+
+    await client.initialize()
+    mock_create_lite.assert_awaited_once()
+    assert mock_create_lite.await_args.args[2] is None
+    await client.close()

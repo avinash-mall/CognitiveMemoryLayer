@@ -7,6 +7,16 @@ from src.retrieval.query_types import QueryIntent
 from src.utils.llm import LLMClient
 
 
+class _NoModelPack:
+    available = False
+
+    @staticmethod
+    def predict_single(task: str, text: str):
+        _ = task
+        _ = text
+        return None
+
+
 @pytest.mark.asyncio
 async def test_llm_classify_returns_constraint_dimensions_and_suggested_top_k(monkeypatch):
     """When LLM returns constraint_dimensions and suggested_top_k, QueryAnalysis contains them."""
@@ -28,14 +38,10 @@ async def test_llm_classify_returns_constraint_dimensions_and_suggested_top_k(mo
         lambda: type(
             "S",
             (),
-            {
-                "features": type(
-                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
-                )()
-            },
+            {"features": type("F", (), {"use_llm_enabled": True})()},
         )(),
     )
-    classifier = QueryClassifier(llm_client=mock_llm)
+    classifier = QueryClassifier(llm_client=mock_llm, modelpack=_NoModelPack())
     result = await classifier.classify("Should I eat the seafood?")
     mock_llm.complete_json.assert_called()
     assert result.constraint_dimensions == ["dietary", "goal"]
@@ -63,14 +69,10 @@ async def test_llm_classify_valid_suggested_top_k_used(monkeypatch):
         lambda: type(
             "S",
             (),
-            {
-                "features": type(
-                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
-                )()
-            },
+            {"features": type("F", (), {"use_llm_enabled": True})()},
         )(),
     )
-    classifier = QueryClassifier(llm_client=mock_llm)
+    classifier = QueryClassifier(llm_client=mock_llm, modelpack=_NoModelPack())
     result = await classifier.classify("What do I like?")
     assert result.intent == QueryIntent.PREFERENCE_LOOKUP
     assert result.suggested_top_k == 5
@@ -96,14 +98,10 @@ async def test_llm_classify_suggested_top_k_out_of_range_falls_back(monkeypatch)
         lambda: type(
             "S",
             (),
-            {
-                "features": type(
-                    "F", (), {"use_llm_enabled": True, "use_llm_query_classifier_only": True}
-                )()
-            },
+            {"features": type("F", (), {"use_llm_enabled": True})()},
         )(),
     )
-    classifier = QueryClassifier(llm_client=mock_llm)
+    classifier = QueryClassifier(llm_client=mock_llm, modelpack=_NoModelPack())
     result = await classifier.classify("What did we discuss?")
     assert result.intent == QueryIntent.EPISODIC_RECALL
     assert result.suggested_top_k == 10

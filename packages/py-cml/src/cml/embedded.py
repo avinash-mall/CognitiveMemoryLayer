@@ -87,10 +87,12 @@ def _retrieved_to_memory_item(rec: Any) -> MemoryItem:
 
 def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -> ReadResponse:
     """Map engine MemoryPacket to ReadResponse."""
-    facts = [_retrieved_to_memory_item(m) for m in packet.facts]
-    preferences = [_retrieved_to_memory_item(m) for m in packet.preferences]
-    episodes = [_retrieved_to_memory_item(m) for m in packet.recent_episodes]
-    all_items = facts + preferences + episodes
+    facts = [_retrieved_to_memory_item(m) for m in getattr(packet, "facts", [])]
+    preferences = [_retrieved_to_memory_item(m) for m in getattr(packet, "preferences", [])]
+    episodes = [_retrieved_to_memory_item(m) for m in getattr(packet, "recent_episodes", [])]
+    procedures = [_retrieved_to_memory_item(m) for m in getattr(packet, "procedures", [])]
+    constraints = [_retrieved_to_memory_item(m) for m in getattr(packet, "constraints", [])]
+    all_items = facts + preferences + episodes + procedures + constraints
     try:
         from src.retrieval.packet_builder import (
             MemoryPacketBuilder,
@@ -110,8 +112,9 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
         facts=facts,
         preferences=preferences,
         episodes=episodes,
+        constraints=constraints,
         llm_context=llm_context,
-        total_count=len(packet.all_memories),
+        total_count=len(getattr(packet, "all_memories", all_items)),
         elapsed_ms=elapsed_ms,
     )
 
@@ -178,31 +181,38 @@ class EmbeddedCognitiveMemoryLayer:
         await self._sqlite_store.initialize()
 
         from src.utils.embeddings import get_embedding_client
-        from src.utils.llm import OpenAICompatibleClient
 
         # Use embedding client from engine config (.env: EMBEDDING_INTERNAL__*)
         # so tests and embedded mode use .env, not a hardcoded HuggingFace model.
         embedding_client = get_embedding_client()
 
-        # When running in repo, use project LLM settings from env (LLM_INTERNAL__*) so tests use local Ollama etc.
+        llm_client: Any | None = None
+        # Respect master LLM switch: in non-LLM mode, do not construct an LLM client.
+        llm_enabled = False
         try:
             from src.core.config import get_settings
 
             s = get_settings()
-            li = s.llm_internal
-            if li.base_url:
-                self._config.llm.base_url = li.base_url
-            if li.model:
-                self._config.llm.model = li.model
-            if li.provider:
-                self._config.llm.provider = cast("Any", li.provider)
+            llm_enabled = bool(getattr(s.features, "use_llm_enabled", False))
+            if llm_enabled:
+                li = s.llm_internal
+                if li.base_url:
+                    self._config.llm.base_url = li.base_url
+                if li.model:
+                    self._config.llm.model = li.model
+                if li.provider:
+                    self._config.llm.provider = cast("Any", li.provider)
         except Exception:
-            pass
-        llm_client = OpenAICompatibleClient(
-            model=self._config.llm.model,
-            base_url=self._config.llm.base_url,
-            api_key=self._config.llm.api_key or "dummy",
-        )
+            llm_enabled = False
+
+        if llm_enabled:
+            from src.utils.llm import OpenAICompatibleClient
+
+            llm_client = OpenAICompatibleClient(
+                model=self._config.llm.model,
+                base_url=self._config.llm.base_url,
+                api_key=self._config.llm.api_key or "dummy",
+            )
 
         from src.memory.orchestrator import MemoryOrchestrator
 

@@ -14,6 +14,7 @@ import { renderTenants } from './pages/tenants.js';
 import { renderSessions } from './pages/sessions.js';
 import { renderApiUsage } from './pages/apiusage.js';
 import { renderGraph } from './pages/graph.js';
+import { renderFacts } from './pages/facts.js';
 import { renderConfig } from './pages/config.js';
 import { renderRetrieval } from './pages/retrieval.js';
 
@@ -44,6 +45,7 @@ const pages = {
     components: { title: 'Components', render: renderComponents },
     events: { title: 'Event Log', render: renderEvents },
     graph: { title: 'Knowledge Graph', render: renderGraph },
+    facts: { title: 'Facts Explorer', render: renderFacts },
     apiusage: { title: 'API Usage & Rate Limits', render: renderApiUsage },
     config: { title: 'Configuration', render: renderConfig },
     retrieval: { title: 'Retrieval Test', render: renderRetrieval },
