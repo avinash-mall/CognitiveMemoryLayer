@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("pandas")
+pytest.importorskip("sklearn")
+
 import cml.modeling.train as train_module
 from cml.modeling.types import TrainConfig
 
