@@ -43,17 +43,22 @@ def _import_eval_module(name: str):
     raise ValueError(f"Unknown eval module: {name}")
 
 
-def _default_repo_root() -> Path:
-    return find_repo_root(Path.cwd()) or Path.cwd()
+def _default_repo_root() -> Path | None:
+    return find_repo_root(Path.cwd())
 
 
-def _default_unified_file() -> Path:
+def _default_unified_file() -> Path | None:
     root = _default_repo_root()
+    if root is None:
+        return None
     return root / "evaluation" / "locomo_plus" / "data" / "unified_input_samples_v2.json"
 
 
-def _default_out_dir() -> Path:
-    return _default_repo_root() / "evaluation" / "outputs"
+def _default_out_dir() -> Path | None:
+    root = _default_repo_root()
+    if root is None:
+        return None
+    return root / "evaluation" / "outputs"
 
 
 def _add_run_full_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -98,8 +103,13 @@ def _add_validate_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _add_report_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("report", help="Generate LoCoMo / Locomo-Plus report")
+    default_out_dir = _default_out_dir()
     parser.add_argument(
-        "--summary", type=Path, default=_default_out_dir() / "locomo_plus_qa_cml_judge_summary.json"
+        "--summary",
+        type=Path,
+        default=default_out_dir / "locomo_plus_qa_cml_judge_summary.json"
+        if default_out_dir is not None
+        else None,
     )
     parser.add_argument("--method", type=str, default="CML")
     parser.add_argument("--no-title", action="store_true")
@@ -107,8 +117,13 @@ def _add_report_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _add_compare_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("compare", help="Compare scores with paper baselines")
+    default_out_dir = _default_out_dir()
     parser.add_argument(
-        "--summary", type=Path, default=_default_out_dir() / "locomo_plus_qa_cml_judge_summary.json"
+        "--summary",
+        type=Path,
+        default=default_out_dir / "locomo_plus_qa_cml_judge_summary.json"
+        if default_out_dir is not None
+        else None,
     )
     parser.add_argument("--method", type=str, default="CML+gpt-oss:20b")
 
@@ -124,11 +139,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _require_path(val: Path | None, flag_name: str) -> Path:
+    if val is None:
+        print(
+            f"Error: could not auto-detect repo root. "
+            f"Pass --{flag_name} explicitly or run from the repository.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return val
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "run-full":
+        args.repo_root = _require_path(args.repo_root, "repo-root")
         pipeline_main = _import_eval_module("pipeline")
         return pipeline_main(
             [
@@ -148,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "run-locomo":
+        args.unified_file = _require_path(args.unified_file, "unified-file")
+        args.out_dir = _require_path(args.out_dir, "out-dir")
         locomo_main = _import_eval_module("locomo")
         return locomo_main(
             [
@@ -178,10 +207,12 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "validate":
+        args.outputs_dir = _require_path(args.outputs_dir, "outputs-dir")
         validate_main = _import_eval_module("validate")
         return validate_main(["--outputs-dir", str(args.outputs_dir)])
 
     if args.command == "report":
+        args.summary = _require_path(args.summary, "summary")
         report_main = _import_eval_module("report")
         report_argv = ["--summary", str(args.summary), "--method", str(args.method)]
         if args.no_title:
@@ -189,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         return report_main(report_argv)
 
     if args.command == "compare":
+        args.summary = _require_path(args.summary, "summary")
         compare_main = _import_eval_module("compare")
         return compare_main(["--summary", str(args.summary), "--method", str(args.method)])
 

@@ -96,7 +96,6 @@ class SemanticFactStore:
             )
             if current_only:
                 q = q.where(SemanticFactModel.is_current.is_(True))
-                # Exclude expired facts: valid_to is null or in the future
                 now = datetime.now(UTC).replace(tzinfo=None)
                 q = q.where(
                     or_(
@@ -104,7 +103,10 @@ class SemanticFactStore:
                         SemanticFactModel.valid_to >= now,
                     )
                 )
-            q = q.limit(limit)
+            q = q.order_by(
+                SemanticFactModel.confidence.desc(),
+                SemanticFactModel.updated_at.desc(),
+            ).limit(limit)
             result = await session.execute(q)
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]
@@ -141,7 +143,10 @@ class SemanticFactStore:
                         SemanticFactModel.valid_to >= now,
                     )
                 )
-            q = q.limit(limit)
+            q = q.order_by(
+                SemanticFactModel.confidence.desc(),
+                SemanticFactModel.updated_at.desc(),
+            ).limit(limit)
             result = await session.execute(q)
             rows = result.scalars().all()
             return [self._model_to_fact(r) for r in rows]

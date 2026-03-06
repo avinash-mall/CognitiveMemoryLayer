@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
@@ -118,7 +119,13 @@ class ConstraintExtractor:
         text: str,
         chunk: SemanticChunk,
     ) -> tuple[str | None, float]:
-        if self._modelpack.available:
+        supports_task = getattr(self._modelpack, "supports_task", None)
+        can_constraint_type = (
+            bool(supports_task("constraint_type"))
+            if callable(supports_task)
+            else bool(getattr(self._modelpack, "available", False))
+        )
+        if can_constraint_type:
             pred = self._modelpack.predict_single("constraint_type", text)
             if pred and pred.label:
                 label = pred.label.strip().lower()
@@ -152,12 +159,26 @@ class ConstraintExtractor:
             return False
 
         modelpack = get_modelpack_runtime()
-        if modelpack.available:
+        supports_task = getattr(modelpack, "supports_task", None)
+        can_supersession = (
+            bool(supports_task("supersession"))
+            if callable(supports_task)
+            else bool(getattr(modelpack, "available", False))
+        )
+        if can_supersession:
             sup_pred = modelpack.predict_pair("supersession", old.description, new.description)
             if sup_pred and sup_pred.confidence >= 0.55:
                 return sup_pred.label == "supersedes"
 
-            scope_pred = modelpack.predict_pair("scope_match", old.description, new.description)
+            scope_pred = (
+                modelpack.predict_pair("scope_match", old.description, new.description)
+                if (
+                    bool(supports_task("scope_match"))
+                    if callable(supports_task)
+                    else bool(getattr(modelpack, "available", False))
+                )
+                else None
+            )
             if scope_pred and scope_pred.label == "no_match" and scope_pred.confidence >= 0.8:
                 return False
 
@@ -179,12 +200,17 @@ class ConstraintExtractor:
     def constraint_fact_key(constraint: ConstraintObject) -> str:
         """Generate a stable semantic-fact key for a constraint.
 
-        Format: ``user:{type}:{scope_hash}``
+        Format: ``user:{type}:{scope_hash}:{desc_hash}``
+
+        Includes a normalized description hash so distinct constraints of the
+        same type and scope coexist rather than colliding.
         """
         canonical_scope = normalize_scope_values(list(constraint.scope or []))
         scope_str = ",".join(sorted(canonical_scope)) if canonical_scope else "general"
         scope_hash = hashlib.sha256(scope_str.encode()).hexdigest()[:12]
-        return f"user:{constraint.constraint_type}:{scope_hash}"
+        desc_normalized = re.sub(r"\s+", " ", (constraint.description or "").strip().lower())
+        desc_hash = hashlib.sha256(desc_normalized.encode()).hexdigest()[:12]
+        return f"user:{constraint.constraint_type}:{scope_hash}:{desc_hash}"
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -193,7 +219,13 @@ class ConstraintExtractor:
     def _extract_scope(self, text: str, chunk_entities: list[str] | None = None) -> list[str]:
         out: list[str] = []
 
-        if self._modelpack.available:
+        supports_task = getattr(self._modelpack, "supports_task", None)
+        can_constraint_scope = (
+            bool(supports_task("constraint_scope"))
+            if callable(supports_task)
+            else bool(getattr(self._modelpack, "available", False))
+        )
+        if can_constraint_scope:
             pred = self._modelpack.predict_single("constraint_scope", text)
             if pred and pred.label:
                 label = pred.label.strip()

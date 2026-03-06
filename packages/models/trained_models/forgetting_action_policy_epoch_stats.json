@@ -1,0 +1,61 @@
+{
+  "task": "forgetting_action_policy",
+  "epoch_stats": [
+    {
+      "epoch": 1,
+      "train_loss": 0.002862519727252669,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.0027497241248038017,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.0026506982700402783,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.002563773432556338,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.0024874433574194354,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.0024203820653481245,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.0023614332379146346,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.0023095895530845997,
+      "train_accuracy": 1.0,
+      "train_macro_f1": 1.0,
+      "train_weighted_f1": 1.0
+    }
+  ]
+}

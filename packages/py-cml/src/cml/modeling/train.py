@@ -13,10 +13,14 @@ Configuration:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
+import logging
+import math
+import subprocess
 import sys
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -62,6 +66,7 @@ except ImportError as exc:
 
 from cml.modeling.config import find_repo_root
 from cml.modeling.types import TrainConfig
+from cml.modeling.validation import run_preflight_validation, validate_manifest_artifacts
 
 REPO_ROOT = find_repo_root(Path(__file__).resolve()) or Path.cwd()
 MODELS_ROOT = REPO_ROOT / "packages" / "models"
@@ -70,6 +75,8 @@ DEFAULT_CONFIG_PATH = MODELS_ROOT / "model_pipeline.toml"
 FAMILY_SINGLE_TEXT = {"router", "extractor"}
 FAMILY_PAIR_TEXT = {"pair"}
 ALL_FAMILIES = ("router", "extractor", "pair")
+
+_logger = logging.getLogger("cml.modeling.train")
 
 
 @dataclass
@@ -81,6 +88,7 @@ class TaskSpec:
     labels: list[str]
     artifact_name: str
     metrics: list[str]
+    enabled: bool = field(default=True)
 
 
 class _NoopProgress:
@@ -126,6 +134,56 @@ def _write_json(path: Path, payload: dict) -> None:
         json.dump(payload, f, indent=2)
 
 
+def _safe_pkg_version(dist_name: str) -> str | None:
+    try:
+        return importlib.metadata.version(dist_name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _git_build_metadata() -> dict[str, str | bool | None]:
+    meta: dict[str, str | bool | None] = {"commit_sha": None, "dirty": None}
+    try:
+        proc_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        if proc_sha.returncode == 0:
+            meta["commit_sha"] = proc_sha.stdout.strip()
+    except Exception:
+        return meta
+
+    try:
+        proc_dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
+        if proc_dirty.returncode == 0:
+            meta["dirty"] = bool(proc_dirty.stdout.strip())
+    except Exception:
+        return meta
+
+    return meta
+
+
+def _build_metadata() -> dict:
+    return {
+        "python_version": sys.version,
+        "dependencies": {
+            "scikit_learn": _safe_pkg_version("scikit-learn"),
+            "joblib": _safe_pkg_version("joblib"),
+            "pandas": _safe_pkg_version("pandas"),
+        },
+        **_git_build_metadata(),
+    }
+
+
 def _task_label_counts(df: pd.DataFrame) -> dict[str, dict[str, int]]:
     out: dict[str, dict[str, int]] = {}
     grouped = df.groupby(["task", "label"]).size()
@@ -143,6 +201,140 @@ def _split_composite(value: str) -> tuple[str, str]:
         return "unknown", value
     a, b = value.split("::", 1)
     return a, b
+
+
+_SINGLE_META_FIELDS = (
+    "memory_type",
+    "namespace",
+    "importance",
+    "confidence",
+    "access_count",
+    "age_days",
+    "dependency_count",
+    "support_count",
+    "mixed_topic",
+    "context_tags",
+)
+
+
+def _safe_float(value: object) -> float | None:
+    try:
+        if value is None or pd.isna(value):
+            return None
+        return float(value)  # type: ignore[arg-type]
+    except Exception:
+        return None
+
+
+def _safe_int(value: object) -> int | None:
+    try:
+        if value is None or pd.isna(value):
+            return None
+        return int(value)  # type: ignore[call-overload]
+    except Exception:
+        return None
+
+
+def _normalize_tag_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                loaded = json.loads(text)
+            except Exception:
+                loaded = None
+            if isinstance(loaded, list):
+                return [str(x).strip() for x in loaded if str(x).strip()]
+        return [text]
+    if isinstance(value, (list, tuple, set)):
+        return [str(x).strip() for x in value if str(x).strip()]
+    return []
+
+
+def _ratio_bucket(value: float) -> str:
+    if value >= 0.9:
+        return "very_high"
+    if value >= 0.7:
+        return "high"
+    if value >= 0.4:
+        return "medium"
+    if value >= 0.15:
+        return "low"
+    return "very_low"
+
+
+def _count_bucket(value: int, *, high: int, medium: int) -> str:
+    if value >= high:
+        return "high"
+    if value >= medium:
+        return "medium"
+    if value > 0:
+        return "low"
+    return "none"
+
+
+def _single_metadata_tokens(record: object, available_cols: set[str]) -> list[str]:
+    tokens: list[str] = []
+
+    if "memory_type" in available_cols:
+        memory_type = str(getattr(record, "memory_type", "") or "").strip()
+        if memory_type:
+            tokens.append(f"memory_type={memory_type}")
+    if "namespace" in available_cols:
+        namespace = str(getattr(record, "namespace", "") or "").strip()
+        if namespace:
+            tokens.append(f"namespace={namespace}")
+    if "context_tags" in available_cols:
+        for tag in _normalize_tag_list(getattr(record, "context_tags", None))[:3]:
+            tokens.append(f"context_tag={tag}")
+
+    importance = (
+        _safe_float(getattr(record, "importance", None)) if "importance" in available_cols else None
+    )
+    if importance is not None:
+        tokens.append(f"importance_bin={_ratio_bucket(importance)}")
+    confidence = (
+        _safe_float(getattr(record, "confidence", None)) if "confidence" in available_cols else None
+    )
+    if confidence is not None:
+        tokens.append(f"confidence_bin={_ratio_bucket(confidence)}")
+    access_count = (
+        _safe_int(getattr(record, "access_count", None))
+        if "access_count" in available_cols
+        else None
+    )
+    if access_count is not None:
+        tokens.append(f"access_count={_count_bucket(access_count, high=6, medium=2)}")
+    age_days = (
+        _safe_int(getattr(record, "age_days", None)) if "age_days" in available_cols else None
+    )
+    if age_days is not None:
+        tokens.append(
+            f"age_days={_count_bucket(age_days, high=90, medium=21).replace('none', 'fresh')}"
+        )
+    dependency_count = (
+        _safe_int(getattr(record, "dependency_count", None))
+        if "dependency_count" in available_cols
+        else None
+    )
+    if dependency_count is not None:
+        tokens.append(f"dependency_count={_count_bucket(dependency_count, high=4, medium=1)}")
+    support_count = (
+        _safe_int(getattr(record, "support_count", None))
+        if "support_count" in available_cols
+        else None
+    )
+    if support_count is not None:
+        tokens.append(f"support_count={_count_bucket(support_count, high=4, medium=2)}")
+    if "mixed_topic" in available_cols:
+        mixed = getattr(record, "mixed_topic", None)
+        if mixed is not None and not pd.isna(mixed):
+            tokens.append(f"mixed_topic={bool(mixed)}")
+    return tokens
 
 
 def _load_split(prepared_dir: Path, family: str, split_name: str) -> pd.DataFrame:
@@ -185,7 +377,17 @@ def _load_split(prepared_dir: Path, family: str, split_name: str) -> pd.DataFram
 
 def _encode_features(df: pd.DataFrame, family: str) -> list[str]:
     if family in FAMILY_SINGLE_TEXT:
-        return [f"task={t} [text] {x}" for t, x in zip(df["task"], df["text"], strict=False)]
+        available_cols = set(df.columns)
+        features: list[str] = []
+        for row in df.itertuples(index=False):
+            task = str(getattr(row, "task", ""))
+            text = str(getattr(row, "text", ""))
+            feature = f"task={task} [text] {text}"
+            meta_tokens = _single_metadata_tokens(row, available_cols)
+            if meta_tokens:
+                feature += " [meta] " + " ".join(meta_tokens)
+            features.append(feature)
+        return features
     return [
         f"task={t} [a] {a} [b] {b}"
         for t, a, b in zip(df["task"], df["text_a"], df["text_b"], strict=False)
@@ -307,6 +509,87 @@ def _metric_block(
         "micro_f1": float(f1_score(y_true, y_pred, average="micro", zero_division=0)),
         "labels": labels,
         "confusion_matrix": confusion_matrix(y_true, y_pred, labels=labels).tolist(),
+    }
+
+
+def _positive_class_scores(
+    model: Pipeline,
+    features: list[str],
+    *,
+    positive_class: str,
+) -> list[float]:
+    classifier = getattr(model, "named_steps", {}).get("classifier")
+    classes = (
+        [str(x) for x in getattr(classifier, "classes_", [])] if classifier is not None else []
+    )
+    if hasattr(model, "predict_proba") and positive_class in classes:
+        probs = model.predict_proba(features)
+        idx = classes.index(positive_class)
+        return [float(row[idx]) for row in probs]
+    if hasattr(model, "decision_function"):
+        raw = model.decision_function(features)
+        if hasattr(raw, "tolist"):
+            raw = raw.tolist()
+        if isinstance(raw, list):
+            return [float(x) for x in raw]
+    pred = model.predict(features).tolist()
+    return [1.0 if str(x) == positive_class else 0.0 for x in pred]
+
+
+def _ranking_metrics_from_groups(
+    df: pd.DataFrame,
+    scores: list[float],
+    *,
+    positive_label: str,
+    k: int = 10,
+) -> dict[str, float] | None:
+    if "group_id" not in df.columns or not scores:
+        return None
+
+    scored = df.copy()
+    scored["__score"] = scores
+    valid_groups = []
+    for _, group in scored.groupby("group_id", sort=False):
+        labels = group["label"].astype(str).tolist()
+        positives = sum(1 for label in labels if label == positive_label)
+        if len(group) <= 1 or positives == 0:
+            continue
+        valid_groups.append(group.sort_values("__score", ascending=False))
+
+    if not valid_groups:
+        return None
+
+    mrr_total = 0.0
+    ndcg_total = 0.0
+    recall_total = 0.0
+    for group in valid_groups:
+        labels = group["label"].astype(str).tolist()
+        ranked = labels[:k]
+        positive_positions = [
+            idx for idx, label in enumerate(ranked, start=1) if label == positive_label
+        ]
+        if positive_positions:
+            mrr_total += 1.0 / positive_positions[0]
+        gains = [1.0 if label == positive_label else 0.0 for label in ranked]
+        dcg = sum(
+            gain / (1.0 if idx == 1 else math.log2(idx + 1))
+            for idx, gain in enumerate(gains, start=1)
+        )
+        ideal_positives = min(sum(1 for label in labels if label == positive_label), k)
+        idcg = sum(
+            1.0 / (1.0 if idx == 1 else math.log2(idx + 1)) for idx in range(1, ideal_positives + 1)
+        )
+        ndcg_total += (dcg / idcg) if idcg > 0 else 0.0
+        recall_total += sum(1 for label in ranked if label == positive_label) / max(
+            1, sum(1 for label in labels if label == positive_label)
+        )
+
+    groups = len(valid_groups)
+    return {
+        "mrr@10": float(mrr_total / groups),
+        "ndcg@10": float(ndcg_total / groups),
+        "recall@10": float(recall_total / groups),
+        "groups_evaluated": int(groups),
     }
 
 
@@ -599,11 +882,23 @@ def _train_pair_ranking(
             model, test_x, batch_size=batch_size, desc=f"Predict task:{spec.task_name}:test"
         )
         test_metrics = _metric_block(test_y, test_pred)
-        test_metrics["ranking_proxy"] = {
-            "note": "Classification metrics used as ranking proxy; true MRR/NDCG require list-wise data",
-            "proxy_accuracy": test_metrics.get("accuracy", 0.0),
-            "proxy_f1": test_metrics.get("macro_f1", 0.0),
-        }
+        ranking = _ranking_metrics_from_groups(
+            test_df,
+            _positive_class_scores(
+                model,
+                test_x,
+                positive_class=_composite_label(spec.task_name, "relevant"),
+            ),
+            positive_label="relevant",
+        )
+        if ranking is not None:
+            test_metrics.update(ranking)
+        else:
+            test_metrics["ranking_proxy"] = {
+                "note": "Classification metrics used as ranking proxy; true MRR/NDCG require grouped candidate lists",
+                "proxy_accuracy": test_metrics.get("accuracy", 0.0),
+                "proxy_f1": test_metrics.get("macro_f1", 0.0),
+            }
 
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / f"{spec.artifact_name}_model.joblib"
@@ -652,19 +947,8 @@ def _train_single_regression(
         print(f"[task:{spec.task_name}] no valid regression rows after filtering; skipping.")
         return {}
 
-    if "text" in train_df.columns:
-        train_texts = train_df["text"].astype(str).tolist()
-    elif "text_a" in train_df.columns:
-        train_texts = (
-            train_df["text_a"].astype(str)
-            + " "
-            + train_df.get("text_b", pd.Series([""] * len(train_df))).astype(str)
-        ).tolist()
-    else:
-        print(f"[task:{spec.task_name}] no text column found; skipping.")
-        return {}
-
     train_y = train_df[score_col].values.astype(float)
+    train_features = _encode_features(train_df, family)
 
     max_features = max(1000, int(train_cfg["max_features"]))
     min_df = max(1, int(train_cfg["min_df"]))
@@ -691,7 +975,7 @@ def _train_single_regression(
     )
     model = Pipeline(steps=[("vectorizer", vectorizer), ("regressor", regressor)])
 
-    x_train = vectorizer.fit_transform(train_texts)
+    x_train = vectorizer.fit_transform(train_features)
     regressor.fit(x_train, train_y)
 
     train_pred = regressor.predict(x_train)
@@ -707,16 +991,8 @@ def _train_single_regression(
         test_df[t_score_col] = pd.to_numeric(test_df[t_score_col], errors="coerce")
         test_df = test_df.dropna(subset=[t_score_col]).reset_index(drop=True)
         if not test_df.empty:
-            if "text" in test_df.columns:
-                test_texts = test_df["text"].astype(str).tolist()
-            else:
-                test_texts = (
-                    test_df["text_a"].astype(str)
-                    + " "
-                    + test_df.get("text_b", pd.Series([""] * len(test_df))).astype(str)
-                ).tolist()
             test_y = test_df[t_score_col].values.astype(float)
-            x_test = vectorizer.transform(test_texts)
+            x_test = vectorizer.transform(_encode_features(test_df, family))
             test_pred = regressor.predict(x_test)
             test_metrics["test_mae"] = float(mean_absolute_error(test_y, test_pred))
             test_metrics["test_rmse"] = float(np.sqrt(mean_squared_error(test_y, test_pred)))
@@ -749,7 +1025,14 @@ def _train_token_classification(
     )
 
 
-def _train_task(spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict) -> dict:
+def _train_task(
+    spec: TaskSpec,
+    *,
+    prepared_dir: Path,
+    output_dir: Path,
+    train_cfg: dict,
+    strict: bool = True,
+) -> dict:
     """Dispatch task-level training to the appropriate trainer by objective type."""
     trainers = {
         "classification": _train_classification_task,
@@ -759,15 +1042,31 @@ def _train_task(spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_c
     }
     trainer = trainers.get(spec.objective)
     if trainer is None:
-        print(
-            f"Unknown objective '{spec.objective}' for task '{spec.task_name}'; skipping.",
-            file=sys.stderr,
-        )
+        msg = f"Unknown objective '{spec.objective}' for task '{spec.task_name}'; skipping."
+        _logger.warning(msg)
+        if strict:
+            raise RuntimeError(msg)
         return {}
     try:
-        return trainer(spec, prepared_dir=prepared_dir, output_dir=output_dir, train_cfg=train_cfg)
+        summary = trainer(
+            spec, prepared_dir=prepared_dir, output_dir=output_dir, train_cfg=train_cfg
+        )
+        if not summary:
+            msg = (
+                f"Task '{spec.task_name}' produced no artifact/summary "
+                "(likely missing rows or unsupported input contract)."
+            )
+            if strict:
+                raise RuntimeError(msg)
+            _logger.warning(msg)
+            return {}
+        return summary
     except NotImplementedError as exc:
-        print(f"Skipped: {exc}", file=sys.stderr)
+        _logger.warning("task_skipped", extra={"task": spec.task_name, "reason": str(exc)})
+        if strict:
+            raise RuntimeError(
+                f"Strict mode: unsupported task '{spec.task_name}' ({spec.objective})"
+            ) from exc
         return {}
 
 
@@ -825,12 +1124,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Export per-task decision thresholds to <task>_thresholds.json.",
     )
+    strict_group = parser.add_mutually_exclusive_group()
+    strict_group.add_argument(
+        "--strict",
+        dest="strict",
+        action="store_true",
+        help="Fail when configured tasks/objectives are unsupported or missing training rows.",
+    )
+    strict_group.add_argument(
+        "--allow-skips",
+        dest="strict",
+        action="store_false",
+        help="Allow unsupported or missing tasks to be skipped during training.",
+    )
+    parser.set_defaults(strict=True)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     config = _load_config(args.config)
+    strict_mode = bool(getattr(args, "strict", True))
 
     paths_cfg = dict(config.get("paths", {}))
     train_cfg = dict(config.get("train", {}))
@@ -843,6 +1157,7 @@ def main(argv: list[str] | None = None) -> int:
     train_cfg.setdefault("alpha", 1e-5)
     train_cfg.setdefault("predict_batch_size", 8192)
     train_cfg.setdefault("families", list(ALL_FAMILIES))
+    train_cfg["strict"] = strict_mode
 
     if args.seed is not None:
         train_cfg["seed"] = int(args.seed)
@@ -887,13 +1202,59 @@ def main(argv: list[str] | None = None) -> int:
         print("No model families selected for training.", file=sys.stderr)
         return 1
 
+    task_specs_raw = list(config.get("tasks", []))
+    preflight = run_preflight_validation(
+        task_specs_raw=task_specs_raw,
+        prepared_dir=prepared_dir,
+        strict=strict_mode,
+    )
+    for warning in preflight.warnings:
+        print(f"Preflight warning: {warning}", file=sys.stderr)
+    if preflight.errors:
+        for error in preflight.errors:
+            print(f"Preflight error: {error}", file=sys.stderr)
+        if strict_mode:
+            print("Strict mode enabled: aborting due to preflight errors.", file=sys.stderr)
+            return 1
+        print("Continuing with preflight errors because --allow-skips is active.", file=sys.stderr)
+
+    configured_tasks = [
+        {
+            "task_name": str(t.get("task_name", "")),
+            "family": str(t.get("family", "")),
+            "input_type": str(t.get("input_type", "")),
+            "objective": str(t.get("objective", "")),
+            "enabled": bool(t.get("enabled", True)),
+            "artifact_name": str(t.get("artifact_name", "")),
+            "metrics": list(t.get("metrics", [])),
+        }
+        for t in task_specs_raw
+    ]
+
     families_summary: dict[str, dict] = {}
+    task_summaries: dict[str, dict] = {}
+    task_training_status: dict[str, dict] = {
+        str(t.get("task_name", "")): {
+            "status": "pending",
+            "reason": None,
+            "family": str(t.get("family", "")),
+            "objective": str(t.get("objective", "")),
+            "enabled": bool(t.get("enabled", True)),
+        }
+        for t in task_specs_raw
+        if str(t.get("task_name", ""))
+    }
     manifest = {
+        "manifest_schema_version": 2,
         "config_path": str(args.config.resolve()),
         "trained_at_utc": datetime.now(UTC).isoformat(),
         "paths": {"prepared_dir": str(prepared_dir), "trained_models_dir": str(output_dir)},
         "train_settings": train_cfg,
+        "build_metadata": _build_metadata(),
+        "configured_tasks": configured_tasks,
+        "preflight_validation": preflight.as_dict(),
         "families": families_summary,
+        "task_training_status": task_training_status,
     }
 
     pbar = _progress(total=len(families), desc="Model training", unit="family")
@@ -911,32 +1272,105 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         pbar.close()
 
-    # Task-level training (Phase 0 extension)
-    task_specs_raw = config.get("tasks", [])
-    task_summaries: dict[str, dict] = {}
     if task_specs_raw:
-        tasks_to_train = [
-            TaskSpec(**{k: t[k] for k in TaskSpec.__dataclass_fields__}) for t in task_specs_raw
+        all_specs = [
+            TaskSpec(**{k: t[k] for k in TaskSpec.__dataclass_fields__ if k in t})
+            for t in task_specs_raw
         ]
-        if args.tasks:
-            selected = {x.strip() for x in args.tasks.split(",")}
-            tasks_to_train = [t for t in tasks_to_train if t.task_name in selected]
-        if args.objective_types:
-            selected_obj = {x.strip() for x in args.objective_types.split(",")}
-            tasks_to_train = [t for t in tasks_to_train if t.objective in selected_obj]
+        selected_tasks = (
+            {x.strip() for x in args.tasks.split(",") if x.strip()} if args.tasks else None
+        )
+        selected_obj = (
+            {x.strip() for x in args.objective_types.split(",") if x.strip()}
+            if args.objective_types
+            else None
+        )
+
+        tasks_to_train: list[TaskSpec] = []
+        disabled_selected: list[str] = []
+        for spec in all_specs:
+            if selected_tasks is not None and spec.task_name not in selected_tasks:
+                task_training_status[spec.task_name] = {
+                    **task_training_status.get(spec.task_name, {}),
+                    "status": "filtered_out",
+                    "reason": "Excluded by --tasks filter",
+                }
+                continue
+            if selected_obj is not None and spec.objective not in selected_obj:
+                task_training_status[spec.task_name] = {
+                    **task_training_status.get(spec.task_name, {}),
+                    "status": "filtered_out",
+                    "reason": "Excluded by --objective-types filter",
+                }
+                continue
+            if not spec.enabled:
+                task_training_status[spec.task_name] = {
+                    **task_training_status.get(spec.task_name, {}),
+                    "status": "disabled",
+                    "reason": "Task disabled in config",
+                }
+                if selected_tasks is not None or selected_obj is not None:
+                    disabled_selected.append(spec.task_name)
+                continue
+            task_training_status[spec.task_name] = {
+                **task_training_status.get(spec.task_name, {}),
+                "status": "queued",
+                "reason": None,
+            }
+            tasks_to_train.append(spec)
+
+        if disabled_selected and strict_mode:
+            print(
+                f"Strict mode: selected tasks are disabled in config: {sorted(disabled_selected)}",
+                file=sys.stderr,
+            )
+            return 1
 
         pbar_tasks = _progress(total=len(tasks_to_train), desc="Task training", unit="task")
         try:
             for spec in tasks_to_train:
                 pbar_tasks.set_description(f"Train task [{spec.task_name}]")
-                summary = _train_task(
-                    spec,
-                    prepared_dir=prepared_dir,
-                    output_dir=output_dir,
-                    train_cfg=train_cfg,
-                )
+                try:
+                    summary = _train_task(
+                        spec,
+                        prepared_dir=prepared_dir,
+                        output_dir=output_dir,
+                        train_cfg=train_cfg,
+                        strict=strict_mode,
+                    )
+                except Exception as exc:
+                    task_training_status[spec.task_name] = {
+                        **task_training_status.get(spec.task_name, {}),
+                        "status": "failed",
+                        "reason": str(exc),
+                    }
+                    if strict_mode:
+                        print(
+                            f"Strict mode: task '{spec.task_name}' failed: {exc}",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    _logger.warning(
+                        "task_failed", extra={"task": spec.task_name, "error": str(exc)}
+                    )
+                    pbar_tasks.update(1)
+                    continue
+
                 if summary:
                     task_summaries[spec.task_name] = summary
+                    task_training_status[spec.task_name] = {
+                        **task_training_status.get(spec.task_name, {}),
+                        "status": "trained",
+                        "reason": None,
+                        "model_path": summary.get("model_path"),
+                        "train_rows": summary.get("train_rows"),
+                    }
+                else:
+                    task_training_status[spec.task_name] = {
+                        **task_training_status.get(spec.task_name, {}),
+                        "status": "skipped",
+                        "reason": "No summary returned",
+                    }
                 pbar_tasks.update(1)
         finally:
             pbar_tasks.close()
@@ -960,6 +1394,21 @@ def main(argv: list[str] | None = None) -> int:
             thresholds_files[task_name] = str(thresh_path)
 
     manifest["runtime_thresholds"] = thresholds_files
+    manifest["task_training_status"] = task_training_status
+
+    artifact_errors = validate_manifest_artifacts(
+        families_summary=families_summary,
+        task_summaries=task_summaries,
+    )
+    manifest["artifact_validation"] = {"ok": len(artifact_errors) == 0, "errors": artifact_errors}
+    if artifact_errors:
+        for err in artifact_errors:
+            print(f"Artifact validation error: {err}", file=sys.stderr)
+        if strict_mode:
+            print(
+                "Strict mode enabled: aborting due to artifact validation errors.", file=sys.stderr
+            )
+            return 1
 
     output_dir.mkdir(parents=True, exist_ok=True)
     _write_json(output_dir / "manifest.json", manifest)
@@ -998,6 +1447,10 @@ def train_models(config: TrainConfig) -> int:
         argv.extend(["--calibration-split", config.calibration_split])
     if config.export_thresholds:
         argv.append("--export-thresholds")
+    if config.strict:
+        argv.append("--strict")
+    else:
+        argv.append("--allow-skips")
     return main(argv)
 
 

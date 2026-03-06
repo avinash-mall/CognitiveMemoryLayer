@@ -8,6 +8,15 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
+from cml._embedded_engine import (
+    ensure_engine_available,
+    get_embedding_client,
+    import_llm_client,
+    import_memory_orchestrator,
+    import_packet_builder,
+    import_seamless_provider,
+    import_settings,
+)
 from cml.embedded_config import EmbeddedConfig
 from cml.models import (
     ForgetResponse,
@@ -55,20 +64,7 @@ async def _forgetting_loop(orchestrator: Any, tenant_id: str) -> None:
 
 def _check_embedded_deps() -> None:
     """Raise if embedded dependencies are not available."""
-    try:
-        import aiosqlite  # noqa: F401
-    except ImportError as e:
-        raise ImportError(
-            "Embedded mode requires aiosqlite. Install with: pip install cognitive-memory-layer[embedded]"
-        ) from e
-    try:
-        from src.memory.orchestrator import (
-            MemoryOrchestrator,  # noqa: F401
-        )
-    except ImportError as e:
-        raise ImportError(
-            'Embedded mode requires the CML engine. From repo root: pip install -e ".[embedded]".'
-        ) from e
+    ensure_engine_available()
 
 
 def _retrieved_to_memory_item(rec: Any) -> MemoryItem:
@@ -94,11 +90,7 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     constraints = [_retrieved_to_memory_item(m) for m in getattr(packet, "constraints", [])]
     all_items = facts + preferences + episodes + procedures + constraints
     try:
-        from src.retrieval.packet_builder import (
-            MemoryPacketBuilder,
-        )
-
-        builder = MemoryPacketBuilder()
+        builder = import_packet_builder()()
         llm_context = builder.to_llm_context(packet, max_tokens=4000)
     except Exception as e:
         logger.warning(
@@ -120,7 +112,16 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
 
 
 class EmbeddedCognitiveMemoryLayer:
-    """In-process CognitiveMemoryLayer engine. No server, no HTTP."""
+    """In-process CognitiveMemoryLayer engine. No server, no HTTP.
+
+    Args:
+        models_dir: Optional path to the directory containing trained model
+            artifacts (``*.joblib``).  When set, the embedded
+            ``ModelPackRuntime`` loads models from this directory instead of
+            the default ``packages/models/trained_models`` inside the repo.
+            Can also be configured via the ``CML_MODELS_DIR`` environment
+            variable.
+    """
 
     def __init__(
         self,
@@ -131,6 +132,7 @@ class EmbeddedCognitiveMemoryLayer:
         db_path: str | None = None,
         embedding_provider: str = "local",
         llm_api_key: str | None = None,
+        models_dir: str | None = None,
     ) -> None:
         if config is not None:
             self._config = config
@@ -149,6 +151,7 @@ class EmbeddedCognitiveMemoryLayer:
                 self._config.embedding.provider = embedding_provider  # type: ignore[assignment]
             if llm_api_key is not None:
                 self._config.llm.api_key = llm_api_key
+        self._models_dir = models_dir
         self._orchestrator: Any = None
         self._sqlite_store: Any = None
         self._initialized = False
@@ -157,6 +160,10 @@ class EmbeddedCognitiveMemoryLayer:
 
     async def initialize(self) -> None:
         """Initialize storage and the memory orchestrator."""
+        if self._models_dir:
+            import os
+
+            os.environ["CML_MODELS_DIR"] = str(self._models_dir)
         _check_embedded_deps()
         if self._config.storage_mode != "lite":
             raise NotImplementedError(
@@ -180,8 +187,6 @@ class EmbeddedCognitiveMemoryLayer:
         self._sqlite_store = SQLiteMemoryStore(db_path=path)
         await self._sqlite_store.initialize()
 
-        from src.utils.embeddings import get_embedding_client
-
         # Use embedding client from engine config (.env: EMBEDDING_INTERNAL__*)
         # so tests and embedded mode use .env, not a hardcoded HuggingFace model.
         embedding_client = get_embedding_client()
@@ -190,9 +195,7 @@ class EmbeddedCognitiveMemoryLayer:
         # Respect master LLM switch: in non-LLM mode, do not construct an LLM client.
         llm_enabled = False
         try:
-            from src.core.config import get_settings
-
-            s = get_settings()
+            s = import_settings()()
             llm_enabled = bool(getattr(s.features, "use_llm_enabled", False))
             if llm_enabled:
                 li = s.llm_internal
@@ -206,17 +209,13 @@ class EmbeddedCognitiveMemoryLayer:
             llm_enabled = False
 
         if llm_enabled:
-            from src.utils.llm import OpenAICompatibleClient
-
-            llm_client = OpenAICompatibleClient(
+            llm_client = import_llm_client()(
                 model=self._config.llm.model,
                 base_url=self._config.llm.base_url,
                 api_key=self._config.llm.api_key or "dummy",
             )
 
-        from src.memory.orchestrator import MemoryOrchestrator
-
-        self._orchestrator = await MemoryOrchestrator.create_lite(
+        self._orchestrator = await import_memory_orchestrator().create_lite(
             self._sqlite_store,
             embedding_client,
             llm_client,
@@ -345,11 +344,7 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
-        from src.memory.seamless_provider import (
-            SeamlessMemoryProvider,
-        )
-
-        provider = SeamlessMemoryProvider(
+        provider = import_seamless_provider()(
             self._orchestrator,
             max_context_tokens=max_context_tokens,
         )

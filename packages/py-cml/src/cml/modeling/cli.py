@@ -74,6 +74,20 @@ def _add_train_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--learning-rate", type=float, default=None)
     parser.add_argument("--calibration-split", type=str, default=None)
     parser.add_argument("--export-thresholds", action="store_true")
+    strict_group = parser.add_mutually_exclusive_group()
+    strict_group.add_argument(
+        "--strict",
+        dest="strict",
+        action="store_true",
+        help="Fail when configured tasks/objectives are unsupported or missing training rows.",
+    )
+    strict_group.add_argument(
+        "--allow-skips",
+        dest="strict",
+        action="store_false",
+        help="Allow unsupported or missing tasks to be skipped during training.",
+    )
+    parser.set_defaults(strict=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -133,6 +147,7 @@ def _train_config_from_args(args: argparse.Namespace) -> TrainConfig:
         learning_rate=args.learning_rate,
         calibration_split=args.calibration_split,
         export_thresholds=bool(args.export_thresholds),
+        strict=bool(args.strict),
     )
 
 

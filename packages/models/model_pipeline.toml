@@ -120,6 +120,7 @@ artifact_name = "novelty_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
 
 [[tasks]]
+# Planned: requires a transformer-based span trainer not yet implemented.
 task_name = "fact_extraction_structured"
 family = "extractor"
 input_type = "single"
@@ -127,6 +128,7 @@ objective = "token_classification"
 labels = []
 artifact_name = "fact_extraction_structured"
 metrics = ["span_f1", "span_exact_match"]
+enabled = false
 
 [[tasks]]
 task_name = "schema_match_pair"
@@ -154,8 +156,10 @@ objective = "single_regression"
 labels = []
 artifact_name = "write_importance_regression"
 metrics = ["mae", "rmse"]
+enabled = true
 
 [[tasks]]
+# Planned: requires a transformer-based span trainer not yet implemented.
 task_name = "pii_span_detection"
 family = "extractor"
 input_type = "single"
@@ -163,6 +167,7 @@ objective = "token_classification"
 labels = []
 artifact_name = "pii_span_detection"
 metrics = ["span_f1", "span_exact_match"]
+enabled = false
 
 [[tasks]]
 task_name = "consolidation_gist_quality"

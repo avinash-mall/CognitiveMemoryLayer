@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..utils.logging_config import get_logger
 from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
+from .write_time_facts import ExtractedFact, _derive_predicate, _label_to_category
 
 logger = get_logger(__name__)
 
@@ -87,9 +88,18 @@ class LocalUnifiedWriteExtractor:
                 spans_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
                 if spans_pred is not None and spans_pred.spans:
                     result["facts"] = [
-                        {"start": s[0], "end": s[1], "label": s[2], "text": text[s[0] : s[1]]}
+                        ExtractedFact(
+                            key=(
+                                f"user:{_label_to_category(s[2]).value}:"
+                                f"{_derive_predicate(text[s[0] : s[1]])}"
+                            ),
+                            category=_label_to_category(s[2]),
+                            predicate=_derive_predicate(text[s[0] : s[1]]),
+                            value=text[s[0] : s[1]],
+                            confidence=max(0.0, min(1.0, spans_pred.confidence)),
+                        )
                         for s in spans_pred.spans
-                        if s[0] < len(text) and s[1] <= len(text)
+                        if s[0] < len(text) and s[1] <= len(text) and text[s[0] : s[1]].strip()
                     ]
         except Exception as exc:
             logger.debug("local_fact_extraction_failed", extra={"error": str(exc)})

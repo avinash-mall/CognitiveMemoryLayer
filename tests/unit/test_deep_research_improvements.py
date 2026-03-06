@@ -160,10 +160,11 @@ class TestWriteTimeFactExtractor:
         facts = self.extractor.extract(chunk)
         assert facts == []
 
-    def test_ignores_statements(self):
+    def test_processes_statements(self):
+        """AUD-01: STATEMENT chunks are now processed for heuristic fact extraction."""
         chunk = SemanticChunk(id="5", text="I love Italian food", chunk_type=ChunkType.STATEMENT)
         facts = self.extractor.extract(chunk)
-        assert facts == []
+        assert len(facts) >= 1
 
     def test_confidence_below_consolidation_level(self):
         chunk = SemanticChunk(id="6", text="I love sushi", chunk_type=ChunkType.PREFERENCE)

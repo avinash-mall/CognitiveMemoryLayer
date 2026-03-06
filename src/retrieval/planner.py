@@ -154,7 +154,14 @@ class RetrievalPlanner:
                     top_k=10,
                     priority=0,
                     timeout_ms=200,
-                    constraint_categories=analysis.constraint_dimensions or None,
+                    constraint_categories=analysis.constraint_dimensions
+                    or [
+                        "goal",
+                        "state",
+                        "value",
+                        "causal",
+                        "policy",
+                    ],
                     query_domain=analysis.query_domain,
                 )
             )
@@ -174,7 +181,19 @@ class RetrievalPlanner:
                     priority=1,
                 )
             )
-            parallel_groups = [[0, 1, 2]]
+            graph_seeds = list(analysis.entities) if analysis.entities else []
+            if analysis.query_domain and analysis.query_domain not in graph_seeds:
+                graph_seeds.append(analysis.query_domain)
+            if graph_seeds:
+                steps.append(
+                    RetrievalStep(
+                        source=RetrievalSource.GRAPH,
+                        seeds=graph_seeds,
+                        top_k=10,
+                        priority=1,
+                    )
+                )
+            parallel_groups = [list(range(len(steps)))]
 
         else:
             # Add CONSTRAINTS strictly matching detected dimensions, no general fallback

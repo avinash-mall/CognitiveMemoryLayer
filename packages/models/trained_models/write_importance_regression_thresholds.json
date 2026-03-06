@@ -1,0 +1,6 @@
+{
+  "task_name": "write_importance_regression",
+  "default_threshold": 0.5,
+  "calibration_split": "eval",
+  "note": "Auto-generated defaults. Tune via offline calibration."
+}

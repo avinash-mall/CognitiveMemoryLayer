@@ -31,8 +31,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enable pgvector extension
+    # Enable pgvector and pg_trgm extensions
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
     # -------------------------------------------------------------------------
     # event_log table
@@ -189,6 +190,23 @@ def upgrade() -> None:
         USING GIN (context_tags)
     """)
 
+    # GIN trigram indexes for ILIKE performance on semantic_facts
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS ix_semantic_facts_key_trgm
+        ON semantic_facts
+        USING GIN (key gin_trgm_ops)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS ix_semantic_facts_subject_trgm
+        ON semantic_facts
+        USING GIN (subject gin_trgm_ops)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS ix_semantic_facts_value_text_trgm
+        ON semantic_facts
+        USING GIN ((value::text) gin_trgm_ops)
+    """)
+
     # -------------------------------------------------------------------------
     # dashboard_jobs table (consolidation/forgetting job history)
     # -------------------------------------------------------------------------
@@ -216,6 +234,9 @@ def downgrade() -> None:
     op.drop_table("dashboard_jobs")
 
     # Drop semantic_facts
+    op.execute("DROP INDEX IF EXISTS ix_semantic_facts_value_text_trgm")
+    op.execute("DROP INDEX IF EXISTS ix_semantic_facts_subject_trgm")
+    op.execute("DROP INDEX IF EXISTS ix_semantic_facts_key_trgm")
     op.drop_index("ix_semantic_facts_context_tags_gin", table_name="semantic_facts", if_exists=True)
     op.drop_index("ix_semantic_facts_tenant_category", table_name="semantic_facts")
     op.drop_index("ix_semantic_facts_tenant_key", table_name="semantic_facts")
@@ -235,3 +256,5 @@ def downgrade() -> None:
     # Drop event_log
     op.drop_index("ix_event_log_tenant_scope_time", table_name="event_log")
     op.drop_table("event_log")
+
+    op.execute("DROP EXTENSION IF EXISTS pg_trgm")

@@ -25,6 +25,7 @@ import warnings
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 try:
     import pandas as pd
@@ -171,6 +172,39 @@ ALL_PAIR_TASKS = PAIR_TASKS + tuple(NEW_PAIR_TASK_LABELS.keys())
 ALL_ROUTER_TASKS = ROUTER_TASKS + tuple(NEW_SINGLE_TASK_LABELS.keys())
 
 
+def _enabled_task_label_map(
+    task_specs_raw: list[dict],
+    *,
+    family: str,
+    base_labels: dict[str, list[str]],
+    extra_labels: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
+    enabled = dict(base_labels)
+    if not extra_labels:
+        return enabled
+
+    enabled_extra = {
+        str(spec.get("task_name", "")).strip()
+        for spec in task_specs_raw
+        if bool(spec.get("enabled", True)) and str(spec.get("family", "")).strip() == family
+    }
+    for task_name, labels in extra_labels.items():
+        if task_name in enabled_extra:
+            enabled[task_name] = labels
+    return enabled
+
+
+def _enabled_regression_tasks(task_specs_raw: list[dict], *, family: str) -> set[str]:
+    return {
+        str(spec.get("task_name", "")).strip()
+        for spec in task_specs_raw
+        if bool(spec.get("enabled", True))
+        and str(spec.get("family", "")).strip() == family
+        and str(spec.get("objective", "")).strip() == "single_regression"
+        and str(spec.get("task_name", "")).strip()
+    }
+
+
 class _NoopProgress:
     def __init__(self, *args, **kwargs) -> None:
         self.total = kwargs.get("total")
@@ -310,6 +344,7 @@ class _SingleTaskStore:
         label: str,
         source: str,
         language: str = "en",
+        extras: dict[str, Any] | None = None,
     ) -> bool:
         cleaned = _clean(text, 1000)
         if not cleaned or not task or not label:
@@ -322,15 +357,18 @@ class _SingleTaskStore:
             return False
         self._seen.add(key)
         self._counts[task_label] += 1
-        self.rows.append(
-            {
-                "text": cleaned,
-                "task": task,
-                "label": label,
-                "source": source,
-                "language": str(language),
-            }
-        )
+        row: dict[str, Any] = {
+            "text": cleaned,
+            "task": task,
+            "label": label,
+            "source": source,
+            "language": str(language),
+        }
+        if extras:
+            for key_name, value in extras.items():
+                if value is not None:
+                    row[key_name] = value
+        self.rows.append(row)
         return True
 
 
@@ -352,6 +390,7 @@ class _PairTaskStore:
         label: str,
         source: str,
         language: str = "en",
+        extras: dict[str, Any] | None = None,
     ) -> bool:
         a = _clean(text_a, 700)
         b = _clean(text_b, 700)
@@ -365,16 +404,19 @@ class _PairTaskStore:
             return False
         self._seen.add(key)
         self._counts[task_label] += 1
-        self.rows.append(
-            {
-                "text_a": a,
-                "text_b": b,
-                "task": task,
-                "label": label,
-                "source": source,
-                "language": str(language),
-            }
-        )
+        row: dict[str, Any] = {
+            "text_a": a,
+            "text_b": b,
+            "task": task,
+            "label": label,
+            "source": source,
+            "language": str(language),
+        }
+        if extras:
+            for key_name, value in extras.items():
+                if value is not None:
+                    row[key_name] = value
+        self.rows.append(row)
         return True
 
 
@@ -397,6 +439,7 @@ class _RegressionTaskStore:
         score: float,
         source: str,
         language: str = "en",
+        extras: dict[str, Any] | None = None,
     ) -> bool:
         cleaned = _clean(text, 1000)
         if not cleaned or not task:
@@ -408,15 +451,19 @@ class _RegressionTaskStore:
             return False
         self._seen.add(key)
         self._counts[task] += 1
-        self.rows.append(
-            {
-                "text": cleaned,
-                "task": task,
-                "score": float(score),
-                "source": source,
-                "language": str(language),
-            }
-        )
+        row: dict[str, Any] = {
+            "text": cleaned,
+            "task": task,
+            "label": "",
+            "score": float(score),
+            "source": source,
+            "language": str(language),
+        }
+        if extras:
+            for key_name, value in extras.items():
+                if value is not None:
+                    row[key_name] = value
+        self.rows.append(row)
         return True
 
 
@@ -469,20 +516,25 @@ class _TokenTaskStore:
 def _seed_single_store_from_df(rows: _SingleTaskStore, df: pd.DataFrame) -> None:
     if df.empty:
         return
+    base_cols = {"text", "task", "label", "source", "language"}
     for item in df.itertuples(index=False):
+        extras = {col: getattr(item, col, None) for col in df.columns if col not in base_cols}
         rows.add(
             str(getattr(item, "task", "")),
             getattr(item, "text", ""),
             str(getattr(item, "label", "")),
             str(getattr(item, "source", "prepared:existing")),
             language=str(getattr(item, "language", "en")),
+            extras=extras,
         )
 
 
 def _seed_pair_store_from_df(rows: _PairTaskStore, df: pd.DataFrame) -> None:
     if df.empty:
         return
+    base_cols = {"text_a", "text_b", "task", "label", "source", "language"}
     for item in df.itertuples(index=False):
+        extras = {col: getattr(item, col, None) for col in df.columns if col not in base_cols}
         rows.add(
             str(getattr(item, "task", "")),
             getattr(item, "text_a", ""),
@@ -490,6 +542,27 @@ def _seed_pair_store_from_df(rows: _PairTaskStore, df: pd.DataFrame) -> None:
             str(getattr(item, "label", "")),
             str(getattr(item, "source", "prepared:existing")),
             language=str(getattr(item, "language", "en")),
+            extras=extras,
+        )
+
+
+def _seed_regression_store_from_df(rows: _RegressionTaskStore, df: pd.DataFrame) -> None:
+    if df.empty or "score" not in df.columns:
+        return
+    base_cols = {"text", "task", "label", "score", "source", "language"}
+    for item in df.itertuples(index=False):
+        try:
+            score = float(item.score)
+        except Exception:
+            continue
+        extras = {col: getattr(item, col, None) for col in df.columns if col not in base_cols}
+        rows.add(
+            str(getattr(item, "task", "")),
+            getattr(item, "text", ""),
+            score,
+            str(getattr(item, "source", "prepared:existing")),
+            language=str(getattr(item, "language", "en")),
+            extras=extras,
         )
 
 
@@ -1262,11 +1335,20 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
                 "supersedes" if is_supersedes else "no_supersedes",
                 f"hf:{dataset_name}",
             )
+            rows.add(
+                "novelty_pair",
+                ex.get("premise", ""),
+                ex.get("hypothesis", ""),
+                "contradiction" if is_conflict else "novel",
+                f"hf:{dataset_name}",
+            )
 
     ds_mm = registry.get("ms_marco")
     if ds_mm is not None:
-        for ex in _iter_dataset_rows(
-            ds_mm, limit=registry.limit("ms_marco"), desc="Existing rows [ms_marco]"
+        for idx, ex in enumerate(
+            _iter_dataset_rows(
+                ds_mm, limit=registry.limit("ms_marco"), desc="Existing rows [ms_marco]"
+            )
         ):
             if not isinstance(ex, dict):
                 continue
@@ -1293,19 +1375,70 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
                     negative = passage
                 if positive and negative:
                     break
+            group_id = f"hf:ms_marco:{idx}"
             if positive:
                 rows.add("constraint_rerank", query, positive, "relevant", "hf:ms_marco")
                 rows.add("scope_match", query, positive, "match", "hf:ms_marco")
+                rows.add(
+                    "retrieval_constraint_relevance_pair",
+                    query,
+                    positive,
+                    "relevant",
+                    "hf:ms_marco",
+                    extras={"group_id": group_id},
+                )
+                rows.add(
+                    "memory_rerank_pair",
+                    query,
+                    positive,
+                    "relevant",
+                    "hf:ms_marco",
+                    extras={"group_id": group_id},
+                )
+                rows.add(
+                    "reconsolidation_candidate_pair",
+                    query,
+                    positive,
+                    "relevant",
+                    "hf:ms_marco",
+                    extras={"group_id": group_id},
+                )
             if negative:
                 rows.add("constraint_rerank", query, negative, "not_relevant", "hf:ms_marco")
                 rows.add("scope_match", query, negative, "no_match", "hf:ms_marco")
+                rows.add(
+                    "retrieval_constraint_relevance_pair",
+                    query,
+                    negative,
+                    "not_relevant",
+                    "hf:ms_marco",
+                    extras={"group_id": group_id},
+                )
+                rows.add(
+                    "memory_rerank_pair",
+                    query,
+                    negative,
+                    "not_relevant",
+                    "hf:ms_marco",
+                    extras={"group_id": group_id},
+                )
+                rows.add(
+                    "reconsolidation_candidate_pair",
+                    query,
+                    negative,
+                    "not_relevant",
+                    "hf:ms_marco",
+                    extras={"group_id": group_id},
+                )
 
     ds_quora = registry.get("quora_duplicates")
     if ds_quora is not None:
-        for ex in _iter_dataset_rows(
-            ds_quora,
-            limit=registry.limit("quora_duplicates"),
-            desc="Existing rows [quora_duplicates]",
+        for idx, ex in enumerate(
+            _iter_dataset_rows(
+                ds_quora,
+                limit=registry.limit("quora_duplicates"),
+                desc="Existing rows [quora_duplicates]",
+            )
         ):
             if not isinstance(ex, dict):
                 continue
@@ -1314,6 +1447,7 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
                 relevant = int(raw) == 1
             except Exception:
                 relevant = _clean(raw, 40).lower() in {"1", "true", "duplicate", "relevant"}
+            group_id = f"hf:quora_duplicates:{idx}"
             rows.add(
                 "constraint_rerank",
                 ex.get("sentence1", ""),
@@ -1327,6 +1461,79 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
                 ex.get("sentence2", ""),
                 "match" if relevant else "no_match",
                 "hf:quora_duplicates",
+            )
+            rows.add(
+                "retrieval_constraint_relevance_pair",
+                ex.get("sentence1", ""),
+                ex.get("sentence2", ""),
+                "relevant" if relevant else "not_relevant",
+                "hf:quora_duplicates",
+                extras={"group_id": group_id},
+            )
+            rows.add(
+                "memory_rerank_pair",
+                ex.get("sentence1", ""),
+                ex.get("sentence2", ""),
+                "relevant" if relevant else "not_relevant",
+                "hf:quora_duplicates",
+                extras={"group_id": group_id},
+            )
+            rows.add(
+                "reconsolidation_candidate_pair",
+                ex.get("sentence1", ""),
+                ex.get("sentence2", ""),
+                "relevant" if relevant else "not_relevant",
+                "hf:quora_duplicates",
+                extras={"group_id": group_id},
+            )
+
+
+def _add_temporal_change_rows(
+    rows: _PairTaskStore, *, target_per_task_label: int, rng: random.Random
+) -> None:
+    while rows.count("novelty_pair", "temporal_change") < target_per_task_label:
+        idx = rows.count("novelty_pair", "temporal_change")
+        topic = idx % 5
+        if topic == 0:
+            old = f"I live in City {idx}."
+            new = f"I moved to City {idx + 1} last month."
+        elif topic == 1:
+            old = f"I work as Role {idx}."
+            new = f"I changed jobs and now work as Role {idx + 1}."
+        elif topic == 2:
+            old = f"I wake up at {6 + (idx % 5)} AM every day."
+            new = f"I changed my routine and now wake up at {7 + (idx % 5)} AM."
+        elif topic == 3:
+            old = f"My monthly budget is ${1000 + idx}."
+            new = f"My monthly budget increased to ${1200 + idx} this quarter."
+        else:
+            old = f"I drink {1 + (idx % 2)} cups of coffee each morning."
+            new = f"I stopped that habit and now drink tea instead as of week {idx}."
+        rows.add("novelty_pair", old, new, "temporal_change", "template:temporal_change")
+
+
+def _fill_pair_tasks_without_llm(
+    rows: _PairTaskStore,
+    *,
+    task_labels: dict[str, list[str]],
+    target_per_task_label: int,
+    rng: random.Random,
+) -> None:
+    if "novelty_pair" in task_labels:
+        _fill_template_novelty_rows(rows, target_per_task_label=target_per_task_label)
+        _add_temporal_change_rows(rows, target_per_task_label=target_per_task_label, rng=rng)
+    if "schema_match_pair" in task_labels:
+        _fill_template_schema_rows(rows, target_per_task_label=target_per_task_label)
+    for task in (
+        "retrieval_constraint_relevance_pair",
+        "memory_rerank_pair",
+        "reconsolidation_candidate_pair",
+    ):
+        if task in task_labels:
+            _fill_template_relevance_task(
+                rows,
+                task=task,
+                target_per_task_label=target_per_task_label,
             )
 
 
@@ -1388,8 +1595,10 @@ def _add_fever_schema_match_rows(rows: _PairTaskStore, registry: _HFRegistry) ->
     ds = registry.get("fever")
     if ds is None:
         return
-    for ex in _iter_dataset_rows(
-        ds, limit=registry.limit("fever"), desc="Schema/reconsolidation rows [fever]"
+    for idx, ex in enumerate(
+        _iter_dataset_rows(
+            ds, limit=registry.limit("fever"), desc="Schema/reconsolidation rows [fever]"
+        )
     ):
         if not isinstance(ex, dict):
             continue
@@ -1414,7 +1623,14 @@ def _add_fever_schema_match_rows(rows: _PairTaskStore, registry: _HFRegistry) ->
         else:
             continue
         rows.add("schema_match_pair", claim, evidence, schema_label, "hf:fever")
-        rows.add("reconsolidation_candidate_pair", claim, evidence, recon_label, "hf:fever")
+        rows.add(
+            "reconsolidation_candidate_pair",
+            claim,
+            evidence,
+            recon_label,
+            "hf:fever",
+            extras={"group_id": f"hf:fever:{idx}"},
+        )
 
 
 def _nli_label_name(raw_label: object, label_names: list[str]) -> str:
@@ -1477,6 +1693,479 @@ def _pick_seed_pair(
         return base_pool[0], base_pool[0]
     seed = _pick_seed_text(single_pools, "router", rng)
     return seed, seed
+
+
+_TEMPLATE_TOPIC_PACKS: tuple[dict[str, str], ...] = (
+    {
+        "topic": "food",
+        "query": "What should I cook for dinner",
+        "relevant": "User prefers vegetarian meals and avoids pork",
+        "irrelevant": "User tracks cloud-infrastructure costs every week",
+        "gist": "The user consistently chooses vegetarian meals and avoids pork",
+        "fact": "User preference: vegetarian meals without pork",
+    },
+    {
+        "topic": "travel",
+        "query": "Which hotel should I book for my trip",
+        "relevant": "User prefers quiet hotels near train stations",
+        "irrelevant": "User is studying graph databases for work",
+        "gist": "The user wants quiet hotels close to transit",
+        "fact": "Travel preference: quiet hotels near rail stations",
+    },
+    {
+        "topic": "finance",
+        "query": "How should I plan this month",
+        "relevant": "User keeps an emergency fund and avoids high-interest debt",
+        "irrelevant": "User likes hiking before sunrise on weekends",
+        "gist": "The user prioritizes an emergency fund and avoids high-interest debt",
+        "fact": "Finance policy: keep emergency savings and avoid high-interest debt",
+    },
+    {
+        "topic": "health",
+        "query": "What should I order at the restaurant",
+        "relevant": "User has a shellfish allergy and prefers low-sodium meals",
+        "irrelevant": "User manages a release schedule for mobile apps",
+        "gist": "The user must avoid shellfish and usually chooses low-sodium meals",
+        "fact": "Health constraint: avoid shellfish and favor low-sodium meals",
+    },
+    {
+        "topic": "work",
+        "query": "How should I organize this project",
+        "relevant": "User prefers written project plans and weekly status summaries",
+        "irrelevant": "User likes citrus desserts after dinner",
+        "gist": "The user prefers written plans and weekly status summaries",
+        "fact": "Work preference: written plans with weekly status summaries",
+    },
+    {
+        "topic": "tech",
+        "query": "What setup should I use for this task",
+        "relevant": "User prefers Python tooling and reproducible command-line workflows",
+        "irrelevant": "User books aisle seats on long flights",
+        "gist": "The user prefers Python-based tooling and reproducible CLI workflows",
+        "fact": "Tech preference: Python tooling with reproducible CLI workflows",
+    },
+    {
+        "topic": "social",
+        "query": "What gift would fit best",
+        "relevant": "User prefers practical gifts and handwritten notes",
+        "irrelevant": "User monitors spending in a budgeting spreadsheet",
+        "gist": "The user values practical gifts with a personal note",
+        "fact": "Social preference: practical gifts and handwritten notes",
+    },
+)
+
+
+def _topic_pack(idx: int) -> dict[str, str]:
+    return _TEMPLATE_TOPIC_PACKS[idx % len(_TEMPLATE_TOPIC_PACKS)]
+
+
+def _other_topic_pack(idx: int) -> dict[str, str]:
+    return _TEMPLATE_TOPIC_PACKS[(idx + 3) % len(_TEMPLATE_TOPIC_PACKS)]
+
+
+def _seed_fragment(single_pools: dict[str, list[str]], *, rng: random.Random, idx: int) -> str:
+    seed = _pick_seed_text(single_pools, "router", rng)
+    fragment = _clean(seed.split(".")[0], 120)
+    if fragment:
+        return fragment
+    pack = _topic_pack(idx)
+    return f"{pack['topic'].title()} preference reference {idx}"
+
+
+def _structured_row_extras(
+    *,
+    topic: str,
+    memory_type: str,
+    importance: float,
+    confidence: float,
+    access_count: int,
+    age_days: int,
+    dependency_count: int,
+    support_count: int | None = None,
+    mixed_topic: bool | None = None,
+) -> dict[str, Any]:
+    extras: dict[str, Any] = {
+        "memory_type": memory_type,
+        "namespace": topic,
+        "context_tags": [topic],
+        "importance": round(max(0.0, min(1.0, importance)), 4),
+        "confidence": round(max(0.0, min(1.0, confidence)), 4),
+        "access_count": int(max(0, access_count)),
+        "age_days": int(max(0, age_days)),
+        "dependency_count": int(max(0, dependency_count)),
+    }
+    if support_count is not None:
+        extras["support_count"] = int(max(1, support_count))
+    if mixed_topic is not None:
+        extras["mixed_topic"] = bool(mixed_topic)
+    return extras
+
+
+def _seed_router_regression_from_existing(
+    rows: _RegressionTaskStore,
+    existing_df: pd.DataFrame | None,
+    *,
+    target: int,
+) -> None:
+    if existing_df is None or existing_df.empty:
+        return
+    score_map = {"low": 0.2, "medium": 0.55, "high": 0.85}
+    subset = existing_df[existing_df.get("task", "").astype(str) == "importance_bin"]
+    for item in subset.itertuples(index=False):
+        label = str(getattr(item, "label", "")).strip().lower()
+        score = score_map.get(label)
+        if score is None:
+            continue
+        rows.add(
+            "write_importance_regression",
+            getattr(item, "text", ""),
+            score,
+            f"derived:{getattr(item, 'source', 'prepared:router')}",
+            language=str(getattr(item, "language", "en")),
+            extras={
+                "memory_type": "semantic_fact" if label == "high" else "episodic_event",
+                "namespace": "general",
+                "context_tags": ["general"],
+                "importance": score,
+                "confidence": 0.8 if label == "high" else 0.6,
+                "access_count": 4 if label == "high" else 1,
+                "age_days": 3 if label == "high" else 45,
+                "dependency_count": 2 if label == "high" else 0,
+            },
+        )
+        if rows.count("write_importance_regression") >= target:
+            break
+
+
+def _fill_router_tasks_without_llm(
+    *,
+    rows: _SingleTaskStore,
+    regression_rows: _RegressionTaskStore,
+    task_labels: dict[str, list[str]],
+    regression_tasks: set[str],
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+) -> None:
+    if "consolidation_gist_quality" in task_labels:
+        while rows.count("consolidation_gist_quality", "accept") < target_per_task_label:
+            idx = rows.count("consolidation_gist_quality", "accept")
+            pack = _topic_pack(idx)
+            seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+            text = (
+                f"{pack['gist']} across {3 + (idx % 4)} related conversations; "
+                f"anchor detail {idx}: {seed.lower()}."
+            )
+            rows.add(
+                "consolidation_gist_quality",
+                text,
+                "accept",
+                "template:consolidation_gist_quality:accept",
+                extras=_structured_row_extras(
+                    topic=pack["topic"],
+                    memory_type="semantic_fact",
+                    importance=0.74,
+                    confidence=0.88,
+                    access_count=4 + (idx % 4),
+                    age_days=10 + (idx % 20),
+                    dependency_count=1 + (idx % 3),
+                    support_count=3 + (idx % 4),
+                    mixed_topic=False,
+                ),
+            )
+        while rows.count("consolidation_gist_quality", "reject") < target_per_task_label:
+            idx = rows.count("consolidation_gist_quality", "reject")
+            pack = _topic_pack(idx)
+            text = (
+                f"Various things happened in multiple conversations around {pack['topic']} "
+                f"and some details changed later in note {idx}."
+            )
+            rows.add(
+                "consolidation_gist_quality",
+                text,
+                "reject",
+                "template:consolidation_gist_quality:reject",
+                extras=_structured_row_extras(
+                    topic=pack["topic"],
+                    memory_type="episodic_event",
+                    importance=0.28,
+                    confidence=0.42,
+                    access_count=0,
+                    age_days=45 + (idx % 120),
+                    dependency_count=0,
+                    support_count=1 + (idx % 2),
+                    mixed_topic=True,
+                ),
+            )
+
+    if "forgetting_action_policy" in task_labels:
+        policy_profiles: dict[str, dict[str, Any]] = {
+            "keep": {
+                "memory_type": "constraint",
+                "importance": 0.95,
+                "confidence": 0.94,
+                "access_count": 9,
+                "age_days": 2,
+                "dependency_count": 3,
+                "template": "Critical reminder {idx}: {relevant}; keep this active for all future decisions.",
+            },
+            "decay": {
+                "memory_type": "episodic_event",
+                "importance": 0.48,
+                "confidence": 0.72,
+                "access_count": 2,
+                "age_days": 45,
+                "dependency_count": 1,
+                "template": "Routine note {idx}: {relevant}; it still matters a bit but should fade over time.",
+            },
+            "silence": {
+                "memory_type": "episodic_event",
+                "importance": 0.26,
+                "confidence": 0.58,
+                "access_count": 0,
+                "age_days": 130,
+                "dependency_count": 0,
+                "template": "Low-signal observation {idx}: {relevant}; keep it stored but avoid surfacing it by default.",
+            },
+            "compress": {
+                "memory_type": "semantic_fact",
+                "importance": 0.39,
+                "confidence": 0.81,
+                "access_count": 1,
+                "age_days": 95,
+                "dependency_count": 5,
+                "template": "Redundant cluster note {idx}: {relevant}; preserve the theme but compress the details.",
+            },
+            "delete": {
+                "memory_type": "episodic_event",
+                "importance": 0.08,
+                "confidence": 0.34,
+                "access_count": 0,
+                "age_days": 365,
+                "dependency_count": 0,
+                "template": "Disposable scratch note {idx}: {relevant}; it is stale and no longer useful.",
+            },
+        }
+        for label in task_labels["forgetting_action_policy"]:
+            profile = policy_profiles.get(label)
+            if profile is None:
+                continue
+            while rows.count("forgetting_action_policy", label) < target_per_task_label:
+                idx = rows.count("forgetting_action_policy", label)
+                pack = _topic_pack(idx)
+                text = str(profile["template"]).format(idx=idx, relevant=pack["relevant"].lower())
+                rows.add(
+                    "forgetting_action_policy",
+                    text,
+                    label,
+                    f"template:forgetting_action_policy:{label}",
+                    extras=_structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type=str(profile["memory_type"]),
+                        importance=float(profile["importance"]),
+                        confidence=float(profile["confidence"]),
+                        access_count=int(profile["access_count"]) + (idx % 2),
+                        age_days=int(profile["age_days"]) + (idx % 15),
+                        dependency_count=int(profile["dependency_count"]) + (idx % 2),
+                    ),
+                )
+
+    if "write_importance_regression" in regression_tasks:
+        while regression_rows.count("write_importance_regression") < target_per_task_label:
+            idx = regression_rows.count("write_importance_regression")
+            pack = _topic_pack(idx)
+            band = idx % 5
+            if band == 0:
+                score = 0.94
+                memory_type = "constraint"
+                text = f"High-priority policy {idx}: {pack['relevant']} and this should always guide decisions."
+                importance = 0.95
+                access_count = 8
+                age_days = 2
+                dependency_count = 3
+            elif band == 1:
+                score = 0.76
+                memory_type = "preference"
+                text = f"Stable preference {idx}: {pack['relevant']} for future recommendations."
+                importance = 0.78
+                access_count = 5
+                age_days = 7
+                dependency_count = 1
+            elif band == 2:
+                score = 0.52
+                memory_type = "semantic_fact"
+                text = f"Useful fact {idx}: {pack['fact']}."
+                importance = 0.55
+                access_count = 2
+                age_days = 21
+                dependency_count = 1
+            elif band == 3:
+                score = 0.27
+                memory_type = "episodic_event"
+                text = f"Minor event {idx}: the user briefly mentioned {pack['topic']} logistics."
+                importance = 0.3
+                access_count = 1
+                age_days = 75
+                dependency_count = 0
+            else:
+                score = 0.08
+                memory_type = "scratch"
+                text = f"Ephemeral scratch note {idx}: temporary reminder about {pack['topic']}."
+                importance = 0.1
+                access_count = 0
+                age_days = 180
+                dependency_count = 0
+            regression_rows.add(
+                "write_importance_regression",
+                text,
+                score,
+                "template:write_importance_regression",
+                extras=_structured_row_extras(
+                    topic=pack["topic"],
+                    memory_type=memory_type,
+                    importance=importance,
+                    confidence=0.92 if score > 0.7 else 0.62 if score > 0.3 else 0.38,
+                    access_count=access_count,
+                    age_days=age_days,
+                    dependency_count=dependency_count,
+                ),
+            )
+
+
+def _add_existing_pair_task_mappings(
+    rows: _PairTaskStore, existing_df: pd.DataFrame | None
+) -> None:
+    if existing_df is None or existing_df.empty:
+        return
+    for idx, item in enumerate(existing_df.itertuples(index=False)):
+        task = str(getattr(item, "task", "")).strip()
+        label = str(getattr(item, "label", "")).strip()
+        text_a = getattr(item, "text_a", "")
+        text_b = getattr(item, "text_b", "")
+        source = str(getattr(item, "source", "prepared:pair"))
+        if task == "constraint_rerank":
+            extras = {"group_id": f"prepared:rerank:{idx}"}
+            rows.add(
+                "retrieval_constraint_relevance_pair",
+                text_a,
+                text_b,
+                label,
+                f"derived:{source}",
+                extras=extras,
+            )
+            rows.add(
+                "memory_rerank_pair",
+                text_a,
+                text_b,
+                label,
+                f"derived:{source}",
+                extras=extras,
+            )
+            rows.add(
+                "reconsolidation_candidate_pair",
+                text_a,
+                text_b,
+                label,
+                f"derived:{source}",
+                extras=extras,
+            )
+        elif task == "scope_match":
+            mapped = "match" if label == "match" else "no_match"
+            rows.add("schema_match_pair", text_a, text_b, mapped, f"derived:{source}")
+        elif task == "conflict_detection" and label == "conflict":
+            rows.add("novelty_pair", text_a, text_b, "contradiction", f"derived:{source}")
+        elif task == "supersession" and label == "supersedes":
+            rows.add("novelty_pair", text_a, text_b, "temporal_change", f"derived:{source}")
+
+
+def _fill_template_relevance_task(
+    rows: _PairTaskStore, *, task: str, target_per_task_label: int
+) -> None:
+    while rows.count(task, "relevant") < target_per_task_label:
+        idx = rows.count(task, "relevant")
+        pack = _topic_pack(idx)
+        query = f"{pack['query']} for scenario {idx}?"
+        memory = f"{pack['relevant']}; case {idx}."
+        rows.add(
+            task,
+            query,
+            memory,
+            "relevant",
+            f"template:{task}:relevant",
+            extras={"group_id": f"template:{task}:{idx}"},
+        )
+    while rows.count(task, "not_relevant") < target_per_task_label:
+        idx = rows.count(task, "not_relevant")
+        pack = _topic_pack(idx)
+        other = _other_topic_pack(idx)
+        query = f"{pack['query']} for scenario {idx}?"
+        memory = f"{other['irrelevant']}; distractor {idx}."
+        rows.add(
+            task,
+            query,
+            memory,
+            "not_relevant",
+            f"template:{task}:not_relevant",
+            extras={"group_id": f"template:{task}:{idx}"},
+        )
+
+
+def _fill_template_schema_rows(rows: _PairTaskStore, *, target_per_task_label: int) -> None:
+    while rows.count("schema_match_pair", "match") < target_per_task_label:
+        idx = rows.count("schema_match_pair", "match")
+        pack = _topic_pack(idx)
+        rows.add(
+            "schema_match_pair",
+            f"{pack['gist']} Summary {idx}.",
+            f"{pack['fact']} Fact {idx}.",
+            "match",
+            "template:schema_match_pair:match",
+        )
+    while rows.count("schema_match_pair", "no_match") < target_per_task_label:
+        idx = rows.count("schema_match_pair", "no_match")
+        pack = _topic_pack(idx)
+        other = _other_topic_pack(idx)
+        rows.add(
+            "schema_match_pair",
+            f"{pack['gist']} Summary {idx}.",
+            f"{other['fact']} Fact {idx}.",
+            "no_match",
+            "template:schema_match_pair:no_match",
+        )
+
+
+def _fill_template_novelty_rows(rows: _PairTaskStore, *, target_per_task_label: int) -> None:
+    while rows.count("novelty_pair", "duplicate") < target_per_task_label:
+        idx = rows.count("novelty_pair", "duplicate")
+        pack = _topic_pack(idx)
+        rows.add(
+            "novelty_pair",
+            f"{pack['relevant']} in profile {idx}.",
+            f"In profile {idx}, {pack['relevant'].lower()}.",
+            "duplicate",
+            "template:novelty_pair:duplicate",
+        )
+    while rows.count("novelty_pair", "novel") < target_per_task_label:
+        idx = rows.count("novelty_pair", "novel")
+        pack = _topic_pack(idx)
+        other = _other_topic_pack(idx)
+        rows.add(
+            "novelty_pair",
+            f"{pack['relevant']} in profile {idx}.",
+            f"New detail {idx}: {other['relevant'].lower()}.",
+            "novel",
+            "template:novelty_pair:novel",
+        )
+    while rows.count("novelty_pair", "contradiction") < target_per_task_label:
+        idx = rows.count("novelty_pair", "contradiction")
+        pack = _topic_pack(idx)
+        rows.add(
+            "novelty_pair",
+            f"{pack['relevant']} in preference record {idx}.",
+            f"Preference record {idx} says the opposite of this: {pack['irrelevant'].lower()}.",
+            "contradiction",
+            "template:novelty_pair:contradiction",
+        )
 
 
 def _label_guidance(task: str, label: str) -> str:
@@ -1959,25 +2648,31 @@ def _build_router_rows(
     prepare_cfg: dict,
     synthetic_cfg: dict,
     single_pools: dict[str, list[str]],
-    llm: _LLMGenerator,
+    llm: _LLMGenerator | None,
+    task_labels: dict[str, list[str]],
+    regression_tasks: set[str],
     existing_df: pd.DataFrame | None = None,
     use_multilingual: bool = True,
 ) -> list[dict]:
     cap = max(int(prepare_cfg["max_per_task_label"]), int(prepare_cfg["target_per_task_label"]))
     rows = _SingleTaskStore(cap)
+    regression_rows = _RegressionTaskStore(cap)
     rng = random.Random(int(prepare_cfg["seed"]))
     if existing_df is not None and not existing_df.empty:
         _seed_single_store_from_df(rows, existing_df)
+        _seed_regression_store_from_df(regression_rows, existing_df)
 
     target = int(prepare_cfg["target_per_task_label"])
-    all_router_labels = {**ROUTER_TASK_LABELS, **NEW_SINGLE_TASK_LABELS}
     missing_total = sum(
         max(0, target - rows.count(task, label))
-        for task, labels in all_router_labels.items()
+        for task, labels in task_labels.items()
         for label in labels
     )
-    if missing_total <= 0:
-        return rows.rows
+    missing_regression_total = sum(
+        max(0, target - regression_rows.count(task_name)) for task_name in regression_tasks
+    )
+    if missing_total <= 0 and missing_regression_total <= 0:
+        return [*rows.rows, *regression_rows.rows]
 
     missing_memory_type = any(
         rows.count("memory_type", label) < target for label in ROUTER_TASK_LABELS["memory_type"]
@@ -1989,19 +2684,32 @@ def _build_router_rows(
         _add_existing_router_memory_rows(rows, local_rows)
     if missing_query_domain:
         _add_existing_router_domain_rows(rows, registry)
+    if "write_importance_regression" in regression_tasks:
+        _seed_router_regression_from_existing(regression_rows, existing_df, target=target)
 
-    _fill_single_task_with_llm(
+    _fill_router_tasks_without_llm(
         rows=rows,
-        llm=llm,
-        family="router",
-        task_labels={**ROUTER_TASK_LABELS, **NEW_SINGLE_TASK_LABELS},
+        regression_rows=regression_rows,
+        task_labels=task_labels,
+        regression_tasks=regression_tasks,
         target_per_task_label=target,
         single_pools=single_pools,
         rng=rng,
-        max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-        use_multilingual=use_multilingual,
     )
-    return rows.rows
+
+    if llm is not None:
+        _fill_single_task_with_llm(
+            rows=rows,
+            llm=llm,
+            family="router",
+            task_labels=task_labels,
+            target_per_task_label=target,
+            single_pools=single_pools,
+            rng=rng,
+            max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
+            use_multilingual=use_multilingual,
+        )
+    return [*rows.rows, *regression_rows.rows]
 
 
 def _build_extractor_rows(
@@ -2010,7 +2718,7 @@ def _build_extractor_rows(
     prepare_cfg: dict,
     synthetic_cfg: dict,
     single_pools: dict[str, list[str]],
-    llm: _LLMGenerator,
+    llm: _LLMGenerator | None,
     existing_df: pd.DataFrame | None = None,
     use_multilingual: bool = True,
 ) -> list[dict]:
@@ -2036,17 +2744,18 @@ def _build_extractor_rows(
     if missing_pii:
         _add_existing_extractor_pii_rows(rows, registry)
 
-    _fill_single_task_with_llm(
-        rows=rows,
-        llm=llm,
-        family="extractor",
-        task_labels=EXTRACTOR_TASK_LABELS,
-        target_per_task_label=target,
-        single_pools=single_pools,
-        rng=rng,
-        max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-        use_multilingual=use_multilingual,
-    )
+    if llm is not None:
+        _fill_single_task_with_llm(
+            rows=rows,
+            llm=llm,
+            family="extractor",
+            task_labels=EXTRACTOR_TASK_LABELS,
+            target_per_task_label=target,
+            single_pools=single_pools,
+            rng=rng,
+            max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
+            use_multilingual=use_multilingual,
+        )
     return rows.rows
 
 
@@ -2057,7 +2766,8 @@ def _build_pair_rows(
     synthetic_cfg: dict,
     single_pools: dict[str, list[str]],
     pair_pool: list[tuple[str, str]],
-    llm: _LLMGenerator,
+    llm: _LLMGenerator | None,
+    task_labels: dict[str, list[str]],
     existing_df: pd.DataFrame | None = None,
     use_multilingual: bool = True,
 ) -> list[dict]:
@@ -2068,30 +2778,37 @@ def _build_pair_rows(
         _seed_pair_store_from_df(rows, existing_df)
 
     target = int(prepare_cfg["target_per_task_label"])
-    all_pair_labels = {**PAIR_TASK_LABELS, **NEW_PAIR_TASK_LABELS}
     missing_total = sum(
         max(0, target - rows.count(task, label))
-        for task, labels in all_pair_labels.items()
+        for task, labels in task_labels.items()
         for label in labels
     )
     if missing_total <= 0:
         return rows.rows
 
+    _add_existing_pair_task_mappings(rows, existing_df)
     _add_existing_pair_rows(rows, registry)
     _add_paws_novelty_rows(rows, registry)
     _add_glue_novelty_rows(rows, registry)
     _add_fever_schema_match_rows(rows, registry)
-    _fill_pair_task_with_llm(
-        rows=rows,
-        llm=llm,
-        task_labels={**PAIR_TASK_LABELS, **NEW_PAIR_TASK_LABELS},
+    _fill_pair_tasks_without_llm(
+        rows,
+        task_labels=task_labels,
         target_per_task_label=target,
-        pair_pool=pair_pool,
-        single_pools=single_pools,
         rng=rng,
-        max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-        use_multilingual=use_multilingual,
     )
+    if llm is not None:
+        _fill_pair_task_with_llm(
+            rows=rows,
+            llm=llm,
+            task_labels=task_labels,
+            target_per_task_label=target,
+            pair_pool=pair_pool,
+            single_pools=single_pools,
+            rng=rng,
+            max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
+            use_multilingual=use_multilingual,
+        )
     return rows.rows
 
 
@@ -2192,10 +2909,10 @@ def _summary(df: pd.DataFrame) -> dict:
 def _load_existing_family_df(prepared_dir: Path, family: str) -> pd.DataFrame:
     if family in {"router", "extractor"}:
         required = ["text", "task", "label"]
-        cols = ["text", "task", "label", "source"]
+        base_cols = ["text", "task", "label", "source"]
     elif family == "pair":
         required = ["text_a", "text_b", "task", "label"]
-        cols = ["text_a", "text_b", "task", "label", "source"]
+        base_cols = ["text_a", "text_b", "task", "label", "source"]
     else:
         raise ValueError(f"Unknown family: {family}")
 
@@ -2215,11 +2932,14 @@ def _load_existing_family_df(prepared_dir: Path, family: str) -> pd.DataFrame:
         if "source" not in df.columns:
             df = df.copy()
             df["source"] = f"prepared:{family}:{split}"
-        parts.append(df[cols].copy())
+        for col in base_cols:
+            if col not in df.columns:
+                df[col] = "" if col != "source" else f"prepared:{family}:{split}"
+        parts.append(df.copy())
 
     if not parts:
-        return pd.DataFrame(columns=cols)
-    return pd.concat(parts, ignore_index=True)
+        return pd.DataFrame(columns=base_cols)
+    return pd.concat(parts, ignore_index=True, sort=False)
 
 
 def _existing_split_counts(prepared_dir: Path, family: str) -> dict[str, int]:
@@ -2256,6 +2976,32 @@ def _missing_task_labels(
             miss = max(0, int(target_per_task_label) - have)
             missing[f"{task}::{label}"] = miss
             total += miss
+    return missing, total
+
+
+def _missing_regression_tasks(
+    df: pd.DataFrame,
+    *,
+    task_names: set[str],
+    target_per_task: int,
+) -> tuple[dict[str, int], int]:
+    if df.empty or "task" not in df.columns:
+        counts: dict[str, int] = {}
+    else:
+        subset = df[df["task"].astype(str).isin(task_names)]
+        if "score" in subset.columns:
+            valid = subset[pd.to_numeric(subset["score"], errors="coerce").notna()]
+        else:
+            valid = subset.iloc[0:0]
+        counts = valid.groupby("task").size().to_dict() if not valid.empty else {}
+
+    missing: dict[str, int] = {}
+    total = 0
+    for task_name in sorted(task_names):
+        have = int(counts.get(task_name, 0))
+        miss = max(0, int(target_per_task) - have)
+        missing[task_name] = miss
+        total += miss
     return missing, total
 
 
@@ -2328,6 +3074,7 @@ def main(argv: list[str] | None = None) -> int:
     synthetic_cfg = dict(config.get("synthetic_llm", {}))
     multilingual_cfg = dict(config.get("multilingual", {}))
     datasets_cfg = list(config.get("datasets", []))
+    task_specs_raw = list(config.get("tasks", []))
 
     if args.seed is not None:
         prepare_cfg["seed"] = int(args.seed)
@@ -2434,10 +3181,29 @@ def main(argv: list[str] | None = None) -> int:
         extractor_existing_df = _load_existing_family_df(prepared_dir, "extractor")
         pair_existing_df = _load_existing_family_df(prepared_dir, "pair")
 
+    router_task_labels = _enabled_task_label_map(
+        task_specs_raw,
+        family="router",
+        base_labels=ROUTER_TASK_LABELS,
+        extra_labels=NEW_SINGLE_TASK_LABELS,
+    )
+    pair_task_labels = _enabled_task_label_map(
+        task_specs_raw,
+        family="pair",
+        base_labels=PAIR_TASK_LABELS,
+        extra_labels=NEW_PAIR_TASK_LABELS,
+    )
+    router_regression_tasks = _enabled_regression_tasks(task_specs_raw, family="router")
+
     router_missing, router_missing_total = _missing_task_labels(
         router_existing_df,
-        task_labels={**ROUTER_TASK_LABELS, **NEW_SINGLE_TASK_LABELS},
+        task_labels=router_task_labels,
         target_per_task_label=target_per_task_label,
+    )
+    router_regression_missing, router_regression_missing_total = _missing_regression_tasks(
+        router_existing_df,
+        task_names=router_regression_tasks,
+        target_per_task=target_per_task_label,
     )
     extractor_missing, extractor_missing_total = _missing_task_labels(
         extractor_existing_df,
@@ -2446,17 +3212,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     pair_missing, pair_missing_total = _missing_task_labels(
         pair_existing_df,
-        task_labels={**PAIR_TASK_LABELS, **NEW_PAIR_TASK_LABELS},
+        task_labels=pair_task_labels,
         target_per_task_label=target_per_task_label,
     )
 
-    needs_router = args.force_full or router_missing_total > 0
+    needs_router = (
+        args.force_full or router_missing_total > 0 or router_regression_missing_total > 0
+    )
     needs_extractor = args.force_full or extractor_missing_total > 0
     needs_pair = args.force_full or pair_missing_total > 0
 
     print(
         "Existing coverage missing counts: "
-        f"router={router_missing_total}, extractor={extractor_missing_total}, pair={pair_missing_total}"
+        f"router={router_missing_total + router_regression_missing_total}, "
+        f"extractor={extractor_missing_total}, pair={pair_missing_total}"
     )
 
     ratios = {
@@ -2482,7 +3251,7 @@ def main(argv: list[str] | None = None) -> int:
                 "skipped_all_families": True,
                 "force_full": False,
                 "missing_counts": {
-                    "router": router_missing_total,
+                    "router": router_missing_total + router_regression_missing_total,
                     "extractor": extractor_missing_total,
                     "pair": pair_missing_total,
                 },
@@ -2493,10 +3262,26 @@ def main(argv: list[str] | None = None) -> int:
                 "datasets_cache_dir": str(cache_dir) if cache_dir else "",
             },
             "datasets": {},
+            "configured_tasks": {
+                "router": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
+                "extractor": list(EXTRACTOR_TASK_LABELS.keys()),
+                "pair": sorted(pair_task_labels.keys()),
+            },
+            "observed_tasks": {
+                "router": sorted(router_existing_df["task"].astype(str).unique().tolist())
+                if "task" in router_existing_df.columns
+                else [],
+                "extractor": sorted(extractor_existing_df["task"].astype(str).unique().tolist())
+                if "task" in extractor_existing_df.columns
+                else [],
+                "pair": sorted(pair_existing_df["task"].astype(str).unique().tolist())
+                if "task" in pair_existing_df.columns
+                else [],
+            },
             "router": {
                 **_summary(router_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "router"),
-                "tasks": list(ALL_ROUTER_TASKS),
+                "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": False,
             },
             "extractor": {
@@ -2508,7 +3293,7 @@ def main(argv: list[str] | None = None) -> int:
             "pair": {
                 **_summary(pair_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "pair"),
-                "tasks": list(ALL_PAIR_TASKS),
+                "tasks": sorted(pair_task_labels.keys()),
                 "updated": False,
             },
         }
@@ -2538,12 +3323,7 @@ def main(argv: list[str] | None = None) -> int:
         and _hf_load_dataset is None
         and bool(prepare_cfg["require_datasets_package"])
     ):
-        print(
-            "Missing dependency: python package `datasets` is required by config. "
-            "Install with `pip install datasets` or run with --allow-missing-datasets-package.",
-            file=sys.stderr,
-        )
-        return 1
+        _warn("Missing `datasets` package; continuing with existing/bootstrap/template rows only.")
 
     registry = _HFRegistry(
         datasets_cfg=datasets_cfg_active, cache_dir=cache_dir, prepare_cfg=prepare_cfg
@@ -2552,8 +3332,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             registry.ensure_required()
         except Exception as exc:
-            print(f"Failed to download/load required dataset: {exc}", file=sys.stderr)
-            return 1
+            _warn(f"Dataset prefetch failed; continuing with available rows only: {exc}")
 
     print("Loading local bootstrap rows...")
     local_rows = _load_local_bootstrap_rows(
@@ -2587,18 +3366,19 @@ def main(argv: list[str] | None = None) -> int:
     pool_sizes = {k: len(v) for k, v in single_pools.items()}
     print(f"Seed pool sizes: single={pool_sizes}, pair={len(pair_pool)}")
 
+    llm: _LLMGenerator | None = None
     try:
         llm = _LLMGenerator(synthetic_cfg)
     except Exception as exc:
-        print(f"Failed to initialize synthetic LLM generator: {exc}", file=sys.stderr)
-        return 1
-    print(
-        "Using synthetic LLM provider="
-        f"{llm.provider or 'unknown'} model={llm.model} base_url={llm.base_url} "
-        f"temperature={llm.temperature} batch_size={llm.batch_size} "
-        f"concurrency={llm.concurrency} timeout={llm.timeout_seconds}s "
-        f"multilingual={use_multilingual}"
-    )
+        _warn(f"Continuing without synthetic LLM fill: {exc}")
+    else:
+        print(
+            "Using synthetic LLM provider="
+            f"{llm.provider or 'unknown'} model={llm.model} base_url={llm.base_url} "
+            f"temperature={llm.temperature} batch_size={llm.batch_size} "
+            f"concurrency={llm.concurrency} timeout={llm.timeout_seconds}s "
+            f"multilingual={use_multilingual}"
+        )
     try:
         if needs_router:
             print("Preparing router dataset (missing-only mode)...")
@@ -2609,6 +3389,8 @@ def main(argv: list[str] | None = None) -> int:
                 synthetic_cfg=synthetic_cfg,
                 single_pools=single_pools,
                 llm=llm,
+                task_labels=router_task_labels,
+                regression_tasks=router_regression_tasks,
                 existing_df=router_existing_df,
                 use_multilingual=use_multilingual,
             )
@@ -2662,6 +3444,7 @@ def main(argv: list[str] | None = None) -> int:
                 single_pools=single_pools,
                 pair_pool=pair_pool,
                 llm=llm,
+                task_labels=pair_task_labels,
                 existing_df=pair_existing_df,
                 use_multilingual=use_multilingual,
             )
@@ -2687,7 +3470,7 @@ def main(argv: list[str] | None = None) -> int:
                 "mode": "missing_only",
                 "force_full": bool(args.force_full),
                 "missing_counts": {
-                    "router": router_missing_total,
+                    "router": router_missing_total + router_regression_missing_total,
                     "extractor": extractor_missing_total,
                     "pair": pair_missing_total,
                 },
@@ -2715,29 +3498,56 @@ def main(argv: list[str] | None = None) -> int:
                 ]
             }
             | {"llm_temperature": synthetic_cfg["temperature"]},
-            "synthetic_llm": {
-                "provider": llm.provider,
-                "model": llm.model,
-                "base_url": llm.base_url,
-                "temperature": llm.temperature,
-                "top_p": llm.top_p,
-                "batch_size": llm.batch_size,
-                "concurrency": llm.concurrency,
-                "max_tokens": llm.max_tokens,
-                "max_attempts_per_label": int(synthetic_cfg["max_attempts_per_label"]),
-                "log_stats_every_seconds": float(synthetic_cfg["log_stats_every_seconds"]),
-                "log_zero_progress_every": int(synthetic_cfg["log_zero_progress_every"]),
-                "parse_failure_log_every": int(synthetic_cfg["parse_failure_log_every"]),
-                "log_request_failures": bool(synthetic_cfg["log_request_failures"]),
-                "local_raw_scan_rows_per_file": int(synthetic_cfg["local_raw_scan_rows_per_file"]),
-            },
+            "synthetic_llm": (
+                {
+                    "enabled": True,
+                    "provider": llm.provider,
+                    "model": llm.model,
+                    "base_url": llm.base_url,
+                    "temperature": llm.temperature,
+                    "top_p": llm.top_p,
+                    "batch_size": llm.batch_size,
+                    "concurrency": llm.concurrency,
+                    "max_tokens": llm.max_tokens,
+                    "max_attempts_per_label": int(synthetic_cfg["max_attempts_per_label"]),
+                    "log_stats_every_seconds": float(synthetic_cfg["log_stats_every_seconds"]),
+                    "log_zero_progress_every": int(synthetic_cfg["log_zero_progress_every"]),
+                    "parse_failure_log_every": int(synthetic_cfg["parse_failure_log_every"]),
+                    "log_request_failures": bool(synthetic_cfg["log_request_failures"]),
+                    "local_raw_scan_rows_per_file": int(
+                        synthetic_cfg["local_raw_scan_rows_per_file"]
+                    ),
+                }
+                if llm is not None
+                else {
+                    "enabled": False,
+                    "provider": synthetic_cfg.get("provider", ""),
+                    "model": synthetic_cfg.get("model", ""),
+                    "base_url": synthetic_cfg.get("base_url", ""),
+                    "reason": "Synthetic LLM unavailable; deterministic/public data only.",
+                }
+            ),
             "datasets": registry.status,
+            "configured_tasks": {
+                "router": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
+                "extractor": list(EXTRACTOR_TASK_LABELS.keys()),
+                "pair": sorted(pair_task_labels.keys()),
+            },
+            "observed_tasks": {
+                "router": sorted(router_df["task"].astype(str).unique().tolist()),
+                "extractor": sorted(extractor_df["task"].astype(str).unique().tolist()),
+                "pair": sorted(pair_df["task"].astype(str).unique().tolist()),
+            },
             "router": {
                 **_summary(router_df),
                 "splits": router_splits,
-                "tasks": list(ALL_ROUTER_TASKS),
+                "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": needs_router,
-                "missing_before": router_missing,
+                "missing_before": router_missing
+                | {
+                    f"{task_name}::score_rows": count
+                    for task_name, count in router_regression_missing.items()
+                },
             },
             "extractor": {
                 **_summary(extractor_df),
@@ -2749,7 +3559,7 @@ def main(argv: list[str] | None = None) -> int:
             "pair": {
                 **_summary(pair_df),
                 "splits": pair_splits,
-                "tasks": list(ALL_PAIR_TASKS),
+                "tasks": sorted(pair_task_labels.keys()),
                 "updated": needs_pair,
                 "missing_before": pair_missing,
             },
@@ -2764,14 +3574,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Manifest: {manifest_path}")
         return 0
     finally:
-        try:
-            llm.maybe_report(context="final", force=True)
-        except Exception:
-            pass
-        try:
-            llm.client.close()
-        except Exception:
-            pass
+        if llm is not None:
+            try:
+                llm.maybe_report(context="final", force=True)
+            except Exception:
+                pass
+            try:
+                llm.client.close()
+            except Exception:
+                pass
 
 
 def prepare_data(config: PrepareConfig) -> int:

@@ -81,15 +81,53 @@ class ReconsolidationService:
             return 0.0
         return len(wa & wb) / len(wa | wb)
 
+    @staticmethod
+    def _extract_constraint_meta(record: MemoryRecord) -> dict[str, Any] | None:
+        """Extract the first constraint metadata dict from a memory record."""
+        meta = record.metadata if isinstance(record.metadata, dict) else {}
+        constraints = meta.get("constraints", [])
+        if constraints and isinstance(constraints, list) and isinstance(constraints[0], dict):
+            return constraints[0]
+        return None
+
+    @staticmethod
+    def _same_constraint_type(mem: MemoryRecord, target_meta: dict[str, Any]) -> bool:
+        """Check if a memory's constraint type matches the target metadata."""
+        meta = mem.metadata if isinstance(mem.metadata, dict) else {}
+        constraints = meta.get("constraints", [])
+        if not constraints or not isinstance(constraints, list):
+            return False
+        for c in constraints:
+            if isinstance(c, dict) and c.get("constraint_type") == target_meta.get(
+                "constraint_type"
+            ):
+                return True
+        return False
+
     def _top_k_similar_memories(
         self,
         fact_text: str,
         memories: list[MemoryRecord],
         k: int,
+        *,
+        new_record: MemoryRecord | None = None,
     ) -> list[MemoryRecord]:
-        """Return the k memories most similar to fact_text."""
+        """Return the k memories most similar to fact_text.
+
+        When ``new_record`` carries constraint metadata, same-type constraints
+        are prioritised so that type-matched conflicts are detected first.
+        """
         if len(memories) <= k:
             return memories
+
+        new_meta = self._extract_constraint_meta(new_record) if new_record else None
+        if new_meta:
+            same_type = [m for m in memories if self._same_constraint_type(m, new_meta)]
+            other = [m for m in memories if m not in same_type]
+            candidates = same_type[:k]
+            if len(candidates) < k:
+                candidates.extend(other[: k - len(candidates)])
+            return candidates
 
         # Model path: use dedicated pair model for candidate ranking
         if getattr(self.modelpack, "has_task_model", lambda _: False)(
@@ -165,13 +203,19 @@ class ReconsolidationService:
             )
 
         for new_fact in new_facts:
-            # Only compare against the most similar memories to avoid an
-            # O(N_facts x N_memories) explosion of LLM conflict-detection calls.
+            new_record = self._fact_to_lightweight_record(new_fact)
             candidate_memories = self._top_k_similar_memories(
-                new_fact["text"], retrieved_memories, self._CONFLICT_TOP_K
+                new_fact["text"],
+                retrieved_memories,
+                self._CONFLICT_TOP_K,
+                new_record=new_record,
             )
             for memory in candidate_memories:
-                conflict = await self.conflict_detector.detect(memory, new_fact["text"])
+                conflict = await self.conflict_detector.detect(
+                    memory,
+                    new_fact["text"],
+                    new_memory=new_record,
+                )
                 if conflict.conflict_type.value != "none":
                     conflicts_found += 1
 
@@ -218,6 +262,47 @@ class ReconsolidationService:
             operations_applied=operations_applied,
             conflicts_found=conflicts_found,
             elapsed_ms=elapsed,
+        )
+
+    @staticmethod
+    def _fact_to_lightweight_record(fact: dict[str, Any]) -> MemoryRecord | None:
+        """Build a minimal MemoryRecord from an extracted fact dict.
+
+        This allows the conflict detector's type-aware pre-filter to fire
+        when comparing against constraint memories.
+        """
+        from uuid import uuid4
+
+        from ..core.enums import MemorySource
+
+        fact_type = fact.get("type", "episodic_event")
+        try:
+            mem_type = MemoryType(fact_type)
+        except ValueError:
+            mem_type = MemoryType.EPISODIC_EVENT
+
+        metadata: dict[str, Any] = {}
+        if fact.get("constraint_type"):
+            metadata["constraints"] = [
+                {
+                    "constraint_type": fact["constraint_type"],
+                    "subject": fact.get("subject", "user"),
+                    "scope": fact.get("scope"),
+                }
+            ]
+
+        from ..core.schemas import Provenance
+
+        return MemoryRecord(
+            id=uuid4(),
+            tenant_id="",
+            text=fact.get("text", ""),
+            type=mem_type,
+            confidence=0.5,
+            importance=0.5,
+            metadata=metadata,
+            context_tags=[],
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
         )
 
     async def _extract_new_facts(

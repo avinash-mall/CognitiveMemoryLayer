@@ -2,16 +2,28 @@
   "family": "pair",
   "split": "eval",
   "overall": {
-    "rows": 40000,
-    "accuracy": 0.660975,
-    "macro_f1": 0.6596491307932304,
-    "weighted_f1": 0.6596491307932305,
-    "micro_f1": 0.660975,
+    "rows": 99404,
+    "accuracy": 0.5925314876664923,
+    "macro_f1": 0.5840627921212015,
+    "weighted_f1": 0.5822273679763375,
+    "micro_f1": 0.5925314876664923,
     "labels": [
       "conflict_detection::conflict",
       "conflict_detection::no_conflict",
       "constraint_rerank::not_relevant",
       "constraint_rerank::relevant",
+      "memory_rerank_pair::not_relevant",
+      "memory_rerank_pair::relevant",
+      "novelty_pair::contradiction",
+      "novelty_pair::duplicate",
+      "novelty_pair::novel",
+      "novelty_pair::temporal_change",
+      "reconsolidation_candidate_pair::not_relevant",
+      "reconsolidation_candidate_pair::relevant",
+      "retrieval_constraint_relevance_pair::not_relevant",
+      "retrieval_constraint_relevance_pair::relevant",
+      "schema_match_pair::match",
+      "schema_match_pair::no_match",
       "scope_match::match",
       "scope_match::no_match",
       "supersession::no_supersedes",
@@ -19,8 +31,218 @@
     ],
     "confusion_matrix": [
       [
-        3389,
-        1610,
+        3274,
+        1726,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        1274,
+        3726,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        2526,
+        2474,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        2193,
+        2807,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        2699,
+        2300,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        2449,
+        2551,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        554,
+        310,
+        1711,
+        2425,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        51,
+        4199,
+        18,
+        136,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        397,
+        168,
+        3792,
+        643,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1991,
+        349,
+        1657,
+        1002,
+        0,
+        0,
+        0,
+        0,
         0,
         0,
         0,
@@ -29,8 +251,20 @@
         0
       ],
       [
-        1325,
-        3675,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        3345,
+        1653,
+        0,
+        0,
         0,
         0,
         0,
@@ -39,42 +273,46 @@
         0
       ],
       [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3019,
+        1981,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         1,
         0,
-        2235,
-        2763,
-        0,
-        1,
-        0,
-        0
-      ],
-      [
         0,
         0,
-        1985,
-        3013,
         0,
-        1,
-        0,
-        1
-      ],
-      [
+        3542,
+        1457,
         0,
         0,
         0,
         0,
-        3864,
-        1136,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        0,
-        1840,
-        3160,
         0,
         0
       ],
@@ -85,8 +323,20 @@
         0,
         0,
         0,
-        3787,
-        1213
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3212,
+        1788,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ],
       [
         0,
@@ -95,32 +345,201 @@
         0,
         0,
         0,
-        1684,
-        3316
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3929,
+        1071,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1857,
+        3143,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3889,
+        1111,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1874,
+        3126,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3807,
+        1193
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1780,
+        3220
       ]
-    ]
+    ],
+    "calibration_error": 0.11830706018541194
   },
   "per_task": {
     "conflict_detection": {
       "rows": 10000,
-      "accuracy": 0.7064,
-      "macro_f1": 0.470796258989935,
-      "weighted_f1": 0.7061943884849026,
-      "micro_f1": 0.7064,
+      "accuracy": 0.7,
+      "macro_f1": 0.6993858332327278,
+      "weighted_f1": 0.6993858332327277,
+      "micro_f1": 0.7,
       "labels": [
         "conflict",
-        "no_conflict",
+        "no_conflict"
+      ],
+      "confusion_matrix": [
+        [
+          3274,
+          1726
+        ],
+        [
+          1274,
+          3726
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    },
+    "constraint_rerank": {
+      "rows": 10000,
+      "accuracy": 0.5333,
+      "macro_f1": 0.5329311978030973,
+      "weighted_f1": 0.5329311978030973,
+      "micro_f1": 0.5333,
+      "labels": [
+        "not_relevant",
+        "relevant"
+      ],
+      "confusion_matrix": [
+        [
+          2526,
+          2474
+        ],
+        [
+          2193,
+          2807
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    },
+    "memory_rerank_pair": {
+      "rows": 10000,
+      "accuracy": 0.525,
+      "macro_f1": 0.34994814537955704,
+      "weighted_f1": 0.5249222180693356,
+      "micro_f1": 0.525,
+      "labels": [
+        "not_relevant",
+        "relevant",
         "__wrong_task__"
       ],
       "confusion_matrix": [
         [
-          3389,
-          1610,
+          2699,
+          2300,
           1
         ],
         [
-          1325,
-          3675,
+          2449,
+          2551,
           0
         ],
         [
@@ -132,12 +551,65 @@
       "wrong_task_predictions": 1,
       "wrong_task_rate": 0.0001
     },
-    "constraint_rerank": {
+    "novelty_pair": {
+      "rows": 19404,
+      "accuracy": 0.4920119562976706,
+      "macro_f1": 0.37392596141819756,
+      "weighted_f1": 0.45441012481787646,
+      "micro_f1": 0.4920119562976706,
+      "labels": [
+        "contradiction",
+        "duplicate",
+        "novel",
+        "temporal_change",
+        "__wrong_task__"
+      ],
+      "confusion_matrix": [
+        [
+          554,
+          310,
+          1711,
+          2425,
+          0
+        ],
+        [
+          51,
+          4199,
+          18,
+          136,
+          0
+        ],
+        [
+          397,
+          168,
+          3792,
+          643,
+          0
+        ],
+        [
+          1991,
+          349,
+          1657,
+          1002,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "wrong_task_predictions": 1,
+      "wrong_task_rate": 5.1535765821480104e-05
+    },
+    "reconsolidation_candidate_pair": {
       "rows": 10000,
-      "accuracy": 0.5248,
-      "macro_f1": 0.3480070867963461,
-      "weighted_f1": 0.5220106301945192,
-      "micro_f1": 0.5248,
+      "accuracy": 0.5326,
+      "macro_f1": 0.349194881821229,
+      "weighted_f1": 0.5237923227318435,
+      "micro_f1": 0.5326,
       "labels": [
         "not_relevant",
         "relevant",
@@ -145,14 +617,14 @@
       ],
       "confusion_matrix": [
         [
-          2235,
-          2763,
+          3345,
+          1653,
           2
         ],
         [
-          1985,
-          3013,
-          2
+          3019,
+          1981,
+          0
         ],
         [
           0,
@@ -160,27 +632,81 @@
           0
         ]
       ],
-      "wrong_task_predictions": 4,
-      "wrong_task_rate": 0.0004
+      "wrong_task_predictions": 2,
+      "wrong_task_rate": 0.0002
     },
-    "scope_match": {
+    "retrieval_constraint_relevance_pair": {
       "rows": 10000,
-      "accuracy": 0.7024,
-      "macro_f1": 0.700917700269367,
-      "weighted_f1": 0.7009177002693671,
-      "micro_f1": 0.7024,
+      "accuracy": 0.533,
+      "macro_f1": 0.3454686169912902,
+      "weighted_f1": 0.5182029254869355,
+      "micro_f1": 0.533,
+      "labels": [
+        "not_relevant",
+        "relevant",
+        "__wrong_task__"
+      ],
+      "confusion_matrix": [
+        [
+          3542,
+          1457,
+          1
+        ],
+        [
+          3212,
+          1788,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "wrong_task_predictions": 1,
+      "wrong_task_rate": 0.0001
+    },
+    "schema_match_pair": {
+      "rows": 10000,
+      "accuracy": 0.7072,
+      "macro_f1": 0.7053798484887697,
+      "weighted_f1": 0.7053798484887697,
+      "micro_f1": 0.7072,
       "labels": [
         "match",
         "no_match"
       ],
       "confusion_matrix": [
         [
-          3864,
-          1136
+          3929,
+          1071
         ],
         [
-          1840,
-          3160
+          1857,
+          3143
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    },
+    "scope_match": {
+      "rows": 10000,
+      "accuracy": 0.7015,
+      "macro_f1": 0.6997520495091067,
+      "weighted_f1": 0.6997520495091066,
+      "micro_f1": 0.7015,
+      "labels": [
+        "match",
+        "no_match"
+      ],
+      "confusion_matrix": [
+        [
+          3889,
+          1111
+        ],
+        [
+          1874,
+          3126
         ]
       ],
       "wrong_task_predictions": 0,
@@ -188,22 +714,22 @@
     },
     "supersession": {
       "rows": 10000,
-      "accuracy": 0.7103,
-      "macro_f1": 0.7096558977401056,
-      "weighted_f1": 0.7096558977401057,
-      "micro_f1": 0.7103,
+      "accuracy": 0.7027,
+      "macro_f1": 0.7016720543810603,
+      "weighted_f1": 0.7016720543810603,
+      "micro_f1": 0.7027,
       "labels": [
         "no_supersedes",
         "supersedes"
       ],
       "confusion_matrix": [
         [
-          3787,
-          1213
+          3807,
+          1193
         ],
         [
-          1684,
-          3316
+          1780,
+          3220
         ]
       ],
       "wrong_task_predictions": 0,

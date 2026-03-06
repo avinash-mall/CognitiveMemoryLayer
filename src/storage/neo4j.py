@@ -135,6 +135,67 @@ class Neo4jGraphStore(GraphStoreBase):
             record = await result.single()
             return record["node_id"] if record else ""
 
+    async def merge_nodes_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        nodes: list[dict[str, Any]],
+    ) -> int:
+        """Batch-merge entity nodes using a single UNWIND query."""
+        if not nodes:
+            return 0
+        now = datetime.now(UTC).isoformat()
+        params = [
+            {
+                "entity": n["entity"],
+                "entity_type": n["entity_type"],
+                "properties": n.get("properties") or {},
+            }
+            for n in nodes
+        ]
+
+        query = """
+        UNWIND $batch AS item
+        MERGE (n:Entity {
+            tenant_id: $tenant_id,
+            scope_id: $scope_id,
+            entity: item.entity,
+            entity_type: item.entity_type
+        })
+        ON CREATE SET
+            n.created_at = $now,
+            n.updated_at = $now,
+            n += item.properties
+        ON MATCH SET
+            n.updated_at = $now,
+            n += item.properties
+        RETURN count(n) AS cnt
+        """
+
+        try:
+            async with self.driver.session() as session:
+                result = await session.run(
+                    query,
+                    tenant_id=tenant_id,
+                    scope_id=scope_id,
+                    batch=params,
+                    now=now,
+                )
+                record = await result.single()
+                return record["cnt"] if record else len(nodes)
+        except Exception:
+            count = 0
+            for n in nodes:
+                await self.merge_node(
+                    tenant_id=tenant_id,
+                    scope_id=scope_id,
+                    entity=n["entity"],
+                    entity_type=n["entity_type"],
+                    properties=n.get("properties"),
+                )
+                count += 1
+            return count
+
     async def merge_edge(
         self,
         tenant_id: str,
@@ -196,6 +257,82 @@ class Neo4jGraphStore(GraphStoreBase):
             )
             record = await result.single()
             return record["edge_id"] if record else ""
+
+    async def merge_edges_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        edges: list[dict[str, Any]],
+    ) -> list[str]:
+        """Batch-merge multiple edges in a single session.
+
+        Edges are grouped by sanitised relationship type, and each group is
+        written with a single UNWIND Cypher statement (Neo4j does not support
+        dynamic relationship types inside UNWIND).
+        """
+        if not edges:
+            return []
+
+        from collections import defaultdict
+
+        groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for edge in edges:
+            rel_type = _sanitize_rel_type(edge.get("predicate", "RELATED_TO"))
+            props = dict(edge.get("properties", {}) or {})
+            groups[rel_type].append(
+                {
+                    "subject": edge["subject"],
+                    "object": edge["object"],
+                    "confidence": props.pop("confidence", 0.8),
+                    "properties": props,
+                }
+            )
+
+        now = datetime.now(UTC).isoformat()
+        all_ids: list[str] = []
+
+        async with self.driver.session() as session:
+            for rel_type, batch in groups.items():
+                query = f"""
+                UNWIND $batch AS edge
+                MERGE (s:Entity {{
+                    tenant_id: $tenant_id,
+                    scope_id: $scope_id,
+                    entity: edge.subject
+                }})
+                ON CREATE SET s.created_at = $now, s.entity_type = 'UNKNOWN'
+
+                MERGE (o:Entity {{
+                    tenant_id: $tenant_id,
+                    scope_id: $scope_id,
+                    entity: edge.object
+                }})
+                ON CREATE SET o.created_at = $now, o.entity_type = 'UNKNOWN'
+
+                MERGE (s)-[r:`{rel_type}`]->(o)
+                ON CREATE SET
+                    r.created_at = $now,
+                    r.updated_at = $now,
+                    r.confidence = edge.confidence,
+                    r += edge.properties
+                ON MATCH SET
+                    r.updated_at = $now,
+                    r.access_count = coalesce(r.access_count, 0) + 1,
+                    r += edge.properties
+
+                RETURN elementId(r) AS edge_id
+                """
+                result = await session.run(
+                    query,
+                    tenant_id=tenant_id,
+                    scope_id=scope_id,
+                    batch=batch,
+                    now=now,
+                )
+                records = await result.data()
+                all_ids.extend(r["edge_id"] for r in records if "edge_id" in r)
+
+        return all_ids
 
     async def get_neighbors(
         self,

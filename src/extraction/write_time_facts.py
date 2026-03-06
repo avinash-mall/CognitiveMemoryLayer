@@ -60,6 +60,7 @@ class WriteTimeFactExtractor:
             ChunkType.PREFERENCE,
             ChunkType.FACT,
             ChunkType.CONSTRAINT,
+            ChunkType.STATEMENT,
         }
         if chunk.chunk_type not in fact_bearing_types:
             return []

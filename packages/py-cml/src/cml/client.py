@@ -10,6 +10,11 @@ from datetime import datetime
 from typing import Any, Literal, cast
 from uuid import UUID
 
+from cml._endpoints import (
+    build_read_body,
+    build_write_body,
+    eval_mode_headers,
+)
 from cml.config import CMLConfig
 from cml.exceptions import ConnectionError, TimeoutError
 from cml.models import (
@@ -147,19 +152,20 @@ class CognitiveMemoryLayer:
         Returns:
             WriteResponse with success, memory_id, chunks_created; when eval_mode=True, also eval_outcome and eval_reason.
         """
-        body = WriteRequest(
-            content=content,
+        body = build_write_body(
+            content,
             context_tags=context_tags,
             session_id=session_id,
             memory_type=memory_type,
             namespace=namespace,
-            metadata=metadata or {},
+            metadata=metadata,
             turn_id=turn_id,
             agent_id=agent_id,
             timestamp=timestamp,
-        ).model_dump(exclude_none=True, mode="json")
-        extra = {"X-Eval-Mode": "true"} if eval_mode else None
-        data = self._transport.request("POST", "/memory/write", json=body, extra_headers=extra)
+        )
+        data = self._transport.request(
+            "POST", "/memory/write", json=body, extra_headers=eval_mode_headers(eval_mode)
+        )
         return WriteResponse(**data)
 
     def _write_session(
@@ -223,16 +229,16 @@ class CognitiveMemoryLayer:
         Returns:
             ReadResponse with memories, facts, preferences, episodes, constraints, context.
         """
-        body = ReadRequest(
-            query=query,
+        body = build_read_body(
+            query,
             max_results=max_results,
             context_filter=context_filter,
             memory_types=memory_types,
             since=since,
             until=until,
-            format=response_format,  # alias for response_format in ReadRequest
+            response_format=response_format,
             user_timezone=user_timezone,
-        ).model_dump(exclude_none=True, by_alias=True, mode="json")
+        )
         data = self._transport.request("POST", "/memory/read", json=body)
         return ReadResponse(**data)
 

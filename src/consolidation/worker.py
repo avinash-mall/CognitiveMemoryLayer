@@ -291,8 +291,7 @@ class ConsolidationWorker:
             if cluster.cluster_id in covered_clusters:
                 continue
             if cluster.cluster_id in rejected_clusters or self._is_mixed_topic_cluster(cluster):
-                fallback = self._fallback_gist(cluster)
-                if fallback is not None:
+                for fallback in self._split_or_fallback_gists(cluster):
                     accepted.append(fallback)
 
         return accepted
@@ -327,6 +326,14 @@ class ConsolidationWorker:
                 score_pred = self.modelpack.predict_score_single(
                     "consolidation_gist_quality",
                     text,
+                    metadata={
+                        "memory_type": "semantic_fact",
+                        "importance": min(1.0, 0.3 + (0.1 * len(cluster.episodes))),
+                        "confidence": gist.confidence,
+                        "support_count": len(cluster.episodes),
+                        "mixed_topic": self._is_mixed_topic_cluster(cluster),
+                        "context_tags": sorted(cluster.common_entities)[:3],
+                    },
                 )
                 if score_pred is not None:
                     return score_pred.score >= 0.5
@@ -365,21 +372,118 @@ class ConsolidationWorker:
         return len(types) >= 2 and not cluster.common_entities
 
     @staticmethod
-    def _fallback_gist(cluster: EpisodeCluster) -> ExtractedGist | None:
+    def _split_or_fallback_gists(cluster: EpisodeCluster) -> list[ExtractedGist]:
+        """Split mixed-topic constraint clusters into per-subtype gists.
+
+        When a mixed cluster contains multiple constraint subtypes, each
+        subtype gets its own gist to avoid collapsing distinct constraints
+        into a single generic "policy" gist.  Non-constraint episodes in the
+        same cluster are summarised separately.
+        """
         if not cluster.episodes:
+            return []
+
+        constraint_subtypes = {"goal", "state", "value", "causal", "policy"}
+        by_subtype: dict[str, list] = {}
+        non_constraint: list = []
+
+        for ep in cluster.episodes:
+            ep_type = (ep.type.value if hasattr(ep.type, "value") else str(ep.type)).lower()
+            meta = getattr(ep, "metadata", None) or {}
+            constraint_type = None
+            for c in meta.get("constraints", []):
+                if isinstance(c, dict):
+                    constraint_type = (c.get("constraint_type") or "").lower()
+                    break
+            if ep_type in constraint_subtypes:
+                by_subtype.setdefault(ep_type, []).append(ep)
+            elif ep_type == "constraint" and constraint_type in constraint_subtypes:
+                by_subtype.setdefault(constraint_type, []).append(ep)
+            elif ep_type == "constraint":
+                by_subtype.setdefault("policy", []).append(ep)
+            else:
+                non_constraint.append(ep)
+
+        gists: list[ExtractedGist] = []
+
+        for subtype, episodes in by_subtype.items():
+            anchor = max(episodes, key=lambda ep: ep.confidence)
+            gists.append(
+                ExtractedGist(
+                    text=anchor.text[:220],
+                    gist_type=subtype,
+                    confidence=max(0.45, min(0.75, anchor.confidence * 0.8)),
+                    supporting_episode_ids=[str(ep.id) for ep in episodes],
+                    source_memory_types=[
+                        (ep.type.value if hasattr(ep.type, "value") else str(ep.type)).lower()
+                        for ep in episodes
+                    ],
+                )
+            )
+
+        if non_constraint:
+            anchor = max(non_constraint, key=lambda ep: ep.confidence)
+            dominant = (cluster.dominant_type or "").lower()
+            if dominant == "preference":
+                gist_type = "preference"
+            elif dominant == "semantic_fact":
+                gist_type = "fact"
+            else:
+                gist_type = "summary"
+            gists.append(
+                ExtractedGist(
+                    text=anchor.text[:220],
+                    gist_type=gist_type,
+                    confidence=max(0.45, min(0.75, anchor.confidence * 0.8)),
+                    supporting_episode_ids=[str(ep.id) for ep in non_constraint],
+                    source_memory_types=[
+                        (ep.type.value if hasattr(ep.type, "value") else str(ep.type)).lower()
+                        for ep in non_constraint
+                    ],
+                )
+            )
+
+        if not gists:
+            anchor = max(cluster.episodes, key=lambda ep: ep.confidence)
+            gists.append(
+                ExtractedGist(
+                    text=anchor.text[:220],
+                    gist_type="summary",
+                    confidence=max(0.45, min(0.75, anchor.confidence * 0.8)),
+                    supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
+                    source_memory_types=[
+                        (ep.type.value if hasattr(ep.type, "value") else str(ep.type)).lower()
+                        for ep in cluster.episodes
+                    ],
+                )
+            )
+
+        return gists
+
+    @staticmethod
+    def _fallback_gist(cluster: EpisodeCluster) -> ExtractedGist | None:
+        """Return a single fallback gist for callers that need one best-effort gist."""
+        gists = ConsolidationWorker._split_or_fallback_gists(cluster)
+        if not gists:
             return None
-        anchor = max(cluster.episodes, key=lambda ep: ep.confidence)
-        dominant = (cluster.dominant_type or "").lower()
-        gist_type = "policy" if dominant == "constraint" else "summary"
-        if dominant == "preference":
-            gist_type = "preference"
-        return ExtractedGist(
-            text=anchor.text[:220],
-            gist_type=gist_type,
-            confidence=max(0.45, min(0.75, anchor.confidence * 0.8)),
-            supporting_episode_ids=[str(ep.id) for ep in cluster.episodes],
-            source_memory_types=[
-                (ep.type.value if hasattr(ep.type, "value") else str(ep.type)).lower()
-                for ep in cluster.episodes
-            ],
-        )
+
+        dominant = (getattr(cluster, "dominant_type", None) or "").lower()
+        if dominant:
+            for gist in gists:
+                if gist.gist_type == dominant:
+                    return gist
+            if dominant in {"goal", "value", "state", "causal", "policy"}:
+                chosen = max(gists, key=lambda gist: gist.confidence)
+                return ExtractedGist(
+                    text=chosen.text,
+                    gist_type=dominant,
+                    confidence=chosen.confidence,
+                    supporting_episode_ids=list(chosen.supporting_episode_ids),
+                    key=chosen.key,
+                    subject=chosen.subject,
+                    predicate=chosen.predicate,
+                    value=chosen.value,
+                    source_memory_types=chosen.source_memory_types,
+                )
+
+        return max(gists, key=lambda gist: gist.confidence)

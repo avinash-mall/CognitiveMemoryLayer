@@ -37,3 +37,4 @@ class TrainConfig:
     learning_rate: float | None = None
     calibration_split: str | None = None
     export_thresholds: bool = False
+    strict: bool = True

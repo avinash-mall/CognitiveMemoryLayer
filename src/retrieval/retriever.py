@@ -147,6 +147,28 @@ class HybridRetriever:
                     if step.skip_if_found and result.items and cross_skip:
                         skip_remaining = True
 
+        # AUD-07: Post-retrieval graph expansion from derived seeds and domain anchors
+        if not any(s.source == RetrievalSource.GRAPH for s in plan.steps):
+            derived_seeds = self._derive_graph_seeds(
+                all_results, query_domain=plan.analysis.query_domain
+            )
+            if derived_seeds:
+                graph_step = RetrievalStep(
+                    source=RetrievalSource.GRAPH,
+                    seeds=derived_seeds,
+                    top_k=10,
+                    priority=1,
+                    timeout_ms=200,
+                )
+                try:
+                    graph_results = await self._retrieve_graph(tenant_id, graph_step)
+                    all_results.extend(graph_results)
+                except Exception as e:
+                    logger.warning(
+                        "derived_graph_expansion_failed",
+                        extra={"error": str(e), "seeds": derived_seeds[:5]},
+                    )
+
         # PR 1: Strict Associative Expansion
         if any(getattr(step, "associative_expansion", False) for step in plan.steps):
             session_ids = set()
@@ -405,6 +427,57 @@ class HybridRetriever:
             for r in records
         ]
 
+    @staticmethod
+    def _derive_graph_seeds(
+        all_results: list[dict[str, Any]],
+        max_seeds: int = 10,
+        query_domain: str | None = None,
+    ) -> list[str]:
+        """Derive entity seeds from top constraint/fact retrieval results.
+
+        Looks at entity mentions, subjects, and scope values from constraint
+        and fact results so graph expansion can fire even when the original
+        query had no recognised entities.  Also seeds from ``query_domain``
+        when provided (e.g. "food", "finance") so domain-anchored graph
+        traversal can bridge semantic disconnect.
+        """
+        seeds: list[str] = []
+        seen: set[str] = set()
+
+        def _add(name: str) -> None:
+            normalised = name.strip().lower()
+            if normalised and normalised not in seen and len(normalised) > 1:
+                seen.add(normalised)
+                seeds.append(name.strip())
+
+        if query_domain:
+            _add(query_domain)
+
+        for item in all_results:
+            if len(seeds) >= max_seeds:
+                break
+            rec = item.get("record")
+            if rec is None:
+                continue
+
+            for ent in getattr(rec, "entities", None) or []:
+                name = getattr(ent, "normalized", None) or getattr(ent, "text", None) or str(ent)
+                _add(name)
+
+            meta = getattr(rec, "metadata", None)
+            if isinstance(meta, dict):
+                for c in meta.get("constraints", []):
+                    if isinstance(c, dict):
+                        for field_name in ("subject", "scope"):
+                            val = c.get(field_name)
+                            if isinstance(val, str):
+                                _add(val)
+                subj = meta.get("subject")
+                if isinstance(subj, str):
+                    _add(subj)
+
+        return seeds[:max_seeds]
+
     async def _retrieve_graph(
         self,
         tenant_id: str,
@@ -487,37 +560,32 @@ class HybridRetriever:
                     cognitive_categories.append(FactCategory(cat_str.lower()))
                 except ValueError:
                     pass
-        else:
-            cognitive_categories = [
-                FactCategory.GOAL,
-                FactCategory.STATE,
-                FactCategory.VALUE,
-                FactCategory.CAUSAL,
-                FactCategory.POLICY,
-            ]
 
         try:
             facts = []
-            used_batch = False
-            batch_fetch = getattr(self.neocortical.facts, "get_facts_by_categories", None)
-            if callable(batch_fetch):
-                maybe_coro = batch_fetch(
-                    tenant_id,
-                    cognitive_categories,
-                    current_only=True,
-                    limit=max(step.top_k * max(1, len(cognitive_categories)), step.top_k),
-                )
-                if inspect.isawaitable(maybe_coro):
-                    facts = await maybe_coro
-                    used_batch = True
-
-            if not used_batch:
-                for category in cognitive_categories:
-                    facts.extend(
-                        await self.neocortical.facts.get_facts_by_category(
-                            tenant_id, category, current_only=True, limit=step.top_k
-                        )
+            if not cognitive_categories:
+                pass
+            else:
+                used_batch = False
+                batch_fetch = getattr(self.neocortical.facts, "get_facts_by_categories", None)
+                if callable(batch_fetch):
+                    maybe_coro = batch_fetch(
+                        tenant_id,
+                        cognitive_categories,
+                        current_only=True,
+                        limit=max(step.top_k * max(1, len(cognitive_categories)), step.top_k),
                     )
+                    if inspect.isawaitable(maybe_coro):
+                        facts = await maybe_coro
+                        used_batch = True
+
+                if not used_batch:
+                    for category in cognitive_categories:
+                        facts.extend(
+                            await self.neocortical.facts.get_facts_by_category(
+                                tenant_id, category, current_only=True, limit=step.top_k
+                            )
+                        )
 
             existing_texts = {str(r.get("text", "")) for r in results}
             for fact in facts:
@@ -563,11 +631,21 @@ class HybridRetriever:
         if not rows:
             return rows
 
-        modelpack_ready = self.modelpack.available and bool(query.strip())
+        supports_task = getattr(self.modelpack, "supports_task", None)
+        if callable(supports_task):
+            can_constraint_rerank = bool(supports_task("constraint_rerank"))
+            can_scope_match = bool(supports_task("scope_match"))
+            use_relevance_model = bool(supports_task("retrieval_constraint_relevance_pair"))
+        else:
+            can_constraint_rerank = bool(getattr(self.modelpack, "available", False))
+            can_scope_match = bool(getattr(self.modelpack, "available", False))
+            use_relevance_model = bool(
+                getattr(self.modelpack, "has_task_model", lambda _task: False)(
+                    "retrieval_constraint_relevance_pair"
+                )
+            )
 
-        use_relevance_model = getattr(self.modelpack, "has_task_model", lambda _: False)(
-            "retrieval_constraint_relevance_pair"
-        )
+        modelpack_ready = bool(query.strip()) and (can_constraint_rerank or can_scope_match)
 
         for row in rows:
             base = float(row.get("relevance", 0.7))
@@ -732,6 +810,33 @@ class HybridRetriever:
         mem_type = MemoryType.SEMANTIC_FACT
         if item.get("type") == MemoryType.CONSTRAINT.value or item.get("source") == "constraints":
             mem_type = MemoryType.CONSTRAINT
+
+        category = getattr(fact, "category", None)
+        cat_value = (
+            category.value
+            if (category is not None and hasattr(category, "value"))
+            else str(category or "")
+        )
+        evidence_ids = getattr(fact, "evidence_ids", None) or []
+        valid_from = getattr(fact, "valid_from", None)
+        valid_to = getattr(fact, "valid_to", None)
+        supersedes_id = getattr(fact, "supersedes_id", None)
+
+        metadata: dict[str, Any] = {}
+        if mem_type == MemoryType.CONSTRAINT and cat_value:
+            metadata["constraints"] = [
+                {
+                    "constraint_type": cat_value,
+                    "evidence_ids": list(evidence_ids),
+                }
+            ]
+        if valid_from:
+            metadata["valid_from"] = str(valid_from)
+        if valid_to:
+            metadata["valid_to"] = str(valid_to)
+        if supersedes_id:
+            metadata["supersedes_id"] = str(supersedes_id)
+
         return MemoryRecord(
             id=UUID(fid) if fid else uuid4(),
             tenant_id=getattr(fact, "tenant_id", ""),
@@ -742,9 +847,13 @@ class HybridRetriever:
             key=getattr(fact, "key", None),
             confidence=getattr(fact, "confidence", 0.5),
             importance=0.5,
-            provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+            provenance=Provenance(
+                source=MemorySource.AGENT_INFERRED,
+                evidence_refs=list(evidence_ids),
+            ),
             timestamp=getattr(fact, "updated_at", datetime.now(UTC)),
             written_at=getattr(fact, "created_at", datetime.now(UTC)),
+            metadata=metadata,
         )
 
     def _dict_to_record(self, item: dict[str, Any]) -> MemoryRecord:

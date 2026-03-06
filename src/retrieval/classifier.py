@@ -109,7 +109,11 @@ class QueryClassifier:
         return result
 
     def _modelpack_classify(self, query: str) -> QueryAnalysis | None:
-        if not self.modelpack.available:
+        supports_task = getattr(self.modelpack, "supports_task", None)
+        if callable(supports_task):
+            if not supports_task("query_intent"):
+                return None
+        elif not getattr(self.modelpack, "available", False):
             return None
         if not query.strip():
             return None
@@ -132,20 +136,29 @@ class QueryClassifier:
 
     def _enrich_with_modelpack(self, analysis: QueryAnalysis) -> None:
         """Augment query analysis with router model signals when available."""
-        if not self.modelpack.available:
-            return
+        supports_task = getattr(self.modelpack, "supports_task", None)
+        modelpack_available = bool(getattr(self.modelpack, "available", False))
+
+        def _can_use(task: str) -> bool:
+            if callable(supports_task):
+                return bool(supports_task(task))
+            return modelpack_available
 
         query = analysis.original_query or ""
         if not query.strip():
             return
 
-        domain_pred = self.modelpack.predict_single("query_domain", query)
+        domain_pred = None
+        if _can_use("query_domain"):
+            domain_pred = self.modelpack.predict_single("query_domain", query)
         if domain_pred and domain_pred.label:
             analysis.query_domain = domain_pred.label
             analysis.metadata["query_domain_confidence"] = domain_pred.confidence
 
         if not analysis.constraint_dimensions_from_llm:
-            dim_pred = self.modelpack.predict_single("constraint_dimension", query)
+            dim_pred = None
+            if _can_use("constraint_dimension"):
+                dim_pred = self.modelpack.predict_single("constraint_dimension", query)
             if dim_pred and dim_pred.label and dim_pred.label != "other":
                 dims = analysis.constraint_dimensions
                 if dims is None:
@@ -153,7 +166,9 @@ class QueryClassifier:
                 elif dim_pred.label not in dims:
                     dims.append(dim_pred.label)
 
-        intent_pred = self.modelpack.predict_single("query_intent", query)
+        intent_pred = None
+        if _can_use("query_intent"):
+            intent_pred = self.modelpack.predict_single("query_intent", query)
         if intent_pred and intent_pred.label:
             hint_intent = self._intent_from_label(intent_pred.label)
             if (

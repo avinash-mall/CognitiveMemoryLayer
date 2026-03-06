@@ -26,44 +26,46 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.27",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
-    "sqlalchemy[asyncio]>=2.0",
-    "asyncpg>=0.30.0",
-    "pgvector>=0.3.0",
-    "neo4j>=5.0",
-    "redis>=5.0",
-    "celery>=5.4",
     "openai>=1.0",
-    "sentence-transformers>=3.0",
     "tiktoken>=0.8",
     "python-dotenv>=1.0",
     "structlog>=24.0",
     "cachetools>=5.0",
     "tenacity>=8.0",
     "prometheus-client>=0.21",
-    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30.0",
+    "pgvector>=0.3.0",
+    "neo4j>=5.0",
+    "redis>=5.0",
+    "celery>=5.4",
+    "sentence-transformers>=3.0",
     "spacy>=3.7",
     "semchunk",
     "transformers",
     "einops>=0.7.0",
 ]
-
-[project.optional-dependencies]
 embedded = [
     "aiosqlite>=0.20",
     "sqlalchemy[asyncio]>=2.0",
-    "asyncpg>=0.30",
-    "pgvector>=0.3",
-    "neo4j>=5.0",
-    "redis>=5.0",
     "openai>=1.0",
     "sentence-transformers>=3.0",
     "tiktoken>=0.8",
     "structlog>=24.0",
     "pydantic-settings>=2.0",
+    "spacy>=3.7",
+    "semchunk",
+    "transformers",
+    "einops>=0.7.0",
 ]
 gemini = ["google-generativeai"]
 claude = ["anthropic"]
@@ -119,7 +121,7 @@ Issues = "https://github.com/avinash-mall/CognitiveMemoryLayer/issues"
 Changelog = "https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src", "packages/py-cml/src/cml"]
+packages = ["packages/py-cml/src/cml"]
 
 [tool.ruff]
 line-length = 100

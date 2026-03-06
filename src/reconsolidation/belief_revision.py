@@ -47,6 +47,17 @@ class BeliefRevisionEngine:
     Applies belief revision strategies based on detected conflicts.
     """
 
+    _STABLE_CONSTRAINT_TYPES = frozenset({"value", "policy"})
+    _VOLATILE_CONSTRAINT_TYPES = frozenset({"state", "goal"})
+
+    @staticmethod
+    def _extract_constraint_type(record: MemoryRecord) -> str | None:
+        meta = record.metadata if isinstance(record.metadata, dict) else {}
+        for c in meta.get("constraints", []):
+            if isinstance(c, dict) and c.get("constraint_type"):
+                return c["constraint_type"]
+        return None
+
     def plan_revision(
         self,
         conflict: ConflictResult,
@@ -54,19 +65,49 @@ class BeliefRevisionEngine:
         new_info_type: MemoryType,
         tenant_id: str,
         evidence_id: str | None = None,
+        *,
+        constraint_meta: dict[str, Any] | None = None,
     ) -> RevisionPlan:
-        """Create a revision plan based on conflict analysis. Holistic: uses old_memory context_tags/source_session_id."""
+        """Create a revision plan based on conflict analysis.
+
+        When ``constraint_meta`` is provided (or derivable from old_memory),
+        stable types (value, policy) prefer OVERWRITE for same-type same-subject
+        conflicts, while volatile types (state, goal) prefer TIME_SLICE.
+        """
         if conflict.conflict_type == ConflictType.NONE:
             return self._plan_reinforcement(old_memory, conflict)
+
+        ctype = None
+        if constraint_meta:
+            ctype = constraint_meta.get("constraint_type")
+        if not ctype:
+            ctype = self._extract_constraint_type(old_memory)
+
         if conflict.conflict_type == ConflictType.TEMPORAL_CHANGE:
+            if ctype in self._VOLATILE_CONSTRAINT_TYPES:
+                return self._plan_time_slice(
+                    old_memory, conflict, new_info_type, tenant_id, evidence_id
+                )
             return self._plan_time_slice(
                 old_memory, conflict, new_info_type, tenant_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.CORRECTION:
+            if ctype in self._STABLE_CONSTRAINT_TYPES:
+                return self._plan_correction(
+                    old_memory, conflict, new_info_type, tenant_id, evidence_id
+                )
             return self._plan_correction(
                 old_memory, conflict, new_info_type, tenant_id, evidence_id
             )
         if conflict.conflict_type == ConflictType.DIRECT_CONTRADICTION:
+            if ctype in self._STABLE_CONSTRAINT_TYPES:
+                return self._plan_correction(
+                    old_memory, conflict, new_info_type, tenant_id, evidence_id
+                )
+            if ctype in self._VOLATILE_CONSTRAINT_TYPES:
+                return self._plan_time_slice(
+                    old_memory, conflict, new_info_type, tenant_id, evidence_id
+                )
             return self._plan_contradiction_resolution(
                 old_memory, conflict, new_info_type, tenant_id, evidence_id
             )

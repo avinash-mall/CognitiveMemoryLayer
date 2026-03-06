@@ -33,6 +33,14 @@ class NoOpGraphStore(GraphStoreBase):
     ) -> str:
         return "noop-edge"
 
+    async def merge_edges_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        edges: list[dict[str, Any]],
+    ) -> list[str]:
+        return []
+
     async def get_neighbors(
         self,
         tenant_id: str,

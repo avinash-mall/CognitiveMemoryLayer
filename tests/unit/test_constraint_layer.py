@@ -385,10 +385,10 @@ class TestConstraintFactKey:
         co = ConstraintObject("value", "user", "Health matters", scope=["health"])
         key = ConstraintExtractor.constraint_fact_key(co)
         assert key.startswith("user:value:")
-        # SHA256 hex chars after the second colon
         parts = key.split(":")
-        assert len(parts) == 3
-        assert len(parts[2]) == 12
+        assert len(parts) == 4
+        assert len(parts[2]) == 12  # scope hash
+        assert len(parts[3]) == 12  # description hash
 
     def test_different_scope_different_key(self):
         co1 = ConstraintObject("goal", "user", "A", scope=["finance"])
@@ -400,12 +400,14 @@ class TestConstraintFactKey:
     def test_unscoped_uses_general(self):
         co = ConstraintObject("policy", "user", "Never eat late")
         key = ConstraintExtractor.constraint_fact_key(co)
-        expected_hash = hashlib.sha256(b"general").hexdigest()[:12]
-        assert key == f"user:policy:{expected_hash}"
+        expected_scope_hash = hashlib.sha256(b"general").hexdigest()[:12]
+        assert key.startswith(f"user:policy:{expected_scope_hash}:")
+        parts = key.split(":")
+        assert len(parts) == 4
 
     def test_alias_scopes_hash_to_same_key(self):
-        co1 = ConstraintObject("goal", "user", "Move to NYC", scope=["NYC"])
-        co2 = ConstraintObject("goal", "user", "Move to New York City", scope=["new york city"])
+        co1 = ConstraintObject("goal", "user", "Move there soon", scope=["NYC"])
+        co2 = ConstraintObject("goal", "user", "Move there soon", scope=["new york city"])
         assert ConstraintExtractor.constraint_fact_key(
             co1
         ) == ConstraintExtractor.constraint_fact_key(co2)

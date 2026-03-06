@@ -31,6 +31,20 @@ class GraphStoreLike(Protocol):
         namespace: str | None = None,
     ) -> str: ...
 
+    async def merge_nodes_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        nodes: list[dict[str, Any]],
+    ) -> int: ...
+
+    async def merge_edges_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        edges: list[dict[str, Any]],
+    ) -> list[str]: ...
+
     async def personalized_pagerank(
         self,
         tenant_id: str,
@@ -175,7 +189,21 @@ class NeocorticalStore:
         relations: list[Relation],
         evidence_ids: list[str] | None = None,
     ) -> list[str]:
-        """Store multiple relations."""
+        """Store multiple relations using batch merge when available."""
+        if hasattr(self.graph, "merge_edges_batch") and len(relations) > 1:
+            edges = [
+                {
+                    "subject": r.subject,
+                    "predicate": r.predicate,
+                    "object": r.object,
+                    "properties": {
+                        "confidence": r.confidence,
+                        "evidence_ids": evidence_ids or [],
+                    },
+                }
+                for r in relations
+            ]
+            return await self.graph.merge_edges_batch(tenant_id, tenant_id, edges)
         return [await self.store_relation(tenant_id, rel, evidence_ids) for rel in relations]
 
     async def get_fact(
