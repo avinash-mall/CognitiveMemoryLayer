@@ -24,7 +24,7 @@ class MemoryPacketBuilder:
         include_provenance: bool = True,
     ) -> MemoryPacket:
         """Build a memory packet from retrieved memories."""
-        packet = MemoryPacket(query=query)
+        packet = MemoryPacket(query=query, ranked_memories=list(memories))
         for mem in memories:
             mem_type = mem.record.type
             if mem_type == MemoryType.SEMANTIC_FACT:

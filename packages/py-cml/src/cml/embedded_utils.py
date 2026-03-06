@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Literal
+from typing import Any, Literal
 
 from cml.async_client import AsyncCognitiveMemoryLayer
 from cml.client import CognitiveMemoryLayer
@@ -69,16 +69,46 @@ async def import_memories_async(
         lines = [line.strip() for line in content.split("\n") if line.strip()]
 
     import json
+    from datetime import datetime
 
     for line in lines:
         obj = json.loads(line)
         text = obj.get("text", "")
         meta = obj.get("metadata", {})
 
+        write_kwargs: dict[str, Any] = {"metadata": meta}
+
+        mem_type = obj.get("type")
+        if mem_type:
+            write_kwargs["memory_type"] = mem_type
+
+        ts = obj.get("timestamp")
+        if ts:
+            try:
+                write_kwargs["timestamp"] = datetime.fromisoformat(str(ts))
+            except (ValueError, TypeError):
+                pass
+
+        ctx_tags = obj.get("context_tags")
+        if ctx_tags and isinstance(ctx_tags, list):
+            write_kwargs["context_tags"] = ctx_tags
+
+        ns = obj.get("namespace")
+        if ns:
+            write_kwargs["namespace"] = ns
+
+        session_id = obj.get("source_session_id")
+        if session_id:
+            write_kwargs["session_id"] = session_id
+
+        confidence = obj.get("confidence")
+        if confidence is not None:
+            meta.setdefault("_imported_confidence", confidence)
+
         if isinstance(target, (AsyncCognitiveMemoryLayer, EmbeddedCognitiveMemoryLayer)):
-            await target.write(text, metadata=meta)
+            await target.write(text, **write_kwargs)
         else:
-            target.write(text, metadata=meta)
+            target.write(text, **write_kwargs)
         count += 1
     return count
 

@@ -202,6 +202,11 @@ class HippocampalStore:
                     "invalid_llm_memory_type",
                     raw_type=unified_result.memory_type,
                 )
+        if memory_type is None and local_result and local_result.get("memory_type"):
+            try:
+                memory_type = MemoryType(local_result["memory_type"])
+            except (ValueError, KeyError):
+                pass
         if memory_type is None:
             memory_type = (
                 gate_result.memory_types[0]
@@ -497,6 +502,11 @@ class HippocampalStore:
                         "invalid_llm_memory_type",
                         raw_type=unified_res.memory_type,
                     )
+            if memory_type is None and local_res and local_res.get("memory_type"):
+                try:
+                    memory_type = MemoryType(local_res["memory_type"])
+                except (ValueError, KeyError):
+                    pass
             if memory_type is None:
                 memory_type = (
                     gate_result.memory_types[0]

@@ -404,14 +404,20 @@ class MemoryOrchestrator:
             eval_mode=eval_mode,
             unified_results=unified_results,
         )
+        graph_task = None
         if stored:
-            await self._sync_to_graph(tenant_id, stored)
+            graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
         await self._phase_write_time_facts(
             tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
         )
         await self._phase_write_constraints(
             tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
         )
+        if graph_task is not None and not graph_task.done():
+            try:
+                await asyncio.wait_for(graph_task, timeout=2.0)
+            except (TimeoutError, Exception):
+                pass
         return self._build_write_response(stored, gate_results, eval_mode)
 
     async def _phase_ingest(
@@ -568,47 +574,61 @@ class MemoryOrchestrator:
         if not wpc.write_time_facts or not chunks:
             return
         try:
-            evidence = [str(stored[0].id)] if stored else []
+            fallback_evidence = [str(stored[0].id)] if stored else []
+
+            async def _store_fact_batch(facts: list[Any], evidence: list[str]) -> None:
+                for fact in facts:
+                    try:
+                        await self.neocortical.store_fact(
+                            tenant_id=tenant_id,
+                            key=fact.key,
+                            value=fact.value,
+                            confidence=fact.confidence,
+                            evidence_ids=evidence,
+                            valid_from=timestamp,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "write_time_fact_store_failed",
+                            extra={"tenant_id": tenant_id, "fact_key": getattr(fact, "key", None)},
+                            exc_info=True,
+                        )
+
             if wpc.use_llm_facts and unified_results:
-                for ur in unified_results:
+                for idx, ur in enumerate(unified_results):
                     if ur and hasattr(ur, "facts"):
-                        for fact in ur.facts:
-                            try:
-                                await self.neocortical.store_fact(
-                                    tenant_id=tenant_id,
-                                    key=fact.key,
-                                    value=fact.value,
-                                    confidence=fact.confidence,
-                                    evidence_ids=evidence,
-                                    valid_from=timestamp,
-                                )
-                            except Exception:
-                                logger.warning(
-                                    "write_time_fact_store_failed",
-                                    extra={"tenant_id": tenant_id, "fact_key": fact.key},
-                                    exc_info=True,
-                                )
+                        evidence = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence
+                        await _store_fact_batch(list(ur.facts), evidence)
             else:
                 from ..extraction.write_time_facts import WriteTimeFactExtractor
 
                 extractor = WriteTimeFactExtractor()
-                for chunk in chunks:
-                    for fact in extractor.extract(chunk):
+                for idx, chunk in enumerate(chunks):
+                    evidence = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence
+                    fact_map: dict[tuple[str, str], Any] = {}
+
+                    local_extractor = getattr(self.hippocampal, "local_extractor", None)
+                    if local_extractor and getattr(local_extractor, "available", False):
                         try:
-                            await self.neocortical.store_fact(
-                                tenant_id=tenant_id,
-                                key=fact.key,
-                                value=fact.value,
-                                confidence=fact.confidence,
-                                evidence_ids=evidence,
-                                valid_from=timestamp,
-                            )
+                            local_result = await local_extractor.extract(getattr(chunk, "text", ""))
                         except Exception:
-                            logger.warning(
-                                "write_time_fact_store_failed",
-                                extra={"tenant_id": tenant_id, "fact_key": fact.key},
-                                exc_info=True,
-                            )
+                            local_result = None
+                        local_facts = (
+                            list(local_result.get("facts", []))
+                            if isinstance(local_result, dict)
+                            else []
+                        )
+                        for fact in local_facts:
+                            key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))
+                            if key[0] and key[1]:
+                                fact_map[key] = fact
+
+                    for fact in extractor.extract(chunk):
+                        key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))
+                        if key[0] and key[1] and key not in fact_map:
+                            fact_map[key] = fact
+
+                    await _store_fact_batch(list(fact_map.values()), evidence)
         except Exception:
             logger.warning("write_time_facts_skipped", exc_info=True)
 
@@ -629,10 +649,13 @@ class MemoryOrchestrator:
 
             extractor = ConstraintExtractor()
             constraints_stored = 0
-            evidence_c = [str(stored[0].id)] if stored else []
+            fallback_evidence_c = [str(stored[0].id)] if stored else []
             if wpc.use_llm_constraints and unified_results:
-                for ur in unified_results:
+                for idx, ur in enumerate(unified_results):
                     if ur and hasattr(ur, "constraints"):
+                        evidence_c = (
+                            [str(stored[idx].id)] if idx < len(stored) else fallback_evidence_c
+                        )
                         for constraint in ur.constraints:
                             try:
                                 fact_key = ConstraintExtractor.constraint_fact_key(constraint)
@@ -656,7 +679,8 @@ class MemoryOrchestrator:
                                     exc_info=True,
                                 )
             else:
-                for chunk in chunks:
+                for idx, chunk in enumerate(chunks):
+                    evidence_c = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence_c
                     for constraint in extractor.extract(chunk):
                         try:
                             fact_key = ConstraintExtractor.constraint_fact_key(constraint)
@@ -742,16 +766,30 @@ class MemoryOrchestrator:
     ) -> None:
         """Sync extracted entities and relations from stored records to Neo4j.
 
-        Failures are logged but never propagated — the Postgres write has
-        already succeeded and must not be rolled back because of a graph issue.
+        Entity nodes are batched into a single UNWIND call.  Relation writes
+        are gathered concurrently.  Failures are logged but never propagated —
+        the Postgres write has already succeeded.
         """
-        tasks = []
+        all_entities: list[dict[str, Any]] = []
+        relation_tasks: list[Any] = []
+
         for record in records:
             for entity in getattr(record, "entities", None) or []:
-                tasks.append(self._sync_entity_to_graph(tenant_id, record, entity))
+                all_entities.append(
+                    {
+                        "entity": entity.normalized,
+                        "entity_type": entity.entity_type,
+                    }
+                )
             relations = getattr(record, "relations", None) or []
             if relations:
-                tasks.append(self._sync_relations_to_graph(tenant_id, record, relations))
+                relation_tasks.append(self._sync_relations_to_graph(tenant_id, record, relations))
+
+        tasks: list[Any] = []
+        if all_entities:
+            tasks.append(self._sync_entities_batch_to_graph(tenant_id, all_entities))
+        tasks.extend(relation_tasks)
+
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for r in results:
@@ -762,13 +800,14 @@ class MemoryOrchestrator:
                         exc_info=(type(r), r, r.__traceback__),
                     )
 
-    async def _sync_entity_to_graph(self, tenant_id: str, record: Any, entity: Any) -> None:
-        """Merge a single entity node to Neo4j."""
-        await self.neocortical.graph.merge_node(
+    async def _sync_entities_batch_to_graph(
+        self, tenant_id: str, entities: list[dict[str, Any]]
+    ) -> None:
+        """Batch-merge entity nodes to Neo4j in a single call."""
+        await self.neocortical.graph.merge_nodes_batch(
             tenant_id=tenant_id,
             scope_id=tenant_id,
-            entity=entity.normalized,
-            entity_type=entity.entity_type,
+            nodes=entities,
         )
 
     async def _sync_relations_to_graph(self, tenant_id: str, record: Any, relations: list) -> None:

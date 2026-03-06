@@ -94,7 +94,13 @@ class MemoryReranker:
                 recency_weight = min(recency_weight, 0.10)  # Generic constraint: moderate stability
 
             # Model-backed stability fallback when structured type is missing/weak.
-            if self.modelpack.available:
+            supports_task = getattr(self.modelpack, "supports_task", None)
+            can_stability = (
+                bool(supports_task("constraint_stability"))
+                if callable(supports_task)
+                else bool(getattr(self.modelpack, "available", False))
+            )
+            if can_stability:
                 stability = self.modelpack.predict_single(
                     "constraint_stability", memory.record.text
                 )
@@ -289,7 +295,14 @@ Constraints:
     ) -> list[float] | None:
         if not query.strip():
             return None
-        if not self.modelpack.available:
+        supports_task = getattr(self.modelpack, "supports_task", None)
+        if callable(supports_task):
+            can_constraint_rerank = bool(supports_task("constraint_rerank"))
+            can_scope_match = bool(supports_task("scope_match"))
+        else:
+            can_constraint_rerank = bool(getattr(self.modelpack, "available", False))
+            can_scope_match = bool(getattr(self.modelpack, "available", False))
+        if not (can_constraint_rerank or can_scope_match):
             return None
 
         out: list[float] = []
@@ -297,7 +310,11 @@ Constraints:
         for text in constraint_texts:
             signals: list[float] = []
 
-            rel_pred = self.modelpack.predict_pair("constraint_rerank", query, text)
+            rel_pred = (
+                self.modelpack.predict_pair("constraint_rerank", query, text)
+                if can_constraint_rerank
+                else None
+            )
             if rel_pred:
                 used = True
                 rel_signal = (
@@ -307,7 +324,9 @@ Constraints:
                 )
                 signals.append(rel_signal)
 
-            scope_pred = self.modelpack.predict_pair("scope_match", query, text)
+            scope_pred = (
+                self.modelpack.predict_pair("scope_match", query, text) if can_scope_match else None
+            )
             if scope_pred:
                 used = True
                 scope_signal = (

@@ -9,13 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Issues.md](../../ProjectPlan/BaseCML/Issues.md) resolutions (F-04, F-13, E-01).
 
+Implementations from [CML Audit 2026-03-06](../../ProjectPlan/BaseCML/CML_Audit_2026-03-06.md) (server: constraint-first turn, ranked memories, graph expansion, typed reconsolidation — no SDK API changes) and [Packages Audit 2026-03-06](../../ProjectPlan/BaseCML/Packages_Audit_2026-03-06.md) (PKG-02, PKG-04, PKG-05, PKG-06, PKG-08, PKG-09).
+
 ### Added
 
+- **Modeling strict/allow-skips parity** - `cml-models train` and `cml-models pipeline` now expose `--strict` and `--allow-skips`; strict is the default (`TrainConfig.strict=True`).
+- **Modeling manifest v2 visibility** - `cml.modeling.train` now surfaces manifest v2 outputs (`configured_tasks`, `preflight_validation`, `task_training_status`, `build_metadata`) and fails strict runs on artifact mismatches.
 - **`cml.eval` module** — New optional evaluation module (`pip install "cognitive-memory-layer[eval]"`). Wraps LoCoMo-Plus evaluation workflows into importable Python APIs (`run_locomo_plus`, `run_full_eval`, `validate_outputs`, `generate_locomo_report`, `compare_locomo_scores`) and a `cml-eval` CLI with subcommands (`run-full`, `run-locomo`, `validate`, `report`, `compare`). Typed dataclass configs (`LocomoEvalConfig`, `FullEvalConfig`). Legacy evaluation scripts remain as thin wrappers.
 - **`cml.modeling` module** — New optional modeling module (`pip install "cognitive-memory-layer[modeling]"`). Wraps model data preparation and training into importable Python APIs (`prepare_data`, `train_models`, `run_pipeline`) and a `cml-models` CLI with subcommands (`prepare`, `train`, `pipeline`). Typed dataclass configs (`PrepareConfig`, `TrainConfig`). Legacy scripts remain as thin wrappers.
+- **Shared endpoint helpers (PKG-09)** — New `cml._endpoints` module with `build_write_body`, `build_read_body`, `build_turn_body`, `build_update_body`, `build_forget_body`, `build_create_session_body`, and `eval_mode_headers`. Sync and async clients use these for write/read to reduce duplication.
+- **Embedded `models_dir` (PKG-02)** — `EmbeddedCognitiveMemoryLayer` accepts optional `models_dir`; when set, configures `CML_MODELS_DIR` before initialization so the engine loads modelpack artifacts from that path.
+- **Training `--strict` mode (PKG-06)** — `cml.modeling.train` supports `--strict`. When set, unsupported or disabled tasks cause a hard failure instead of a skip. `TaskSpec` has optional `enabled` field; token-classification tasks are disabled in `model_pipeline.toml` with comments.
 
-### Fixed
+### Changed
 
+- **Modeling defaults hardened** - `TrainConfig.strict` now defaults to `True`; use `--allow-skips` for legacy permissive behavior.
+- **Modeling contract checks** - Preflight validates configured task coverage and data contracts before task training, and strict mode exits non-zero on contract failures.
 - **Lazy imports for eval/modeling CLIs** — `cml-eval` and `cml-models` entry points now use lazy imports for heavy dependencies. Running either CLI without the corresponding optional extras installed produces a clear error message with install instructions instead of a raw `ImportError` traceback.
 - **`cml.eval.__init__` lazy loading** — Public API functions in `cml.eval` are now lazy-loaded wrappers to avoid importing heavy dependencies (requests, tqdm, openai) at package load time.
 - **`cml.modeling.__init__` lazy loading** — Public API functions in `cml.modeling` are now lazy-loaded wrappers to avoid importing heavy dependencies (pandas, scikit-learn) at package load time.
@@ -40,9 +49,14 @@ Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Iss
 - **SessionScope write behavior** — `SessionScope.write()` and `AsyncSessionScope.write()` now call `POST /api/v1/session/{session_id}/write` for session-scoped writes.
 - **Wrapper argument parity** — `NamespacedClient` and `AsyncNamespacedClient` now forward `user_timezone` on read/get_context/search and `timestamp`/`user_timezone` on turn.
 - **Embedded packet mapping parity** — Embedded `ReadResponse.memories` now includes constraints/procedures from packets and sets `ReadResponse.constraints` consistently.
+- **Retry max delay (PKG-04)** — `_sleep_with_backoff` and `_async_sleep_with_backoff` accept a `max_delay` parameter. Sync and async retry logic use `config.max_retry_delay` to cap backoff (no longer hardcoded 60s).
+- **Import fidelity (PKG-05)** — `import_memories_async` (and sync `import_memories`) now preserve `type`, `timestamp`, `confidence`, `context_tags`, `namespace`, `source_session_id` from exported JSON; confidence stored in `metadata["_imported_confidence"]` when not forwarded directly.
+- **Eval CLI paths (PKG-08)** — Default repo-root and path defaults return `None` when markers are missing. Commands that need paths call `_require_path()` and exit with a clear error when run outside the repo without explicit `--repo-root` / `--out-dir` / etc.
+- **Model pipeline (PKG-06)** — `fact_extraction_structured` and `pii_span_detection` marked `enabled = false` in `model_pipeline.toml` with comments. `packages/models/README.md` task table marks them as *(planned)*. Skipped tasks are logged; disabled tasks filtered before training.
 
 ### Documentation
 
+- **Modeling docs refresh** - Updated `docs/modeling.md` and `README.md` modeling examples for strict-by-default training, `--allow-skips`, objective type values (`pair_ranking`, `single_regression`), and manifest v2 preflight status fields.
 - **Server LLM memory type** — The CML server's unified extractor now outputs `memory_type` per chunk when `FEATURES__USE_LLM_MEMORY_TYPE` is true (default). The optional `memory_type` parameter on `write()` overrides this; when omitted, the LLM classifies the type in the same extraction call. No SDK API changes.
 - **Server streaming read** — The CML server now exposes `POST /api/v1/memory/read/stream` (SSE). The `py-cml` SDK now provides a `read_stream()` method on the sync and async clients to consume this endpoint, yielding `MemoryItem` objects incrementally for progressive rendering. The existing `read()` method continues to use the JSON endpoint.
 - **Server plugin registry** — The CML server now has an `ExtractorRegistry` (`src/extraction/registry.py`) enabling third-party custom extractors. No SDK API changes.
@@ -52,6 +66,7 @@ Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Iss
 
 ### Tests
 
+- **Modeling unit coverage** - Added/updated tests for strict CLI wiring and validation paths (`test_modeling_cli.py`, `test_modeling_train_api.py`, `test_modeling_validation.py`).
 - **CSRF header** — Unit tests for `_add_dashboard_csrf_if_needed` (adds header for dashboard POST/PUT, skips for GET and non-dashboard); transport test verifies dashboard POST sends X-Requested-With.
 - **WriteRequest content validation** — `test_write_request_content_empty_raises`, `test_write_request_content_max_length_raises`, `test_write_request_content_at_limit_accepted`.
 - **ReadResponse retrieval_meta** — `test_read_response_parses_retrieval_meta`.

@@ -349,13 +349,15 @@ CML includes a custom model pipeline (`packages/models/`) that trains lightweigh
 | `retrieval_constraint_relevance_pair` | Domain keyword bonus | `src/retrieval/retriever.py` |
 | `memory_rerank_pair` | Weighted reranker with hard-coded stability rules | `src/retrieval/reranker.py` |
 | `novelty_pair` | Jaccard novelty and cosine-threshold duplicate detection | `src/memory/hippocampal/write_gate.py`, `src/forgetting/interference.py` |
-| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
+| `fact_extraction_structured` *(planned)* | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
 | `schema_match_pair` | Jaccard schema similarity | `src/consolidation/schema_aligner.py` |
 | `reconsolidation_candidate_pair` | Word-overlap top-k candidate selection | `src/reconsolidation/service.py` |
-| `write_importance_regression` | Fixed importance bins | `src/memory/hippocampal/write_gate.py` |
-| `pii_span_detection` | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
+| `write_importance_regression` *(deferred)* | Fixed importance bins | `src/memory/hippocampal/write_gate.py` |
+| `pii_span_detection` *(planned)* | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
 | `consolidation_gist_quality` | String-match gist blacklist | `src/consolidation/worker.py` |
 | `forgetting_action_policy` | Heuristic action choice | `src/forgetting/scorer.py` |
+
+Default config keeps deferred token/regression tasks disabled until their data/trainer contracts are complete.
 
 All model-assisted paths preserve deterministic fallbacks: if a model is unavailable, the original heuristic runs unchanged. Safety-critical paths (secret detection, PII regex baseline, deterministic key generation) are never delegated to models.
 
@@ -379,7 +381,7 @@ When `fact_extraction_structured` is trained and loaded, `extract_relations()` a
 <details>
 <summary><strong>Training & data preparation</strong> &mdash; TF-IDF baselines with LLM-generated synthetic data</summary>
 
-The pipeline trains 3 model families (router, extractor, pair) and 10 task-specific models using TF-IDF + SGDClassifier/SGDRegressor. Data preparation supports:
+The pipeline trains 3 model families (router, extractor, pair) and task-specific models using TF-IDF + SGDClassifier/SGDRegressor. Training is strict-by-default and runs preflight/artifact validation before reporting success.
 
 - Auto-download from 15+ public NLP datasets via Hugging Face
 - LLM-only synthetic data generation for domain-specific tasks
@@ -389,7 +391,8 @@ The pipeline trains 3 model families (router, extractor, pair) and 10 task-speci
 ```bash
 # Via cml-models CLI (requires `pip install "cognitive-memory-layer[modeling]"`)
 cml-models prepare --config packages/models/model_pipeline.toml
-cml-models train --config packages/models/model_pipeline.toml
+cml-models train --config packages/models/model_pipeline.toml --strict
+cml-models train --config packages/models/model_pipeline.toml --allow-skips
 
 # Legacy scripts (still work)
 python -m packages.models.scripts.prepare

@@ -878,7 +878,8 @@
         33,
         4967
       ]
-    ]
+    ],
+    "calibration_error": 0.2067129897314114
   },
   "per_task": {
     "constraint_scope": {

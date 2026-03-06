@@ -66,13 +66,82 @@ class ConflictDetector:
         self.llm = llm_client
         self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
+    @staticmethod
+    def _extract_constraint_type(record: MemoryRecord) -> str | None:
+        """Extract the primary constraint type from a memory record's metadata."""
+        meta = record.metadata if isinstance(record.metadata, dict) else {}
+        for c in meta.get("constraints", []):
+            if isinstance(c, dict) and c.get("constraint_type"):
+                return c["constraint_type"]
+        return None
+
+    @staticmethod
+    def _extract_constraint_subject(record: MemoryRecord) -> str | None:
+        """Extract the primary constraint subject from a memory record's metadata."""
+        meta = record.metadata if isinstance(record.metadata, dict) else {}
+        for c in meta.get("constraints", []):
+            if isinstance(c, dict) and c.get("subject"):
+                return c["subject"]
+        return None
+
+    @staticmethod
+    def _extract_constraint_scope(record: MemoryRecord) -> str | None:
+        """Extract the primary constraint scope from a memory record's metadata."""
+        meta = record.metadata if isinstance(record.metadata, dict) else {}
+        for c in meta.get("constraints", []):
+            if isinstance(c, dict) and c.get("scope"):
+                return c["scope"]
+        return None
+
     async def detect(
         self,
         old_memory: MemoryRecord,
         new_statement: str,
         context: str | None = None,
+        *,
+        new_memory: MemoryRecord | None = None,
     ) -> ConflictResult:
-        """Detect if new statement conflicts with existing memory."""
+        """Detect if new statement conflicts with existing memory.
+
+        When both ``old_memory`` and ``new_memory`` carry constraint metadata,
+        type-aware heuristics are applied before falling through to model/LLM
+        detection, avoiding expensive calls for clearly independent constraints.
+        """
+        # Type-aware pre-filter for constraint memories
+        if new_memory is not None:
+            old_ctype = self._extract_constraint_type(old_memory)
+            new_ctype = self._extract_constraint_type(new_memory)
+            if old_ctype and new_ctype:
+                if old_ctype != new_ctype:
+                    return ConflictResult(
+                        conflict_type=ConflictType.NONE,
+                        confidence=0.9,
+                        old_statement=old_memory.text,
+                        new_statement=new_statement,
+                        reasoning=f"Different constraint types ({old_ctype} vs {new_ctype}) — independent",
+                    )
+                old_scope = self._extract_constraint_scope(old_memory)
+                new_scope = self._extract_constraint_scope(new_memory)
+                if old_scope and new_scope and old_scope != new_scope:
+                    return ConflictResult(
+                        conflict_type=ConflictType.NONE,
+                        confidence=0.85,
+                        old_statement=old_memory.text,
+                        new_statement=new_statement,
+                        reasoning=f"Same type ({old_ctype}) but different scopes — coexistence",
+                    )
+                old_subj = self._extract_constraint_subject(old_memory)
+                new_subj = self._extract_constraint_subject(new_memory)
+                if old_ctype == new_ctype and old_subj and new_subj and old_subj == new_subj:
+                    return ConflictResult(
+                        conflict_type=ConflictType.CORRECTION,
+                        confidence=0.8,
+                        old_statement=old_memory.text,
+                        new_statement=new_statement,
+                        is_superseding=True,
+                        reasoning=f"Same type ({old_ctype}) + same subject ({old_subj}) — likely correction",
+                    )
+
         from ..core.config import get_settings
 
         feat = get_settings().features
@@ -108,7 +177,11 @@ class ConflictDetector:
         old_statement: str,
         new_statement: str,
     ) -> ConflictResult | None:
-        if not self.modelpack.available:
+        supports_task = getattr(self.modelpack, "supports_task", None)
+        if callable(supports_task):
+            if not supports_task("conflict_detection"):
+                return None
+        elif not getattr(self.modelpack, "available", False):
             return None
 
         pred = self.modelpack.predict_pair("conflict_detection", old_statement, new_statement)

@@ -24,6 +24,7 @@ RETRYABLE_EXCEPTIONS = (ServerError, ConnectionError, TimeoutError, RateLimitErr
 
 def retry_sync(config: CMLConfig, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Execute func with sync retry logic."""
+    max_delay = getattr(config, "max_retry_delay", MAX_RETRY_DELAY) or MAX_RETRY_DELAY
     last_exception: Exception | None = None
     for attempt in range(config.max_retries + 1):
         try:
@@ -36,7 +37,7 @@ def retry_sync(config: CMLConfig, func: Callable[..., T], *args: Any, **kwargs: 
                 logger.warning("Rate limited, retrying after %.1fs", e.retry_after)
                 time.sleep(e.retry_after)
             else:
-                delay = _sleep_with_backoff(attempt, config.retry_delay)
+                delay = _sleep_with_backoff(attempt, config.retry_delay, max_delay)
                 logger.debug(
                     "Retry attempt %s/%s after %s, slept %.1fs",
                     attempt + 1,
@@ -47,7 +48,7 @@ def retry_sync(config: CMLConfig, func: Callable[..., T], *args: Any, **kwargs: 
         except RETRYABLE_EXCEPTIONS as e:
             last_exception = e
             if attempt < config.max_retries:
-                delay = _sleep_with_backoff(attempt, config.retry_delay)
+                delay = _sleep_with_backoff(attempt, config.retry_delay, max_delay)
                 logger.debug(
                     "Retry attempt %s/%s after %s, sleeping %.1fs",
                     attempt + 1,
@@ -67,6 +68,7 @@ async def retry_async(
     **kwargs: Any,
 ) -> T:
     """Execute async func with retry logic."""
+    max_delay = getattr(config, "max_retry_delay", MAX_RETRY_DELAY) or MAX_RETRY_DELAY
     last_exception: Exception | None = None
     for attempt in range(config.max_retries + 1):
         try:
@@ -79,7 +81,7 @@ async def retry_async(
                 logger.warning("Rate limited, retrying after %.1fs", e.retry_after)
                 await asyncio.sleep(e.retry_after)
             else:
-                delay = await _async_sleep_with_backoff(attempt, config.retry_delay)
+                delay = await _async_sleep_with_backoff(attempt, config.retry_delay, max_delay)
                 logger.debug(
                     "Retry attempt %s/%s after %s, slept %.1fs",
                     attempt + 1,
@@ -90,7 +92,7 @@ async def retry_async(
         except RETRYABLE_EXCEPTIONS as e:
             last_exception = e
             if attempt < config.max_retries:
-                delay = await _async_sleep_with_backoff(attempt, config.retry_delay)
+                delay = await _async_sleep_with_backoff(attempt, config.retry_delay, max_delay)
                 logger.debug(
                     "Retry attempt %s/%s after %s, sleeping %.1fs",
                     attempt + 1,
@@ -103,18 +105,22 @@ async def retry_async(
     raise RuntimeError("retry loop exited without attempt or exception")
 
 
-MAX_RETRY_DELAY = 60.0  # Cap backoff to avoid very long sleeps
+MAX_RETRY_DELAY = 60.0  # Default cap; overridden by config.max_retry_delay
 
 
-def _sleep_with_backoff(attempt: int, base_delay: float) -> float:
+def _sleep_with_backoff(
+    attempt: int, base_delay: float, max_delay: float = MAX_RETRY_DELAY
+) -> float:
     delay: float = base_delay * (2**attempt) + random.uniform(0, base_delay)
-    delay = min(delay, MAX_RETRY_DELAY)
+    delay = min(delay, max_delay)
     time.sleep(delay)
     return delay
 
 
-async def _async_sleep_with_backoff(attempt: int, base_delay: float) -> float:
+async def _async_sleep_with_backoff(
+    attempt: int, base_delay: float, max_delay: float = MAX_RETRY_DELAY
+) -> float:
     delay: float = base_delay * (2**attempt) + random.uniform(0, base_delay)
-    delay = min(delay, MAX_RETRY_DELAY)
+    delay = min(delay, max_delay)
     await asyncio.sleep(delay)
     return delay

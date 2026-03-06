@@ -259,9 +259,12 @@ cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.j
 
 ```bash
 cml-models prepare --config packages/models/model_pipeline.toml
-cml-models train --config packages/models/model_pipeline.toml --families router,pair
-cml-models pipeline --config packages/models/model_pipeline.toml  # prepare + train
+cml-models train --config packages/models/model_pipeline.toml --strict
+cml-models train --config packages/models/model_pipeline.toml --allow-skips
+cml-models pipeline --config packages/models/model_pipeline.toml -- --strict
 ```
+
+`cml-models train` is strict-by-default (`TrainConfig.strict=True`). Deferred token tasks and missing task coverage fail fast unless `--allow-skips` is set.
 
 **Python API** — both modules expose typed dataclass configs for programmatic use:
 

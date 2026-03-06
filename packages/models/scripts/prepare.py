@@ -1,22 +1,23 @@
-"""Legacy compatibility wrapper for cml.modeling.prepare."""
+"""Legacy compatibility wrapper for cml.modeling.prepare.
+
+Requires the cognitive-memory-layer package to be installed.
+Run: pip install -e ".[modeling]" from the repository root.
+"""
 
 from __future__ import annotations
 
-import sys
 from importlib import import_module
-from pathlib import Path
 from typing import Any
 
 
 def _load_module():
     try:
         return import_module("cml.modeling.prepare")
-    except ImportError:
-        repo_root = Path(__file__).resolve().parents[3]
-        sdk_src = repo_root / "packages" / "py-cml" / "src"
-        if sdk_src.exists():
-            sys.path.insert(0, str(sdk_src))
-        return import_module("cml.modeling.prepare")
+    except ImportError as exc:
+        raise ImportError(
+            "cml.modeling.prepare is not importable. "
+            'Install the package first: pip install -e ".[modeling]"'
+        ) from exc
 
 
 _module = _load_module()

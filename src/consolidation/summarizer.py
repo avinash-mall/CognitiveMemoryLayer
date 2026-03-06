@@ -313,7 +313,17 @@ class GistExtractor:
 
     @staticmethod
     def _fallback_gist_type(source_types: list[str]) -> str:
+        constraint_subtypes = {"goal", "state", "value", "causal", "policy"}
+        matched = [t for t in source_types if t in constraint_subtypes]
+        if len(matched) == 1:
+            return matched[0]
+        if len(matched) > 1:
+            # Multiple constraint subtypes in one cluster -- prefer the most
+            # specific first occurrence rather than collapsing to "policy".
+            return matched[0]
         if "constraint" in source_types:
+            # Untyped constraint clusters still need a concrete cognitive
+            # subtype so alignment can preserve governing semantics.
             return "policy"
         if "preference" in source_types:
             return "preference"

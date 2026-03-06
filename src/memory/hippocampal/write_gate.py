@@ -235,11 +235,24 @@ class WriteGate:
         context: dict[str, Any] | None = None,
         effective_chunk_type: ChunkType | None = None,
     ) -> float:
+        metadata = {
+            "memory_type": (
+                (effective_chunk_type or chunk.chunk_type).value
+                if hasattr((effective_chunk_type or chunk.chunk_type), "value")
+                else str(effective_chunk_type or chunk.chunk_type)
+            ),
+            "importance": chunk.salience,
+            "confidence": chunk.confidence,
+            "context_tags": list((context or {}).get("context_tags") or []),
+            "namespace": (context or {}).get("namespace"),
+        }
         _has = getattr(self.modelpack, "has_task_model", None)
         if _has and _has("write_importance_regression") and chunk.text.strip():
             try:
                 score_pred = self.modelpack.predict_score_single(
-                    "write_importance_regression", chunk.text
+                    "write_importance_regression",
+                    chunk.text,
+                    metadata=metadata,
                 )
                 if score_pred is not None:
                     return max(0.0, min(1.0, score_pred.score))

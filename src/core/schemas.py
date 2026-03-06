@@ -172,6 +172,9 @@ class MemoryPacket(BaseModel):
     procedures: list[RetrievedMemory] = Field(default_factory=list)
     constraints: list[RetrievedMemory] = Field(default_factory=list)
 
+    # Global reranked order (preserves reranker relevance ranking)
+    ranked_memories: list[RetrievedMemory] = Field(default_factory=list)
+
     # Meta
     open_questions: list[str] = Field(default_factory=list)  # Needs confirmation
     warnings: list[str] = Field(default_factory=list)  # Conflicts detected
@@ -179,6 +182,8 @@ class MemoryPacket(BaseModel):
 
     @property
     def all_memories(self) -> list[RetrievedMemory]:
+        if self.ranked_memories:
+            return list(self.ranked_memories)
         return (
             self.facts
             + self.recent_episodes

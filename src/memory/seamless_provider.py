@@ -185,7 +185,11 @@ class SeamlessMemoryProvider:
             procedures=procedures,
             constraints=constraints,
         )
-        return filtered_packet.to_context_string(max_chars=max_chars)
+
+        from ..retrieval.packet_builder import MemoryPacketBuilder
+
+        builder = MemoryPacketBuilder()
+        return builder.to_llm_context(filtered_packet, max_tokens=max_chars // 4)
 
     async def _process_response(
         self,

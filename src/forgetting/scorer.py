@@ -122,7 +122,21 @@ class RelevanceScorer:
             + w.dependency * dependency
         )
 
-        suggested = self._suggest_action(total, record_type, text=record.text)
+        suggested = self._suggest_action(
+            total,
+            record_type,
+            text=record.text,
+            metadata={
+                "memory_type": record_type,
+                "importance": importance,
+                "confidence": confidence,
+                "access_count": record.access_count,
+                "age_days": int(max(0.0, age_days)),
+                "dependency_count": dependency_count,
+                "context_tags": list(record.context_tags or []),
+                "namespace": record.namespace,
+            },
+        )
 
         return RelevanceScore(
             memory_id=str(record.id),
@@ -155,7 +169,14 @@ class RelevanceScorer:
 
     _VALID_ACTIONS = frozenset({"keep", "decay", "silence", "compress", "delete"})
 
-    def _suggest_action(self, score: float, memory_type: str, *, text: str = "") -> str:
+    def _suggest_action(
+        self,
+        score: float,
+        memory_type: str,
+        *,
+        text: str = "",
+        metadata: dict[str, object] | None = None,
+    ) -> str:
         """Suggest forgetting action based on score.
 
         Constraints, preferences, and procedures are protected from deletion
@@ -167,7 +188,11 @@ class RelevanceScorer:
             if text and getattr(self.modelpack, "has_task_model", lambda _: False)(
                 "forgetting_action_policy"
             ):
-                pred = self.modelpack.predict_single("forgetting_action_policy", text)
+                pred = self.modelpack.predict_single(
+                    "forgetting_action_policy",
+                    text,
+                    metadata=metadata,
+                )
                 if pred is not None and pred.label in self._VALID_ACTIONS:
                     action = pred.label
                     if memory_type in self._PROTECTED_TYPES:

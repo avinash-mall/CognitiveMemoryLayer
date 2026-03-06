@@ -34,3 +34,21 @@ def test_train_models_builds_expected_argv(monkeypatch, tmp_path: Path) -> None:
     assert "--families" in captured["argv"]
     assert "router,pair" in captured["argv"]
     assert "--export-thresholds" in captured["argv"]
+    assert "--strict" in captured["argv"]
+
+
+def test_train_models_allow_skips(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def _fake_main(argv=None):
+        captured["argv"] = list(argv or [])
+        return 0
+
+    monkeypatch.setattr(train_module, "main", _fake_main)
+    cfg = TrainConfig(
+        config_path=tmp_path / "model_pipeline.toml",
+        strict=False,
+    )
+    rc = train_module.train_models(cfg)
+    assert rc == 0
+    assert "--allow-skips" in captured["argv"]

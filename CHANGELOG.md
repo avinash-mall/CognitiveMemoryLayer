@@ -8,8 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Resolves issues from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.md). See below for issue ID mapping.
 
+Implementations from [ProjectPlan/BaseCML/CML_Audit_2026-03-06.md](ProjectPlan/BaseCML/CML_Audit_2026-03-06.md) (AUD-01–AUD-12) and [ProjectPlan/BaseCML/Packages_Audit_2026-03-06.md](ProjectPlan/BaseCML/Packages_Audit_2026-03-06.md) (PKG-01–PKG-09).
+
 ### Added
 
+- **Modeling preflight validator + manifest v2 (MOD-R2, MOD-R5, MOD-R7)** - Training now records `manifest_schema_version = 2` with `configured_tasks`, `preflight_validation`, `task_training_status`, and `build_metadata` (python/dependency/git provenance). Artifact validation runs before success exit.
+- **Task capability API for runtime gating (MOD-R6)** - `ModelPackRuntime` now exposes `supports_task(task)` and `capability_report()` so retrieval/extraction/reconsolidation modules can gate task usage by capability instead of broad modelpack availability.
 - **Dashboard Facts Explorer page** — New `/dashboard/#facts` page for browsing, filtering, and invalidating semantic facts. Includes category and tenant filters, current-only toggle, paginated table with confidence gauges, and inline invalidation. Backend: `GET /api/v1/dashboard/facts` and `POST /api/v1/dashboard/facts/{id}/invalidate` (in `fact_routes.py`). Frontend: `facts.js` page module, API methods `getFacts()` and `invalidateFact()`.
 - **Dashboard Models Status endpoint** — New `GET /api/v1/dashboard/models/status` returns loaded modelpack families, task models, load errors, and models directory path. Backend: `src/api/dashboard/models_routes.py`. Frontend: Components page shows a "Custom Models (ModelPack)" card with KPI counts, family/task tag lists, and load error details.
 - **Retrieval supersedes_id** — `RetrievalResultItem` and `DashboardMemoryDetail` now include `supersedes_id: UUID | None` for semantic lineage. Retrieval test page shows supersession badges and links. Memory detail page shows a visual lineage chain (previous/current version nodes) in the Provenance section.
@@ -30,9 +34,18 @@ Resolves issues from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.
 - **Per-tenant feature flag overrides (A-02)** — New `src/core/tenant_flags.py` with Redis-backed `TenantFeatureOverrides`. Enables per-tenant A/B testing and gradual rollout of LLM features via `get_tenant_overrides()`, `set_tenant_overrides()`, and `apply_overrides()`.
 - **OpenTelemetry tracing stubs (A-07)** — New `src/utils/tracing.py` with `trace_span()` and `async_trace_span()` context managers. No-ops when OpenTelemetry SDK is not installed; full distributed tracing when `opentelemetry-sdk` is present. `configure_tracing()` for startup bootstrap.
 - **Streaming read endpoint (E-02)** — New `POST /memory/read/stream` SSE endpoint for progressive rendering. Returns each memory as a `data:` event, with `event: done` (count + elapsed ms) or `event: error` on completion.
+- **ModelPack capability reporting (PKG-03)** — `ModelPackRuntime` now exposes `available_families` and `available_tasks` for partial-load transparency. INFO-level logging lists loaded vs pending families when manifest references models not yet trained. `CML_MODELS_DIR` environment variable overrides default models path.
+- **Packages audit tests** — New `tests/unit/test_packages_audit.py` with 29 unit tests covering ModelPack capability reporting, retry delay wiring, export/import fidelity, training strict mode, legacy wrapper cleanup, CML_MODELS_DIR, eval CLI paths, client parity, shared endpoints, per-task model loading, and packaging structure.
+- **Ranked memories in read/turn API (AUD-04)** — `MemoryPacket` has `ranked_memories`; `MemoryPacketBuilder.build()` preserves reranker order; API responses use `packet.ranked_memories` for the `memories` field so API order matches relevance.
+- **Associative graph expansion (AUD-07)** — Retriever derives graph seeds from top constraint/fact results (entities, subjects, scopes) and runs a post-retrieval GRAPH step when the plan had no GRAPH step, improving semantic-disconnect recall.
+- **Batch graph edge writes (AUD-09)** — `Neo4jGraphStore.merge_edges_batch()` merges multiple edges via `UNWIND`; `NeocorticalStore.store_relations_batch()` uses it. Graph sync can run as a background task to avoid blocking the write response.
+- **Trigram indexes for semantic fact search (AUD-10)** — Migration `002_add_trigram_indexes` adds `pg_trgm` and GIN indexes on `semantic_facts.key`, `subject`, and `value::text` for efficient `ILIKE` search.
+- **CML audit tests** — New `tests/unit/test_audit_fixes.py` coverage for derived graph seeds, post-retrieval graph expansion, batch edge writes, background graph sync, typed candidate selection, type-aware conflict detection, and constraint-type-aware revision strategy.
 
 ### Changed
 
+- **Strict-by-default modeling contract (MOD-R1, MOD-R3, MOD-R4)** - `TrainConfig.strict` defaults to `True`; `cml-models train` and `cml-models pipeline` accept `--strict` / `--allow-skips`; strict mode hard-fails on deferred/unsupported objectives, selected disabled tasks, zero-row task splits, and artifact mismatches.
+- **Deferred task defaults in model pipeline (MOD-R3, MOD-R4)** - `write_importance_regression`, `fact_extraction_structured`, and `pii_span_detection` stay disabled in default config until score supervision/token trainer contracts are available.
 - **Dashboard visual overhaul** — Comprehensive UI refresh across all dashboard pages. KPI cards now have accent-colored left borders and hover lift effects. Tables have smooth row hover transitions. Charts use gradient fills, animations, and percentage tooltips. Sidebar navigation uses inline SVGs with active-state left-border highlight. All pages include standardized `.page-desc` introductory paragraphs. Empty states have animated icons. Cards and panels have hover shadow effects.
 - **Dashboard graph display** — Neovis.js configuration updated to render relationship edge labels (`predicate`), improved DOM flushing before initialization, and refined physics settings (spring length, gravitational constant, stabilization).
 - **Dashboard session navigation** — Fixed race condition in sessions page where `navigateTo('memories')` was called before `sessionStorage.setItem('cml_filter_session_id', ...)`, causing the memories page to miss the session filter.
@@ -62,9 +75,22 @@ Resolves issues from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.
 - **Ruff, Black, and mypy (IA-04)** — Resolved Ruff issues (TC006, F841, B010); Black formatting; mypy passes on `src`.
 - **Minimal .env** — `.env` can be trimmed to required and optional-but-recommended variables; see `.env.example`.
 - **Config and docs aligned with codebase** — Synced `scripts/init_structure.py`; CONTRIBUTING.md; CI runs ruff on py-cml.
+- **Packaging (PKG-01)** — Server-only dependencies (fastapi, uvicorn, neo4j, redis, celery, etc.) moved to `[project.optional-dependencies.server]`. Base package requires only SDK essentials (httpx, pydantic, openai, tiktoken, structlog, etc.). Wheel build includes both `packages/py-cml/src/cml` and `src`.
+- **Legacy model scripts (PKG-08)** — `packages/models/scripts/prepare.py` and `train.py` no longer mutate `sys.path`; they fail with a clear install message when `cml.modeling.prepare` or `cml.modeling.train` is not importable.
+- **Eval CLI path handling (PKG-08)** — Eval commands require explicit paths when run outside the repo; `_require_path()` raises a clear error when repo root cannot be detected and required path defaults are `None`.
+- **Turn path constraint-first formatting (AUD-03)** — `/memory/turn` now uses `MemoryPacketBuilder.to_llm_context()` for context assembly so constraints appear first, matching `/memory/read` behavior.
+- **Planner constraint fallback (AUD-05)** — When `constraint_categories` is empty or missing, the retriever skips constraint retrieval instead of expanding to all five cognitive categories, avoiding irrelevant constraints on generic queries.
+- **Constraint metadata and provenance (AUD-06)** — `_fact_to_record()` populates `record.metadata` with `constraints` (type, evidence_ids), `valid_from`, `valid_to`, `supersedes_id`. `get_facts_by_category` and `get_facts_by_categories` use `ORDER BY confidence DESC, updated_at DESC`.
+- **Constraint key identity (AUD-02)** — `constraint_fact_key()` now includes a normalized description hash so distinct constraints of the same type and scope get different keys and can coexist; only same-description updates supersede.
+- **Type-preserving consolidation (AUD-08)** — Summarizer `_fallback_gist_type()` preserves specific constraint subtypes (goal, state, value, causal, policy); worker `_fallback_gist` keeps dominant subtype instead of collapsing to "policy".
+- **Batched evidence mapping (AUD-11)** — Write-time facts and constraints use a chunk-to-record-ID map so each chunk’s facts point to the correct stored memory ID instead of `stored[0].id`.
+- **Typed constraint reconsolidation (AUD-12)** — Reconsolidation service prioritizes same-constraint-type candidates; conflict detector applies type-aware pre-filtering (different type/scope → NONE, same type+subject → CORRECTION); belief revision uses stable vs volatile type for strategy (CORRECTION vs TIME_SLICE).
+- **Non-LLM write path semantic fidelity (AUD-01)** — Hippocampal store uses local extractor `memory_type` when LLM is disabled; local extractor `facts` are written as semantic facts; `WriteTimeFactExtractor` processes `STATEMENT` chunks when local classification is present.
 
 ### Tests
 
+- **Modeling contract and probes (MOD-R8)** - Added unit coverage for modeling validation and strict-path behavior (`packages/py-cml/tests/unit/test_modeling_validation.py`) plus probe tests (`tests/unit/test_models_artifact_probe.py`, `tests/unit/test_constraint_retrieval_probe.py`, `tests/unit/test_package_surface_probe.py`). `scripts/models_artifact_probe.py` now supports `--fail-on-mismatch`.
+- **CML and Packages audits** — `test_audit_fixes.py` covers CML Audit (graph seeds, batch edges, typed reconsolidation); `test_packages_audit.py` covers Packages Audit (ModelPack, retry, import fidelity, training strict, paths, client parity). `test_deep_research_improvements.py`: STATEMENT chunks processed for write-time facts when local classification present.
 - **Custom model pipeline** — Unit tests for constraint layer (`test_constraint_layer.py`), hippocampal write gate and redactor (`test_hippocampal_write_gate_redactor.py`), reconsolidation labile conflict belief (`test_reconsolidation_labile_conflict_belief.py`), consolidation worker guardrails (`test_consolidation_worker_guardrails.py`), NER normalization (`test_utils_ner_normalization.py`), prepare.py incremental merging (`test_models_prepare_incremental.py`).
 - **Dashboard and retrieval** — Tests for retrieval classifier/planner/reranker pipeline, query classifier constraints, orchestrator seamless provider, forgetting executor/scorer/policy, config/summarizer internals, HF summarizer utility.
 - **py-cml embedded client** — Unit tests for embedded client (`test_embedded_client.py`).
@@ -113,6 +139,31 @@ Resolves issues from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.
 | A-07 | Observability | OpenTelemetry tracing stubs |
 | E-02 | Responsiveness | SSE streaming read endpoint |
 | IA-04 | Lint | Ruff/Black/mypy fixes |
+
+### Audit resolutions (CML_Audit_2026-03-06, Packages_Audit_2026-03-06)
+
+| ID | Audit | Resolution |
+|----|--------|------------|
+| AUD-01 | CML | Non-LLM write path: local memory_type and facts honored; STATEMENT chunks processed when local classification present |
+| AUD-02 | CML | constraint_fact_key includes description hash for distinct keys per constraint |
+| AUD-03 | CML | /memory/turn uses MemoryPacketBuilder.to_llm_context (constraint-first) |
+| AUD-04 | CML | ranked_memories preserved; API memories use reranker order |
+| AUD-05 | CML | No broad constraint fallback; skip constraints when categories empty |
+| AUD-06 | CML | _fact_to_record metadata; ORDER BY in fact_store category fetches |
+| AUD-07 | CML | Post-retrieval graph expansion from derived seeds |
+| AUD-08 | CML | Type-preserving consolidation (fallback_gist_type, worker) |
+| AUD-09 | CML | merge_edges_batch; optional background graph sync |
+| AUD-10 | CML | Migration 002: pg_trgm GIN indexes on semantic_facts |
+| AUD-11 | CML | Chunk-to-evidence ID mapping for batched writes |
+| AUD-12 | CML | Typed reconsolidation (candidates, conflict pre-filter, revision strategy) |
+| PKG-01 | Packages | Server deps in optional server extra; base SDK slimmed |
+| PKG-02 | Packages | CML_MODELS_DIR; EmbeddedCognitiveMemoryLayer models_dir param |
+| PKG-03 | Packages | available_families, available_tasks; pending-families INFO logging |
+| PKG-04 | Packages | config.max_retry_delay wired into retry backoff |
+| PKG-05 | Packages | embedded_utils import preserves type, timestamp, confidence, etc. |
+| PKG-06 | Packages | Token-classification tasks disabled; --strict; README planned tasks |
+| PKG-08 | Packages | No sys.path in legacy scripts; eval CLI _require_path |
+| PKG-09 | Packages | _endpoints.py shared helpers; client write/read use shared builders |
 
 ### Breaking
 

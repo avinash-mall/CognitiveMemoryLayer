@@ -121,6 +121,25 @@ class GraphStoreBase(ABC):
         """Create or update a node, return node ID."""
         ...
 
+    async def merge_nodes_batch(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        nodes: list[dict[str, Any]],
+    ) -> int:
+        """Batch-merge multiple entity nodes. Default falls back to per-node calls."""
+        count = 0
+        for node in nodes:
+            await self.merge_node(
+                tenant_id=tenant_id,
+                scope_id=scope_id,
+                entity=node["entity"],
+                entity_type=node["entity_type"],
+                properties=node.get("properties"),
+            )
+            count += 1
+        return count
+
     @abstractmethod
     async def merge_edge(
         self,

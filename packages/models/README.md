@@ -33,11 +33,11 @@ Beyond the three family-level classifiers, the pipeline supports 10 task-specifi
 | `retrieval_constraint_relevance_pair` | Domain keyword bonus in retriever | `pair_ranking` | MS MARCO, BEIR, Quora duplicates | Yes |
 | `memory_rerank_pair` | Weighted reranker core | `pair_ranking` | MS MARCO, BEIR, SNLI, MultiNLI, ANLI | Yes |
 | `novelty_pair` | Jaccard novelty in write gate and interference detector | `pair_ranking` | Quora duplicates, PAWS, GLUE (QQP/MRPC/STS-B) | Yes |
-| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `token_classification` | DocRED, Re-TACRED | Yes |
+| `fact_extraction_structured` *(planned)* | Regex/spaCy fallback extraction and dependency-based relation extraction | `token_classification` | DocRED, Re-TACRED | Yes |
 | `schema_match_pair` | Jaccard schema similarity in consolidation | `pair_ranking` | STS-B, FEVER, SNLI, MultiNLI | Yes |
 | `reconsolidation_candidate_pair` | Word-overlap top-k in reconsolidation | `pair_ranking` | MS MARCO, FEVER, SNLI, ANLI | Yes |
-| `write_importance_regression` | Fixed importance bins in write gate | `single_regression` | None (internal labels only) | Yes (mandatory) |
-| `pii_span_detection` | Regex+NER span redaction | `token_classification` | PII-Masking-200k | Yes |
+| `write_importance_regression` *(deferred)* | Fixed importance bins in write gate | `single_regression` | None (internal labels only) | Yes (after score supervision) |
+| `pii_span_detection` *(planned)* | Regex+NER span redaction | `token_classification` | PII-Masking-200k | Yes |
 | `consolidation_gist_quality` | String-match gist blacklist and mixed-topic detection | `classification` | SummEval, FRANK, TRUE | Yes |
 | `forgetting_action_policy` | Heuristic action choice in forgetting scorer | `classification` | None (internal labels only) | Yes (mandatory) |
 
@@ -55,7 +55,7 @@ Beyond the three family-level classifiers, the pipeline supports 10 task-specifi
 
 **`reconsolidation_candidate_pair`** — MS MARCO covers retrieval candidate ranking. FEVER/NLI/ANLI improve conflict candidate prioritization. Synthesize from reconsolidation logs: positives are memory/fact pairs that actually resulted in revision operations.
 
-**`write_importance_regression`** — Fully internal labels built from replay logs and annotation: downstream retrieval frequency, survival/forgetting outcomes, human criticality labels for safety-relevant memories.
+**`write_importance_regression`** — Fully internal labels built from replay logs and annotation: downstream retrieval frequency, survival/forgetting outcomes, human criticality labels for safety-relevant memories. This task is currently disabled by default until score-supervision parquet columns are available.
 
 **`pii_span_detection`** — PII-Masking-200k as primary span supervision. Synthesis for secrets patterns not fully covered by generic PII datasets (`api_key=`, tokens, credentials).
 
@@ -109,6 +109,11 @@ Backend: `src/api/dashboard/models_routes.py`.
 
 ### Modelpack APIs
 
+Runtime capability helpers:
+
+- `supports_task(task)` checks whether a task can be served by either a loaded family model or a dedicated task model.
+- `capability_report()` returns load diagnostics (`available_families`, `available_tasks`, `pending_families`, `load_errors`, `manifest_schema_version`).
+
 - `predict_single(task, text)` — single-text classification (existing)
 - `predict_pair(task, text_a, text_b)` — text-pair classification (existing)
 - `predict_score_pair(task, text_a, text_b)` — text-pair numeric score output
@@ -127,6 +132,8 @@ Backend: `src/api/dashboard/models_routes.py`.
 - `context_tag` router task for content-derived categorization
 - `confidence_bin` router task for content-derived confidence (maps low/medium/high → 0.35/0.65/0.9)
 - `decay_profile` router task for per-memory decay rate (maps very_fast/fast/medium/slow/very_slow → 0.35/0.2/0.1/0.05/0.02)
+
+Deferred tasks (`write_importance_regression`, token objectives) remain optional: local extraction uses them only when corresponding task artifacts are present.
 
 Wired into `HippocampalStore` via `MemoryOrchestrator.create()` and `create_lite()` when LLM is disabled. Both `encode_chunk` and `encode_batch` consume context_tags, confidence, and decay_rate from the local extractor when the LLM unified result is unavailable.
 
@@ -240,6 +247,8 @@ When `[multilingual]` is enabled in config (default), synthetic LLM generation i
 
 `train.py` supports two modes:
 
+By default, training runs in strict mode (`--strict`) with preflight validation and post-train artifact validation. Use `--allow-skips` only for exploratory runs.
+
 ### Family-level training (baseline)
 
 Trains all selected families (`router`, `extractor`, `pair`) using TF-IDF + `SGDClassifier` with composite labels. This is the default when no task specs are present.
@@ -287,8 +296,13 @@ Per-task artifacts:
 
 Manifest (`manifest.json`):
 
+- `manifest_schema_version` (v2)
+- `configured_tasks` from `model_pipeline.toml`
 - `families` map with artifact paths, metrics summary, labels.
 - `task_models` map with objective type, artifact path, train rows, and test metrics.
+- `task_training_status` with per-task status (`trained`, `disabled`, `filtered_out`, `failed`, `skipped`) and reason.
+- `preflight_validation` with objective/data/coverage checks run before task training.
+- `build_metadata` with Python/dependency versions and git state.
 - `runtime_thresholds` section with per-task confidence thresholds and calibration metadata.
 
 Per-epoch training logs are printed to console and persisted in epoch stats files.
@@ -309,7 +323,8 @@ python -m packages.models.scripts.prepare --target-per-task-label 10000 --llm-te
 python -m packages.models.scripts.prepare --target-per-task-label 5002 --llm-temperature 0.3 --llm-concurrency 32
 python -m packages.models.scripts.prepare --force-full
 python -m packages.models.scripts.prepare --no-multilingual   # English-only synthetic data
-python -m packages.models.scripts.train --max-iter 25 --max-features 250000
+python -m packages.models.scripts.train --max-iter 25 --max-features 250000 --strict
+python -m packages.models.scripts.train --max-iter 25 --max-features 250000 --allow-skips
 ```
 
 Task-level training overrides:
@@ -319,6 +334,15 @@ python -m packages.models.scripts.train --tasks retrieval_constraint_relevance_p
 python -m packages.models.scripts.train --objective-types pair_ranking,single_regression
 python -m packages.models.scripts.train --max-seq-length 512 --learning-rate 5e-5
 python -m packages.models.scripts.train --calibration-split eval --export-thresholds
+python -m packages.models.scripts.train --tasks novelty_pair --strict
+```
+
+Contract and probe checks:
+
+```bash
+python scripts/models_artifact_probe.py --fail-on-mismatch
+python scripts/package_surface_probe.py embedded --write "User prefers tea" --query tea --expect-min-memories 1
+python scripts/constraint_retrieval_probe.py --scenario budget_decision --mode compare
 ```
 
 ## Rollout Plan
