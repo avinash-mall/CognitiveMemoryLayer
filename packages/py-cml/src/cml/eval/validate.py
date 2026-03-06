@@ -69,7 +69,9 @@ def validate_judged(path: Path, predictions_path: Path) -> list[str]:
         try:
             score = float(rec.get("judge_score", 0))
         except (TypeError, ValueError):
-            errors.append(f"{path}: Record[{i}] judge_score not numeric: {rec.get('judge_score')!r}")
+            errors.append(
+                f"{path}: Record[{i}] judge_score not numeric: {rec.get('judge_score')!r}"
+            )
         else:
             if not any(abs(score - v) < 0.001 for v in VALID_JUDGE_SCORES):
                 errors.append(f"{path}: Record[{i}] judge_score={score} not in {{0, 0.5, 1.0}}")
@@ -134,7 +136,10 @@ def validate_summary(path: Path, judged_path: Path) -> list[str]:
             errors.append(
                 f"{path}: sum(by_category.count)={total_count} != total_samples={summary['total_samples']}"
             )
-        if summary.get("total_score") is not None and abs(total_score - float(summary["total_score"])) > 0.01:
+        if (
+            summary.get("total_score") is not None
+            and abs(total_score - float(summary["total_score"])) > 0.01
+        ):
             errors.append(
                 f"{path}: sum(by_category.score)={total_score} != total_score={summary['total_score']}"
             )
@@ -152,7 +157,10 @@ def validate_summary(path: Path, judged_path: Path) -> list[str]:
                     f"{path}: total_samples={summary['total_samples']} != judged length {len(judged)}"
                 )
             computed_total = sum(float(item.get("judge_score", 0)) for item in judged)
-            if summary.get("total_score") is not None and abs(computed_total - float(summary["total_score"])) > 0.01:
+            if (
+                summary.get("total_score") is not None
+                and abs(computed_total - float(summary["total_score"])) > 0.01
+            ):
                 errors.append(
                     f"{path}: total_score={summary['total_score']} != sum(judge_score)={computed_total}"
                 )

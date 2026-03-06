@@ -142,7 +142,9 @@ class SchemaAligner:
         try:
             if getattr(self.modelpack, "has_task_model", lambda _: False)("schema_match_pair"):
                 score_pred = self.modelpack.predict_score_pair(
-                    "schema_match_pair", text1, text2_str,
+                    "schema_match_pair",
+                    text1,
+                    text2_str,
                 )
                 if score_pred is not None:
                     return score_pred.score

@@ -298,11 +298,7 @@ def extract_relations(
                 span_relations: list[NERRelation] = []
                 for span in span_pred.spans:
                     start, end, label = span[0], span[1], span[2]
-                    span_text = (
-                        text[start:end]
-                        if start < len(text) and end <= len(text)
-                        else ""
-                    )
+                    span_text = text[start:end] if start < len(text) and end <= len(text) else ""
                     if span_text and label:
                         span_relations.append(
                             NERRelation(

@@ -70,12 +70,27 @@ Cognitive Memory Layer is running with a complete FastAPI memory API, retrieval 
 ### Write path (high-level)
 
 1. Ingest and chunk through short-term memory.
-2. Optional unified extraction for LLM path.
+2. Optional unified extraction for LLM path; when LLM is off, `LocalUnifiedWriteExtractor` provides content-derived context_tags, confidence, and decay_rate from the router model.
 3. Deactivate superseded constraints/facts.
-4. Encode and store via batched hippocampal pipeline.
+4. Encode and store via batched hippocampal pipeline (both `encode_chunk` and `encode_batch` consume local extractor results).
 5. Sync entities/relations to Neo4j (best effort).
 6. Persist write-time semantic facts.
 7. Persist write-time constraints.
+
+```mermaid
+flowchart TD
+    Input[/"Content"/] --> STM["Short-Term Memory"]
+    STM --> Chunks["SemanticChunks"]
+    Chunks --> Decision{LLM enabled?}
+    Decision -->|Yes| Unified["UnifiedWritePathExtractor\n(single LLM call)"]
+    Decision -->|No| Local["LocalUnifiedWriteExtractor\n(modelpack router + task models)"]
+    Unified --> Gate["WriteGate"]
+    Local --> Gate
+    Gate --> Encode["HippocampalStore\nencode_chunk / encode_batch"]
+    Encode --> Upsert["PostgreSQL + pgvector"]
+    Encode --> GraphSync["Neo4j graph sync"]
+    Encode --> Facts["Semantic facts store"]
+```
 
 ### Read path (high-level)
 

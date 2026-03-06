@@ -164,7 +164,9 @@ class RelevanceScorer:
         """
         # --- model path: policy prediction ---
         try:
-            if text and getattr(self.modelpack, "has_task_model", lambda _: False)("forgetting_action_policy"):
+            if text and getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "forgetting_action_policy"
+            ):
                 pred = self.modelpack.predict_single("forgetting_action_policy", text)
                 if pred is not None and pred.label in self._VALID_ACTIONS:
                     action = pred.label

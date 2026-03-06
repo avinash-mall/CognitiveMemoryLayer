@@ -64,7 +64,9 @@ class InterferenceDetector:
                         r1_txt = next(r for r in records if str(r.id) == id1).text
                         r2_txt = next(r for r in records if str(r.id) == id2).text
                         score_pred = self.modelpack.predict_score_pair(
-                            "novelty_pair", r1_txt, r2_txt,
+                            "novelty_pair",
+                            r1_txt,
+                            r2_txt,
                         )
                         if score_pred is not None:
                             sim = score_pred.score
@@ -102,7 +104,9 @@ class InterferenceDetector:
                 try:
                     if getattr(self.modelpack, "has_task_model", lambda _: False)("novelty_pair"):
                         score_pred = self.modelpack.predict_score_pair(
-                            "novelty_pair", r1.text, r2.text,
+                            "novelty_pair",
+                            r1.text,
+                            r2.text,
                         )
                         if score_pred is not None:
                             overlap = score_pred.score

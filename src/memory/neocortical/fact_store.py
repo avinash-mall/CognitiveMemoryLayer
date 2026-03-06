@@ -250,9 +250,7 @@ class SemanticFactStore:
             return []
 
         async with self.session_factory() as session:
-            query = select(SemanticFactModel).where(
-                SemanticFactModel.tenant_id == tenant_id
-            )
+            query = select(SemanticFactModel).where(SemanticFactModel.tenant_id == tenant_id)
             if fact_id:
                 query = query.where(SemanticFactModel.id == fact_id)
             elif key:
@@ -269,25 +267,25 @@ class SemanticFactStore:
             visited: set[str] = set()
             while current is not None and str(current.id) not in visited:
                 visited.add(str(current.id))
-                chain.append({
-                    "fact_id": str(current.id),
-                    "key": typing_cast("str", current.key),
-                    "value": current.value,
-                    "supersedes_id": (
-                        str(current.supersedes_id) if current.supersedes_id else None
-                    ),
-                    "created_at": (
-                        current.created_at.isoformat() if current.created_at else None
-                    ),
-                    "is_current": typing_cast("bool", current.is_current),
-                    "version": typing_cast("int", current.version),
-                })
+                chain.append(
+                    {
+                        "fact_id": str(current.id),
+                        "key": typing_cast("str", current.key),
+                        "value": current.value,
+                        "supersedes_id": (
+                            str(current.supersedes_id) if current.supersedes_id else None
+                        ),
+                        "created_at": (
+                            current.created_at.isoformat() if current.created_at else None
+                        ),
+                        "is_current": typing_cast("bool", current.is_current),
+                        "version": typing_cast("int", current.version),
+                    }
+                )
                 if not current.supersedes_id:
                     break
                 result = await session.execute(
-                    select(SemanticFactModel).where(
-                        SemanticFactModel.id == current.supersedes_id
-                    )
+                    select(SemanticFactModel).where(SemanticFactModel.id == current.supersedes_id)
                 )
                 current = result.scalar_one_or_none()
 
@@ -323,19 +321,21 @@ class SemanticFactStore:
                 successor = result.scalar_one_or_none()
                 if successor is None:
                     break
-                chain.append({
-                    "fact_id": str(successor.id),
-                    "key": typing_cast("str", successor.key),
-                    "value": successor.value,
-                    "supersedes_id": (
-                        str(successor.supersedes_id) if successor.supersedes_id else None
-                    ),
-                    "created_at": (
-                        successor.created_at.isoformat() if successor.created_at else None
-                    ),
-                    "is_current": typing_cast("bool", successor.is_current),
-                    "version": typing_cast("int", successor.version),
-                })
+                chain.append(
+                    {
+                        "fact_id": str(successor.id),
+                        "key": typing_cast("str", successor.key),
+                        "value": successor.value,
+                        "supersedes_id": (
+                            str(successor.supersedes_id) if successor.supersedes_id else None
+                        ),
+                        "created_at": (
+                            successor.created_at.isoformat() if successor.created_at else None
+                        ),
+                        "is_current": typing_cast("bool", successor.is_current),
+                        "version": typing_cast("int", successor.version),
+                    }
+                )
                 current_id = str(successor.id)
 
             return chain

@@ -406,9 +406,9 @@ class TestConstraintFactKey:
     def test_alias_scopes_hash_to_same_key(self):
         co1 = ConstraintObject("goal", "user", "Move to NYC", scope=["NYC"])
         co2 = ConstraintObject("goal", "user", "Move to New York City", scope=["new york city"])
-        assert ConstraintExtractor.constraint_fact_key(co1) == ConstraintExtractor.constraint_fact_key(
-            co2
-        )
+        assert ConstraintExtractor.constraint_fact_key(
+            co1
+        ) == ConstraintExtractor.constraint_fact_key(co2)
 
 
 # ═══════════════════════════════════════════════════════════════════

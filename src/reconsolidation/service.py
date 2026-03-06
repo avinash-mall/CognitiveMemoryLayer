@@ -92,7 +92,9 @@ class ReconsolidationService:
             return memories
 
         # Model path: use dedicated pair model for candidate ranking
-        if getattr(self.modelpack, "has_task_model", lambda _: False)("reconsolidation_candidate_pair"):
+        if getattr(self.modelpack, "has_task_model", lambda _: False)(
+            "reconsolidation_candidate_pair"
+        ):
             try:
                 model_scores: list[tuple[MemoryRecord, float]] = []
                 scored_any = False
@@ -204,11 +206,7 @@ class ReconsolidationService:
                         plan_old_id = str(op.target_id)
                     operations_applied.append(entry)
 
-                if (
-                    plan.strategy == RevisionStrategy.TIME_SLICE
-                    and plan_old_id
-                    and plan_new_id
-                ):
+                if plan.strategy == RevisionStrategy.TIME_SLICE and plan_old_id and plan_new_id:
                     await self._backpatch_lineage_id(plan_old_id, plan_new_id)
 
         await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
@@ -238,9 +236,7 @@ class ReconsolidationService:
                 "fact_extraction_structured"
             ):
                 combined = f"{user_message} {assistant_response or ''}".strip()
-                span_pred = self.modelpack.predict_spans(
-                    "fact_extraction_structured", combined
-                )
+                span_pred = self.modelpack.predict_spans("fact_extraction_structured", combined)
                 if span_pred is not None and span_pred.spans:
                     facts = []
                     for s in span_pred.spans:
@@ -250,9 +246,7 @@ class ReconsolidationService:
                             else ""
                         )
                         if span_text:
-                            facts.append(
-                                {"text": span_text, "type": s[2] or "semantic_fact"}
-                            )
+                            facts.append({"text": span_text, "type": s[2] or "semantic_fact"})
                     if facts:
                         return facts
         except Exception:
@@ -337,9 +331,7 @@ class ReconsolidationService:
             if isinstance(lineage, list) and lineage:
                 lineage[-1]["superseded_by_id"] = new_id
                 meta["supersession_lineage"] = lineage
-                await self.store.update(
-                    _UUID(old_id), {"metadata": meta}, increment_version=False
-                )
+                await self.store.update(_UUID(old_id), {"metadata": meta}, increment_version=False)
         except Exception:
             logger.debug(
                 "backpatch_lineage_failed",

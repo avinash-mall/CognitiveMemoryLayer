@@ -35,9 +35,13 @@ def test_validate_outputs_happy_path(tmp_path: Path) -> None:
         "by_category": {"single-hop": {"score": 1.0, "count": 1, "avg": 1.0}},
     }
 
-    (tmp_path / "locomo_plus_qa_cml_predictions.json").write_text(json.dumps(preds), encoding="utf-8")
+    (tmp_path / "locomo_plus_qa_cml_predictions.json").write_text(
+        json.dumps(preds), encoding="utf-8"
+    )
     (tmp_path / "locomo_plus_qa_cml_judged.json").write_text(json.dumps(judged), encoding="utf-8")
-    (tmp_path / "locomo_plus_qa_cml_judge_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (tmp_path / "locomo_plus_qa_cml_judge_summary.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
 
     assert validate_outputs(tmp_path) == []
 
@@ -69,9 +73,13 @@ def test_validate_outputs_detects_mismatch(tmp_path: Path) -> None:
         "by_category": {"single-hop": {"score": 1.0, "count": 1, "avg": 1.0}},
     }
 
-    (tmp_path / "locomo_plus_qa_cml_predictions.json").write_text(json.dumps(preds), encoding="utf-8")
+    (tmp_path / "locomo_plus_qa_cml_predictions.json").write_text(
+        json.dumps(preds), encoding="utf-8"
+    )
     (tmp_path / "locomo_plus_qa_cml_judged.json").write_text(json.dumps(judged), encoding="utf-8")
-    (tmp_path / "locomo_plus_qa_cml_judge_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    (tmp_path / "locomo_plus_qa_cml_judge_summary.json").write_text(
+        json.dumps(summary), encoding="utf-8"
+    )
 
     errors = validate_outputs(tmp_path)
     assert any("total_score" in e for e in errors)

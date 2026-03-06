@@ -565,9 +565,9 @@ class HybridRetriever:
 
         modelpack_ready = self.modelpack.available and bool(query.strip())
 
-        use_relevance_model = getattr(
-            self.modelpack, "has_task_model", lambda _: False
-        )("retrieval_constraint_relevance_pair")
+        use_relevance_model = getattr(self.modelpack, "has_task_model", lambda _: False)(
+            "retrieval_constraint_relevance_pair"
+        )
 
         for row in rows:
             base = float(row.get("relevance", 0.7))

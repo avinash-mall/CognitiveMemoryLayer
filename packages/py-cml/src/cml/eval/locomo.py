@@ -67,6 +67,7 @@ def _progress_write(msg: str) -> None:
         return
     tqdm.write(msg)
 
+
 INGESTION_DELAY_SEC = 0.2
 _CML_WRITE_MAX_429_ATTEMPTS = 15
 _CML_WRITE_BACKOFF_CAP_SEC = 65

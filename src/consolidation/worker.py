@@ -321,9 +321,12 @@ class ConsolidationWorker:
 
         # --- model path: gist quality scoring ---
         try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)("consolidation_gist_quality"):
+            if getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "consolidation_gist_quality"
+            ):
                 score_pred = self.modelpack.predict_score_single(
-                    "consolidation_gist_quality", text,
+                    "consolidation_gist_quality",
+                    text,
                 )
                 if score_pred is not None:
                     return score_pred.score >= 0.5

@@ -83,6 +83,7 @@ modeling = [
     "tqdm>=4.66",
 ]
 dev = [
+    "types-cachetools>=5.0",
     "types-requests>=2.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",

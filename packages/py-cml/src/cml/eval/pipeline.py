@@ -38,7 +38,11 @@ def _resolve_paths(repo_root: Path) -> _Paths:
     return _Paths(
         repo_root=repo_root,
         compose_file=repo_root / "docker" / "docker-compose.yml",
-        unified_file=repo_root / "evaluation" / "locomo_plus" / "data" / "unified_input_samples_v2.json",
+        unified_file=repo_root
+        / "evaluation"
+        / "locomo_plus"
+        / "data"
+        / "unified_input_samples_v2.json",
         out_dir=out_dir,
         judge_summary=out_dir / "locomo_plus_qa_cml_judge_summary.json",
         predictions_file=out_dir / "locomo_plus_qa_cml_predictions.json",
@@ -369,7 +373,9 @@ def run_full_eval(config: FullEvalConfig) -> int:
             return 1
 
         print(flush=True)
-        print(generate_locomo_report(paths.judge_summary, method=method, no_title=False), flush=True)
+        print(
+            generate_locomo_report(paths.judge_summary, method=method, no_title=False), flush=True
+        )
         print(flush=True)
         print(f"  Outputs: {paths.out_dir}", flush=True)
         print(f"  - {paths.judge_summary.name}", flush=True)

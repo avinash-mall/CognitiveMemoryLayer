@@ -118,12 +118,14 @@ class BeliefRevisionEngine:
         lineage = meta.get("supersession_lineage", [])
         if not isinstance(lineage, list):
             lineage = []
-        lineage.append({
-            "revision_type": "time_slice",
-            "superseded_at": now.isoformat(),
-            "new_statement": conflict.new_statement[:200],
-            "evidence_id": evidence_id,
-        })
+        lineage.append(
+            {
+                "revision_type": "time_slice",
+                "superseded_at": now.isoformat(),
+                "new_statement": conflict.new_statement[:200],
+                "evidence_id": evidence_id,
+            }
+        )
         meta["supersession_lineage"] = lineage[-5:]
         return RevisionPlan(
             strategy=RevisionStrategy.TIME_SLICE,
@@ -183,12 +185,14 @@ class BeliefRevisionEngine:
         lineage = meta.get("supersession_lineage", [])
         if not isinstance(lineage, list):
             lineage = []
-        lineage.append({
-            "revision_type": "correction",
-            "superseded_at": now.isoformat(),
-            "new_statement": conflict.new_statement[:200],
-            "evidence_id": evidence_id,
-        })
+        lineage.append(
+            {
+                "revision_type": "correction",
+                "superseded_at": now.isoformat(),
+                "new_statement": conflict.new_statement[:200],
+                "evidence_id": evidence_id,
+            }
+        )
         meta["supersession_lineage"] = lineage[-5:]
         return RevisionPlan(
             strategy=RevisionStrategy.TIME_SLICE,
