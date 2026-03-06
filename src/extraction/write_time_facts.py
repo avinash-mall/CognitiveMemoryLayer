@@ -70,7 +70,9 @@ class WriteTimeFactExtractor:
 
         # --- model path: structured span extraction ---
         try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)("fact_extraction_structured"):
+            if getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "fact_extraction_structured"
+            ):
                 span_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
                 if span_pred is not None and span_pred.spans:
                     facts: list[ExtractedFact] = []

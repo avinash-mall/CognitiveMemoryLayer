@@ -655,7 +655,11 @@ def _train_single_regression(
     if "text" in train_df.columns:
         train_texts = train_df["text"].astype(str).tolist()
     elif "text_a" in train_df.columns:
-        train_texts = (train_df["text_a"].astype(str) + " " + train_df.get("text_b", pd.Series([""] * len(train_df))).astype(str)).tolist()
+        train_texts = (
+            train_df["text_a"].astype(str)
+            + " "
+            + train_df.get("text_b", pd.Series([""] * len(train_df))).astype(str)
+        ).tolist()
     else:
         print(f"[task:{spec.task_name}] no text column found; skipping.")
         return {}
@@ -706,7 +710,11 @@ def _train_single_regression(
             if "text" in test_df.columns:
                 test_texts = test_df["text"].astype(str).tolist()
             else:
-                test_texts = (test_df["text_a"].astype(str) + " " + test_df.get("text_b", pd.Series([""] * len(test_df))).astype(str)).tolist()
+                test_texts = (
+                    test_df["text_a"].astype(str)
+                    + " "
+                    + test_df.get("text_b", pd.Series([""] * len(test_df))).astype(str)
+                ).tolist()
             test_y = test_df[t_score_col].values.astype(float)
             x_test = vectorizer.transform(test_texts)
             test_pred = regressor.predict(x_test)
@@ -741,9 +749,7 @@ def _train_token_classification(
     )
 
 
-def _train_task(
-    spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict
-) -> dict:
+def _train_task(spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict) -> dict:
     """Dispatch task-level training to the appropriate trainer by objective type."""
     trainers = {
         "classification": _train_classification_task,
@@ -910,8 +916,7 @@ def main(argv: list[str] | None = None) -> int:
     task_summaries: dict[str, dict] = {}
     if task_specs_raw:
         tasks_to_train = [
-            TaskSpec(**{k: t[k] for k in TaskSpec.__dataclass_fields__})
-            for t in task_specs_raw
+            TaskSpec(**{k: t[k] for k in TaskSpec.__dataclass_fields__}) for t in task_specs_raw
         ]
         if args.tasks:
             selected = {x.strip() for x in args.tasks.split(",")}

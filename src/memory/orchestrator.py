@@ -165,6 +165,7 @@ class MemoryOrchestrator:
         relation_extractor: RelationExtractor | None = RelationExtractor(
             internal_llm if settings.features.use_llm_enabled else None
         )
+        from ..extraction.local_unified_extractor import LocalUnifiedWriteExtractor
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
 
         _use_unified = settings.features.use_llm_enabled and (
@@ -181,12 +182,14 @@ class MemoryOrchestrator:
         unified_extractor = (
             UnifiedWritePathExtractor(internal_llm) if _use_unified and internal_llm else None
         )
+        local_extractor = LocalUnifiedWriteExtractor() if unified_extractor is None else None
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
             entity_extractor=entity_extractor,
             relation_extractor=relation_extractor,
             unified_extractor=unified_extractor,
+            local_extractor=local_extractor,
         )
 
         from ..retrieval.memory_retriever import MemoryRetriever
@@ -279,11 +282,14 @@ class MemoryOrchestrator:
             runtime_llm if settings.features.use_llm_enabled else None
         )
 
+        from ..extraction.local_unified_extractor import LocalUnifiedWriteExtractor
+
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
             entity_extractor=entity_extractor,
             relation_extractor=relation_extractor,
+            local_extractor=LocalUnifiedWriteExtractor(),
         )
 
         from ..retrieval.memory_retriever import MemoryRetriever

@@ -75,7 +75,11 @@ def generate_locomo_report(summary_path: Path, method: str, no_title: bool = Fal
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate LoCoMo / Locomo-Plus performance table")
-    parser.add_argument("--summary", type=Path, default=Path("evaluation") / "outputs" / "locomo_plus_qa_cml_judge_summary.json")
+    parser.add_argument(
+        "--summary",
+        type=Path,
+        default=Path("evaluation") / "outputs" / "locomo_plus_qa_cml_judge_summary.json",
+    )
     parser.add_argument("--method", type=str, default="CML")
     parser.add_argument("--no-title", action="store_true", help="Omit table title")
     return parser.parse_args(argv)

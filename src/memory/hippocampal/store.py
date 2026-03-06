@@ -269,6 +269,8 @@ class HippocampalStore:
             and unified_result.context_tags
         ):
             effective_context_tags = unified_result.context_tags
+        elif not effective_context_tags and local_result and local_result.get("context_tags"):
+            effective_context_tags = local_result["context_tags"]
 
         conf = chunk.confidence
         if (
@@ -278,6 +280,8 @@ class HippocampalStore:
             and hasattr(unified_result, "confidence")
         ):
             conf = unified_result.confidence
+        elif local_result and "confidence" in local_result:
+            conf = local_result["confidence"]
 
         decay_rate_val: float | None = None
         dr = getattr(unified_result, "decay_rate", None) if unified_result else None
@@ -289,6 +293,10 @@ class HippocampalStore:
             and 0.01 <= dr <= 0.5
         ):
             decay_rate_val = dr
+        elif local_result and local_result.get("decay_rate") is not None:
+            dr_local = local_result["decay_rate"]
+            if isinstance(dr_local, (int, float)) and 0.01 <= dr_local <= 0.5:
+                decay_rate_val = float(dr_local)
 
         record = MemoryRecordCreate(
             tenant_id=tenant_id,
@@ -439,6 +447,18 @@ class HippocampalStore:
         else:
             relations_batch = [_ner_relations_for_text(text) for text in texts_to_embed]
 
+        # ---- Phase 3.5: Local extractor for surviving chunks (modelpack fallback) ----
+        local_results_batch: list[dict[str, Any] | None] = []
+        if self.local_extractor and self.local_extractor.available:
+            local_tasks = [
+                self.local_extractor.extract(final_texts[i]) for i in range(len(surviving))
+            ]
+            raw_local = await asyncio.gather(*local_tasks, return_exceptions=True)
+            for r in raw_local:
+                local_results_batch.append(r if not isinstance(r, BaseException) else None)
+        else:
+            local_results_batch = [None] * len(surviving)
+
         # ---- Phase 4: Upsert (bounded concurrency) ----
         results: list[MemoryRecord] = []
 
@@ -447,6 +467,7 @@ class HippocampalStore:
             text = final_texts[idx]
             embedding_result = embedding_results[idx]
             unified_res = unified_results[idx] if idx < len(unified_results) else None
+            local_res = local_results_batch[idx] if idx < len(local_results_batch) else None
 
             from ...core.config import get_settings as _gs
 
@@ -514,6 +535,8 @@ class HippocampalStore:
             importance = gate_result.importance
             if unified_res and settings.use_llm_enabled and settings.use_llm_write_gate_importance:
                 importance = unified_res.importance
+            elif local_res and "importance" in local_res:
+                importance = local_res["importance"]
 
             system_metadata: dict[str, Any] = {
                 "chunk_type": chunk.chunk_type.value,
@@ -534,6 +557,8 @@ class HippocampalStore:
                 and unified_res.context_tags
             ):
                 effective_ct = unified_res.context_tags
+            elif not effective_ct and local_res and local_res.get("context_tags"):
+                effective_ct = local_res["context_tags"]
 
             conf = chunk.confidence
             if (
@@ -543,6 +568,8 @@ class HippocampalStore:
                 and hasattr(unified_res, "confidence")
             ):
                 conf = unified_res.confidence
+            elif local_res and "confidence" in local_res:
+                conf = local_res["confidence"]
 
             decay_rate_val = None
             dr2 = getattr(unified_res, "decay_rate", None) if unified_res else None
@@ -554,6 +581,10 @@ class HippocampalStore:
                 and 0.01 <= dr2 <= 0.5
             ):
                 decay_rate_val = dr2
+            elif local_res and local_res.get("decay_rate") is not None:
+                dr_local = local_res["decay_rate"]
+                if isinstance(dr_local, (int, float)) and 0.01 <= dr_local <= 0.5:
+                    decay_rate_val = float(dr_local)
 
             record_create = MemoryRecordCreate(
                 tenant_id=tenant_id,

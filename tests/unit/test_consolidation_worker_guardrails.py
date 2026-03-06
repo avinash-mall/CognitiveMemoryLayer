@@ -35,11 +35,15 @@ async def test_guardrails_replace_generic_gist_for_mixed_cluster():
     fact_store = MagicMock()
     neocortical = MagicMock()
     neocortical.facts = fact_store
-    worker = ConsolidationWorker(episodic_store=episodic, neocortical_store=neocortical, llm_client=None)
+    worker = ConsolidationWorker(
+        episodic_store=episodic, neocortical_store=neocortical, llm_client=None
+    )
 
     ep1 = _record("I never eat shellfish due to allergies.", MemoryType.CONSTRAINT, confidence=0.95)
     ep2 = _record("I went running in the morning.", MemoryType.EPISODIC_EVENT, confidence=0.7)
-    cluster = EpisodeCluster(cluster_id=0, episodes=[ep1, ep2], common_entities=[], dominant_type="constraint")
+    cluster = EpisodeCluster(
+        cluster_id=0, episodes=[ep1, ep2], common_entities=[], dominant_type="constraint"
+    )
     gist = ExtractedGist(
         text="General conversation about various topics",
         gist_type="summary",
@@ -59,7 +63,9 @@ async def test_consolidation_adds_lineage_refs_when_superseding(monkeypatch):
     episodic.deactivate_constraints_by_key = AsyncMock()
     fact_store = MagicMock()
     fact_store.get_facts_by_category = AsyncMock(
-        return_value=[SimpleNamespace(key="user:goal:oldscope", value="Save 1000", context_tags=["nyc"])]
+        return_value=[
+            SimpleNamespace(key="user:goal:oldscope", value="Save 1000", context_tags=["nyc"])
+        ]
     )
     fact_store.invalidate_fact = AsyncMock()
 
@@ -67,7 +73,9 @@ async def test_consolidation_adds_lineage_refs_when_superseding(monkeypatch):
     neocortical.facts = fact_store
     neocortical.store_fact = AsyncMock()
 
-    worker = ConsolidationWorker(episodic_store=episodic, neocortical_store=neocortical, llm_client=None)
+    worker = ConsolidationWorker(
+        episodic_store=episodic, neocortical_store=neocortical, llm_client=None
+    )
 
     constraint_episode = _record("I now want to save 2000", MemoryType.CONSTRAINT, confidence=0.9)
     constraint_episode.metadata = {

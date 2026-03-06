@@ -70,8 +70,12 @@ def _add_run_locomo_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("run-locomo", help="Run Locomo-Plus CML-backed evaluation")
     parser.add_argument("--unified-file", type=Path, default=_default_unified_file())
     parser.add_argument("--out-dir", type=Path, default=_default_out_dir())
-    parser.add_argument("--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000"))
-    parser.add_argument("--cml-api-key", type=str, default=os.environ.get("CML_API_KEY", "test-key"))
+    parser.add_argument(
+        "--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000")
+    )
+    parser.add_argument(
+        "--cml-api-key", type=str, default=os.environ.get("CML_API_KEY", "test-key")
+    )
     parser.add_argument("--max-results", type=int, default=25)
     parser.add_argument("--limit-samples", type=int, default=None)
     parser.add_argument("--skip-ingestion", action="store_true")
@@ -80,7 +84,8 @@ def _add_run_locomo_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--judge-model",
         type=str,
-        default=os.environ.get("LLM_EVAL__MODEL") or os.environ.get("LLM_INTERNAL__MODEL", "gpt-4o-mini"),
+        default=os.environ.get("LLM_EVAL__MODEL")
+        or os.environ.get("LLM_INTERNAL__MODEL", "gpt-4o-mini"),
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--ingestion-workers", type=int, default=10)
@@ -93,14 +98,18 @@ def _add_validate_parser(subparsers: argparse._SubParsersAction) -> None:
 
 def _add_report_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("report", help="Generate LoCoMo / Locomo-Plus report")
-    parser.add_argument("--summary", type=Path, default=_default_out_dir() / "locomo_plus_qa_cml_judge_summary.json")
+    parser.add_argument(
+        "--summary", type=Path, default=_default_out_dir() / "locomo_plus_qa_cml_judge_summary.json"
+    )
     parser.add_argument("--method", type=str, default="CML")
     parser.add_argument("--no-title", action="store_true")
 
 
 def _add_compare_parser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("compare", help="Compare scores with paper baselines")
-    parser.add_argument("--summary", type=Path, default=_default_out_dir() / "locomo_plus_qa_cml_judge_summary.json")
+    parser.add_argument(
+        "--summary", type=Path, default=_default_out_dir() / "locomo_plus_qa_cml_judge_summary.json"
+    )
     parser.add_argument("--method", type=str, default="CML+gpt-oss:20b")
 
 
@@ -126,7 +135,11 @@ def main(argv: list[str] | None = None) -> int:
                 "--repo-root",
                 str(args.repo_root),
                 *(["--skip-docker"] if args.skip_docker else []),
-                *(["--limit-samples", str(args.limit_samples)] if args.limit_samples is not None else []),
+                *(
+                    ["--limit-samples", str(args.limit_samples)]
+                    if args.limit_samples is not None
+                    else []
+                ),
                 "--ingestion-workers",
                 str(args.ingestion_workers),
                 *(["--resume"] if args.resume else []),
@@ -148,7 +161,11 @@ def main(argv: list[str] | None = None) -> int:
                 str(args.cml_api_key),
                 "--max-results",
                 str(args.max_results),
-                *(["--limit-samples", str(args.limit_samples)] if args.limit_samples is not None else []),
+                *(
+                    ["--limit-samples", str(args.limit_samples)]
+                    if args.limit_samples is not None
+                    else []
+                ),
                 *(["--skip-ingestion"] if args.skip_ingestion else []),
                 *(["--skip-consolidation"] if args.skip_consolidation else []),
                 *(["--score-only"] if args.score_only else []),

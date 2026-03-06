@@ -128,9 +128,7 @@ class ConflictDetectorEvaluator:
         h_tp = sum(1 for r in results if r.heuristic_detected and r.case.expected_conflict)
         h_fp = sum(1 for r in results if r.heuristic_detected and not r.case.expected_conflict)
         h_fn = sum(1 for r in results if not r.heuristic_detected and r.case.expected_conflict)
-        h_tn = sum(
-            1 for r in results if not r.heuristic_detected and not r.case.expected_conflict
-        )
+        h_tn = sum(1 for r in results if not r.heuristic_detected and not r.case.expected_conflict)
 
         h_precision = h_tp / max(1, h_tp + h_fp)
         h_recall = h_tp / max(1, h_tp + h_fn)
@@ -159,9 +157,7 @@ class ConflictDetectorEvaluator:
                 1 for r in model_results if not r.model_detected and r.case.expected_conflict
             )
             m_tn = sum(
-                1
-                for r in model_results
-                if not r.model_detected and not r.case.expected_conflict
+                1 for r in model_results if not r.model_detected and not r.case.expected_conflict
             )
 
             m_precision = m_tp / max(1, m_tp + m_fp)

@@ -1,4 +1,5 @@
 """Unit tests for semantic fact lineage APIs."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,8 +10,18 @@ from unittest.mock import AsyncMock, MagicMock
 class _FakeFactRow:
     """Minimal stand-in for SemanticFactModel rows."""
 
-    def __init__(self, *, id, key, value, supersedes_id=None, tenant_id="t1",
-                 is_current=True, version=1, created_at=None):
+    def __init__(
+        self,
+        *,
+        id,
+        key,
+        value,
+        supersedes_id=None,
+        tenant_id="t1",
+        is_current=True,
+        version=1,
+        created_at=None,
+    ):
         self.id = id
         self.key = key
         self.value = value
@@ -36,9 +47,7 @@ class TestGetFactLineage:
 
         store = MagicMock(spec=SemanticFactStore)
         store.get_fact_lineage = SemanticFactStore.get_fact_lineage.__get__(store)
-        result = asyncio.get_event_loop().run_until_complete(
-            store.get_fact_lineage("tenant1")
-        )
+        result = asyncio.get_event_loop().run_until_complete(store.get_fact_lineage("tenant1"))
         assert result == []
 
     def test_single_fact_returns_single_entry(self):
@@ -69,7 +78,9 @@ class TestGetFactLineage:
         """A chain of A->B->C should return [A, B, C] (oldest first)."""
         fact_a = _FakeFactRow(id="a", key="k", value="v1", supersedes_id=None, version=1)
         fact_b = _FakeFactRow(id="b", key="k", value="v2", supersedes_id="a", version=2)
-        fact_c = _FakeFactRow(id="c", key="k", value="v3", supersedes_id="b", version=3, is_current=True)
+        fact_c = _FakeFactRow(
+            id="c", key="k", value="v3", supersedes_id="b", version=3, is_current=True
+        )
 
         call_count = [0]
 
@@ -98,9 +109,7 @@ class TestGetFactLineage:
 
         store.get_fact_lineage = SemanticFactStore.get_fact_lineage.__get__(store)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            store.get_fact_lineage("t1", key="k")
-        )
+        result = asyncio.get_event_loop().run_until_complete(store.get_fact_lineage("t1", key="k"))
         assert len(result) == 3
         assert result[0]["fact_id"] == "a"
         assert result[1]["fact_id"] == "b"
@@ -123,9 +132,7 @@ class TestGetSupersededChain:
 
         store.get_superseded_chain = SemanticFactStore.get_superseded_chain.__get__(store)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            store.get_superseded_chain("t1", "f1")
-        )
+        result = asyncio.get_event_loop().run_until_complete(store.get_superseded_chain("t1", "f1"))
         assert result == []
 
     def test_forward_chain_returns_successors(self):
@@ -158,9 +165,7 @@ class TestGetSupersededChain:
 
         store.get_superseded_chain = SemanticFactStore.get_superseded_chain.__get__(store)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            store.get_superseded_chain("t1", "a")
-        )
+        result = asyncio.get_event_loop().run_until_complete(store.get_superseded_chain("t1", "a"))
         assert len(result) == 2
         assert result[0]["fact_id"] == "b"
         assert result[1]["fact_id"] == "c"

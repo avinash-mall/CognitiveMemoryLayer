@@ -74,6 +74,9 @@ Modelpack inference is consumed from `src/utils/modelpack.py`.
 - `constraint_stability`: reranker
 - `supersession`: constraint extraction/supersession checks
 - `pii_presence` + `importance_bin`: write gate non-LLM path
+- `context_tag`: write path content-derived categorization (via `LocalUnifiedWriteExtractor`)
+- `confidence_bin`: write path content-derived confidence (via `LocalUnifiedWriteExtractor`)
+- `decay_profile`: write path per-memory decay rate (via `LocalUnifiedWriteExtractor`)
 
 ### Task-level integrations
 
@@ -120,9 +123,26 @@ Backend: `src/api/dashboard/models_routes.py`.
 - `fact_extraction_structured` for structured fact extraction
 - `write_importance_regression` for importance scoring
 - `pii_span_detection` for PII detection
-- existing `memory_type` router model
+- `memory_type` router task for memory type classification
+- `context_tag` router task for content-derived categorization
+- `confidence_bin` router task for content-derived confidence (maps low/medium/high → 0.35/0.65/0.9)
+- `decay_profile` router task for per-memory decay rate (maps very_fast/fast/medium/slow/very_slow → 0.35/0.2/0.1/0.05/0.02)
 
-Wired into `HippocampalStore` as a fallback when LLM is disabled.
+Wired into `HippocampalStore` via `MemoryOrchestrator.create()` and `create_lite()` when LLM is disabled. Both `encode_chunk` and `encode_batch` consume context_tags, confidence, and decay_rate from the local extractor when the LLM unified result is unavailable.
+
+```mermaid
+flowchart LR
+    subgraph localExtract ["LocalUnifiedWriteExtractor"]
+        R[Router Model] --> CT["context_tag → context_tags"]
+        R --> CB["confidence_bin → confidence"]
+        R --> DP["decay_profile → decay_rate"]
+        R --> MT["memory_type"]
+        TM["Task Models"] --> FE["fact_extraction_structured"]
+        TM --> WI["write_importance_regression"]
+        TM --> PII["pii_span_detection"]
+    end
+    localExtract --> Store["HippocampalStore.encode_chunk / encode_batch"]
+```
 
 ## Data Preparation
 

@@ -77,7 +77,9 @@ def _add_train_args(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cml-models", description="Model prep/train tools for CML")
+    parser = argparse.ArgumentParser(
+        prog="cml-models", description="Model prep/train tools for CML"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare_parser = subparsers.add_parser("prepare", help="Prepare modeling datasets")

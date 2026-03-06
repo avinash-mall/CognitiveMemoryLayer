@@ -1,8 +1,8 @@
 """Local unified write extraction composing model-based sub-extractors.
 
 Replaces the LLM-based UnifiedWritePathExtractor when LLM is disabled,
-using fact_extraction_structured, write_importance_regression, and
-pii_span_detection models from modelpack.
+using fact_extraction_structured, write_importance_regression,
+pii_span_detection, and router tasks (context_tag, confidence_bin, decay_profile).
 """
 
 from __future__ import annotations
@@ -12,6 +12,20 @@ from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 
 logger = get_logger(__name__)
 
+_CONFIDENCE_BIN_MAP: dict[str, float] = {
+    "low": 0.35,
+    "medium": 0.65,
+    "high": 0.9,
+}
+
+_DECAY_PROFILE_MAP: dict[str, float] = {
+    "very_fast": 0.35,
+    "fast": 0.2,
+    "medium": 0.1,
+    "slow": 0.05,
+    "very_slow": 0.02,
+}
+
 
 class LocalUnifiedWriteExtractor:
     """Compose local model extractors for the write path.
@@ -20,6 +34,7 @@ class LocalUnifiedWriteExtractor:
     - Fact extraction (fact_extraction_structured)
     - Importance scoring (write_importance_regression)
     - PII span detection (pii_span_detection)
+    - Router: context_tag, confidence_bin, decay_profile
     Falls back to default values when models are unavailable.
     """
 
@@ -28,10 +43,14 @@ class LocalUnifiedWriteExtractor:
 
     @property
     def available(self) -> bool:
-        """True if at least one task model is loaded."""
+        """True if at least one task model is loaded (router or _task family)."""
+        if getattr(self.modelpack, "available", False):
+            return True
         return (
             getattr(self.modelpack, "has_task_model", lambda _: False)("fact_extraction_structured")
-            or getattr(self.modelpack, "has_task_model", lambda _: False)("write_importance_regression")
+            or getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "write_importance_regression"
+            )
             or getattr(self.modelpack, "has_task_model", lambda _: False)("pii_span_detection")
         )
 
@@ -54,12 +73,17 @@ class LocalUnifiedWriteExtractor:
             "pii_spans": [],
             "memory_type": None,
             "constraints": [],
+            "context_tags": [],
+            "confidence": 0.5,
+            "decay_rate": None,
             "source": "local_unified",
         }
 
         # Fact extraction
         try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)("fact_extraction_structured"):
+            if getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "fact_extraction_structured"
+            ):
                 spans_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
                 if spans_pred is not None and spans_pred.spans:
                     result["facts"] = [
@@ -72,7 +96,9 @@ class LocalUnifiedWriteExtractor:
 
         # Importance regression
         try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)("write_importance_regression"):
+            if getattr(self.modelpack, "has_task_model", lambda _: False)(
+                "write_importance_regression"
+            ):
                 score_pred = self.modelpack.predict_score_single(
                     "write_importance_regression", text
                 )
@@ -99,5 +125,40 @@ class LocalUnifiedWriteExtractor:
                 result["memory_type"] = mt_pred.label
         except Exception:
             pass
+
+        # Context tag from router (single label -> list)
+        try:
+            if getattr(self.modelpack, "available", False):
+                ct_pred = self.modelpack.predict_single("context_tag", text)
+                if ct_pred is not None and ct_pred.label and ct_pred.label.strip():
+                    result["context_tags"] = [ct_pred.label.strip()]
+        except Exception as exc:
+            logger.debug("local_context_tag_failed", extra={"error": str(exc)})
+
+        # Confidence from router confidence_bin
+        try:
+            if getattr(self.modelpack, "available", False):
+                cb_pred = self.modelpack.predict_single("confidence_bin", text)
+                if cb_pred is not None and cb_pred.label:
+                    label = cb_pred.label.strip().lower()
+                    if label in _CONFIDENCE_BIN_MAP:
+                        result["confidence"] = _CONFIDENCE_BIN_MAP[label]
+                    elif cb_pred.confidence is not None:
+                        result["confidence"] = max(0.0, min(1.0, cb_pred.confidence))
+        except Exception as exc:
+            logger.debug("local_confidence_bin_failed", extra={"error": str(exc)})
+
+        # Decay rate from router decay_profile
+        try:
+            if getattr(self.modelpack, "available", False):
+                dp_pred = self.modelpack.predict_single("decay_profile", text)
+                if dp_pred is not None and dp_pred.label:
+                    label = dp_pred.label.strip().lower().replace("-", "_")
+                    if label in _DECAY_PROFILE_MAP:
+                        val = _DECAY_PROFILE_MAP[label]
+                        if 0.01 <= val <= 0.5:
+                            result["decay_rate"] = val
+        except Exception as exc:
+            logger.debug("local_decay_profile_failed", extra={"error": str(exc)})
 
         return result

@@ -289,9 +289,7 @@ class WriteGate:
                     mem_text = (mem.get("text") or "").strip()
                     if not mem_text:
                         continue
-                    pred = self.modelpack.predict_score_pair(
-                        "novelty_pair", chunk.text, mem_text
-                    )
+                    pred = self.modelpack.predict_score_pair("novelty_pair", chunk.text, mem_text)
                     if pred is not None:
                         scored_any = True
                         max_sim = max(max_sim, pred.score)

@@ -81,8 +81,14 @@ def compare_locomo_scores(summary_path: Path, method: str) -> str:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare CML scores with Locomo-Plus paper baselines")
-    parser.add_argument("--summary", type=Path, default=Path("evaluation") / "outputs" / "locomo_plus_qa_cml_judge_summary.json")
+    parser = argparse.ArgumentParser(
+        description="Compare CML scores with Locomo-Plus paper baselines"
+    )
+    parser.add_argument(
+        "--summary",
+        type=Path,
+        default=Path("evaluation") / "outputs" / "locomo_plus_qa_cml_judge_summary.json",
+    )
     parser.add_argument("--method", type=str, default="CML+gpt-oss:20b")
     return parser.parse_args(argv)
 

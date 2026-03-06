@@ -322,13 +322,15 @@ class _SingleTaskStore:
             return False
         self._seen.add(key)
         self._counts[task_label] += 1
-        self.rows.append({
-            "text": cleaned,
-            "task": task,
-            "label": label,
-            "source": source,
-            "language": str(language),
-        })
+        self.rows.append(
+            {
+                "text": cleaned,
+                "task": task,
+                "label": label,
+                "source": source,
+                "language": str(language),
+            }
+        )
         return True
 
 
@@ -363,14 +365,16 @@ class _PairTaskStore:
             return False
         self._seen.add(key)
         self._counts[task_label] += 1
-        self.rows.append({
-            "text_a": a,
-            "text_b": b,
-            "task": task,
-            "label": label,
-            "source": source,
-            "language": str(language),
-        })
+        self.rows.append(
+            {
+                "text_a": a,
+                "text_b": b,
+                "task": task,
+                "label": label,
+                "source": source,
+                "language": str(language),
+            }
+        )
         return True
 
 
@@ -404,13 +408,15 @@ class _RegressionTaskStore:
             return False
         self._seen.add(key)
         self._counts[task] += 1
-        self.rows.append({
-            "text": cleaned,
-            "task": task,
-            "score": float(score),
-            "source": source,
-            "language": str(language),
-        })
+        self.rows.append(
+            {
+                "text": cleaned,
+                "task": task,
+                "score": float(score),
+                "source": source,
+                "language": str(language),
+            }
+        )
         return True
 
 
@@ -448,13 +454,15 @@ class _TokenTaskStore:
         if self._counts[task] >= self.max_per_task:
             return False
         self._counts[task] += 1
-        self.rows.append({
-            "text": cleaned,
-            "task": task,
-            "spans": spans,
-            "source": source,
-            "language": str(language),
-        })
+        self.rows.append(
+            {
+                "text": cleaned,
+                "task": task,
+                "spans": spans,
+                "source": source,
+                "language": str(language),
+            }
+        )
         return True
 
 
@@ -633,11 +641,7 @@ def _decode_json_string(raw: str) -> str:
     except Exception:
         # Best-effort fallback for partially escaped fragments.
         return (
-            str(raw)
-            .replace("\\n", " ")
-            .replace("\\t", " ")
-            .replace('\\"', '"')
-            .replace("\\/", "/")
+            str(raw).replace("\\n", " ").replace("\\t", " ").replace('\\"', '"').replace("\\/", "/")
         )
 
 
@@ -745,10 +749,7 @@ class _LLMGenerator:
             count = self._parse_fail_total
         if count == 1 or count % self.parse_failure_log_every == 0:
             snippet = _clean(content, 220)
-            _warn(
-                f"LLM parse failure #{count} for {task}::{label}. "
-                f"sample_response={snippet!r}"
-            )
+            _warn(f"LLM parse failure #{count} for {task}::{label}. sample_response={snippet!r}")
 
     def record_parse_recovery(self, *, recovered_count: int) -> None:
         with self._stats_lock:
@@ -892,9 +893,7 @@ class _LLMGenerator:
     ) -> list[tuple[str, str]]:
         if language:
             system = _multilingual_prompts.system_prompt_pair(language)
-            user = _multilingual_prompts.user_prompt_pair(
-                task, label, n, seed_a, seed_b, language
-            )
+            user = _multilingual_prompts.user_prompt_pair(task, label, n, seed_a, seed_b, language)
         else:
             system = (
                 "Generate synthetic text-pair classification data. "
@@ -1693,7 +1692,9 @@ def _fill_single_task_with_llm(
                             guidance = _label_guidance(task, label)
                             batch = min(label_batch_size, missing)
                             prompt_seed = (
-                                f"{seed_text}\n\nLabel guidance: {guidance}" if guidance else seed_text
+                                f"{seed_text}\n\nLabel guidance: {guidance}"
+                                if guidance
+                                else seed_text
                             )
                             lang = (
                                 _multilingual_prompts.pick_language(rng)

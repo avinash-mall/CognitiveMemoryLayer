@@ -494,7 +494,12 @@ def test_session_scope_write_uses_session_scoped_write_endpoint(cml_config: CMLC
 
     parent = CognitiveMemoryLayer(config=cml_config)
     parent._transport.request = MagicMock(  # type: ignore[method-assign]
-        return_value={"success": True, "memory_id": str(uuid4()), "chunks_created": 1, "message": ""}
+        return_value={
+            "success": True,
+            "memory_id": str(uuid4()),
+            "chunks_created": 1,
+            "message": "",
+        }
     )
     scope = SessionScope(parent, "sess-456")
     scope.write("hello")

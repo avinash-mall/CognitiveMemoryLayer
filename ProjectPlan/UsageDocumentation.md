@@ -24,7 +24,48 @@ Primary coordinator: `src/memory/orchestrator.py`.
 
 - `MemoryOrchestrator.create()` and `create_lite()` do not wire internal LLM clients.
 - Write/read paths run with modelpack + deterministic fallback paths (NER/rules).
+- `LocalUnifiedWriteExtractor` is wired into `HippocampalStore` to provide content-derived context tags, confidence, and decay rate from the router model.
 - Consolidation and forgetting use summarizer fallback (`SUMMARIZER_INTERNAL__*`) when available.
+
+#### Write path field sources (LLM off)
+
+```mermaid
+flowchart LR
+    subgraph gate ["WriteGate"]
+        G_IMP["importance_bin"] --> IMP["importance"]
+        G_PII["pii_presence"] --> PII["PII flag"]
+        G_CT["chunk_type map"] --> MTYPE["memory_types"]
+    end
+    subgraph localExt ["LocalUnifiedWriteExtractor"]
+        CT["context_tag"] --> CTags["context_tags"]
+        CB["confidence_bin"] --> Conf["confidence"]
+        DP["decay_profile"] --> DR["decay_rate"]
+        MT["memory_type"] --> MType2["memory_type"]
+    end
+    subgraph ner ["NER / Rules"]
+        ENT["entity_extractor"] --> Entities
+        REL["relation_extractor"] --> Relations
+        CON["constraint_type + scope"] --> Constraints
+        WTF["WriteTimeFactExtractor"] --> Facts
+    end
+    gate --> Record["MemoryRecordCreate"]
+    localExt --> Record
+    ner --> Record
+```
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| entities | NER `entity_extractor` or `_ner_entities_for_text` | Full coverage |
+| relations | NER `relation_extractor` or `_ner_relations_for_text` | Full coverage |
+| constraints | Modelpack `constraint_type` + `constraint_scope` + NER | Single constraint per chunk; crude scope |
+| facts | `WriteTimeFactExtractor` (spaCy + keyword rules) | Full coverage |
+| importance | Modelpack `importance_bin` / `write_importance_regression` or gate salience | Full coverage |
+| memory_type | Modelpack `memory_type` or gate chunk_type map | Full coverage |
+| context_tags | Modelpack `context_tag` (single label as list) | Moderate (single tag vs LLM multi-tag) |
+| confidence | Modelpack `confidence_bin` mapped to float (low=0.35, medium=0.65, high=0.9) | Moderate (3-bin vs continuous) |
+| decay_rate | Modelpack `decay_profile` mapped to float (very_fast=0.35 ... very_slow=0.02) | Moderate (5-profile vs continuous) |
+| PII detection | Modelpack `pii_presence` + regex redaction | Binary detection, no typed spans |
+| contains_secrets | Regex patterns in write gate | Deterministic |
 
 ### LLM-enabled mode
 
@@ -240,12 +281,28 @@ Lineage metadata is captured during consolidation and reconsolidation operations
 
 `src/extraction/local_unified_extractor.py` provides `LocalUnifiedWriteExtractor`, a model-based alternative to the LLM-centric `UnifiedWritePathExtractor`. It composes:
 
+**Task-level models (when available):**
+
 - `fact_extraction_structured` for structured fact extraction
 - `write_importance_regression` for importance scoring
 - `pii_span_detection` for PII detection
-- existing `memory_type` router model
 
-Wired into `HippocampalStore` as a fallback when `FEATURES__USE_LLM_ENABLED=false`.
+**Router-level models:**
+
+- `memory_type` for memory type classification
+- `context_tag` for content-derived categorization (returns single label as list)
+- `confidence_bin` for content-derived confidence (maps low→0.35, medium→0.65, high→0.9)
+- `decay_profile` for per-memory decay rate (maps very_fast→0.35, fast→0.2, medium→0.1, slow→0.05, very_slow→0.02)
+
+**Availability:** The extractor is available when `modelpack.available` is true (router model loaded) or any task-level model is present. It does not require all models.
+
+**Wiring:** `MemoryOrchestrator.create()` instantiates `LocalUnifiedWriteExtractor` when `unified_extractor is None` (LLM off) and passes it as `local_extractor` to `HippocampalStore`. `create_lite()` always passes a `LocalUnifiedWriteExtractor`.
+
+**Consumption:** Both `encode_chunk` and `encode_batch` use the local extractor result for:
+- `context_tags` — when no request-level tags and no LLM tags
+- `confidence` — when LLM confidence is not available
+- `decay_rate` — when LLM decay rate is not available (validated to 0.01–0.5)
+- `importance` — when LLM importance is not available (encode_chunk only; encode_batch uses gate importance)
 
 ## Shadow Mode Logging
 
