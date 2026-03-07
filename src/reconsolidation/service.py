@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from ..extraction.fact_span_adapter import build_reconsolidation_fact_dicts
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
+from ..extraction.fact_span_adapter import build_reconsolidation_fact_dicts
 from ..storage.base import MemoryStoreBase
 from ..utils.logging_config import get_logger
 from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime

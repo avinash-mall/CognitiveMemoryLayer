@@ -1115,7 +1115,7 @@ _FACT_TEMPLATE_SENTENCES: dict[str, dict[str, str]] = {
         "goal": "我的目标是[[[{value}]]]。",
         "value": "我重视[[[{value}]]]。",
         "state": "我现在[[[{value}]]]。",
-        "causal": "我避开甜点，因为[[[{value}]]]。",
+        "causal": "我避开甜点,因为[[[{value}]]]。",
         "policy": "请[[[{value}]]]。",
     },
     "ar": {
