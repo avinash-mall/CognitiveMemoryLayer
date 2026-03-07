@@ -36,7 +36,9 @@ async def test_trigger_consolidation_returns_summary() -> None:
 @pytest.mark.asyncio
 async def test_trigger_consolidation_wraps_errors() -> None:
     orchestrator = SimpleNamespace(
-        consolidation=SimpleNamespace(consolidate=AsyncMock(side_effect=RuntimeError("consolidate boom")))
+        consolidation=SimpleNamespace(
+            consolidate=AsyncMock(side_effect=RuntimeError("consolidate boom"))
+        )
     )
 
     with pytest.raises(HTTPException, match="Consolidation failed: consolidate boom"):
@@ -76,7 +78,9 @@ async def test_trigger_forgetting_returns_summary() -> None:
 @pytest.mark.asyncio
 async def test_trigger_forgetting_wraps_errors() -> None:
     orchestrator = SimpleNamespace(
-        forgetting=SimpleNamespace(run_forgetting=AsyncMock(side_effect=RuntimeError("forget boom")))
+        forgetting=SimpleNamespace(
+            run_forgetting=AsyncMock(side_effect=RuntimeError("forget boom"))
+        )
     )
 
     with pytest.raises(HTTPException, match="Forgetting failed: forget boom"):

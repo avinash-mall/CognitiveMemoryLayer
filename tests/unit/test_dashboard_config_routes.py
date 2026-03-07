@@ -32,11 +32,7 @@ async def test_dashboard_config_returns_sections_and_masks_secrets(monkeypatch: 
     assert "Database" in names
     assert "Embedding (Internal)" in names
 
-    items = {
-        item.key: item
-        for section in payload.sections
-        for item in section.items
-    }
+    items = {item.key: item for section in payload.sections for item in section.items}
     assert items["auth.api_key"].value == "****"
     assert items["auth.api_key"].is_editable is False
     assert items["database.neo4j_password"].value == "****"

@@ -39,9 +39,7 @@ def test_update_env_replaces_existing_and_appends_new(
 ) -> None:
     env_path = tmp_path / ".env"
     env_path.write_text(
-        "DEBUG=false\n"
-        'APP_NAME="Old Name"\n'
-        "UNCHANGED=value\n",
+        'DEBUG=false\nAPP_NAME="Old Name"\nUNCHANGED=value\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(env_file, "get_env_path", lambda: env_path)

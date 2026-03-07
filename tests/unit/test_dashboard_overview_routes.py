@@ -193,7 +193,9 @@ async def test_dashboard_ratelimits_parses_apikey_ip_and_other_entries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     redis = RedisStub(
-        scan_results=[(0, ["ratelimit:apikey:abcdef123456", "ratelimit:ip:1.2.3.4", "ratelimit:misc"])],
+        scan_results=[
+            (0, ["ratelimit:apikey:abcdef123456", "ratelimit:ip:1.2.3.4", "ratelimit:misc"])
+        ],
         values={
             "ratelimit:apikey:abcdef123456": "30",
             "ratelimit:ip:1.2.3.4": "5",

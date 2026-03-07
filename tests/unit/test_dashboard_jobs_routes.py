@@ -15,7 +15,9 @@ from src.api.dashboard import jobs_routes
 from .dashboard_support import ADMIN_AUTH, RedisStub, ResultStub, SessionStub, make_db
 
 
-def _retrieved_memory(*, memory_id: str | None = None, text: str = "memory text") -> SimpleNamespace:
+def _retrieved_memory(
+    *, memory_id: str | None = None, text: str = "memory text"
+) -> SimpleNamespace:
     record = SimpleNamespace(
         id=memory_id or str(uuid4()),
         text=text,
@@ -29,7 +31,9 @@ def _retrieved_memory(*, memory_id: str | None = None, text: str = "memory text"
 
 
 def _request(*, orchestrator: object, db: object | None = None) -> SimpleNamespace:
-    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(orchestrator=orchestrator, db=db)))
+    return SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(orchestrator=orchestrator, db=db))
+    )
 
 
 @pytest.mark.asyncio
@@ -270,7 +274,9 @@ async def test_dashboard_forget_ignores_initial_tracking_failure_and_returns_suc
 @pytest.mark.asyncio
 async def test_dashboard_forget_marks_failed_jobs() -> None:
     orchestrator = SimpleNamespace(
-        forgetting=SimpleNamespace(run_forgetting=AsyncMock(side_effect=RuntimeError("forget boom")))
+        forgetting=SimpleNamespace(
+            run_forgetting=AsyncMock(side_effect=RuntimeError("forget boom"))
+        )
     )
     db, session = make_db(session=SessionStub([ResultStub()]))
 
@@ -302,7 +308,9 @@ async def test_dashboard_reconsolidate_returns_sessions_released() -> None:
 
 @pytest.mark.asyncio
 async def test_dashboard_reconsolidate_marks_failed_jobs() -> None:
-    tracker = SimpleNamespace(release_all_for_tenant=AsyncMock(side_effect=RuntimeError("release boom")))
+    tracker = SimpleNamespace(
+        release_all_for_tenant=AsyncMock(side_effect=RuntimeError("release boom"))
+    )
     orchestrator = SimpleNamespace(reconsolidation=SimpleNamespace(labile_tracker=tracker))
     db, session = make_db(session=SessionStub([ResultStub()]))
 
@@ -364,7 +372,10 @@ async def test_dashboard_database_reset_wraps_exceptions(
 ) -> None:
     (tmp_path / "alembic.ini").write_text("[alembic]\n", encoding="utf-8")
     monkeypatch.setattr(jobs_routes, "_project_root", lambda: tmp_path)
-    monkeypatch.setattr("alembic.command.downgrade", lambda config, target: (_ for _ in ()).throw(RuntimeError("reset failed")))
+    monkeypatch.setattr(
+        "alembic.command.downgrade",
+        lambda config, target: (_ for _ in ()).throw(RuntimeError("reset failed")),
+    )
 
     with pytest.raises(HTTPException, match="Database reset failed."):
         await jobs_routes.dashboard_database_reset(auth=ADMIN_AUTH)

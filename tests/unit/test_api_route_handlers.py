@@ -45,7 +45,10 @@ def _retrieved_memory(
     memory_type: str = "semantic_fact",
 ) -> SimpleNamespace:
     memory_id = memory_id or str(uuid4())
-    return SimpleNamespace(record=_memory_record(memory_id=memory_id, text=text, memory_type=memory_type), relevance_score=0.75)
+    return SimpleNamespace(
+        record=_memory_record(memory_id=memory_id, text=text, memory_type=memory_type),
+        relevance_score=0.75,
+    )
 
 
 def _packet(*, memories: list[SimpleNamespace] | None = None) -> SimpleNamespace:
@@ -275,7 +278,12 @@ async def test_get_memory_stats_returns_payload() -> None:
                 "active_memories": 4,
                 "silent_memories": 1,
                 "archived_memories": 0,
-                "by_type": {"semantic_fact": 2, "preference": 1, "constraint": 1, "episodic_event": 1},
+                "by_type": {
+                    "semantic_fact": 2,
+                    "preference": 1,
+                    "constraint": 1,
+                    "episodic_event": 1,
+                },
                 "avg_confidence": 0.8,
                 "avg_importance": 0.6,
                 "estimated_size_mb": 1.0,
@@ -424,7 +432,9 @@ async def test_delete_all_memories_wraps_errors() -> None:
 async def test_read_memory_stream_emits_data_and_done_events() -> None:
     mem_one = str(uuid4())
     mem_two = str(uuid4())
-    packet = _packet(memories=[_retrieved_memory(memory_id=mem_one), _retrieved_memory(memory_id=mem_two)])
+    packet = _packet(
+        memories=[_retrieved_memory(memory_id=mem_one), _retrieved_memory(memory_id=mem_two)]
+    )
     orchestrator = SimpleNamespace(read=AsyncMock(return_value=packet))
 
     response = await routes.read_memory_stream(
