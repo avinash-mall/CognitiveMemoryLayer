@@ -52,6 +52,70 @@ _CHUNK_TYPE_TO_CONSTRAINT: dict[str, str] = {
     "preference": "preference",
 }
 
+_HEURISTIC_CONSTRAINT_PATTERNS: tuple[tuple[str, float, tuple[str, ...]], ...] = (
+    (
+        "policy",
+        0.88,
+        (
+            r"\bi\s+(?:never|always|must|must not|can't|cannot|won't|will not)\b",
+            r"\bi\s+(?:refuse|avoid)\s+to\b",
+            r"\bi\s+do\s+not\b",
+            r"\bi\s+don't\b",
+            r"\bpersonal rules?\b",
+            r"\bresearch ethics?\b",
+            r"\bpolicy\b",
+        ),
+    ),
+    (
+        "value",
+        0.84,
+        (
+            r"\bi\s+value\b",
+            r"\bimportant to me\b",
+            r"\bi\s+believe in\b",
+            r"\bi\s+prioriti[sz]e\b",
+            r"\babove convenience\b",
+        ),
+    ),
+    (
+        "state",
+        0.8,
+        (
+            r"\bi'?m currently\b",
+            r"\bright now\b",
+            r"\bi'?m stressed\b",
+            r"\bi'?m worried\b",
+            r"\bi'?m dealing with\b",
+            r"\bi'?m mentoring\b",
+        ),
+    ),
+    (
+        "causal",
+        0.8,
+        (
+            r"\bbecause of\b",
+            r"\bthe reason i\b",
+            r"\bdue to\b",
+            r"\bin order to\b",
+            r"\bso that\b",
+        ),
+    ),
+    (
+        "goal",
+        0.84,
+        (
+            r"\bi'?m trying to\b",
+            r"\bmy goal is to\b",
+            r"\bi'?m working toward\b",
+            r"\bi plan to\b",
+            r"\bi aim to\b",
+            r"\bpublication target\b",
+            r"\bworking toward\b",
+            r"\btarget\b",
+        ),
+    ),
+)
+
 _SUPERSESSION_PROMPT = """Determine whether NEW constraint supersedes OLD constraint.
 
 OLD:
@@ -130,7 +194,15 @@ class ConstraintExtractor:
             if pred and pred.label:
                 label = pred.label.strip().lower()
                 if label in _ALLOWED_CONSTRAINT_TYPES:
-                    return label, max(self._base_confidence, min(1.0, pred.confidence))
+                    model_confidence = max(self._base_confidence, min(1.0, pred.confidence))
+                    heuristic = self._heuristic_constraint_type(text)
+                    if heuristic and heuristic[1] > model_confidence:
+                        return heuristic
+                    return label, model_confidence
+
+        heuristic = self._heuristic_constraint_type(text)
+        if heuristic:
+            return heuristic
 
         chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
         mapped = _CHUNK_TYPE_TO_CONSTRAINT.get(str(chunk_type).lower())
@@ -215,6 +287,15 @@ class ConstraintExtractor:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _heuristic_constraint_type(self, text: str) -> tuple[str, float] | None:
+        lowered = text.strip().lower()
+        if not lowered:
+            return None
+        for ctype, confidence, patterns in _HEURISTIC_CONSTRAINT_PATTERNS:
+            if any(re.search(pattern, lowered) for pattern in patterns):
+                return ctype, max(self._base_confidence, confidence)
+        return None
 
     def _extract_scope(self, text: str, chunk_entities: list[str] | None = None) -> list[str]:
         out: list[str] = []

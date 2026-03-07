@@ -349,7 +349,7 @@ Contract and probe checks:
 
 ```bash
 python scripts/models_artifact_probe.py --fail-on-mismatch
-python scripts/package_surface_probe.py embedded --write "User prefers tea" --query tea --expect-min-memories 1
+python scripts/package_surface_probe.py live-sync --write "User prefers tea" --query tea --expect-min-stored 1 --expect-min-memories 1
 python scripts/constraint_retrieval_probe.py --scenario budget_decision --mode compare
 ```
 

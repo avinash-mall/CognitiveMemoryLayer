@@ -25,7 +25,7 @@ import warnings
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 try:
     import pandas as pd
@@ -1458,32 +1458,32 @@ def _build_fact_token_rows(
 
     if use_multilingual:
         per_label_language_target = 25
-        for language in supported_languages:
+        for lang in supported_languages:
             for label in FACT_SPAN_LABELS:
                 attempts = 0
                 max_attempts = max(per_label_language_target * 8, 256)
                 while (
-                    label_language_counts[(label, language.code)] < per_label_language_target
+                    label_language_counts[(label, lang.code)] < per_label_language_target
                     and rows.count("fact_extraction_structured") < cap
                     and attempts < max_attempts
                 ):
                     text, spans, source = _fact_template_example(
                         label,
-                        label_index[(label, language.code)],
-                        lang_code=language.code,
+                        label_index[(label, lang.code)],
+                        lang_code=lang.code,
                     )
-                    label_index[(label, language.code)] += 1
+                    label_index[(label, lang.code)] += 1
                     attempts += 1
                     if rows.add(
-                        "fact_extraction_structured", text, spans, source, language=language.code
+                        "fact_extraction_structured", text, spans, source, language=lang.code
                     ):
                         label_counts[label] += 1
-                        label_language_counts[(label, language.code)] += 1
-                if label_language_counts[(label, language.code)] < per_label_language_target:
+                        label_language_counts[(label, lang.code)] += 1
+                if label_language_counts[(label, lang.code)] < per_label_language_target:
                     raise RuntimeError(
                         "Unable to reach multilingual template coverage for "
-                        f"{label}:{language.code} "
-                        f"(have={label_language_counts[(label, language.code)]} "
+                        f"{label}:{lang.code} "
+                        f"(have={label_language_counts[(label, lang.code)]} "
                         f"target={per_label_language_target})"
                     )
 
@@ -1495,15 +1495,18 @@ def _build_fact_token_rows(
             and rows.count("fact_extraction_structured") < cap
             and attempts < max_attempts
         ):
-            language = rng.choices(supported_languages, weights=language_weights, k=1)[0]
+            lang = cast(
+                "_multilingual_prompts.Language",
+                rng.choices(supported_languages, weights=language_weights, k=1)[0],
+            )
             text, spans, source = _fact_template_example(
                 label,
-                label_index[(label, language.code)],
-                lang_code=language.code,
+                label_index[(label, lang.code)],
+                lang_code=lang.code,
             )
-            label_index[(label, language.code)] += 1
+            label_index[(label, lang.code)] += 1
             attempts += 1
-            if rows.add("fact_extraction_structured", text, spans, source, language=language.code):
+            if rows.add("fact_extraction_structured", text, spans, source, language=lang.code):
                 label_counts[label] += 1
         if label_counts[label] < per_label_target:
             raise RuntimeError(
@@ -1514,14 +1517,17 @@ def _build_fact_token_rows(
     cycle = 0
     while rows.count("fact_extraction_structured") < target:
         label = FACT_SPAN_LABELS[cycle % len(FACT_SPAN_LABELS)]
-        language = rng.choices(supported_languages, weights=language_weights, k=1)[0]
+        lang = cast(
+            "_multilingual_prompts.Language",
+            rng.choices(supported_languages, weights=language_weights, k=1)[0],
+        )
         text, spans, source = _fact_template_example(
             label,
-            label_index[(label, language.code)],
-            lang_code=language.code,
+            label_index[(label, lang.code)],
+            lang_code=lang.code,
         )
-        label_index[(label, language.code)] += 1
-        rows.add("fact_extraction_structured", text, spans, source, language=language.code)
+        label_index[(label, lang.code)] += 1
+        rows.add("fact_extraction_structured", text, spans, source, language=lang.code)
         cycle += 1
 
     return rows.rows

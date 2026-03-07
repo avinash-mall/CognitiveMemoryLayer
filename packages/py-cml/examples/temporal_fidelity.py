@@ -1,158 +1,81 @@
-"""
-Temporal Fidelity Example
+"""Historical timestamp example for the py-cml client."""
 
-Demonstrates how to use the timestamp parameter to store memories with
-specific event times, enabling historical data replay and temporal reasoning.
+from __future__ import annotations
 
-This is particularly useful for:
-- Benchmark evaluations (e.g., Locomo) that replay historical conversations
-- Data migration from other systems with preserved timestamps
-- Testing temporal reasoning and memory consolidation over time
-
-Set CML_API_KEY and CML_BASE_URL in .env.
-"""
-
-import os
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
+REPO_ROOT = Path(__file__).resolve().parents[3]
+EXAMPLES_ROOT = REPO_ROOT / "examples"
+if str(EXAMPLES_ROOT) not in sys.path:
+    sys.path.insert(0, str(EXAMPLES_ROOT))
 
-    load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / ".env")
-except ImportError:
-    pass
+from _shared import build_cml_config, explain_connection_failure, print_header  # noqa: E402
 
-from cml import CognitiveMemoryLayer
+from cml import CognitiveMemoryLayer  # noqa: E402
+
+EXAMPLE_META = {
+    "name": "temporal_fidelity",
+    "kind": "python",
+    "summary": "Historical timestamp example for replay and temporal reasoning.",
+    "requires_api": True,
+    "requires_api_key": True,
+    "requires_base_url": True,
+    "requires_admin_key": False,
+    "requires_embedded": False,
+    "requires_openai": False,
+    "requires_anthropic": False,
+    "interactive": False,
+    "timeout_sec": 120,
+}
 
 
-def main():
-    base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
-    # Use a longer request timeout; turn() and write() can be slow when the API uses LLM.
-    with CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY"),
-        base_url=base_url,
-        timeout=120.0,
-    ) as memory:
-        _run_temporal_fidelity(memory)
+def main() -> int:
+    print_header("CML Temporal Fidelity")
+    try:
+        with CognitiveMemoryLayer(config=build_cml_config(timeout=120.0)) as memory:
+            six_months_ago = datetime.now(UTC) - timedelta(days=180)
+            three_months_ago = datetime.now(UTC) - timedelta(days=90)
+            one_month_ago = datetime.now(UTC) - timedelta(days=30)
 
+            memory.write(
+                "User used to prefer dark mode in all applications.",
+                timestamp=six_months_ago,
+                session_id="historical-theme",
+                context_tags=["preference", "theme"],
+            )
+            memory.write(
+                "User switched to light mode because of eye strain.",
+                timestamp=three_months_ago,
+                session_id="historical-theme",
+                context_tags=["preference", "theme", "health"],
+            )
+            turn = memory.turn(
+                user_message="What is my preferred theme setting?",
+                assistant_response="You recently prefer light mode because it reduces eye strain.",
+                timestamp=one_month_ago,
+                session_id="historical-theme",
+            )
+            print(f"Turn stored {turn.memories_stored} memories")
 
-def _run_temporal_fidelity(memory: CognitiveMemoryLayer) -> None:
+            current = memory.write(
+                "User is currently validating the temporal fidelity example.",
+                session_id="historical-theme",
+                context_tags=["testing"],
+            )
+            print(f"Current write success={current.success}")
 
-    print("=" * 60)
-    print("Temporal Fidelity Example")
-    print("=" * 60)
-
-    # Example 1: Store historical memories with specific timestamps
-    print("\n1. Storing historical memories with specific timestamps...")
-
-    # Simulate a conversation from 6 months ago
-    six_months_ago = datetime.now(UTC) - timedelta(days=180)
-
-    memory.write(
-        "User mentioned they prefer dark mode for all applications",
-        timestamp=six_months_ago,
-        session_id="historical_session_1",
-        context_tags=["preference", "ui"],
-    )
-    print(f"   ✓ Stored memory from {six_months_ago.date()}")
-
-    # Simulate another memory from 3 months ago
-    three_months_ago = datetime.now(UTC) - timedelta(days=90)
-
-    memory.write(
-        "User switched to light mode because of eye strain",
-        timestamp=three_months_ago,
-        session_id="historical_session_2",
-        context_tags=["preference", "ui", "health"],
-    )
-    print(f"   ✓ Stored memory from {three_months_ago.date()}")
-
-    # Example 2: Process historical conversation turns
-    print("\n2. Processing historical conversation turns...")
-
-    one_month_ago = datetime.now(UTC) - timedelta(days=30)
-
-    result = memory.turn(
-        user_message="What's my preferred theme setting?",
-        assistant_response="Based on your recent feedback, you prefer light mode to reduce eye strain.",
-        timestamp=one_month_ago,
-        session_id="historical_session_3",
-    )
-    print(f"   ✓ Processed turn from {one_month_ago.date()}")
-    print(f"   ✓ Stored {result.memories_stored} memories")
-
-    # Example 3: Store current memories (timestamp defaults to now)
-    print("\n3. Storing current memories (timestamp defaults to now)...")
-
-    memory.write(
-        "User is currently testing the temporal fidelity feature",
-        session_id="current_session",
-        context_tags=["testing"],
-    )
-    print("   ✓ Stored memory with current timestamp (default)")
-
-    # Example 4: Retrieve memories and see temporal ordering
-    print("\n4. Retrieving memories to verify temporal ordering...")
-
-    memories = memory.read("user theme preference", max_results=5)
-
-    print(f"\n   Found {len(memories.memories)} relevant memories:")
-    for mem in memories.memories:
-        print(f"   - [{mem.timestamp.date()}] {mem.text[:60]}...")
-        print(f"     Relevance: {mem.relevance:.2f}")
-
-    # Example 5: Benchmark/evaluation scenario
-    print("\n5. Benchmark evaluation scenario (Locomo-style)...")
-    print("   Simulating historical conversation replay...")
-
-    # Simulate a multi-turn conversation from a specific date
-    session_date = datetime(2023, 6, 15, 14, 30, 0, tzinfo=UTC)
-
-    conversation_turns = [
-        ("Hello, I'm new here", "Welcome! How can I help you today?"),
-        (
-            "I need help setting up my profile",
-            "I'd be happy to help. What would you like to configure?",
-        ),
-        ("I prefer dark themes", "Got it! I'll remember that you prefer dark themes."),
-    ]
-
-    for i, (user_msg, assistant_msg) in enumerate(conversation_turns):
-        # Each turn happens 5 minutes after the previous one
-        turn_time = session_date + timedelta(minutes=i * 5)
-
-        memory.turn(
-            user_message=user_msg,
-            assistant_response=assistant_msg,
-            timestamp=turn_time,
-            session_id="benchmark_session",
-        )
-        print(f"   ✓ Turn {i + 1} at {turn_time.strftime('%H:%M')}")
-
-    print("\n6. Verifying temporal fidelity...")
-
-    # Retrieve memories from the benchmark session
-    benchmark_memories = memory.read("user preferences", max_results=10)
-
-    print(f"   Retrieved {len(benchmark_memories.memories)} memories")
-    print("   Timestamps are preserved for accurate temporal reasoning!")
-
-    # Get statistics
-    print("\n7. Memory statistics...")
-    stats = memory.stats()
-    print(f"   Total memories: {stats.total_memories}")
-    print(f"   Active memories: {stats.active_memories}")
-
-    print("\n" + "=" * 60)
-    print("Temporal fidelity example completed!")
-    print("=" * 60)
-    print("\nKey takeaways:")
-    print("- Use 'timestamp' parameter to store historical data with correct event times")
-    print("- Timestamps default to 'now' when not provided (backward compatible)")
-    print("- Essential for benchmark evaluations and data migration")
-    print("- Enables accurate temporal reasoning and memory consolidation")
+            result = memory.read("theme preference", max_results=5)
+            print(f"\nRetrieved {result.total_count} memories")
+            for item in result.memories:
+                print(f"  - [{item.timestamp.date()}] {item.text}")
+        return 0
+    except Exception as exc:
+        print(f"Example failed: {exc}")
+        print(explain_connection_failure())
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,350 +1,513 @@
-"""
-Run Cognitive Memory Layer examples one-by-one and report Pass / Fail / Skip.
-
-Run from repo root. Prerequisites:
-  - pip install -r examples/requirements.txt (and for embedded: pip install -e "packages/py-cml[embedded]")
-  - CML API up for API-dependent examples: docker compose -f docker/docker-compose.yml up api
-  - .env at repo root with CML_API_KEY, optional CML_BASE_URL; for LLM examples add OPENAI_* or ANTHROPIC_*
-
-Usage:
-  python scripts/run_examples.py --all
-  python scripts/run_examples.py --example embedded_mode
-  python scripts/run_examples.py --all --include-llm
-  python scripts/run_examples.py --all --no-skip
-"""
+"""Discover and run Cognitive Memory Layer examples."""
 
 from __future__ import annotations
 
 import argparse
+import ast
+import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal, cast
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DISCOVERY_ROOTS = (
+    REPO_ROOT / "examples",
+    REPO_ROOT / "packages" / "py-cml" / "examples",
+)
+IGNORE_FILES = {"__init__.py", "README.md", "requirements.txt"}
+IGNORE_DIRS = {"__pycache__", "openclaw_skill"}
+SUPPORTED_EXTENSIONS = {".py", ".sh"}
+PYTHON_ENCODING_ENV = "PYTHONIOENCODING"
+DEFAULT_STREAMLIT_STARTUP_TIMEOUT = 45.0
 
-# Load .env from repo root so skip logic and subprocess env see CML_API_KEY, etc.
-_env_file = REPO_ROOT / ".env"
-if _env_file.is_file():
+
+def load_repo_env() -> None:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.is_file():
+        return
     try:
         from dotenv import load_dotenv
 
-        load_dotenv(_env_file)
+        load_dotenv(env_file)
     except ImportError:
-        pass
-
-EXAMPLES = [
-    {
-        "name": "embedded_mode",
-        "path": "examples/embedded_mode.py",
-        "needs_api": False,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 120,
-    },
-    {
-        "name": "quickstart",
-        "path": "examples/quickstart.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 60,
-    },
-    {
-        "name": "basic_usage",
-        "path": "examples/basic_usage.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 60,
-    },
-    {
-        "name": "async_example",
-        "path": "examples/async_example.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 60,
-    },
-    {
-        "name": "agent_integration",
-        "path": "examples/agent_integration.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 60,
-    },
-    {
-        "name": "temporal_fidelity",
-        "path": "packages/py-cml/examples/temporal_fidelity.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 180,
-    },
-    {
-        "name": "api_direct_minimal",
-        "path": "examples/api_direct_minimal.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 60,
-    },
-    {
-        "name": "standalone_demo",
-        "path": "examples/standalone_demo.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": True,
-        "timeout_sec": 150,
-        "non_interactive_env": "CML_STANDALONE_NON_INTERACTIVE",
-    },
-    {
-        "name": "streamlit_app",
-        "path": "examples/streamlit_app.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": False,
-        "interactive": False,
-        "timeout_sec": 60,
-    },
-    {
-        "name": "chat_with_memory",
-        "path": "examples/chat_with_memory.py",
-        "needs_api": True,
-        "needs_llm_openai": True,
-        "needs_llm_anthropic": False,
-        "interactive": True,
-        "timeout_sec": 90,
-        "stdin_input": b"quit\n",
-    },
-    {
-        "name": "openai_tool_calling",
-        "path": "examples/openai_tool_calling.py",
-        "needs_api": True,
-        "needs_llm_openai": True,
-        "needs_llm_anthropic": False,
-        "interactive": True,
-        "timeout_sec": 90,
-        "stdin_input": b"quit\n",
-    },
-    {
-        "name": "anthropic_tool_calling",
-        "path": "examples/anthropic_tool_calling.py",
-        "needs_api": True,
-        "needs_llm_openai": False,
-        "needs_llm_anthropic": True,
-        "interactive": True,
-        "timeout_sec": 90,
-        "stdin_input": b"quit\n",
-    },
-    {
-        "name": "langchain_integration",
-        "path": "examples/langchain_integration.py",
-        "needs_api": True,
-        "needs_llm_openai": True,
-        "needs_llm_anthropic": False,
-        "interactive": True,
-        "timeout_sec": 90,
-        "stdin_input": b"quit\n",
-    },
-]
+        return
 
 
-def _has_api_key() -> bool:
-    return bool(os.environ.get("CML_API_KEY"))
+@dataclass(frozen=True)
+class ExampleSpec:
+    name: str
+    path: Path
+    kind: Literal["python", "shell", "streamlit"]
+    summary: str
+    requires_api: bool = False
+    requires_api_key: bool = False
+    requires_base_url: bool = False
+    requires_admin_key: bool = False
+    requires_embedded: bool = False
+    requires_openai: bool = False
+    requires_anthropic: bool = False
+    interactive: bool = False
+    timeout_sec: int = 60
+
+    @property
+    def relative_path(self) -> str:
+        if self.path.is_absolute():
+            return str(self.path.relative_to(REPO_ROOT))
+        return str(self.path)
 
 
-def _has_llm_internal() -> bool:
-    """True when .env has LLM_INTERNAL__PROVIDER, MODEL, and BASE_URL (e.g. lines 20-22)."""
-    return bool(
-        os.environ.get("LLM_INTERNAL__PROVIDER")
-        and os.environ.get("LLM_INTERNAL__MODEL")
-        and os.environ.get("LLM_INTERNAL__BASE_URL")
+@dataclass(frozen=True)
+class ExampleResult:
+    status: Literal["ok", "fail", "skip"]
+    detail: str
+    elapsed: float
+
+
+def _coerce_metadata(path: Path, raw: dict[str, Any]) -> ExampleSpec:
+    raw_kind = raw.get("kind") or ("streamlit" if path.name.startswith("streamlit") else "python")
+    if raw_kind not in {"python", "shell", "streamlit"}:
+        raise ValueError(f"Unsupported example kind '{raw_kind}' in {path}")
+    kind = cast("Literal['python', 'shell', 'streamlit']", raw_kind)
+    name = str(raw.get("name") or path.stem)
+    return ExampleSpec(
+        name=name,
+        path=path,
+        kind=kind,
+        summary=str(raw.get("summary") or ""),
+        requires_api=bool(raw.get("requires_api", False)),
+        requires_api_key=bool(raw.get("requires_api_key", False)),
+        requires_base_url=bool(raw.get("requires_base_url", False)),
+        requires_admin_key=bool(raw.get("requires_admin_key", False)),
+        requires_embedded=bool(raw.get("requires_embedded", False)),
+        requires_openai=bool(raw.get("requires_openai", False)),
+        requires_anthropic=bool(raw.get("requires_anthropic", False)),
+        interactive=bool(raw.get("interactive", False)),
+        timeout_sec=int(raw.get("timeout_sec", 60)),
     )
 
 
-def _has_openai() -> bool:
-    return bool(
-        (
-            os.environ.get("OPENAI_API_KEY")
-            and (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL"))
-        )
-        or _has_llm_internal()
-    )
+def parse_python_metadata(path: Path) -> dict[str, Any]:
+    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id == "EXAMPLE_META":
+            value = ast.literal_eval(node.value)
+            if not isinstance(value, dict):
+                raise ValueError(f"EXAMPLE_META must be a dict literal in {path}")
+            return value
+    return {}
 
 
-def _has_anthropic() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+def parse_shell_metadata(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        for _ in range(10):
+            line = handle.readline()
+            if not line:
+                break
+            stripped = line.strip()
+            if stripped.startswith("# EXAMPLE_META:"):
+                return json.loads(stripped.split(":", 1)[1].strip())
+    return {}
 
 
-def _should_skip(ex: dict, include_llm: bool, no_skip: bool) -> str | None:
+def fallback_metadata(path: Path) -> dict[str, Any]:
+    kind: Literal["python", "shell", "streamlit"]
+    if path.suffix == ".sh":
+        kind = "shell"
+    elif path.name.startswith("streamlit"):
+        kind = "streamlit"
+    else:
+        kind = "python"
+    return {
+        "name": path.stem,
+        "kind": kind,
+        "summary": "",
+        "timeout_sec": 60,
+    }
+
+
+def should_ignore(path: Path) -> bool:
+    if any(part in IGNORE_DIRS for part in path.parts):
+        return True
+    if path.name in IGNORE_FILES:
+        return True
+    return bool(path.name.startswith("_"))
+
+
+def discover_examples(*, roots: tuple[Path, ...] = DISCOVERY_ROOTS) -> list[ExampleSpec]:
+    seen_names: dict[str, Path] = {}
+    discovered: list[ExampleSpec] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix not in SUPPORTED_EXTENSIONS:
+                continue
+            if should_ignore(path.relative_to(root)):
+                continue
+            if path.suffix == ".py":
+                metadata = parse_python_metadata(path)
+            else:
+                metadata = parse_shell_metadata(path)
+            spec = _coerce_metadata(path, metadata or fallback_metadata(path))
+            if spec.name in seen_names:
+                raise ValueError(
+                    f"Duplicate example name '{spec.name}' in {path} and {seen_names[spec.name]}"
+                )
+            seen_names[spec.name] = path
+            discovered.append(spec)
+    return discovered
+
+
+def _has_embedded_support() -> bool:
+    try:
+        from cml import EmbeddedCognitiveMemoryLayer  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def _has_openai_env() -> bool:
+    if os.environ.get("LLM_INTERNAL__MODEL") and os.environ.get("LLM_INTERNAL__BASE_URL"):
+        return True
+    return bool(os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_MODEL"))
+
+
+def _has_anthropic_env() -> bool:
+    return bool(os.environ.get("ANTHROPIC_API_KEY") and os.environ.get("ANTHROPIC_MODEL"))
+
+
+def find_shell_executable() -> str | None:
+    return shutil.which("bash") or shutil.which("sh")
+
+
+def find_streamlit_executable() -> str | None:
+    return shutil.which("streamlit")
+
+
+def skip_reason(spec: ExampleSpec, *, include_llm: bool, no_skip: bool) -> str | None:
     if no_skip:
         return None
-    if ex["needs_api"] and not _has_api_key():
+    if spec.requires_api_key and not os.environ.get("CML_API_KEY"):
         return "missing CML_API_KEY"
-    if ex.get("needs_llm_openai") and not _has_openai():
+    if spec.requires_base_url and not os.environ.get("CML_BASE_URL"):
+        return "missing CML_BASE_URL"
+    if spec.requires_admin_key and not os.environ.get("CML_ADMIN_API_KEY"):
+        return "missing CML_ADMIN_API_KEY"
+    if spec.requires_embedded and not _has_embedded_support():
+        return "embedded extras are not installed"
+    if spec.requires_openai:
         if not include_llm:
             return "LLM example (use --include-llm)"
-        return "missing OPENAI_API_KEY+model or LLM_INTERNAL__PROVIDER/MODEL/BASE_URL"
-    if ex.get("needs_llm_anthropic") and not _has_anthropic():
+        if not _has_openai_env():
+            return "missing OPENAI_API_KEY+OPENAI_MODEL or LLM_INTERNAL__MODEL+LLM_INTERNAL__BASE_URL"
+    if spec.requires_anthropic:
         if not include_llm:
             return "LLM example (use --include-llm)"
-        return "missing ANTHROPIC_API_KEY"
-    if ex["name"] == "embedded_mode":
-        try:
-            __import__("cml")
-            from cml import EmbeddedCognitiveMemoryLayer  # noqa: F401
-        except ImportError:
-            return "cognitive-memory-layer[embedded] not installed"
+        if not _has_anthropic_env():
+            return "missing ANTHROPIC_API_KEY+ANTHROPIC_MODEL"
+    if spec.kind == "shell":
+        if not find_shell_executable():
+            return "missing bash/sh"
+        if not shutil.which("curl"):
+            return "missing curl"
+    if spec.kind == "streamlit" and not find_streamlit_executable():
+        return "missing streamlit executable"
     return None
 
 
-def _run_one(
-    ex: dict,
+def select_examples(
+    examples: list[ExampleSpec],
+    *,
+    all_examples: bool,
+    example_name: str | None,
+    kind: str | None,
     include_llm: bool,
-    no_skip: bool,
-) -> tuple[str, str, float, str | None]:
-    path = REPO_ROOT / ex["path"]
-    if not path.is_file():
-        return "fail", f"file not found: {path}", 0.0, None
+) -> tuple[list[ExampleSpec], bool]:
+    if example_name:
+        selected = [example for example in examples if example.name == example_name]
+        if not selected:
+            raise ValueError(f"Unknown example: {example_name}")
+        return _filter_by_kind(selected, kind), True
 
-    skip_reason = _should_skip(ex, include_llm, no_skip)
-    if skip_reason:
-        return "skip", skip_reason, 0.0, None
+    if not all_examples:
+        return [], include_llm
 
+    selected = [
+        example
+        for example in examples
+        if include_llm or (not example.requires_openai and not example.requires_anthropic)
+    ]
+    return _filter_by_kind(selected, kind), include_llm
+
+
+def _filter_by_kind(examples: list[ExampleSpec], kind: str | None) -> list[ExampleSpec]:
+    if not kind:
+        return examples
+    return [example for example in examples if example.kind == kind]
+
+
+def build_subprocess_env(*, non_interactive: bool) -> dict[str, str]:
     env = os.environ.copy()
-    if ex.get("non_interactive_env"):
-        env[ex["non_interactive_env"]] = "1"
-    # Use UTF-8 for subprocess I/O so Unicode (e.g. ✓/✗) does not break on Windows cp1252
-    env["PYTHONIOENCODING"] = "utf-8"
+    env[PYTHON_ENCODING_ENV] = "utf-8"
+    env.setdefault("DEBUG", "false")
+    if non_interactive:
+        env.setdefault("CML_EXAMPLE_NON_INTERACTIVE", "1")
+    return env
 
-    stdin_input = ex.get("stdin_input")
-    # When feeding stdin via input=, do not pass stdin= PIPE (subprocess forbids both).
-    stdin_arg = None if stdin_input else subprocess.PIPE
-    # subprocess with text=True expects str; EXAMPLES may use bytes for stdin_input
-    if stdin_input is not None and isinstance(stdin_input, bytes):
-        stdin_input = stdin_input.decode("utf-8")
 
-    cmd = [sys.executable, "-u", str(path)]
-    start = time.time()
+def build_command(spec: ExampleSpec, *, port: int | None = None) -> list[str]:
+    if spec.kind == "python":
+        return [sys.executable, "-u", str(spec.path)]
+    if spec.kind == "shell":
+        shell = find_shell_executable()
+        if not shell:
+            raise RuntimeError("No shell executable available")
+        return [shell, spec.relative_path.replace("\\", "/")]
+    if spec.kind == "streamlit":
+        streamlit = find_streamlit_executable()
+        if not streamlit:
+            raise RuntimeError("No streamlit executable available")
+        if port is None:
+            raise ValueError("Streamlit examples require a port")
+        return [
+            streamlit,
+            "run",
+            str(spec.path),
+            "--server.headless",
+            "true",
+            "--server.address",
+            "127.0.0.1",
+            "--server.port",
+            str(port),
+            "--browser.gatherUsageStats",
+            "false",
+        ]
+    raise ValueError(f"Unsupported example kind: {spec.kind}")
+
+
+def pick_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _tail(output: str, *, line_count: int = 8) -> str:
+    lines = [line for line in output.strip().splitlines() if line.strip()]
+    if not lines:
+        return "no output"
+    return "\n".join(lines[-line_count:])
+
+
+def _port_is_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def run_streamlit(spec: ExampleSpec, *, env: dict[str, str]) -> ExampleResult:
+    port = pick_free_port()
+    command = build_command(spec, port=port)
+    started = time.perf_counter()
+    process = subprocess.Popen(
+        command,
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     try:
-        proc = subprocess.run(
-            cmd,
+        deadline = time.perf_counter() + min(spec.timeout_sec, DEFAULT_STREAMLIT_STARTUP_TIMEOUT)
+        while time.perf_counter() < deadline:
+            if _port_is_open(port):
+                elapsed = time.perf_counter() - started
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                return ExampleResult("ok", f"started on port {port}", elapsed)
+
+            if process.poll() is not None:
+                output = process.stdout.read() if process.stdout else ""
+                elapsed = time.perf_counter() - started
+                return ExampleResult("fail", _tail(output), elapsed)
+            time.sleep(0.5)
+
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        output = process.stdout.read() if process.stdout else ""
+        elapsed = time.perf_counter() - started
+        return ExampleResult("fail", f"timeout waiting for startup\n{_tail(output)}", elapsed)
+    finally:
+        if process.poll() is None:
+            process.kill()
+
+
+def run_subprocess(spec: ExampleSpec, *, env: dict[str, str]) -> ExampleResult:
+    command = build_command(spec)
+    started = time.perf_counter()
+    try:
+        completed = subprocess.run(
+            command,
             cwd=str(REPO_ROOT),
             env=env,
-            stdin=stdin_arg,
-            input=stdin_input,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=ex["timeout_sec"],
+            timeout=spec.timeout_sec,
         )
-        elapsed = time.time() - start
-        if proc.returncode == 0:
-            return "ok", "", elapsed, None
-        err = (proc.stderr or proc.stdout or "").strip()
-        last_lines = "\n".join(err.splitlines()[-5:]) if err else "non-zero exit"
-        return "fail", last_lines, elapsed, None
+        elapsed = time.perf_counter() - started
+        if completed.returncode == 0:
+            return ExampleResult("ok", "", elapsed)
+        output = completed.stderr or completed.stdout
+        return ExampleResult("fail", _tail(output), elapsed)
     except subprocess.TimeoutExpired:
-        elapsed = time.time() - start
-        return "fail", "timeout", elapsed, None
-    except Exception as e:
-        elapsed = time.time() - start
-        return "fail", str(e), elapsed, None
+        elapsed = time.perf_counter() - started
+        return ExampleResult("fail", "timeout", elapsed)
 
 
-def main() -> int:
+def run_one(
+    spec: ExampleSpec,
+    *,
+    include_llm: bool,
+    no_skip: bool,
+) -> ExampleResult:
+    reason = skip_reason(spec, include_llm=include_llm, no_skip=no_skip)
+    if reason:
+        return ExampleResult("skip", reason, 0.0)
+
+    env = build_subprocess_env(non_interactive=True)
+    if spec.kind == "streamlit":
+        return run_streamlit(spec, env=env)
+    return run_subprocess(spec, env=env)
+
+
+def print_example_list(examples: list[ExampleSpec]) -> None:
+    print("\nDiscovered examples:\n")
+    for example in examples:
+        summary = f" - {example.summary}" if example.summary else ""
+        print(f"  {example.name:<24} [{example.kind:<9}] {example.relative_path}{summary}")
+    print()
+
+
+def print_summary(results: list[tuple[ExampleSpec, ExampleResult]]) -> None:
+    ok_count = sum(1 for _, result in results if result.status == "ok")
+    fail_count = sum(1 for _, result in results if result.status == "fail")
+    skip_count = sum(1 for _, result in results if result.status == "skip")
+
+    print("\n" + "=" * 78)
+    print("  Example run summary")
+    print("=" * 78)
+    for example, result in results:
+        label = f"{example.name} [{example.kind}]"
+        if result.status == "ok":
+            print(f"  {label:<40} ok    ({result.elapsed:.1f}s)")
+        elif result.status == "skip":
+            print(f"  {label:<40} skip  ({result.detail})")
+        else:
+            print(f"  {label:<40} fail  ({result.detail})")
+    print("=" * 78)
+    print(f"  ok: {ok_count}, fail: {fail_count}, skip: {skip_count}")
+    print()
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run CML examples one-by-one and report Pass / Fail / Skip."
+        description="Discover and run CML examples from the repo."
     )
+    parser.add_argument("--list", action="store_true", help="List discovered examples and exit.")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--all",
-        action="store_true",
-        help="Run all examples (non-LLM by default; add --include-llm for LLM examples).",
-    )
-    group.add_argument(
-        "--example",
-        metavar="NAME",
-        help="Run only the example with this name (e.g. quickstart, embedded_mode).",
+    group.add_argument("--all", action="store_true", help="Run all discovered examples.")
+    group.add_argument("--example", metavar="NAME", help="Run a single example by name.")
+    parser.add_argument(
+        "--kind",
+        choices=("python", "shell", "streamlit"),
+        help="Restrict results to a specific example kind.",
     )
     parser.add_argument(
         "--include-llm",
         action="store_true",
-        help="Also run OpenAI/Anthropic/LangChain examples (requires keys and CML API).",
+        help="Include OpenAI and Anthropic examples when running all examples.",
     )
     parser.add_argument(
         "--no-skip",
         action="store_true",
-        help="Run even when env vars are missing (will likely fail).",
+        help="Disable env/dependency skip checks and try to execute everything.",
     )
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
-    if args.example:
-        candidates = [e for e in EXAMPLES if e["name"] == args.example]
-        if not candidates:
-            print(f"Unknown example: {args.example}", file=sys.stderr)
-            print(
-                "Available:",
-                ", ".join(str(e["name"]) for e in EXAMPLES),
-                file=sys.stderr,
-            )
-            return 1
-        to_run = candidates
-        include_llm = True
-    else:
-        if not args.all:
-            parser.print_help()
-            return 0
-        include_llm = args.include_llm
-        to_run = [
-            e
-            for e in EXAMPLES
-            if not e.get("needs_llm_openai") and not e.get("needs_llm_anthropic")
-        ] + (
-            [e for e in EXAMPLES if e.get("needs_llm_openai") or e.get("needs_llm_anthropic")]
-            if include_llm
-            else []
+
+def main(argv: list[str] | None = None) -> int:
+    load_repo_env()
+    args = parse_args(argv)
+    try:
+        examples = discover_examples()
+    except Exception as exc:
+        print(f"Failed to discover examples: {exc}", file=sys.stderr)
+        return 1
+
+    if args.list:
+        print_example_list(_filter_by_kind(examples, args.kind))
+        return 0
+
+    if not args.all and not args.example:
+        print_example_list(_filter_by_kind(examples, args.kind))
+        print("Use --all to run every example or --example NAME to run one.\n")
+        return 0
+
+    try:
+        selected, include_llm = select_examples(
+            examples,
+            all_examples=args.all,
+            example_name=args.example,
+            kind=args.kind,
+            include_llm=args.include_llm or bool(args.example),
         )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        print(
+            "Available examples:",
+            ", ".join(example.name for example in examples),
+            file=sys.stderr,
+        )
+        return 1
 
-    results = []
-    print("\nStarting example runs...")
-    for ex in to_run:
-        print(f"Running {ex['name']}...", flush=True)
-        status, detail, elapsed, _ = _run_one(ex, include_llm, args.no_skip)
-        print(f"  -> {status} ({elapsed:.1f}s)")
-        results.append((ex["name"], status, detail, elapsed))
+    if not selected:
+        print("No examples matched the requested filters.")
+        return 0
 
-    ok_count = sum(1 for _, s, _, _ in results if s == "ok")
-    fail_count = sum(1 for _, s, _, _ in results if s == "fail")
-    skip_count = sum(1 for _, s, _, _ in results if s == "skip")
+    print("\nStarting example runs...\n")
+    results: list[tuple[ExampleSpec, ExampleResult]] = []
+    for example in selected:
+        print(f"Running {example.name} [{example.kind}]...")
+        result = run_one(example, include_llm=include_llm, no_skip=args.no_skip)
+        print(f"  -> {result.status} ({result.elapsed:.1f}s)")
+        if result.detail and result.status != "ok":
+            print(f"     {result.detail}")
+        results.append((example, result))
 
-    print("\n" + "=" * 70)
-    print("  Example run summary")
-    print("=" * 70)
-    for name, status, detail, elapsed in results:
-        if status == "ok":
-            print(f"  {name:<25} ok    ({elapsed:.1f}s)")
-        elif status == "skip":
-            print(f"  {name:<25} skip  ({detail})")
-        else:
-            print(f"  {name:<25} fail  ({detail})")
-    print("=" * 70)
-    print(f"  ok: {ok_count}, fail: {fail_count}, skip: {skip_count}")
-    print()
-    return 0 if fail_count == 0 else 1
+    print_summary(results)
+    return 0 if all(result.status != "fail" for _, result in results) else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

@@ -198,7 +198,7 @@ When no timestamp is provided, each layer defaults to the current time, ensuring
 
 ## Example Script
 
-See [`examples/temporal_fidelity.py`](../examples/temporal_fidelity.py) for a complete, runnable example demonstrating:
+See [`packages/py-cml/examples/temporal_fidelity.py`](../examples/temporal_fidelity.py) for a complete, runnable example demonstrating:
 - Historical memory storage
 - Conversation replay
 - Benchmark evaluation scenarios

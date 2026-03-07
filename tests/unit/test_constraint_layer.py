@@ -183,6 +183,27 @@ class TestConstraintExtractor:
         types = {c.constraint_type for c in constraints}
         assert "policy" in types
 
+    def test_constraint_extractor_uses_policy_heuristic_when_modelpack_is_weak(self):
+        extractor = ConstraintExtractor(
+            modelpack=_StubModelPack(single={"constraint_type": ("causal", 0.2)})
+        )
+        chunk = _make_chunk(
+            "I refuse to use single-use plastics because of their impact on ocean life."
+        )
+        constraints = extractor.extract(chunk)
+        assert len(constraints) >= 1
+        assert constraints[0].constraint_type == "policy"
+        assert constraints[0].confidence >= 0.8
+
+    def test_constraint_extractor_uses_goal_heuristic_without_modelpack(self):
+        extractor = ConstraintExtractor(modelpack=_StubModelPack())
+        chunk = _make_chunk(
+            "I'm trying to publish my research on bioluminescent communication in Nature by end of year."
+        )
+        constraints = extractor.extract(chunk)
+        assert len(constraints) >= 1
+        assert constraints[0].constraint_type == "goal"
+
     def test_no_constraint_for_plain_text(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk("The sky is blue.")

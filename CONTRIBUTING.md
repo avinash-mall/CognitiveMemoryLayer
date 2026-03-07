@@ -59,7 +59,7 @@ Thank you for your interest in contributing. This document outlines how to get s
 - `packages/models/` — Custom model pipeline: data preparation, training, and 10 task-specific models. See [packages/models/README.md](packages/models/README.md).
 - `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
 - `tests/` — Pytest tests (unit, integration, e2e); see [tests/README.md](tests/README.md).
-- `scripts/` — Dev scripts: `update_readme_badges.py` (refresh version and test count in README badges), `run_examples.py` (run examples; see script docstring or examples/README), `init_structure.py` (bootstrap directory structure; optional for new contributors).
+- `scripts/` — Dev scripts: `update_readme_badges.py` (refresh README badge counts), `run_examples.py` (run examples; see script docstring or examples/README), and focused probe/evaluation helpers such as `package_surface_probe.py`, `constraint_retrieval_probe.py`, `models_artifact_probe.py`, and `test_memory_quality.py`.
 - `ProjectPlan/` — Design docs and phase plans (e.g. [ActiveCML/Issues.md](ProjectPlan/ActiveCML/Issues.md), [CreatePackage/CreatePackageStatus.md](ProjectPlan/CreatePackage/CreatePackageStatus.md)).
 
 For full architecture and API details, see [README](README.md) and [Usage Documentation](ProjectPlan/UsageDocumentation.md).

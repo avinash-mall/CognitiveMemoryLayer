@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Cognitive Memory Layer — Full-Stack Quality Test
+Cognitive Memory Layer - Full-Stack Quality Test
 =================================================
 
 A single, self-contained script that:
@@ -17,7 +17,8 @@ Requirements:
 
 Usage:
   python scripts/test_memory_quality.py                     # full run
-  python scripts/test_memory_quality.py --skip-ingestion    # reuse existing data
+  python scripts/test_memory_quality.py --skip-ingestion    # reuse the last saved tenant
+  python scripts/test_memory_quality.py --skip-ingestion --tenant <tenant-id>
   python scripts/test_memory_quality.py --verbose           # per-probe details
 
 Note: The CML API enforces per-tenant rate limiting (default: 60 req/min).
@@ -29,22 +30,26 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from _shared import build_api_url, load_repo_env, normalize_bool_env, normalize_cml_base_url
 
 # ---------------------------------------------------------------------------
 # Load .env
 # ---------------------------------------------------------------------------
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-except ImportError:
-    pass
+load_repo_env()
+normalize_bool_env("DEBUG")
 
 import requests
 
@@ -63,11 +68,15 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-CML_BASE_URL = os.environ.get("CML_BASE_URL", "http://localhost:8000").rstrip("/")
+CML_BASE_URL = normalize_cml_base_url(os.environ.get("CML_BASE_URL"))
 CML_API_KEY = os.environ.get("AUTH__API_KEY") or os.environ.get("CML_API_KEY") or "test-api-key"
 TENANT_ID = f"quality-test-{int(time.time())}"
 MAX_RETRIES = 5
 RETRY_BACKOFF = 3
+DEFAULT_RESULTS_PATH = Path(__file__).resolve().parent.parent / "artifacts" / "quality" / "quality_test_results.json"
+LEGACY_RESULTS_PATH = Path(__file__).resolve().with_name("quality_test_results.json")
+RESULTS_PATH = DEFAULT_RESULTS_PATH
+JUDGE_CONTEXT_LIMIT = 2000
 
 # ---------------------------------------------------------------------------
 # Self-contained test corpus
@@ -89,10 +98,10 @@ CORPUS: list[tuple[str, str, str | None]] = [
     ("s2", "I prefer working early mornings, usually 5am to 1pm.", "2024-02-01T12:10:00Z"),
     ("s2", "I enjoy hiking and underwater photography as hobbies.", "2024-02-01T12:15:00Z"),
     ("s2", "My favorite book is 'The Silent World' by Jacques Cousteau.", "2024-02-01T12:20:00Z"),
-    # === CONSTRAINTS — POLICY (hard rules) ===
+    # === CONSTRAINTS - POLICY (hard rules) ===
     (
         "s3",
-        "I never eat shellfish because I have a severe allergy — even trace amounts can cause anaphylaxis.",
+        "I never eat shellfish because I have a severe allergy - even trace amounts can cause anaphylaxis.",
         "2024-03-01T09:00:00Z",
     ),
     ("s3", "I always carry an EpiPen with me due to my shellfish allergy.", "2024-03-01T09:05:00Z"),
@@ -102,7 +111,7 @@ CORPUS: list[tuple[str, str, str | None]] = [
         "2024-03-01T09:10:00Z",
     ),
     ("s3", "I never share unpublished research data before peer review.", "2024-03-01T09:15:00Z"),
-    # === CONSTRAINTS — VALUE ===
+    # === CONSTRAINTS - VALUE ===
     ("s4", "I value environmental sustainability above convenience.", "2024-03-15T14:00:00Z"),
     (
         "s4",
@@ -114,7 +123,7 @@ CORPUS: list[tuple[str, str, str | None]] = [
         "I believe in open-access publishing so everyone can benefit from science.",
         "2024-03-15T14:10:00Z",
     ),
-    # === CONSTRAINTS — GOAL ===
+    # === CONSTRAINTS - GOAL ===
     (
         "s5",
         "I'm trying to publish my research on bioluminescent communication in Nature by end of year.",
@@ -126,7 +135,7 @@ CORPUS: list[tuple[str, str, str | None]] = [
         "2024-04-01T08:05:00Z",
     ),
     ("s5", "I'm working toward getting tenure at MBARI by 2026.", "2024-04-01T08:10:00Z"),
-    # === CONSTRAINTS — STATE ===
+    # === CONSTRAINTS - STATE ===
     (
         "s6",
         "I'm currently dealing with budget cuts that threaten my research vessel access.",
@@ -134,7 +143,7 @@ CORPUS: list[tuple[str, str, str | None]] = [
     ),
     ("s6", "I'm stressed about the upcoming grant deadline on June 30th.", "2024-04-15T11:05:00Z"),
     ("s6", "Right now I'm mentoring three graduate students.", "2024-04-15T11:10:00Z"),
-    # === CONSTRAINTS — CAUSAL ===
+    # === CONSTRAINTS - CAUSAL ===
     (
         "s7",
         "Because of the budget cuts, I need to find alternative funding sources.",
@@ -254,7 +263,7 @@ CORPUS: list[tuple[str, str, str | None]] = [
 
 # ---------------------------------------------------------------------------
 # Test probes: (query, expected_keywords, test_category, notes)
-# expected_keywords: list of keyword groups — at least one keyword from each
+# expected_keywords: list of keyword groups - at least one keyword from each
 # group must appear in retrieved context for the probe to count as a hit.
 # ---------------------------------------------------------------------------
 
@@ -453,17 +462,31 @@ PROBES: list[Probe] = [
 
 _LLM_DEFAULT_BASE: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
+    "openai_compatible": "http://localhost:8000/v1",
     "ollama": "http://localhost:11434/v1",
 }
 
 
 def _get_llm_config() -> tuple[str, str, str]:
-    provider = (os.environ.get("LLM_EVAL__PROVIDER") or "openai").strip().lower()
-    model = (os.environ.get("LLM_EVAL__MODEL") or "gpt-4o-mini").strip()
-    api_key = (
-        os.environ.get("LLM_EVAL__API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+    provider = (
+        os.environ.get("LLM_EVAL__PROVIDER")
+        or os.environ.get("LLM_INTERNAL__PROVIDER")
+        or "openai"
+    ).strip().lower()
+    model = (
+        os.environ.get("LLM_EVAL__MODEL")
+        or os.environ.get("LLM_INTERNAL__MODEL")
+        or "gpt-4o-mini"
     ).strip()
-    base_url = (os.environ.get("LLM_EVAL__BASE_URL") or "").strip()
+    api_key = (
+        os.environ.get("LLM_EVAL__API_KEY")
+        or os.environ.get("LLM_INTERNAL__API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or ""
+    ).strip()
+    base_url = (
+        os.environ.get("LLM_EVAL__BASE_URL") or os.environ.get("LLM_INTERNAL__BASE_URL") or ""
+    ).strip()
     if not base_url:
         base_url = _LLM_DEFAULT_BASE.get(provider, "https://api.openai.com/v1")
     if provider != "openai" and not api_key:
@@ -471,22 +494,82 @@ def _get_llm_config() -> tuple[str, str, str]:
     return base_url.rstrip("/"), model, api_key
 
 
+def _parse_json_response(raw: str) -> dict:
+    text = raw.strip()
+    if not text:
+        raise json.JSONDecodeError("Empty LLM response", raw, 0)
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text = parts[1].strip()
+            if text.lower().startswith("json"):
+                text = text[4:].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        raise
+
+
 def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> str:
     from openai import OpenAI
 
     base_url, model, api_key = _get_llm_config()
     client = OpenAI(base_url=base_url, api_key=api_key)
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        return (resp.choices[0].message.content or "").strip()
-    except Exception as e:
-        print(f"  [LLM error] {e}")
-        return ""
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a strict JSON evaluator. Return valid JSON only with no markdown.",
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+    def _request(token_budget: int, allow_reasoning_effort: bool) -> tuple[str, str]:
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": token_budget,
+            "temperature": temperature,
+        }
+        if allow_reasoning_effort:
+            kwargs["reasoning_effort"] = "low"
+        resp = client.chat.completions.create(**kwargs)
+        choice = resp.choices[0]
+        message = choice.message
+        content = (message.content or "").strip()
+        finish_reason = getattr(choice, "finish_reason", "") or ""
+        return content, finish_reason
+
+    allow_reasoning_effort = True
+    token_budgets = [max_tokens, max(max_tokens * 3, 900)]
+
+    for token_budget in token_budgets:
+        try:
+            raw, finish_reason = _request(token_budget, allow_reasoning_effort)
+        except Exception as e:
+            if allow_reasoning_effort and "reasoning_effort" in str(e):
+                allow_reasoning_effort = False
+                try:
+                    raw, finish_reason = _request(token_budget, allow_reasoning_effort)
+                except Exception as retry_error:
+                    print(f"  [LLM error] {retry_error}")
+                    return ""
+            else:
+                print(f"  [LLM error] {e}")
+                return ""
+
+        if not raw:
+            continue
+        try:
+            _parse_json_response(raw)
+            return raw
+        except json.JSONDecodeError:
+            if finish_reason != "length":
+                return raw
+
+    return raw if "raw" in locals() else ""
 
 
 # ---------------------------------------------------------------------------
@@ -494,9 +577,10 @@ def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> s
 # ---------------------------------------------------------------------------
 
 
-def _api(method: str, path: str, payload: dict | None = None, tenant: str = TENANT_ID) -> dict:
-    url = f"{CML_BASE_URL}/api/v1{path}"
-    headers = {"X-API-Key": CML_API_KEY, "X-Tenant-ID": tenant, "Content-Type": "application/json"}
+def _api(method: str, path: str, payload: dict | None = None, tenant: str | None = None) -> dict:
+    url = build_api_url(CML_BASE_URL, path)
+    tenant_id = tenant or TENANT_ID
+    headers = {"X-API-Key": CML_API_KEY, "X-Tenant-ID": tenant_id, "Content-Type": "application/json"}
     for attempt in range(MAX_RETRIES):
         try:
             if method == "GET":
@@ -554,7 +638,7 @@ def cml_read_context(query: str, max_results: int = 20) -> str:
 
 def cml_health() -> bool:
     try:
-        resp = requests.get(f"{CML_BASE_URL}/api/v1/health", timeout=5)
+        resp = requests.get(build_api_url(CML_BASE_URL, "/health"), timeout=5)
         return resp.status_code == 200
     except Exception:
         return False
@@ -641,7 +725,7 @@ def run_probes(verbose: bool = False) -> list[ProbeResult]:
 
         result = ProbeResult(
             probe=probe,
-            context=combined[:500],
+            context=combined,
             raw_response=raw,
             keyword_hits=keyword_hits,
             precision_keywords_found=total_kw_found,
@@ -688,11 +772,11 @@ JUDGE_PROMPT = dedent("""\
     {context}
 
     Score the retrieval on a scale of 0-10:
-    - 10: Perfect retrieval — all expected information is present and relevant
-    - 7-9: Good — most expected information present, minor gaps
-    - 4-6: Partial — some expected information found but significant gaps
-    - 1-3: Poor — very little expected information retrieved
-    - 0: Complete failure — nothing relevant retrieved
+    - 10: Perfect retrieval - all expected information is present and relevant
+    - 7-9: Good - most expected information present, minor gaps
+    - 4-6: Partial - some expected information found but significant gaps
+    - 1-3: Poor - very little expected information retrieved
+    - 0: Complete failure - nothing relevant retrieved
 
     Also evaluate:
     - CONSTRAINT_CONSISTENCY: Did the system retrieve safety-critical constraints
@@ -722,15 +806,11 @@ def run_llm_judge(results: list[ProbeResult]) -> list[ProbeResult]:
         prompt = JUDGE_PROMPT.format(
             query=r.probe.query,
             expected=expected_str,
-            context=r.context[:2000],
+            context=r.context[:JUDGE_CONTEXT_LIMIT],
         )
         raw = _llm_call(prompt, max_tokens=300)
         try:
-            if "```" in raw:
-                raw = raw.split("```")[1].strip()
-                if raw.startswith("json"):
-                    raw = raw[4:].strip()
-            data = json.loads(raw)
+            data = _parse_json_response(raw)
             r.llm_judge_score = float(data.get("score", 0))
             r.llm_judge_reason = data.get("reason", "")
             constraint_flag = data.get("constraint_consistency", "na")
@@ -758,9 +838,11 @@ def run_llm_judge(results: list[ProbeResult]) -> list[ProbeResult]:
 # ---------------------------------------------------------------------------
 
 
-def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: float) -> None:
+def print_report(
+    results: list[ProbeResult], ingest_count: int, ingest_time: float, *, judge_ran: bool
+) -> None:
     print(f"\n{'=' * 70}")
-    print("  FINAL REPORT — CML Memory Quality Assessment")
+    print("  FINAL REPORT - CML Memory Quality Assessment")
     print(f"{'=' * 70}\n")
 
     # --- Ingestion summary ---
@@ -777,7 +859,7 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
     full_recall = sum(1 for r in results if all(r.keyword_hits)) / max(len(results), 1)
 
     print("  KEYWORD-BASED METRICS")
-    print(f"  {'─' * 50}")
+    print(f"  {'-' * 50}")
     print(
         f"  Group-level recall:  {keyword_recall:.1%} ({hit_groups}/{total_groups} keyword groups found)"
     )
@@ -787,20 +869,25 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
     print()
 
     # --- LLM judge scores ---
-    scores = [r.llm_judge_score for r in results]
-    avg_score = sum(scores) / max(len(scores), 1)
+    scores = [r.llm_judge_score for r in results] if judge_ran else []
+    avg_score = (sum(scores) / max(len(scores), 1)) if judge_ran else None
     pass_count = sum(1 for s in scores if s >= 7)
     partial_count = sum(1 for s in scores if 4 <= s < 7)
     fail_count = sum(1 for s in scores if s < 4)
 
     print("  LLM JUDGE SCORES")
-    print(f"  {'─' * 50}")
-    print(f"  Average score:       {avg_score:.1f}/10")
-    print(
-        f"  Pass (\u22657):          {pass_count}/{len(results)} ({pass_count / max(len(results), 1):.0%})"
-    )
-    print(f"  Partial (4-6):       {partial_count}/{len(results)}")
-    print(f"  Fail (<4):           {fail_count}/{len(results)}")
+    print(f"  {'-' * 50}")
+    if judge_ran:
+        print(f"  Average score:       {avg_score:.1f}/10")
+        print(
+            f"  Pass (>=7):         {pass_count}/{len(results)} ({pass_count / max(len(results), 1):.0%})"
+        )
+        print(f"  Partial (4-6):       {partial_count}/{len(results)}")
+        print(f"  Fail (<4):           {fail_count}/{len(results)}")
+    else:
+        print("  Skipped:             yes")
+        print("  Average score:       n/a")
+        print("  Pass/Partial/Fail:   n/a")
     print()
 
     # --- Per-category breakdown ---
@@ -809,14 +896,18 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
         categories.setdefault(r.probe.category, []).append(r)
 
     print("  PER-CATEGORY BREAKDOWN")
-    print(f"  {'─' * 50}")
+    print(f"  {'-' * 50}")
     print(f"  {'Category':<25s} {'Recall':>8s} {'Judge':>8s} {'Latency':>10s}")
-    print(f"  {'─' * 25} {'─' * 8} {'─' * 8} {'─' * 10}")
+    print(f"  {'-' * 25} {'-' * 8} {'-' * 8} {'-' * 10}")
     for cat, cat_results in sorted(categories.items()):
         cat_recall = sum(1 for r in cat_results if all(r.keyword_hits)) / max(len(cat_results), 1)
-        cat_judge = sum(r.llm_judge_score for r in cat_results) / max(len(cat_results), 1)
         cat_latency = sum(r.latency_ms for r in cat_results) / max(len(cat_results), 1)
-        print(f"  {cat:<25s} {cat_recall:>7.0%} {cat_judge:>7.1f} {cat_latency:>8.0f}ms")
+        judge_label = (
+            f"{sum(r.llm_judge_score for r in cat_results) / max(len(cat_results), 1):>7.1f}"
+            if judge_ran
+            else f"{'n/a':>7s}"
+        )
+        print(f"  {cat:<25s} {cat_recall:>7.0%} {judge_label} {cat_latency:>8.0f}ms")
     print()
 
     # --- Failure mode analysis ---
@@ -828,11 +919,15 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
 
     if failure_modes:
         print("  FAILURE MODE ANALYSIS")
-        print(f"  {'─' * 50}")
+        print(f"  {'-' * 50}")
         for fm, fm_results in sorted(failure_modes.items()):
             fm_pass = sum(1 for r in fm_results if all(r.keyword_hits))
-            fm_judge = sum(r.llm_judge_score for r in fm_results) / max(len(fm_results), 1)
-            print(f"  {fm:<30s} Recall: {fm_pass}/{len(fm_results)}  Judge: {fm_judge:.1f}/10")
+            if judge_ran:
+                fm_judge = sum(r.llm_judge_score for r in fm_results) / max(len(fm_results), 1)
+                judge_label = f"{fm_judge:.1f}/10"
+            else:
+                judge_label = "n/a"
+            print(f"  {fm:<30s} Recall: {fm_pass}/{len(fm_results)}  Judge: {judge_label}")
         print()
 
     # --- Latency ---
@@ -842,7 +937,7 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
     p95 = sorted(latencies)[int(len(latencies) * 0.95)] if latencies else 0
 
     print("  LATENCY")
-    print(f"  {'─' * 50}")
+    print(f"  {'-' * 50}")
     print(f"  Average:  {avg_lat:.0f}ms")
     print(f"  P50:      {p50:.0f}ms")
     print(f"  P95:      {p95:.0f}ms")
@@ -855,7 +950,7 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
     if constraint_probes:
         cc_pass = sum(1 for r in constraint_probes if r.constraint_relevant and all(r.keyword_hits))
         print("  CONSTRAINT CONSISTENCY")
-        print(f"  {'─' * 50}")
+        print(f"  {'-' * 50}")
         print(f"  Constraint probes:     {len(constraint_probes)}")
         print(
             f"  Constraints retrieved: {cc_pass}/{len(constraint_probes)} ({cc_pass / max(len(constraint_probes), 1):.0%})"
@@ -863,28 +958,36 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
         print()
 
     # --- Worst performers ---
-    print("  WORST PERFORMING PROBES (by judge score)")
-    print(f"  {'─' * 50}")
-    worst = sorted(results, key=lambda r: r.llm_judge_score)[:5]
-    for r in worst:
-        emoji = "\u274c" if r.llm_judge_score < 4 else "\u26a0\ufe0f"
-        print(f"  {emoji} {r.llm_judge_score:.1f}/10 | {r.probe.category:22s} | {r.probe.query}")
-        if r.llm_judge_reason:
-            print(f"        Reason: {r.llm_judge_reason[:100]}")
-    print()
+    if judge_ran:
+        print("  WORST PERFORMING PROBES (by judge score)")
+        print(f"  {'-' * 50}")
+        worst = sorted(results, key=lambda r: r.llm_judge_score)[:5]
+        for r in worst:
+            emoji = "\u274c" if r.llm_judge_score < 4 else "\u26a0\ufe0f"
+            print(f"  {emoji} {r.llm_judge_score:.1f}/10 | {r.probe.category:22s} | {r.probe.query}")
+            if r.llm_judge_reason:
+                print(f"        Reason: {r.llm_judge_reason[:100]}")
+        print()
 
     # --- Overall verdict ---
     print(f"  {'=' * 50}")
-    if avg_score >= 7 and keyword_recall >= 0.8:
-        print(f"  \u2705 OVERALL: PASS (score {avg_score:.1f}/10, recall {keyword_recall:.0%})")
-    elif avg_score >= 4 and keyword_recall >= 0.5:
-        print(
-            f"  \u26a0\ufe0f  OVERALL: PARTIAL (score {avg_score:.1f}/10, recall {keyword_recall:.0%})"
-        )
+    if judge_ran and avg_score is not None:
+        if avg_score >= 7 and keyword_recall >= 0.8:
+            print(f"  \u2705 OVERALL: PASS (score {avg_score:.1f}/10, recall {keyword_recall:.0%})")
+        elif avg_score >= 4 and keyword_recall >= 0.5:
+            print(
+                f"  \u26a0\ufe0f  OVERALL: PARTIAL (score {avg_score:.1f}/10, recall {keyword_recall:.0%})"
+            )
+        else:
+            print(
+                f"  \u274c OVERALL: NEEDS IMPROVEMENT (score {avg_score:.1f}/10, recall {keyword_recall:.0%})"
+            )
+    elif keyword_recall >= 0.8:
+        print(f"  \u2705 OVERALL: PASS (judge skipped, recall {keyword_recall:.0%})")
+    elif keyword_recall >= 0.5:
+        print(f"  \u26a0\ufe0f  OVERALL: PARTIAL (judge skipped, recall {keyword_recall:.0%})")
     else:
-        print(
-            f"  \u274c OVERALL: NEEDS IMPROVEMENT (score {avg_score:.1f}/10, recall {keyword_recall:.0%})"
-        )
+        print(f"  \u274c OVERALL: NEEDS IMPROVEMENT (judge skipped, recall {keyword_recall:.0%})")
     print(f"  {'=' * 50}\n")
 
 
@@ -893,15 +996,45 @@ def print_report(results: list[ProbeResult], ingest_count: int, ingest_time: flo
 # ---------------------------------------------------------------------------
 
 
+def _load_previous_tenant() -> str | None:
+    for candidate in (RESULTS_PATH, LEGACY_RESULTS_PATH):
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+        tenant = data.get("tenant")
+        if isinstance(tenant, str) and tenant.strip():
+            return tenant
+    return None
+
+
 def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="CML Memory Quality Test")
-    parser.add_argument("--skip-ingestion", action="store_true", help="Reuse existing data")
+    parser.add_argument(
+        "--skip-ingestion",
+        action="store_true",
+        help="Reuse an existing tenant (defaults to the last saved run)",
+    )
     parser.add_argument("--skip-judge", action="store_true", help="Skip LLM judge (keyword-only)")
     parser.add_argument("--verbose", action="store_true", help="Show per-probe details")
     parser.add_argument("--tenant", type=str, default=None, help="Override tenant ID")
+    parser.add_argument(
+        "--results-path",
+        type=Path,
+        default=DEFAULT_RESULTS_PATH,
+        help="Where to save the JSON summary. Defaults to artifacts/quality/quality_test_results.json.",
+    )
     args = parser.parse_args()
+
+    global RESULTS_PATH
+    RESULTS_PATH = Path(args.results_path)
+
+    if args.skip_ingestion and not args.tenant:
+        previous_tenant = _load_previous_tenant()
+        if previous_tenant:
+            args.tenant = previous_tenant
 
     if args.tenant:
         global TENANT_ID
@@ -910,6 +1043,8 @@ def main() -> None:
     print("\n  CML Memory Quality Test")
     print(f"  Target: {CML_BASE_URL}")
     print(f"  Tenant: {TENANT_ID}")
+    if args.skip_ingestion and args.tenant:
+        print("  Reusing existing tenant data")
 
     if not cml_health():
         print(f"\n  \u274c CML API not reachable at {CML_BASE_URL}")
@@ -928,19 +1063,20 @@ def main() -> None:
     results = run_probes(verbose=args.verbose)
 
     # Phase 3: Judge
+    judge_ran = False
     if not args.skip_judge:
         try:
             _get_llm_config()
             results = run_llm_judge(results)
+            judge_ran = True
         except Exception as e:
             print(f"\n  \u26a0\ufe0f  LLM judge skipped: {e}")
             print("  Set LLM_EVAL__PROVIDER, LLM_EVAL__MODEL, LLM_EVAL__BASE_URL in .env")
 
     # Phase 4: Report
-    print_report(results, ingest_count, ingest_time)
+    print_report(results, ingest_count, ingest_time, judge_ran=judge_ran)
 
     # Save JSON results
-    out_path = Path(__file__).parent.parent / "scripts" / "quality_test_results.json"
     out_data = {
         "tenant": TENANT_ID,
         "timestamp": datetime.now(UTC).isoformat(),
@@ -953,16 +1089,17 @@ def main() -> None:
                 "recall_groups_hit": r.recall_groups_hit,
                 "recall_groups_total": r.recall_groups_total,
                 "latency_ms": round(r.latency_ms, 1),
-                "judge_score": r.llm_judge_score,
-                "judge_reason": r.llm_judge_reason,
+                "judge_score": r.llm_judge_score if judge_ran else None,
+                "judge_reason": r.llm_judge_reason if judge_ran else "",
                 "keyword_hits": r.keyword_hits,
             }
             for r in results
         ],
     }
     try:
-        out_path.write_text(json.dumps(out_data, indent=2))
-        print(f"  Results saved to {out_path}")
+        RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        RESULTS_PATH.write_text(json.dumps(out_data, indent=2), encoding="utf-8")
+        print(f"  Results saved to {RESULTS_PATH}")
     except Exception:
         pass
 

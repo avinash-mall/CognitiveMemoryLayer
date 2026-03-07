@@ -22,11 +22,23 @@ from src.utils.embeddings import MockEmbeddingClient
 
 
 class _MockGraph:
+    async def merge_node(self, *args, **kwargs):
+        return "mock"
+
     async def merge_edge(self, *args, **kwargs):
         return "mock"
 
+    async def merge_nodes_batch(self, *args, **kwargs):
+        return 0
+
+    async def merge_edges_batch(self, *args, **kwargs):
+        return []
+
     async def get_entity_facts(self, *args, **kwargs):
         return []
+
+    async def get_entity_facts_batch(self, *args, **kwargs):
+        return {}
 
     async def personalized_pagerank(self, *args, **kwargs):
         return []

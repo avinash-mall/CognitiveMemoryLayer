@@ -1,146 +1,106 @@
-"""
-Basic Usage Example - Cognitive Memory Layer.
+"""CRUD-oriented py-cml example with typed writes and filtered reads."""
 
-Uses the py-cml package. Set CML_API_KEY and CML_BASE_URL in .env before running.
+from __future__ import annotations
 
-Demonstrates: write, read, update, forget, stats.
-
-Prerequisites:
-    1. Start the API server:
-       docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-       docker compose -f docker/docker-compose.yml up api
-    2. pip install cognitive-memory-layer  # or from repo root: pip install -e .
-"""
-
-import os
-from pathlib import Path
 from uuid import UUID
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-except ImportError:
-    pass
+from _shared import build_cml_config, explain_connection_failure, print_header
 
 from cml import CognitiveMemoryLayer
-from cml.models.enums import MemoryType
+from cml.models import MemoryType
+
+EXAMPLE_META = {
+    "name": "basic_usage",
+    "kind": "python",
+    "summary": "Typed writes plus read, update, stats, and forget flows.",
+    "requires_api": True,
+    "requires_api_key": True,
+    "requires_base_url": True,
+    "requires_admin_key": False,
+    "requires_embedded": False,
+    "requires_openai": False,
+    "requires_anthropic": False,
+    "interactive": False,
+    "timeout_sec": 60,
+}
 
 
-def main():
-    base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
-    with CognitiveMemoryLayer(
-        api_key=os.environ.get("CML_API_KEY"),
-        base_url=base_url,
-    ) as memory:
-        _run_basic_usage(memory, "example-session-001")
+def main() -> int:
+    print_header("CML Basic Usage")
+    session_id = "examples-basic-usage"
+    try:
+        with CognitiveMemoryLayer(config=build_cml_config()) as memory:
+            writes = [
+                (
+                    "The user is Alice and works as a software engineer.",
+                    MemoryType.SEMANTIC_FACT,
+                    ["identity"],
+                ),
+                (
+                    "The user prefers Python for backend work.",
+                    MemoryType.PREFERENCE,
+                    ["preferences"],
+                ),
+                (
+                    "The user is allergic to shellfish and should not receive seafood recommendations.",
+                    MemoryType.CONSTRAINT,
+                    ["medical", "constraints"],
+                ),
+                (
+                    "On 2026-02-15 the user said they want to learn Rust this year.",
+                    MemoryType.EPISODIC_EVENT,
+                    ["timeline"],
+                ),
+                (
+                    "The user might be interested in machine learning.",
+                    MemoryType.HYPOTHESIS,
+                    ["inference"],
+                ),
+            ]
 
+            for text, memory_type, tags in writes:
+                response = memory.write(
+                    text,
+                    session_id=session_id,
+                    context_tags=tags,
+                    memory_type=memory_type,
+                )
+                print(f"Stored {memory_type.value}: success={response.success}")
 
-def _run_basic_usage(memory: CognitiveMemoryLayer, session_id: str) -> None:
+            filtered = memory.read(
+                "What programming languages does the user like?",
+                memory_types=[MemoryType.PREFERENCE, MemoryType.CONSTRAINT],
+            )
+            print(f"\nFiltered read returned {filtered.total_count} memories")
+            for item in filtered.memories:
+                print(f"  - [{item.type}] {item.text}")
 
-    print("=" * 60)
-    print("Cognitive Memory Layer - Basic Usage Example")
-    print("=" * 60)
+            llm_ready = memory.read("Summarize the user", response_format="llm_context")
+            print(f"\nLLM context snippet: {(llm_ready.context or '')[:200]}")
+            if llm_ready.constraints:
+                print("Constraints:")
+                for constraint in llm_ready.constraints[:3]:
+                    print(f"  - {constraint.text}")
 
-    # 1. Store different types of memories
-    print("\n1. STORING MEMORIES")
-    print("-" * 40)
-    memory.write(
-        "The user's name is Alice and she works as a software engineer at TechCorp.",
-        session_id=session_id,
-        context_tags=["personal"],
-        memory_type=MemoryType.SEMANTIC_FACT,
-    )
-    print("✓ Stored semantic fact")
-    memory.write(
-        "User prefers Python over JavaScript for backend development.",
-        session_id=session_id,
-        context_tags=["preference"],
-        memory_type=MemoryType.PREFERENCE,
-    )
-    print("✓ Stored preference")
-    memory.write(
-        "User is allergic to shellfish - never recommend seafood restaurants with shellfish.",
-        session_id=session_id,
-        context_tags=["constraint"],
-        memory_type=MemoryType.CONSTRAINT,
-    )
-    print("✓ Stored constraint")
-    memory.write(
-        "On 2024-01-15, user mentioned they are planning to learn Rust this year.",
-        session_id=session_id,
-        context_tags=["conversation"],
-        memory_type=MemoryType.EPISODIC_EVENT,
-    )
-    print("✓ Stored episodic event")
-    memory.write(
-        "User might be interested in machine learning based on their questions about PyTorch.",
-        session_id=session_id,
-        context_tags=["conversation"],
-        memory_type=MemoryType.HYPOTHESIS,
-    )
-    print("✓ Stored hypothesis")
+            hypothesis = memory.read("machine learning")
+            if hypothesis.memories:
+                memory_id = hypothesis.memories[0].id
+                if not isinstance(memory_id, UUID):
+                    memory_id = UUID(str(memory_id))
+                updated = memory.update(memory_id=memory_id, feedback="correct")
+                print(f"\nUpdated hypothesis version -> {updated.version}")
 
-    # 2. Retrieve memories
-    print("\n2. RETRIEVING MEMORIES")
-    print("-" * 40)
-    result = memory.read("What programming languages does the user like?")
-    print("\nQuery: 'What programming languages does the user like?'")
-    print(f"Found {result.total_count} relevant memories ({result.elapsed_ms:.1f}ms)")
-    for mem in result.memories[:3]:
-        print(f"  - [{mem.type}] {mem.text[:60]}... (confidence: {mem.confidence:.0%})")
-    result = memory.read(
-        "Tell me about the user",
-        response_format="llm_context",
-    )
-    print("\nQuery: 'Tell me about the user' (LLM context format)")
-    print("LLM Context:")
-    print("-" * 40)
-    ctx = result.context or result.llm_context
-    if ctx:
-        print(ctx[:500] + ("..." if len(ctx) > 500 else ""))
-    result = memory.read(
-        "dietary restrictions",
-        memory_types=[MemoryType.CONSTRAINT, MemoryType.PREFERENCE],
-    )
-    print("\nQuery: 'dietary restrictions' (constraints & preferences only)")
-    print(f"Found {result.total_count} memories")
-    for mem in result.memories:
-        print(f"  - [{mem.type}] {mem.text}")
-    if result.constraints:
-        print("  Constraints (server-extracted when enabled):")
-        for c in result.constraints:
-            print(f"    - {c.text}")
+            stats = memory.stats()
+            print(f"\nStats by type: {stats.by_type}")
 
-    # 3. Update memories with feedback
-    print("\n3. UPDATING MEMORIES")
-    print("-" * 40)
-    result = memory.read("machine learning hypothesis")
-    if result.memories:
-        mem = result.memories[0]
-        mid = mem.id if isinstance(mem.id, UUID) else UUID(str(mem.id))
-        memory.update(memory_id=mid, feedback="correct")
-        print(f"✓ Marked as correct (reinforced): {mem.text[:50]}...")
-
-    # 4. Memory statistics
-    print("\n4. MEMORY STATISTICS")
-    print("-" * 40)
-    stats = memory.stats()
-    print(f"Total memories: {stats.total_memories}")
-    print(f"Active memories: {stats.active_memories}")
-    print(f"Average confidence: {stats.avg_confidence:.0%}")
-    print(f"By type: {stats.by_type}")
-
-    # 5. Forget memories
-    print("\n5. FORGETTING MEMORIES")
-    print("-" * 40)
-    resp = memory.forget(query="planning to learn Rust", action="archive")
-    print(f"✓ Archived {resp.affected_count} memories about learning Rust")
-
-    print("\n" + "=" * 60)
-    print("Example completed successfully!")
-    print("=" * 60)
+            forgotten = memory.forget(query="learn Rust", action="archive")
+            print(f"Archived {forgotten.affected_count} matching memories")
+        return 0
+    except Exception as exc:
+        print(f"Example failed: {exc}")
+        print(explain_connection_failure())
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
