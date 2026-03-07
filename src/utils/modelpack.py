@@ -350,6 +350,11 @@ class ModelPackRuntime:
                 )
                 return SpanPrediction(task=task, spans=spans)
             return SpanPrediction(task=task, spans=())
+        except ImportError as exc:
+            msg = f"task:{task}: {exc}"
+            if msg not in self._load_errors:
+                self._load_errors.append(msg)
+            return None
         except Exception:
             return None
 

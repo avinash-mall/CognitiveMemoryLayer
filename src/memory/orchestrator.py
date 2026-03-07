@@ -203,7 +203,7 @@ class MemoryOrchestrator:
         reconsolidation = ReconsolidationService(
             memory_store=episodic_store,
             llm_client=internal_llm,
-            fact_extractor=LLMFactExtractor(internal_llm),
+            fact_extractor=LLMFactExtractor(internal_llm) if internal_llm is not None else None,
             redis_client=getattr(db_manager, "redis", None),
         )
 
@@ -303,7 +303,7 @@ class MemoryOrchestrator:
         reconsolidation = ReconsolidationService(
             memory_store=episodic_store,
             llm_client=runtime_llm,
-            fact_extractor=LLMFactExtractor(runtime_llm),
+            fact_extractor=LLMFactExtractor(runtime_llm) if runtime_llm is not None else None,
             redis_client=None,
         )
 

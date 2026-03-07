@@ -254,6 +254,8 @@ class TestMemoryOrchestrator:
         deps["hippocampal"].store.get_by_id = AsyncMock(return_value=None)
         deps["hippocampal"].store.update = AsyncMock(return_value=None)
         deps["hippocampal"].store.scan = AsyncMock(return_value=[])
+        deps["neocortical"].facts = MagicMock()
+        deps["neocortical"].facts.get_facts_by_category = AsyncMock(return_value=[])
         deps["retriever"].retrieve = AsyncMock(
             return_value=MemoryPacket(
                 query="test",
@@ -380,7 +382,9 @@ class TestMemoryOrchestrator:
 
         # Setup neocortical graph mock
         mock_dependencies["neocortical"].graph = MagicMock()
-        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(return_value="node-1")
+        mock_dependencies["neocortical"].graph.merge_nodes_batch = AsyncMock(
+            return_value=["node-1"]
+        )
         mock_dependencies["neocortical"].store_relations_batch = AsyncMock(return_value=["edge-1"])
 
         result = await orchestrator.write(tenant_id="t1", content="I live in Paris")
@@ -388,11 +392,10 @@ class TestMemoryOrchestrator:
         assert result["chunks_created"] == 1
 
         # Entity node should have been merged
-        mock_dependencies["neocortical"].graph.merge_node.assert_called_once_with(
+        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_called_once_with(
             tenant_id="t1",
             scope_id="t1",
-            entity="Paris",
-            entity_type="LOCATION",
+            nodes=[{"entity": "Paris", "entity_type": "LOCATION"}],
         )
 
         # Relation edge should have been merged
@@ -424,9 +427,9 @@ class TestMemoryOrchestrator:
             return_value=([stored_record], None, [])
         )
 
-        # Make Neo4j merge_node explode
+        # Make Neo4j entity batch merge explode
         mock_dependencies["neocortical"].graph = MagicMock()
-        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(
+        mock_dependencies["neocortical"].graph.merge_nodes_batch = AsyncMock(
             side_effect=RuntimeError("Neo4j connection refused")
         )
 
@@ -460,7 +463,7 @@ class TestMemoryOrchestrator:
 
         # Make store_relations_batch explode
         mock_dependencies["neocortical"].graph = MagicMock()
-        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(return_value="ok")
+        mock_dependencies["neocortical"].graph.merge_nodes_batch = AsyncMock(return_value=["ok"])
         mock_dependencies["neocortical"].store_relations_batch = AsyncMock(
             side_effect=RuntimeError("Neo4j timeout")
         )
@@ -492,14 +495,14 @@ class TestMemoryOrchestrator:
         )
 
         mock_dependencies["neocortical"].graph = MagicMock()
-        mock_dependencies["neocortical"].graph.merge_node = AsyncMock()
+        mock_dependencies["neocortical"].graph.merge_nodes_batch = AsyncMock()
         mock_dependencies["neocortical"].store_relations_batch = AsyncMock()
 
         result = await orchestrator.write(tenant_id="t1", content="Hello world")
 
         assert result["chunks_created"] == 1
-        # Neither merge_node nor store_relations_batch should be called
-        mock_dependencies["neocortical"].graph.merge_node.assert_not_called()
+        # Neither entity nor relation batch sync should be called
+        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_not_called()
         mock_dependencies["neocortical"].store_relations_batch.assert_not_called()
 
     @pytest.mark.asyncio
@@ -525,7 +528,9 @@ class TestMemoryOrchestrator:
         )
 
         mock_dependencies["neocortical"].graph = MagicMock()
-        mock_dependencies["neocortical"].graph.merge_node = AsyncMock(return_value="node-1")
+        mock_dependencies["neocortical"].graph.merge_nodes_batch = AsyncMock(
+            return_value=["node-1"]
+        )
         mock_dependencies["neocortical"].store_relations_batch = AsyncMock()
 
         result = await orchestrator.write(
@@ -533,11 +538,10 @@ class TestMemoryOrchestrator:
         )
 
         assert result["eval_outcome"] == "stored"
-        mock_dependencies["neocortical"].graph.merge_node.assert_called_once_with(
+        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_called_once_with(
             tenant_id="t1",
             scope_id="t1",
-            entity="Tokyo",
-            entity_type="LOCATION",
+            nodes=[{"entity": "Tokyo", "entity_type": "LOCATION"}],
         )
 
 
@@ -706,6 +710,7 @@ class TestOrchestratorFactory:
             mock_get_hf.assert_called_once()
             assert orch.retriever.classifier.llm is None
             assert orch.reconsolidation.conflict_detector.llm is None
+            assert orch.reconsolidation.fact_extractor is None
             assert orch.consolidation.extractor.llm is None
             assert orch.forgetting.executor.compression_llm_client is None
             assert orch.consolidation.extractor.fallback_summarizer is fake_summarizer
@@ -732,6 +737,7 @@ class TestOrchestratorFactory:
             mock_get_hf.assert_not_called()
             assert orch.retriever.classifier.llm is fake_llm
             assert orch.reconsolidation.conflict_detector.llm is fake_llm
+            assert orch.reconsolidation.fact_extractor is not None
             assert orch.consolidation.extractor.llm is fake_llm
             assert orch.forgetting.executor.compression_llm_client is fake_llm
             assert orch.consolidation.extractor.fallback_summarizer is None

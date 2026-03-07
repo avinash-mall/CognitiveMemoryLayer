@@ -1,0 +1,29 @@
+{
+  "task_name": "fact_extraction_structured",
+  "type": "token_span_metadata",
+  "labels": {
+    "0": "O",
+    "1": "B-attribute",
+    "2": "I-attribute",
+    "3": "B-causal",
+    "4": "I-causal",
+    "5": "B-goal",
+    "6": "I-goal",
+    "7": "B-identity",
+    "8": "I-identity",
+    "9": "B-location",
+    "10": "I-location",
+    "11": "B-occupation",
+    "12": "I-occupation",
+    "13": "B-policy",
+    "14": "I-policy",
+    "15": "B-preference",
+    "16": "I-preference",
+    "17": "B-state",
+    "18": "I-state",
+    "19": "B-value",
+    "20": "I-value"
+  },
+  "calibration_split": "eval",
+  "note": "Token span models do not use a single scalar threshold."
+}

@@ -33,11 +33,11 @@ Beyond the three family-level classifiers, the pipeline supports 10 task-specifi
 | `retrieval_constraint_relevance_pair` | Domain keyword bonus in retriever | `pair_ranking` | MS MARCO, BEIR, Quora duplicates | Yes |
 | `memory_rerank_pair` | Weighted reranker core | `pair_ranking` | MS MARCO, BEIR, SNLI, MultiNLI, ANLI | Yes |
 | `novelty_pair` | Jaccard novelty in write gate and interference detector | `pair_ranking` | Quora duplicates, PAWS, GLUE (QQP/MRPC/STS-B) | Yes |
-| `fact_extraction_structured` *(planned)* | Regex/spaCy fallback extraction and dependency-based relation extraction | `token_classification` | DocRED, Re-TACRED | Yes |
+| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `token_classification` | Project weak labels, DocRED/Re-TACRED seeds | Yes |
 | `schema_match_pair` | Jaccard schema similarity in consolidation | `pair_ranking` | STS-B, FEVER, SNLI, MultiNLI | Yes |
 | `reconsolidation_candidate_pair` | Word-overlap top-k in reconsolidation | `pair_ranking` | MS MARCO, FEVER, SNLI, ANLI | Yes |
 | `write_importance_regression` *(deferred)* | Fixed importance bins in write gate | `single_regression` | None (internal labels only) | Yes (after score supervision) |
-| `pii_span_detection` *(planned)* | Regex+NER span redaction | `token_classification` | PII-Masking-200k | Yes |
+| `pii_span_detection` | Regex+NER span redaction | `token_classification` | PII-Masking-200k | Yes |
 | `consolidation_gist_quality` | String-match gist blacklist and mixed-topic detection | `classification` | SummEval, FRANK, TRUE | Yes |
 | `forgetting_action_policy` | Heuristic action choice in forgetting scorer | `classification` | None (internal labels only) | Yes (mandatory) |
 
@@ -262,7 +262,7 @@ When `[[tasks]]` blocks are defined in `model_pipeline.toml`, the trainer dispat
 | `classification` | `_train_classification_task` | TF-IDF + SGDClassifier |
 | `pair_ranking` | `_train_pair_ranking` | TF-IDF + SGDClassifier (logistic score) |
 | `single_regression` | `_train_single_regression` | TF-IDF + SGDRegressor |
-| `token_classification` | `_train_token_classification` | Placeholder (transformer path) |
+| `token_classification` | `_train_token_classification` | Hugging Face token-classification trainer |
 
 Task specs are defined via `TaskSpec` dataclass: `task_name`, `family`, `input_type`, `objective`, `labels`, `artifact_name`, `metrics`.
 

@@ -250,7 +250,7 @@ class TestTrainingConfigAndStrictMode:
             artifact_name="pii_span_detection",
             metrics=["span_f1"],
         )
-        with pytest.raises(RuntimeError, match="Strict mode"):
+        with pytest.raises(Exception, match="Missing prepared token split"):
             _train_task(
                 spec,
                 prepared_dir=Path("/nonexistent"),
@@ -280,7 +280,7 @@ class TestTrainingConfigAndStrictMode:
         )
         assert result == {}
 
-    def test_token_classification_tasks_disabled_in_toml(self):
+    def test_token_classification_tasks_enabled_in_toml(self):
         import tomllib
 
         toml_path = (
@@ -294,7 +294,7 @@ class TestTrainingConfigAndStrictMode:
         token_tasks = [t for t in tasks if t.get("objective") == "token_classification"]
         assert len(token_tasks) >= 2
         for t in token_tasks:
-            assert t.get("enabled") is False, f"{t['task_name']} should be disabled"
+            assert t.get("enabled") is True, f"{t['task_name']} should be enabled"
 
     def test_write_importance_regression_enabled_in_toml(self):
         import tomllib

@@ -170,6 +170,136 @@ NEW_SINGLE_TASK_LABELS: dict[str, list[str]] = {
 
 ALL_PAIR_TASKS = PAIR_TASKS + tuple(NEW_PAIR_TASK_LABELS.keys())
 ALL_ROUTER_TASKS = ROUTER_TASKS + tuple(NEW_SINGLE_TASK_LABELS.keys())
+TOKEN_TASKS = ("fact_extraction_structured", "pii_span_detection")
+FACT_SPAN_LABELS = [
+    "preference",
+    "identity",
+    "location",
+    "occupation",
+    "attribute",
+    "goal",
+    "value",
+    "state",
+    "causal",
+    "policy",
+]
+
+_FACT_HEURISTIC_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "preference",
+        (
+            re.compile(
+                r"\b(?:i|we)\s+(?:really\s+|also\s+|just\s+|still\s+)*(?:prefer|like|love|enjoy|hate|dislike)\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "identity",
+        (
+            re.compile(
+                r"\b(?:my name is|call me)\s+(?P<value>[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "location",
+        (
+            re.compile(
+                r"\bi live in\s+(?P<value>[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"\bi(?: am|'m)\s+(?:from|based in)\s+(?P<value>[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"\bi moved to\s+(?P<value>[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "occupation",
+        (
+            re.compile(
+                r"\bi work as\s+(?:a|an)?\s*(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"\bi(?: am|'m)\s+(?:a|an)\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "attribute",
+        (
+            re.compile(
+                r"\bi(?: am|'m)\s+(?P<value>(?:allergic to|left-handed|right-handed|vegetarian|vegan|detail-oriented|introverted|extroverted)[^.!?;\n]*)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "goal",
+        (
+            re.compile(
+                r"\b(?:my goal is to|i want to|i need to|i'm trying to|i am trying to)\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "value",
+        (
+            re.compile(
+                r"\b(?:i value|i care about)\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"(?P<value>[A-Za-z][^.!?;\n]{2,})\s+matters to me\b",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "state",
+        (
+            re.compile(
+                r"\bi(?: am|'m)\s+(?:currently\s+)?(?P<value>(?:stressed|tired|exhausted|excited|worried|anxious|calm|busy|overwhelmed)[^.!?;\n]*)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"\bi feel\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "causal",
+        (
+            re.compile(
+                r"\bbecause\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(
+                r"\b(?P<value>[^.!?;\n]+(?:triggers|causes)[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+    (
+        "policy",
+        (
+            re.compile(
+                r"\b(?:never|always|please don't|do not)\s+(?P<value>[^.!?;\n]+)",
+                flags=re.IGNORECASE,
+            ),
+        ),
+    ),
+)
 
 
 def _enabled_task_label_map(
@@ -474,6 +604,7 @@ class _TokenTaskStore:
         self.max_per_task = max_per_task
         self.rows: list[dict] = []
         self._counts: dict[str, int] = defaultdict(int)
+        self._seen: set[tuple[str, str, str]] = set()
 
     def count(self, task: str) -> int:
         return int(self._counts.get(task, 0))
@@ -498,14 +629,21 @@ class _TokenTaskStore:
         cleaned = _clean(text, 2000)
         if not cleaned or not task:
             return False
+        normalized_spans = _normalize_token_spans(spans, text=cleaned)
+        if not normalized_spans:
+            return False
+        key = (task, _norm_key(cleaned), json.dumps(normalized_spans, sort_keys=True))
+        if key in self._seen:
+            return False
         if self._counts[task] >= self.max_per_task:
             return False
+        self._seen.add(key)
         self._counts[task] += 1
         self.rows.append(
             {
                 "text": cleaned,
                 "task": task,
-                "spans": spans,
+                "spans": normalized_spans,
                 "source": source,
                 "language": str(language),
             }
@@ -564,6 +702,548 @@ def _seed_regression_store_from_df(rows: _RegressionTaskStore, df: pd.DataFrame)
             language=str(getattr(item, "language", "en")),
             extras=extras,
         )
+
+
+def _enabled_token_tasks(task_specs_raw: list[dict], *, family: str) -> set[str]:
+    return {
+        str(spec.get("task_name", "")).strip()
+        for spec in task_specs_raw
+        if bool(spec.get("enabled", True))
+        and str(spec.get("family", "")).strip() == family
+        and str(spec.get("objective", "")).strip() == "token_classification"
+        and str(spec.get("task_name", "")).strip()
+    }
+
+
+def _normalize_token_spans(
+    spans: list[dict] | Any,
+    *,
+    text: str,
+    uppercase_labels: bool = False,
+    max_spans: int | None = None,
+) -> list[dict[str, Any]]:
+    if spans is None:
+        return []
+    if isinstance(spans, str):
+        try:
+            spans = json.loads(spans)
+        except Exception:
+            return []
+    out: list[dict[str, Any]] = []
+    for item in spans if isinstance(spans, list) else []:
+        if isinstance(item, dict):
+            start = item.get("start")
+            end = item.get("end")
+            label = item.get("label")
+        elif isinstance(item, (list, tuple)) and len(item) >= 3:
+            start, end, label = item[0], item[1], item[2]
+        else:
+            continue
+        try:
+            s = int(start)  # type: ignore[arg-type]
+            e = int(end)  # type: ignore[arg-type]
+        except Exception:
+            continue
+        raw_label = str(label or "").strip()
+        if uppercase_labels:
+            raw_label = raw_label.upper()
+        if not raw_label or s < 0 or e <= s or e > len(text):
+            continue
+        if not text[s:e].strip():
+            continue
+        out.append({"start": s, "end": e, "label": raw_label})
+        if max_spans is not None and len(out) >= max_spans:
+            break
+    out.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["label"])))
+    return out
+
+
+def _seed_token_store_from_df(rows: _TokenTaskStore, df: pd.DataFrame) -> None:
+    if df.empty:
+        return
+    for item in df.itertuples(index=False):
+        rows.add(
+            str(getattr(item, "task", "")),
+            str(getattr(item, "text", "")),
+            getattr(item, "spans", []),
+            str(getattr(item, "source", "prepared:token")),
+            language=str(getattr(item, "language", "en")),
+        )
+
+
+def _load_existing_token_df(prepared_dir: Path, task_name: str) -> pd.DataFrame:
+    parts: list[pd.DataFrame] = []
+    for split in LOCAL_BOOTSTRAP_SPLITS:
+        path = prepared_dir / f"{task_name}_{split}.parquet"
+        if not path.exists():
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            _warn(f"Failed reading existing token split {path.name}: {exc}")
+            continue
+        required = {"text", "task", "spans"}
+        if not required.issubset(df.columns):
+            _warn(
+                f"Existing token split missing required columns ({path.name}): {sorted(required)}"
+            )
+            continue
+        if "source" not in df.columns:
+            df = df.copy()
+            df["source"] = f"prepared:{task_name}:{split}"
+        if "language" not in df.columns:
+            df = df.copy()
+            df["language"] = "en"
+        df = df.copy()
+        df["spans"] = [
+            _normalize_token_spans(value, text=str(text or ""))
+            for value, text in zip(df["spans"].tolist(), df["text"].tolist(), strict=False)
+        ]
+        parts.append(df[["text", "task", "spans", "source", "language"]])
+    if not parts:
+        return pd.DataFrame(columns=["text", "task", "spans", "source", "language"])
+    return pd.concat(parts, ignore_index=True, sort=False)
+
+
+def _existing_token_split_counts(prepared_dir: Path, task_name: str) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for split in LOCAL_BOOTSTRAP_SPLITS:
+        path = prepared_dir / f"{task_name}_{split}.parquet"
+        if not path.exists():
+            out[split] = 0
+            continue
+        try:
+            out[split] = len(pd.read_parquet(path))
+        except Exception:
+            out[split] = 0
+    return out
+
+
+def _missing_token_tasks(
+    token_frames: dict[str, pd.DataFrame],
+    *,
+    task_names: set[str],
+    target_per_task: int,
+) -> tuple[dict[str, int], int]:
+    missing: dict[str, int] = {}
+    total = 0
+    for task_name in sorted(task_names):
+        df = token_frames.get(task_name)
+        have = 0 if df is None or df.empty else len(df)
+        miss = max(0, int(target_per_task) - have)
+        missing[task_name] = miss
+        total += miss
+    return missing, total
+
+
+def _token_signature(spans: list[dict]) -> str:
+    labels = sorted(str(item.get("label", "")).strip() for item in spans if item.get("label"))
+    if not labels:
+        return "__empty__"
+    return "|".join(labels)
+
+
+def _split_token_rows(
+    df: pd.DataFrame, seed: int, ratios: dict[str, float]
+) -> dict[str, pd.DataFrame]:
+    rng = random.Random(seed)
+    train_parts: list[pd.DataFrame] = []
+    test_parts: list[pd.DataFrame] = []
+    eval_parts: list[pd.DataFrame] = []
+    keyed = df.copy()
+    keyed["__signature"] = [
+        _token_signature(value if isinstance(value, list) else [])
+        for value in keyed["spans"].tolist()
+    ]
+    for (_task, _signature), group in keyed.groupby(["task", "__signature"], sort=False):
+        idx = list(group.index)
+        rng.shuffle(idx)
+        n_train, n_test, n_eval = _split_counts(len(idx), ratios)
+        train_parts.append(keyed.loc[idx[:n_train]])
+        test_parts.append(keyed.loc[idx[n_train : n_train + n_test]])
+        eval_parts.append(keyed.loc[idx[n_train + n_test : n_train + n_test + n_eval]])
+    out = {
+        "train": pd.concat(train_parts, ignore_index=True)
+        if train_parts
+        else keyed.iloc[0:0].copy(),
+        "test": pd.concat(test_parts, ignore_index=True) if test_parts else keyed.iloc[0:0].copy(),
+        "eval": pd.concat(eval_parts, ignore_index=True) if eval_parts else keyed.iloc[0:0].copy(),
+    }
+    for split_name, split_df in out.items():
+        shuffled = split_df.sample(frac=1, random_state=seed).reset_index(drop=True)
+        out[split_name] = shuffled.drop(columns=["__signature"], errors="ignore")
+    return out
+
+
+def _write_token_task_splits(
+    *,
+    df: pd.DataFrame,
+    task_name: str,
+    out_dir: Path,
+    seed: int,
+    ratios: dict[str, float],
+) -> dict[str, int]:
+    splits = _split_token_rows(df, seed, ratios)
+    counts: dict[str, int] = {}
+    for split_name, split_df in splits.items():
+        path = out_dir / f"{task_name}_{split_name}.parquet"
+        split_df.to_parquet(path, index=False)
+        counts[split_name] = len(split_df)
+    return counts
+
+
+def _token_summary(df: pd.DataFrame) -> dict[str, Any]:
+    source_top = df["source"].value_counts().head(20).to_dict() if "source" in df.columns else {}
+    source_mix: dict[str, dict[str, int]] = {}
+    label_counts: dict[str, int] = {}
+    if not df.empty:
+        for _, row in df.iterrows():
+            task = str(row.get("task", "") or "")
+            source = str(row.get("source", "") or "")
+            source_mix.setdefault(task, {})
+            source_mix[task][source] = source_mix[task].get(source, 0) + 1
+            for span in _normalize_token_spans(row.get("spans"), text=str(row.get("text", ""))):
+                label = str(span["label"])
+                label_counts[label] = label_counts.get(label, 0) + 1
+    return {
+        "rows": len(df),
+        "task_counts": df["task"].value_counts().to_dict() if "task" in df.columns else {},
+        "span_label_counts": label_counts,
+        "source_top_20": source_top,
+        "source_mix_per_task": source_mix,
+    }
+
+
+def _build_secret_token_examples(*, target: int) -> list[tuple[str, list[dict], str]]:
+    categories = [
+        ("SECRET", "api_key", "sk-live-{idx:08x}"),
+        ("SECRET", "bearer", "Bearer tok_{idx:08x}{idx:08x}"),
+        ("SECRET", "password", "P@ssword-{idx:06d}!"),
+        ("SECRET", "connection", "Server=tcp:db{idx:04d};Password=Secret{idx:04d}!"),
+        ("SECRET", "ssh", "-----BEGIN PRIVATE KEY----- KEY{idx:08x} -----END PRIVATE KEY-----"),
+    ]
+    examples: list[tuple[str, list[dict], str]] = []
+    for idx in range(target):
+        label, kind, secret_template = categories[idx % len(categories)]
+        secret_value = secret_template.format(idx=idx)
+        text = (
+            f"Internal note {idx}: the {kind} credential is {secret_value}. "
+            f"Do not share this outside the team."
+        )
+        start = text.index(secret_value)
+        end = start + len(secret_value)
+        examples.append(
+            (
+                text,
+                [{"start": start, "end": end, "label": label}],
+                f"template:pii_span_detection:{kind}",
+            )
+        )
+    return examples
+
+
+def _pii_template_example(label: str, idx: int) -> tuple[str, list[dict], str]:
+    normalized = str(label or "SECRET").strip().upper() or "SECRET"
+    if "EMAIL" in normalized:
+        value = f"user{idx}@example.com"
+        text = f"Reach me at {value} about account ticket {idx}."
+    elif "PHONE" in normalized:
+        value = f"+1-555-{(idx // 100) % 10000:04d}-{idx % 10000:04d}"
+        text = f"My backup phone number is {value}."
+    elif normalized in {"PERSON", "NAME", "FULL_NAME"} or "NAME" in normalized:
+        value = f"Jordan Example {idx}"
+        text = f"The contact name on file is {value}."
+    elif "ADDRESS" in normalized:
+        value = f"{100 + (idx % 900)} Example Street Apt {idx}"
+        text = f"Ship the replacement card to {value}."
+    elif normalized in {"LOCATION", "CITY"} or "LOC" in normalized:
+        value = f"District {idx} City"
+        text = f"The incident was reported from {value}."
+    elif "DATE" in normalized:
+        value = f"2026-03-{1 + (idx % 28):02d}"
+        text = f"The appointment date is {value}."
+    elif "IP" in normalized:
+        value = f"10.{(idx // 65536) % 255}.{(idx // 256) % 255}.{idx % 255}"
+        text = f"The login came from IP {value}."
+    elif "URL" in normalized:
+        value = f"https://example.com/private/{idx}"
+        text = f"Use secure URL {value} for the download."
+    elif "USER" in normalized:
+        value = f"user_{idx}"
+        text = f"The temporary username is {value}."
+    elif "ID" in normalized:
+        value = f"ID-{idx:08d}"
+        text = f"The identity document number is {value}."
+    else:
+        value = f"sk-live-{idx:08x}"
+        text = f"Security note {idx}: the credential is {value}."
+        normalized = "SECRET"
+    start = text.index(value)
+    end = start + len(value)
+    return text, [{"start": start, "end": end, "label": normalized}], f"template:pii:{normalized}"
+
+
+def _fact_template_example(label: str, idx: int) -> tuple[str, list[dict], str]:
+    subjects = [
+        "I",
+        "I usually",
+        "I often",
+        "I still",
+        "I generally",
+    ]
+    subject = subjects[idx % len(subjects)]
+    if label == "preference":
+        value = f"vegetarian dinner option {idx}"
+        text = f"{subject} prefer {value} when cooking at home."
+    elif label == "identity":
+        value = f"Alex Carter {idx}"
+        text = f"My name is {value}."
+    elif label == "location":
+        value = f"City {idx}"
+        text = f"{subject} live in {value}."
+    elif label == "occupation":
+        value = f"product manager level {idx}"
+        text = f"{subject} work as a {value}."
+    elif label == "attribute":
+        value = f"detail oriented in sprint {idx}"
+        text = f"{subject} am {value}."
+    elif label == "goal":
+        value = f"finish milestone {idx} before quarter end"
+        text = f"My goal is to {value}."
+    elif label == "value":
+        value = f"honesty in team review {idx}"
+        text = f"{subject} value {value}."
+    elif label == "state":
+        value = f"stressed about deadline batch {idx}"
+        text = f"{subject} am currently {value}."
+    elif label == "causal":
+        value = f"because sugar triggers migraine cycle {idx}"
+        text = f"{subject} avoid desserts {value}."
+    elif label == "policy":
+        value = f"never schedule meetings after {6 + (idx % 5)} PM in block {idx}"
+        text = f"{subject} {value}."
+    else:
+        value = f"fact span {idx}"
+        text = f"{subject} note {value}."
+    start = text.lower().find(value.lower())
+    end = start + len(value)
+    return (
+        text,
+        [{"start": start, "end": end, "label": label}],
+        f"template:fact_extraction_structured:{label}",
+    )
+
+
+def _clean_fact_heuristic_value(value: str) -> str:
+    return value.strip().strip(".,!?;:()[]{}\"'`")
+
+
+def _unique_fact_span(text: str, value: str) -> tuple[int, int] | None:
+    needle = _clean_fact_heuristic_value(value)
+    if not needle:
+        return None
+    matches = list(re.finditer(re.escape(needle), text, flags=re.IGNORECASE))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    return match.start(), match.end()
+
+
+def _heuristic_fact_spans(text: str, *, max_spans: int) -> list[dict[str, Any]]:
+    spans: list[dict[str, Any]] = []
+    occupied: list[tuple[int, int]] = []
+    lowered = text.lower()
+    if not lowered:
+        return spans
+
+    for label, patterns in _FACT_HEURISTIC_PATTERNS:
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match is None:
+                continue
+            span = _unique_fact_span(text, match.group("value"))
+            if span is None:
+                continue
+            start, end = span
+            if any(not (end <= s or start >= e) for s, e in occupied):
+                continue
+            occupied.append((start, end))
+            spans.append({"start": start, "end": end, "label": label})
+            break
+        if len(spans) >= max_spans:
+            break
+    return spans
+
+
+def _extract_pii_spans_from_example(
+    example: dict[str, Any],
+    *,
+    max_spans: int,
+) -> tuple[str, list[dict[str, Any]], str]:
+    text = _clean(example.get("source_text", example.get("source", "")), 2000)
+    language = _clean(example.get("language", "en"), 16) or "en"
+    if not text:
+        return "", [], language
+    spans: list[dict[str, Any]] = []
+    privacy_mask = example.get("privacy_mask")
+    if isinstance(privacy_mask, list) and privacy_mask:
+        spans = _normalize_token_spans(
+            [
+                {
+                    "start": item.get("start"),
+                    "end": item.get("end"),
+                    "label": str(item.get("label", "")).upper(),
+                }
+                for item in privacy_mask
+            ],
+            text=text,
+            uppercase_labels=True,
+            max_spans=max_spans,
+        )
+    if not spans:
+        raw = example.get("span_labels")
+        try:
+            decoded = json.loads(raw) if isinstance(raw, str) else raw
+        except Exception:
+            decoded = None
+        if isinstance(decoded, list):
+            parsed = []
+            for item in decoded:
+                if not isinstance(item, (list, tuple)) or len(item) < 3:
+                    continue
+                if str(item[2]).upper() == "O":
+                    continue
+                parsed.append({"start": item[0], "end": item[1], "label": str(item[2]).upper()})
+            spans = _normalize_token_spans(
+                parsed,
+                text=text,
+                uppercase_labels=True,
+                max_spans=max_spans,
+            )
+    return text, spans, language
+
+
+def _build_pii_token_rows(
+    *,
+    registry: _HFRegistry,
+    token_cfg: dict[str, Any],
+    existing_df: pd.DataFrame | None = None,
+) -> list[dict]:
+    target = int(token_cfg["target_examples_per_task"])
+    cap = max(int(token_cfg["max_examples_per_task"]), target)
+    max_spans = int(token_cfg["max_spans_per_example"])
+    rows = _TokenTaskStore(cap)
+    if existing_df is not None and not existing_df.empty:
+        _seed_token_store_from_df(rows, existing_df)
+    if rows.count("pii_span_detection") >= target:
+        return rows.rows
+
+    # Secret-shaped credentials should always be part of the training set.
+    secret_target = min(4000, target)
+    for text, spans, source in _build_secret_token_examples(target=secret_target):
+        rows.add("pii_span_detection", text, spans, source, language="en")
+
+    ds = registry.get("pii_masking")
+    if ds is not None:
+        for ex in _iter_dataset_rows(
+            ds, limit=registry.limit("pii_masking"), desc="Token rows [pii_masking]"
+        ):
+            if not isinstance(ex, dict):
+                continue
+            text, spans, language = _extract_pii_spans_from_example(ex, max_spans=max_spans)
+            if text and spans:
+                rows.add("pii_span_detection", text, spans, "hf:pii_masking", language=language)
+            if rows.count("pii_span_detection") >= target:
+                break
+
+    observed_labels = sorted(
+        {
+            str(span.get("label", "")).strip().upper()
+            for row in rows.rows
+            for span in row.get("spans", [])
+            if str(span.get("label", "")).strip()
+        }
+    )
+    if not observed_labels:
+        observed_labels = ["SECRET", "EMAIL", "PHONE", "PERSON", "ADDRESS"]
+
+    fill_index = 0
+    while rows.count("pii_span_detection") < target:
+        label = observed_labels[fill_index % len(observed_labels)]
+        text, spans, source = _pii_template_example(label, fill_index)
+        rows.add("pii_span_detection", text, spans, source, language="en")
+        fill_index += 1
+    return rows.rows
+
+
+def _build_fact_token_rows(
+    *,
+    single_pools: dict[str, list[str]],
+    token_cfg: dict[str, Any],
+    existing_df: pd.DataFrame | None = None,
+) -> list[dict]:
+    target = int(token_cfg["target_examples_per_task"])
+    cap = max(int(token_cfg["max_examples_per_task"]), target)
+    max_spans = int(token_cfg["max_spans_per_example"])
+    rows = _TokenTaskStore(cap)
+    if existing_df is not None and not existing_df.empty:
+        _seed_token_store_from_df(rows, existing_df)
+    if rows.count("fact_extraction_structured") >= target:
+        return rows.rows
+
+    candidate_texts: list[str] = []
+    for values in single_pools.values():
+        candidate_texts.extend(values)
+    candidate_texts = list(
+        dict.fromkeys([_clean(text, 2000) for text in candidate_texts if _clean(text, 2000)])
+    )
+
+    heuristic_target = min(target // 4, 4000)
+    heuristic_scan_limit = min(len(candidate_texts), 5000)
+    for text in candidate_texts[:heuristic_scan_limit]:
+        spans = _heuristic_fact_spans(text, max_spans=max_spans)
+        if spans:
+            rows.add("fact_extraction_structured", text, spans, "heuristic:write_time_facts")
+        if rows.count("fact_extraction_structured") >= heuristic_target:
+            break
+
+    per_label_target = max(1, target // max(1, len(FACT_SPAN_LABELS)))
+    label_index = {label: 0 for label in FACT_SPAN_LABELS}
+    label_counts = {label: 0 for label in FACT_SPAN_LABELS}
+    for row in rows.rows:
+        for span in row.get("spans", []):
+            label = str(span.get("label", "")).lower()
+            if label in label_counts:
+                label_counts[label] += 1
+
+    for label in FACT_SPAN_LABELS:
+        attempts = 0
+        max_attempts = max(per_label_target * 4, 1024)
+        while (
+            label_counts[label] < per_label_target
+            and rows.count("fact_extraction_structured") < cap
+            and attempts < max_attempts
+        ):
+            text, spans, source = _fact_template_example(label, label_index[label])
+            label_index[label] += 1
+            attempts += 1
+            if rows.add("fact_extraction_structured", text, spans, source, language="en"):
+                label_counts[label] += 1
+        if label_counts[label] < per_label_target:
+            raise RuntimeError(
+                f"Unable to reach template coverage for {label}: "
+                f"have={label_counts[label]} target={per_label_target}"
+            )
+
+    cycle = 0
+    while rows.count("fact_extraction_structured") < target:
+        label = FACT_SPAN_LABELS[cycle % len(FACT_SPAN_LABELS)]
+        text, spans, source = _fact_template_example(label, label_index[label])
+        label_index[label] += 1
+        rows.add("fact_extraction_structured", text, spans, source, language="en")
+        cycle += 1
+
+    return rows.rows
 
 
 class _HFRegistry:
@@ -3075,6 +3755,7 @@ def main(argv: list[str] | None = None) -> int:
     multilingual_cfg = dict(config.get("multilingual", {}))
     datasets_cfg = list(config.get("datasets", []))
     task_specs_raw = list(config.get("tasks", []))
+    token_prepare_cfg = dict(prepare_cfg.get("token", {}))
 
     if args.seed is not None:
         prepare_cfg["seed"] = int(args.seed)
@@ -3108,6 +3789,10 @@ def main(argv: list[str] | None = None) -> int:
         int(prepare_cfg["max_per_task_label"]),
         int(prepare_cfg["target_per_task_label"]),
     )
+    token_prepare_cfg.setdefault("target_examples_per_task", 40000)
+    token_prepare_cfg.setdefault("max_examples_per_task", 80000)
+    token_prepare_cfg.setdefault("max_spans_per_example", 16)
+    prepare_cfg["token"] = token_prepare_cfg
 
     synthetic_cfg.setdefault("provider_env", "LLM_EVAL__PROVIDER")
     synthetic_cfg.setdefault("model_env", "LLM_EVAL__MODEL")
@@ -3145,6 +3830,20 @@ def main(argv: list[str] | None = None) -> int:
     if int(synthetic_cfg["max_attempts_per_label"]) <= 0:
         print("synthetic_llm.max_attempts_per_label must be > 0.", file=sys.stderr)
         return 1
+    if int(token_prepare_cfg["target_examples_per_task"]) <= 0:
+        print("prepare.token.target_examples_per_task must be > 0.", file=sys.stderr)
+        return 1
+    if int(token_prepare_cfg["max_examples_per_task"]) < int(
+        token_prepare_cfg["target_examples_per_task"]
+    ):
+        print(
+            "prepare.token.max_examples_per_task must be >= target_examples_per_task.",
+            file=sys.stderr,
+        )
+        return 1
+    if int(token_prepare_cfg["max_spans_per_example"]) <= 0:
+        print("prepare.token.max_spans_per_example must be > 0.", file=sys.stderr)
+        return 1
 
     prepared_dir = _resolve_path(
         str(paths_cfg.get("prepared_dir", "packages/models/prepared_data/modelpack")),
@@ -3170,16 +3869,24 @@ def main(argv: list[str] | None = None) -> int:
     prepared_dir.mkdir(parents=True, exist_ok=True)
 
     target_per_task_label = int(prepare_cfg["target_per_task_label"])
+    target_token_examples = int(token_prepare_cfg["target_examples_per_task"])
 
     if args.force_full:
         print("Force-full mode: ignoring existing prepared splits.")
         router_existing_df = pd.DataFrame(columns=["text", "task", "label", "source"])
         extractor_existing_df = pd.DataFrame(columns=["text", "task", "label", "source"])
         pair_existing_df = pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"])
+        token_existing_dfs = {
+            task_name: pd.DataFrame(columns=["text", "task", "spans", "source", "language"])
+            for task_name in TOKEN_TASKS
+        }
     else:
         router_existing_df = _load_existing_family_df(prepared_dir, "router")
         extractor_existing_df = _load_existing_family_df(prepared_dir, "extractor")
         pair_existing_df = _load_existing_family_df(prepared_dir, "pair")
+        token_existing_dfs = {
+            task_name: _load_existing_token_df(prepared_dir, task_name) for task_name in TOKEN_TASKS
+        }
 
     router_task_labels = _enabled_task_label_map(
         task_specs_raw,
@@ -3194,6 +3901,7 @@ def main(argv: list[str] | None = None) -> int:
         extra_labels=NEW_PAIR_TASK_LABELS,
     )
     router_regression_tasks = _enabled_regression_tasks(task_specs_raw, family="router")
+    token_tasks = _enabled_token_tasks(task_specs_raw, family="extractor")
 
     router_missing, router_missing_total = _missing_task_labels(
         router_existing_df,
@@ -3215,17 +3923,24 @@ def main(argv: list[str] | None = None) -> int:
         task_labels=pair_task_labels,
         target_per_task_label=target_per_task_label,
     )
+    token_missing, token_missing_total = _missing_token_tasks(
+        token_existing_dfs,
+        task_names=token_tasks,
+        target_per_task=target_token_examples,
+    )
 
     needs_router = (
         args.force_full or router_missing_total > 0 or router_regression_missing_total > 0
     )
     needs_extractor = args.force_full or extractor_missing_total > 0
     needs_pair = args.force_full or pair_missing_total > 0
+    needs_tokens = args.force_full or token_missing_total > 0
 
     print(
         "Existing coverage missing counts: "
         f"router={router_missing_total + router_regression_missing_total}, "
-        f"extractor={extractor_missing_total}, pair={pair_missing_total}"
+        f"extractor={extractor_missing_total}, pair={pair_missing_total}, "
+        f"token={token_missing_total}"
     )
 
     ratios = {
@@ -3242,7 +3957,7 @@ def main(argv: list[str] | None = None) -> int:
     total_ratio = sum(ratios.values())
     ratios = {k: v / total_ratio for k, v in ratios.items()}
 
-    if not (needs_router or needs_extractor or needs_pair):
+    if not (needs_router or needs_extractor or needs_pair or needs_tokens):
         manifest = {
             "config_path": str(args.config.resolve()),
             "seed": int(prepare_cfg["seed"]),
@@ -3254,6 +3969,7 @@ def main(argv: list[str] | None = None) -> int:
                     "router": router_missing_total + router_regression_missing_total,
                     "extractor": extractor_missing_total,
                     "pair": pair_missing_total,
+                    "token": token_missing_total,
                 },
             },
             "paths": {
@@ -3267,6 +3983,7 @@ def main(argv: list[str] | None = None) -> int:
                 "extractor": list(EXTRACTOR_TASK_LABELS.keys()),
                 "pair": sorted(pair_task_labels.keys()),
             },
+            "configured_token_tasks": sorted(token_tasks),
             "observed_tasks": {
                 "router": sorted(router_existing_df["task"].astype(str).unique().tolist())
                 if "task" in router_existing_df.columns
@@ -3278,6 +3995,9 @@ def main(argv: list[str] | None = None) -> int:
                 if "task" in pair_existing_df.columns
                 else [],
             },
+            "observed_token_tasks": sorted(
+                task_name for task_name, df in token_existing_dfs.items() if not df.empty
+            ),
             "router": {
                 **_summary(router_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "router"),
@@ -3296,6 +4016,18 @@ def main(argv: list[str] | None = None) -> int:
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": False,
             },
+            "token_task_splits": {
+                task_name: _existing_token_split_counts(prepared_dir, task_name)
+                for task_name in sorted(token_tasks)
+            },
+            "token_tasks": {
+                task_name: {
+                    **_token_summary(token_existing_dfs.get(task_name, pd.DataFrame())),
+                    "splits": _existing_token_split_counts(prepared_dir, task_name),
+                    "updated": False,
+                }
+                for task_name in sorted(token_tasks)
+            },
         }
         manifest_path = prepared_dir / "manifest.json"
         with open(manifest_path, "w", encoding="utf-8") as f:
@@ -3313,9 +4045,16 @@ def main(argv: list[str] | None = None) -> int:
         active_targets.add("extractor")
     if needs_pair:
         active_targets.add("pair")
+    if needs_tokens:
+        active_targets.add("extractor")
     datasets_cfg_active = [
         d for d in datasets_cfg if str(d.get("target", "")).strip().lower() in active_targets
     ]
+    if token_tasks:
+        slow_optional = {"docred", "re_tacred"}
+        datasets_cfg_active = [
+            d for d in datasets_cfg_active if str(d.get("name", "")).strip() not in slow_optional
+        ]
 
     has_enabled_remote = any(bool(d.get("enabled", True)) for d in datasets_cfg_active)
     if (
@@ -3463,6 +4202,44 @@ def main(argv: list[str] | None = None) -> int:
             pair_df = pair_existing_df
             pair_splits = _existing_split_counts(prepared_dir, "pair")
 
+        token_task_splits: dict[str, dict[str, int]] = {}
+        token_task_dfs: dict[str, pd.DataFrame] = {}
+        if needs_tokens:
+            for task_name in sorted(token_tasks):
+                print(f"Preparing token dataset [{task_name}] (missing-only mode)...")
+                if task_name == "pii_span_detection":
+                    token_rows = _build_pii_token_rows(
+                        registry=registry,
+                        token_cfg=token_prepare_cfg,
+                        existing_df=token_existing_dfs.get(task_name),
+                    )
+                elif task_name == "fact_extraction_structured":
+                    token_rows = _build_fact_token_rows(
+                        single_pools=single_pools,
+                        token_cfg=token_prepare_cfg,
+                        existing_df=token_existing_dfs.get(task_name),
+                    )
+                else:
+                    token_rows = list(
+                        token_existing_dfs.get(task_name, pd.DataFrame()).to_dict("records")
+                    )
+                token_df = pd.DataFrame(_sanitize_row_dicts(token_rows))
+                if token_df.empty:
+                    print(f"Token dataset {task_name} is empty; cannot continue.", file=sys.stderr)
+                    return 1
+                token_task_dfs[task_name] = token_df
+                token_task_splits[task_name] = _write_token_task_splits(
+                    df=token_df,
+                    task_name=task_name,
+                    out_dir=prepared_dir,
+                    seed=int(prepare_cfg["seed"]),
+                    ratios=ratios,
+                )
+        else:
+            for task_name in sorted(token_tasks):
+                token_task_dfs[task_name] = token_existing_dfs.get(task_name, pd.DataFrame())
+                token_task_splits[task_name] = _existing_token_split_counts(prepared_dir, task_name)
+
         manifest = {
             "config_path": str(args.config.resolve()),
             "seed": int(prepare_cfg["seed"]),
@@ -3473,11 +4250,13 @@ def main(argv: list[str] | None = None) -> int:
                     "router": router_missing_total + router_regression_missing_total,
                     "extractor": extractor_missing_total,
                     "pair": pair_missing_total,
+                    "token": token_missing_total,
                 },
                 "updated": {
                     "router": needs_router,
                     "extractor": needs_extractor,
                     "pair": needs_pair,
+                    "token": needs_tokens,
                 },
             },
             "paths": {
@@ -3497,7 +4276,10 @@ def main(argv: list[str] | None = None) -> int:
                     "auto_download_missing",
                 ]
             }
-            | {"llm_temperature": synthetic_cfg["temperature"]},
+            | {
+                "llm_temperature": synthetic_cfg["temperature"],
+                "token": token_prepare_cfg,
+            },
             "synthetic_llm": (
                 {
                     "enabled": True,
@@ -3533,11 +4315,15 @@ def main(argv: list[str] | None = None) -> int:
                 "extractor": list(EXTRACTOR_TASK_LABELS.keys()),
                 "pair": sorted(pair_task_labels.keys()),
             },
+            "configured_token_tasks": sorted(token_tasks),
             "observed_tasks": {
                 "router": sorted(router_df["task"].astype(str).unique().tolist()),
                 "extractor": sorted(extractor_df["task"].astype(str).unique().tolist()),
                 "pair": sorted(pair_df["task"].astype(str).unique().tolist()),
             },
+            "observed_token_tasks": sorted(
+                task_name for task_name, df in token_task_dfs.items() if not df.empty
+            ),
             "router": {
                 **_summary(router_df),
                 "splits": router_splits,
@@ -3562,6 +4348,16 @@ def main(argv: list[str] | None = None) -> int:
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": needs_pair,
                 "missing_before": pair_missing,
+            },
+            "token_task_splits": token_task_splits,
+            "token_tasks": {
+                task_name: {
+                    **_token_summary(token_task_dfs.get(task_name, pd.DataFrame())),
+                    "splits": token_task_splits.get(task_name, {}),
+                    "updated": needs_tokens,
+                    "missing_before": token_missing.get(task_name, 0),
+                }
+                for task_name in sorted(token_tasks)
             },
         }
 

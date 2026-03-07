@@ -8,7 +8,7 @@
 pip install "cognitive-memory-layer[modeling]"
 ```
 
-The modeling extra installs `pandas`, `scikit-learn`, `joblib`, `pyarrow`, and `datasets`. Running `cml-models` without the extra prints an actionable install error.
+The modeling extra installs `pandas`, `scikit-learn`, `joblib`, `pyarrow`, `datasets`, `transformers`, `torch`, and `accelerate`. Running `cml-models` without the extra prints an actionable install error.
 
 ## CLI
 
@@ -56,8 +56,16 @@ cml-models train --config packages/models/model_pipeline.toml
 | `--output-dir` | from config | Output directory for trained artifacts |
 | `--tasks` | all | Comma-separated task names to train |
 | `--objective-types` | all | Comma-separated objective types (`classification`, `pair_ranking`, `single_regression`, `token_classification`) |
-| `--max-seq-length` | from config | Max input sequence length (reserved for token trainers) |
-| `--learning-rate` | from config | Learning rate override (reserved for token trainers) |
+| `--max-seq-length` | from config | Max input sequence length for token trainers |
+| `--learning-rate` | from config | Learning rate override for token trainers |
+| `--token-model-name-or-path` | from config | HF checkpoint used for token tasks |
+| `--token-num-train-epochs` | from config | Epochs for token-task fine-tuning |
+| `--token-per-device-train-batch-size` | from config | Token-task train batch size |
+| `--token-per-device-eval-batch-size` | from config | Token-task eval batch size |
+| `--token-stride` | from config | Sliding-window stride for long token-task examples |
+| `--token-warmup-ratio` | from config | Token-task warmup ratio |
+| `--token-weight-decay` | from config | Token-task weight decay |
+| `--token-gradient-accumulation-steps` | from config | Token-task gradient accumulation |
 | `--calibration-split` | none | Split to use for threshold calibration |
 | `--export-thresholds` | off | Export decision thresholds alongside models |
 | `--strict` | on | Hard-fail on preflight, unsupported objectives, disabled selected tasks, empty/missing task rows, or missing artifacts |
@@ -65,7 +73,7 @@ cml-models train --config packages/models/model_pipeline.toml
 
 Strict mode is the default (`TrainConfig.strict=True`). Preflight validates objective support, required columns, configured-vs-observed task coverage, and regression score requirements before training task models. The train manifest is schema v2 and includes `configured_tasks`, `preflight_validation`, `task_training_status`, and `build_metadata`.
 
-Tasks with objective `token_classification` are currently deferred. In default config they are disabled and strict mode fails if they are explicitly selected.
+Tasks with objective `token_classification` use dedicated per-task parquet splits and a Hugging Face token-classification trainer. Strict mode fails when those dedicated splits or trained artifacts are missing.
 
 ### `pipeline` - Run prepare + train in one command
 
@@ -163,8 +171,16 @@ rc = run_pipeline(
 | `output_dir` | `Path \| None` | `None` | Output model directory |
 | `tasks` | `str` | `""` (all) | Comma-separated task names |
 | `objective_types` | `str` | `""` (all) | Comma-separated objective types |
-| `max_seq_length` | `int \| None` | `None` | Reserved for token trainers |
-| `learning_rate` | `float \| None` | `None` | Reserved for token trainers |
+| `max_seq_length` | `int \| None` | `None` | Token max sequence length override |
+| `learning_rate` | `float \| None` | `None` | Token learning-rate override |
+| `token_model_name_or_path` | `str \| None` | `None` | HF checkpoint override for token tasks |
+| `token_num_train_epochs` | `int \| None` | `None` | Token-task epoch override |
+| `token_per_device_train_batch_size` | `int \| None` | `None` | Token-task train batch size override |
+| `token_per_device_eval_batch_size` | `int \| None` | `None` | Token-task eval batch size override |
+| `token_stride` | `int \| None` | `None` | Token-task sliding-window stride override |
+| `token_warmup_ratio` | `float \| None` | `None` | Token-task warmup override |
+| `token_weight_decay` | `float \| None` | `None` | Token-task weight decay override |
+| `token_gradient_accumulation_steps` | `int \| None` | `None` | Token-task gradient accumulation override |
 | `calibration_split` | `str \| None` | `None` | Calibration split name |
 | `export_thresholds` | `bool` | `False` | Export thresholds |
 | `strict` | `bool` | `True` | Hard-fail modeling contract checks |
