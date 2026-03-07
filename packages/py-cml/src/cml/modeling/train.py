@@ -23,6 +23,7 @@ import tomllib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 try:
     import joblib
@@ -65,6 +66,7 @@ except ImportError as exc:
     ) from exc
 
 from cml.modeling.config import find_repo_root
+from cml.modeling.token_training import train_token_task
 from cml.modeling.types import TrainConfig
 from cml.modeling.validation import run_preflight_validation, validate_manifest_artifacts
 
@@ -1017,11 +1019,14 @@ def _train_single_regression(
 def _train_token_classification(
     spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict
 ) -> dict:
-    """Placeholder: transformer-based token classification is not yet implemented."""
-    raise NotImplementedError(
-        f"[task:{spec.task_name}] token_classification requires a transformer-based model "
-        f"and is not yet supported in the TF-IDF pipeline. "
-        f"Filter it out with --objective-types=classification,pair_ranking,single_regression"
+    """Train a dedicated Hugging Face token-classification model for a single task."""
+    print(f"[task:{spec.task_name}] token_classification training")
+    return train_token_task(
+        task_name=spec.task_name,
+        prepared_dir=prepared_dir,
+        output_dir=output_dir,
+        train_cfg=train_cfg,
+        spec_payload=spec.__dict__,
     )
 
 
@@ -1067,6 +1072,11 @@ def _train_task(
             raise RuntimeError(
                 f"Strict mode: unsupported task '{spec.task_name}' ({spec.objective})"
             ) from exc
+        return {}
+    except Exception as exc:
+        if strict:
+            raise
+        _logger.warning("task_skipped", extra={"task": spec.task_name, "reason": str(exc)})
         return {}
 
 
@@ -1114,6 +1124,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Learning rate override for token classification models.",
     )
     parser.add_argument(
+        "--token-model-name-or-path",
+        type=str,
+        default=None,
+        help="HF checkpoint used for token-classification tasks.",
+    )
+    parser.add_argument(
+        "--token-num-train-epochs",
+        type=int,
+        default=None,
+        help="Epochs for token-classification tasks.",
+    )
+    parser.add_argument(
+        "--token-per-device-train-batch-size",
+        type=int,
+        default=None,
+        help="Per-device train batch size for token tasks.",
+    )
+    parser.add_argument(
+        "--token-per-device-eval-batch-size",
+        type=int,
+        default=None,
+        help="Per-device eval batch size for token tasks.",
+    )
+    parser.add_argument(
+        "--token-stride",
+        type=int,
+        default=None,
+        help="Sliding-window stride for long token-task examples.",
+    )
+    parser.add_argument(
+        "--token-warmup-ratio",
+        type=float,
+        default=None,
+        help="Warmup ratio for token-task training.",
+    )
+    parser.add_argument(
+        "--token-weight-decay",
+        type=float,
+        default=None,
+        help="Weight decay for token-task training.",
+    )
+    parser.add_argument(
+        "--token-gradient-accumulation-steps",
+        type=int,
+        default=None,
+        help="Gradient accumulation steps for token-task training.",
+    )
+    parser.add_argument(
         "--calibration-split",
         type=str,
         default=None,
@@ -1157,6 +1215,17 @@ def main(argv: list[str] | None = None) -> int:
     train_cfg.setdefault("alpha", 1e-5)
     train_cfg.setdefault("predict_batch_size", 8192)
     train_cfg.setdefault("families", list(ALL_FAMILIES))
+    token_cfg = dict(train_cfg.get("token", {}))
+    token_cfg.setdefault("model_name_or_path", "distilbert-base-multilingual-cased")
+    token_cfg.setdefault("num_train_epochs", 3)
+    token_cfg.setdefault("per_device_train_batch_size", 8)
+    token_cfg.setdefault("per_device_eval_batch_size", 16)
+    token_cfg.setdefault("max_seq_length", 256)
+    token_cfg.setdefault("stride", 64)
+    token_cfg.setdefault("learning_rate", 5e-5)
+    token_cfg.setdefault("warmup_ratio", 0.1)
+    token_cfg.setdefault("weight_decay", 0.01)
+    token_cfg.setdefault("gradient_accumulation_steps", 1)
     train_cfg["strict"] = strict_mode
 
     if args.seed is not None:
@@ -1167,6 +1236,27 @@ def main(argv: list[str] | None = None) -> int:
         train_cfg["max_features"] = int(args.max_features)
     if args.predict_batch_size is not None:
         train_cfg["predict_batch_size"] = int(args.predict_batch_size)
+    if args.max_seq_length is not None:
+        token_cfg["max_seq_length"] = int(args.max_seq_length)
+    if args.learning_rate is not None:
+        token_cfg["learning_rate"] = float(args.learning_rate)
+    if args.token_model_name_or_path is not None:
+        token_cfg["model_name_or_path"] = str(args.token_model_name_or_path)
+    if args.token_num_train_epochs is not None:
+        token_cfg["num_train_epochs"] = int(args.token_num_train_epochs)
+    if args.token_per_device_train_batch_size is not None:
+        token_cfg["per_device_train_batch_size"] = int(args.token_per_device_train_batch_size)
+    if args.token_per_device_eval_batch_size is not None:
+        token_cfg["per_device_eval_batch_size"] = int(args.token_per_device_eval_batch_size)
+    if args.token_stride is not None:
+        token_cfg["stride"] = int(args.token_stride)
+    if args.token_warmup_ratio is not None:
+        token_cfg["warmup_ratio"] = float(args.token_warmup_ratio)
+    if args.token_weight_decay is not None:
+        token_cfg["weight_decay"] = float(args.token_weight_decay)
+    if args.token_gradient_accumulation_steps is not None:
+        token_cfg["gradient_accumulation_steps"] = int(args.token_gradient_accumulation_steps)
+    train_cfg["token"] = token_cfg
 
     if args.prepared_dir is not None:
         prepared_dir = args.prepared_dir.resolve()
@@ -1231,8 +1321,23 @@ def main(argv: list[str] | None = None) -> int:
         for t in task_specs_raw
     ]
 
-    families_summary: dict[str, dict] = {}
-    task_summaries: dict[str, dict] = {}
+    selected_tasks = {x.strip() for x in args.tasks.split(",") if x.strip()} if args.tasks else None
+    selected_obj = (
+        {x.strip() for x in args.objective_types.split(",") if x.strip()}
+        if args.objective_types
+        else None
+    )
+
+    existing_manifest: dict[str, Any] = {}
+    manifest_path = output_dir / "manifest.json"
+    if manifest_path.exists():
+        try:
+            existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing_manifest = {}
+
+    families_summary: dict[str, dict] = dict(existing_manifest.get("families", {}))
+    task_summaries: dict[str, dict] = dict(existing_manifest.get("task_models", {}))
     task_training_status: dict[str, dict] = {
         str(t.get("task_name", "")): {
             "status": "pending",
@@ -1257,9 +1362,12 @@ def main(argv: list[str] | None = None) -> int:
         "task_training_status": task_training_status,
     }
 
-    pbar = _progress(total=len(families), desc="Model training", unit="family")
+    train_selected_only = selected_tasks is not None or selected_obj is not None
+    families_to_train = [] if train_selected_only else list(families)
+
+    pbar = _progress(total=len(families_to_train), desc="Model training", unit="family")
     try:
-        for family in families:
+        for family in families_to_train:
             pbar.set_description(f"Train family [{family}]")
             summary = _train_one_family(
                 family,
@@ -1277,14 +1385,6 @@ def main(argv: list[str] | None = None) -> int:
             TaskSpec(**{k: t[k] for k in TaskSpec.__dataclass_fields__ if k in t})
             for t in task_specs_raw
         ]
-        selected_tasks = (
-            {x.strip() for x in args.tasks.split(",") if x.strip()} if args.tasks else None
-        )
-        selected_obj = (
-            {x.strip() for x in args.objective_types.split(",") if x.strip()}
-            if args.objective_types
-            else None
-        )
 
         tasks_to_train: list[TaskSpec] = []
         disabled_selected: list[str] = []
@@ -1379,12 +1479,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.export_thresholds:
         for task_name, summary in task_summaries.items():
-            thresholds = {
-                "task_name": task_name,
-                "default_threshold": 0.5,
-                "calibration_split": args.calibration_split or "eval",
-                "note": "Auto-generated defaults. Tune via offline calibration.",
-            }
+            if str(summary.get("objective", "")) == "token_classification":
+                thresholds = {
+                    "task_name": task_name,
+                    "type": "token_span_metadata",
+                    "labels": summary.get("labels", {}),
+                    "calibration_split": args.calibration_split or "eval",
+                    "note": "Token span models do not use a single scalar threshold.",
+                }
+            else:
+                thresholds = {
+                    "task_name": task_name,
+                    "default_threshold": 0.5,
+                    "calibration_split": args.calibration_split or "eval",
+                    "note": "Auto-generated defaults. Tune via offline calibration.",
+                }
             _write_json(output_dir / f"{task_name}_thresholds.json", thresholds)
 
     thresholds_files = {}
@@ -1443,6 +1552,37 @@ def train_models(config: TrainConfig) -> int:
         argv.extend(["--max-seq-length", str(config.max_seq_length)])
     if config.learning_rate is not None:
         argv.extend(["--learning-rate", str(config.learning_rate)])
+    if config.token_model_name_or_path is not None:
+        argv.extend(["--token-model-name-or-path", config.token_model_name_or_path])
+    if config.token_num_train_epochs is not None:
+        argv.extend(["--token-num-train-epochs", str(config.token_num_train_epochs)])
+    if config.token_per_device_train_batch_size is not None:
+        argv.extend(
+            [
+                "--token-per-device-train-batch-size",
+                str(config.token_per_device_train_batch_size),
+            ]
+        )
+    if config.token_per_device_eval_batch_size is not None:
+        argv.extend(
+            [
+                "--token-per-device-eval-batch-size",
+                str(config.token_per_device_eval_batch_size),
+            ]
+        )
+    if config.token_stride is not None:
+        argv.extend(["--token-stride", str(config.token_stride)])
+    if config.token_warmup_ratio is not None:
+        argv.extend(["--token-warmup-ratio", str(config.token_warmup_ratio)])
+    if config.token_weight_decay is not None:
+        argv.extend(["--token-weight-decay", str(config.token_weight_decay)])
+    if config.token_gradient_accumulation_steps is not None:
+        argv.extend(
+            [
+                "--token-gradient-accumulation-steps",
+                str(config.token_gradient_accumulation_steps),
+            ]
+        )
     if config.calibration_split is not None:
         argv.extend(["--calibration-split", config.calibration_split])
     if config.export_thresholds:

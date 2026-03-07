@@ -72,6 +72,14 @@ def _add_train_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--objective-types", type=str, default="")
     parser.add_argument("--max-seq-length", type=int, default=None)
     parser.add_argument("--learning-rate", type=float, default=None)
+    parser.add_argument("--token-model-name-or-path", type=str, default=None)
+    parser.add_argument("--token-num-train-epochs", type=int, default=None)
+    parser.add_argument("--token-per-device-train-batch-size", type=int, default=None)
+    parser.add_argument("--token-per-device-eval-batch-size", type=int, default=None)
+    parser.add_argument("--token-stride", type=int, default=None)
+    parser.add_argument("--token-warmup-ratio", type=float, default=None)
+    parser.add_argument("--token-weight-decay", type=float, default=None)
+    parser.add_argument("--token-gradient-accumulation-steps", type=int, default=None)
     parser.add_argument("--calibration-split", type=str, default=None)
     parser.add_argument("--export-thresholds", action="store_true")
     strict_group = parser.add_mutually_exclusive_group()
@@ -145,6 +153,14 @@ def _train_config_from_args(args: argparse.Namespace) -> TrainConfig:
         objective_types=str(args.objective_types),
         max_seq_length=args.max_seq_length,
         learning_rate=args.learning_rate,
+        token_model_name_or_path=args.token_model_name_or_path,
+        token_num_train_epochs=args.token_num_train_epochs,
+        token_per_device_train_batch_size=args.token_per_device_train_batch_size,
+        token_per_device_eval_batch_size=args.token_per_device_eval_batch_size,
+        token_stride=args.token_stride,
+        token_warmup_ratio=args.token_warmup_ratio,
+        token_weight_decay=args.token_weight_decay,
+        token_gradient_accumulation_steps=args.token_gradient_accumulation_steps,
         calibration_split=args.calibration_split,
         export_thresholds=bool(args.export_thresholds),
         strict=bool(args.strict),

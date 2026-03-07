@@ -60,7 +60,7 @@ class LocalUnifiedWriteExtractor:
 
         Returns a dict compatible with the UnifiedWritePathExtractor output:
         {
-            "facts": [...],
+            "facts": [ExtractedFact, ...],
             "importance": float,
             "pii_spans": [...],
             "memory_type": str | None,

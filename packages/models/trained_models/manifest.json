@@ -1,7 +1,7 @@
 {
   "manifest_schema_version": 2,
   "config_path": "E:\\CognitiveMemoryLayer\\packages\\models\\model_pipeline.toml",
-  "trained_at_utc": "2026-03-06T11:07:36.801920+00:00",
+  "trained_at_utc": "2026-03-06T18:09:07.232289+00:00",
   "paths": {
     "prepared_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack",
     "trained_models_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models"
@@ -17,9 +17,21 @@
     "min_df": 2,
     "ngram_min": 1,
     "ngram_max": 2,
-    "max_iter": 8,
+    "max_iter": 25,
     "alpha": 1e-05,
     "predict_batch_size": 8192,
+    "token": {
+      "model_name_or_path": "distilbert-base-multilingual-cased",
+      "num_train_epochs": 3,
+      "per_device_train_batch_size": 8,
+      "per_device_eval_batch_size": 16,
+      "max_seq_length": 256,
+      "stride": 64,
+      "learning_rate": 5e-05,
+      "warmup_ratio": 0.1,
+      "weight_decay": 0.01,
+      "gradient_accumulation_steps": 1
+    },
     "strict": true
   },
   "build_metadata": {
@@ -29,7 +41,7 @@
       "joblib": "1.5.2",
       "pandas": "2.3.3"
     },
-    "commit_sha": "df94623b39459400b4738e54f865f7bfc43a741d",
+    "commit_sha": "c817160734e2ebfa7ca782623b30340db84c8689",
     "dirty": true
   },
   "configured_tasks": [
@@ -77,7 +89,7 @@
       "family": "extractor",
       "input_type": "single",
       "objective": "token_classification",
-      "enabled": false,
+      "enabled": true,
       "artifact_name": "fact_extraction_structured",
       "metrics": [
         "span_f1",
@@ -127,7 +139,7 @@
       "family": "extractor",
       "input_type": "single",
       "objective": "token_classification",
-      "enabled": false,
+      "enabled": true,
       "artifact_name": "pii_span_detection",
       "metrics": [
         "span_f1",
@@ -205,10 +217,10 @@
         "family": "extractor",
         "input_type": "single",
         "objective": "token_classification",
-        "enabled": false,
-        "status": "disabled",
-        "reason": "Task disabled in config",
-        "rows_found": 0,
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 31979,
         "valid_score_rows": 0
       },
       {
@@ -249,10 +261,10 @@
         "family": "extractor",
         "input_type": "single",
         "objective": "token_classification",
-        "enabled": false,
-        "status": "disabled",
-        "reason": "Task disabled in config",
-        "rows_found": 0,
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 30516,
         "valid_score_rows": 0
       },
       {
@@ -279,6 +291,13 @@
       }
     ],
     "observed_tasks_by_family": {
+      "extractor": [
+        "constraint_scope",
+        "constraint_stability",
+        "constraint_type",
+        "fact_type",
+        "pii_presence"
+      ],
       "pair": [
         "conflict_detection",
         "constraint_rerank",
@@ -303,13 +322,6 @@
         "query_intent",
         "salience_bin",
         "write_importance_regression"
-      ],
-      "extractor": [
-        "constraint_scope",
-        "constraint_stability",
-        "constraint_type",
-        "fact_type",
-        "pii_presence"
       ]
     },
     "coverage_vs_config": {
@@ -4546,7 +4558,7 @@
             458
           ]
         ],
-        "calibration_error": 0.29469483799279905
+        "calibration_error": 0.29469250127203955
       },
       "eval": {
         "rows": 63000,
@@ -8716,7 +8728,7 @@
             449
           ]
         ],
-        "calibration_error": 0.2931793822255368
+        "calibration_error": 0.2931770489397421
       }
     },
     "extractor": {
@@ -9605,7 +9617,7 @@
             4979
           ]
         ],
-        "calibration_error": 0.20190737467037898
+        "calibration_error": 0.20190737467043368
       },
       "eval": {
         "rows": 36000,
@@ -10485,7 +10497,7 @@
             4967
           ]
         ],
-        "calibration_error": 0.2067129897314114
+        "calibration_error": 0.20671298973144303
       }
     },
     "pair": {
@@ -10966,7 +10978,7 @@
             3303
           ]
         ],
-        "calibration_error": 0.11893694169379888
+        "calibration_error": 0.11893694169379226
       },
       "eval": {
         "rows": 99404,
@@ -11438,96 +11450,84 @@
             3220
           ]
         ],
-        "calibration_error": 0.11830706018541194
+        "calibration_error": 0.1183070601854053
       }
     }
   },
   "task_training_status": {
     "retrieval_constraint_relevance_pair": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "pair",
       "objective": "pair_ranking",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\retrieval_constraint_relevance_pair_model.joblib",
-      "train_rows": 80000
+      "enabled": true
     },
     "memory_rerank_pair": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "pair",
       "objective": "pair_ranking",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\memory_rerank_pair_model.joblib",
-      "train_rows": 80000
+      "enabled": true
     },
     "novelty_pair": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "pair",
       "objective": "classification",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\novelty_pair_model.joblib",
-      "train_rows": 155227
+      "enabled": true
     },
     "fact_extraction_structured": {
-      "status": "disabled",
-      "reason": "Task disabled in config",
+      "status": "trained",
+      "reason": null,
       "family": "extractor",
       "objective": "token_classification",
-      "enabled": false
+      "enabled": true,
+      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_model.joblib",
+      "train_rows": 31979
     },
     "schema_match_pair": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "pair",
       "objective": "classification",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\schema_match_pair_model.joblib",
-      "train_rows": 80000
+      "enabled": true
     },
     "reconsolidation_candidate_pair": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "pair",
       "objective": "pair_ranking",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\reconsolidation_candidate_pair_model.joblib",
-      "train_rows": 80000
+      "enabled": true
     },
     "write_importance_regression": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "router",
       "objective": "single_regression",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\write_importance_regression_model.joblib",
-      "train_rows": 8000
+      "enabled": true
     },
     "pii_span_detection": {
-      "status": "disabled",
-      "reason": "Task disabled in config",
+      "status": "trained",
+      "reason": null,
       "family": "extractor",
       "objective": "token_classification",
-      "enabled": false
+      "enabled": true,
+      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\pii_span_detection_model.joblib",
+      "train_rows": 30516
     },
     "consolidation_gist_quality": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "router",
       "objective": "classification",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\consolidation_gist_quality_model.joblib",
-      "train_rows": 16000
+      "enabled": true
     },
     "forgetting_action_policy": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "router",
       "objective": "classification",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\forgetting_action_policy_model.joblib",
-      "train_rows": 40000
+      "enabled": true
     }
   },
   "task_models": {
@@ -11640,6 +11640,64 @@
         ]
       }
     },
+    "fact_extraction_structured": {
+      "task": "fact_extraction_structured",
+      "objective": "token_classification",
+      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_model.joblib",
+      "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_hf",
+      "train_rows": 31979,
+      "test": {
+        "span_precision": 0.9788749692950135,
+        "span_recall": 0.9868746904408123,
+        "span_f1": 0.9828585522259219,
+        "span_exact_match": 0.9887584311766175,
+        "rows": 4003
+      },
+      "eval": {
+        "span_precision": 0.9665940450254176,
+        "span_recall": 0.9849531327084361,
+        "span_f1": 0.9756872327428222,
+        "span_exact_match": 0.9868093578894973,
+        "rows": 4018
+      },
+      "labels": {
+        "0": "O",
+        "1": "B-attribute",
+        "2": "I-attribute",
+        "3": "B-causal",
+        "4": "I-causal",
+        "5": "B-goal",
+        "6": "I-goal",
+        "7": "B-identity",
+        "8": "I-identity",
+        "9": "B-location",
+        "10": "I-location",
+        "11": "B-occupation",
+        "12": "I-occupation",
+        "13": "B-policy",
+        "14": "I-policy",
+        "15": "B-preference",
+        "16": "I-preference",
+        "17": "B-state",
+        "18": "I-state",
+        "19": "B-value",
+        "20": "I-value"
+      },
+      "epoch_stats": [
+        {
+          "epoch": 1,
+          "train_loss": 0.15289378855089952
+        },
+        {
+          "epoch": 2,
+          "train_loss": 0.030943315989880225
+        },
+        {
+          "epoch": 3,
+          "train_loss": 0.015555097514015405
+        }
+      ]
+    },
     "schema_match_pair": {
       "task": "schema_match_pair",
       "objective": "classification",
@@ -11705,11 +11763,163 @@
       "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\write_importance_regression_model.joblib",
       "train_rows": 8000,
       "metrics": {
-        "train_mae": 0.1753856591403188,
-        "train_rmse": 0.20749079697813247,
-        "test_mae": 0.1648332513912348,
-        "test_rmse": 0.20020084867617313
+        "train_mae": 0.13044097038600833,
+        "train_rmse": 0.16532229611136556,
+        "test_mae": 0.128209782113717,
+        "test_rmse": 0.1616486525168643
       }
+    },
+    "pii_span_detection": {
+      "task": "pii_span_detection",
+      "objective": "token_classification",
+      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\pii_span_detection_model.joblib",
+      "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\pii_span_detection_hf",
+      "train_rows": 30516,
+      "test": {
+        "span_precision": 0.9131036391310364,
+        "span_recall": 0.9390252579153326,
+        "span_f1": 0.9258830544740257,
+        "span_exact_match": 0.8276137270550679,
+        "rows": 5012
+      },
+      "eval": {
+        "span_precision": 0.9067855893669116,
+        "span_recall": 0.9363431151241535,
+        "span_f1": 0.9213273510728087,
+        "span_exact_match": 0.8369856887298748,
+        "rows": 4472
+      },
+      "labels": {
+        "0": "O",
+        "1": "B-ACCOUNTNAME",
+        "2": "I-ACCOUNTNAME",
+        "3": "B-ACCOUNTNUMBER",
+        "4": "I-ACCOUNTNUMBER",
+        "5": "B-AGE",
+        "6": "I-AGE",
+        "7": "B-AMOUNT",
+        "8": "I-AMOUNT",
+        "9": "B-BIC",
+        "10": "I-BIC",
+        "11": "B-BITCOINADDRESS",
+        "12": "I-BITCOINADDRESS",
+        "13": "B-BUILDINGNUMBER",
+        "14": "I-BUILDINGNUMBER",
+        "15": "B-CITY",
+        "16": "I-CITY",
+        "17": "B-COMPANYNAME",
+        "18": "I-COMPANYNAME",
+        "19": "B-COUNTY",
+        "20": "I-COUNTY",
+        "21": "B-CREDITCARDCVV",
+        "22": "I-CREDITCARDCVV",
+        "23": "B-CREDITCARDISSUER",
+        "24": "I-CREDITCARDISSUER",
+        "25": "B-CREDITCARDNUMBER",
+        "26": "I-CREDITCARDNUMBER",
+        "27": "B-CURRENCY",
+        "28": "I-CURRENCY",
+        "29": "B-CURRENCYCODE",
+        "30": "I-CURRENCYCODE",
+        "31": "B-CURRENCYNAME",
+        "32": "I-CURRENCYNAME",
+        "33": "B-CURRENCYSYMBOL",
+        "34": "I-CURRENCYSYMBOL",
+        "35": "B-DATE",
+        "36": "I-DATE",
+        "37": "B-DOB",
+        "38": "I-DOB",
+        "39": "B-EMAIL",
+        "40": "I-EMAIL",
+        "41": "B-ETHEREUMADDRESS",
+        "42": "I-ETHEREUMADDRESS",
+        "43": "B-EYECOLOR",
+        "44": "I-EYECOLOR",
+        "45": "B-FIRSTNAME",
+        "46": "I-FIRSTNAME",
+        "47": "B-GENDER",
+        "48": "I-GENDER",
+        "49": "B-HEIGHT",
+        "50": "I-HEIGHT",
+        "51": "B-IBAN",
+        "52": "I-IBAN",
+        "53": "B-IP",
+        "54": "I-IP",
+        "55": "B-IPV4",
+        "56": "I-IPV4",
+        "57": "B-IPV6",
+        "58": "I-IPV6",
+        "59": "B-JOBAREA",
+        "60": "I-JOBAREA",
+        "61": "B-JOBTITLE",
+        "62": "I-JOBTITLE",
+        "63": "B-JOBTYPE",
+        "64": "I-JOBTYPE",
+        "65": "B-LASTNAME",
+        "66": "I-LASTNAME",
+        "67": "B-LITECOINADDRESS",
+        "68": "I-LITECOINADDRESS",
+        "69": "B-MAC",
+        "70": "I-MAC",
+        "71": "B-MASKEDNUMBER",
+        "72": "I-MASKEDNUMBER",
+        "73": "B-MIDDLENAME",
+        "74": "I-MIDDLENAME",
+        "75": "B-NEARBYGPSCOORDINATE",
+        "76": "I-NEARBYGPSCOORDINATE",
+        "77": "B-ORDINALDIRECTION",
+        "78": "I-ORDINALDIRECTION",
+        "79": "B-PASSWORD",
+        "80": "I-PASSWORD",
+        "81": "B-PHONEIMEI",
+        "82": "I-PHONEIMEI",
+        "83": "B-PHONENUMBER",
+        "84": "I-PHONENUMBER",
+        "85": "B-PIN",
+        "86": "I-PIN",
+        "87": "B-PREFIX",
+        "88": "I-PREFIX",
+        "89": "B-SECONDARYADDRESS",
+        "90": "I-SECONDARYADDRESS",
+        "91": "B-SECRET",
+        "92": "I-SECRET",
+        "93": "B-SEX",
+        "94": "I-SEX",
+        "95": "B-SSN",
+        "96": "I-SSN",
+        "97": "B-STATE",
+        "98": "I-STATE",
+        "99": "B-STREET",
+        "100": "I-STREET",
+        "101": "B-TIME",
+        "102": "I-TIME",
+        "103": "B-URL",
+        "104": "I-URL",
+        "105": "B-USERAGENT",
+        "106": "I-USERAGENT",
+        "107": "B-USERNAME",
+        "108": "I-USERNAME",
+        "109": "B-VEHICLEVIN",
+        "110": "I-VEHICLEVIN",
+        "111": "B-VEHICLEVRM",
+        "112": "I-VEHICLEVRM",
+        "113": "B-ZIPCODE",
+        "114": "I-ZIPCODE"
+      },
+      "epoch_stats": [
+        {
+          "epoch": 1,
+          "train_loss": 0.3775817048706637
+        },
+        {
+          "epoch": 2,
+          "train_loss": 0.0740108163230695
+        },
+        {
+          "epoch": 3,
+          "train_loss": 0.0533298082313119
+        }
+      ]
     },
     "consolidation_gist_quality": {
       "task": "consolidation_gist_quality",
@@ -11800,9 +12010,11 @@
     "retrieval_constraint_relevance_pair": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\retrieval_constraint_relevance_pair_thresholds.json",
     "memory_rerank_pair": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\memory_rerank_pair_thresholds.json",
     "novelty_pair": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\novelty_pair_thresholds.json",
+    "fact_extraction_structured": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_thresholds.json",
     "schema_match_pair": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\schema_match_pair_thresholds.json",
     "reconsolidation_candidate_pair": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\reconsolidation_candidate_pair_thresholds.json",
     "write_importance_regression": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\write_importance_regression_thresholds.json",
+    "pii_span_detection": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\pii_span_detection_thresholds.json",
     "consolidation_gist_quality": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\consolidation_gist_quality_thresholds.json",
     "forgetting_action_policy": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\forgetting_action_policy_thresholds.json"
   },

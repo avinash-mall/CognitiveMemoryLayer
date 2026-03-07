@@ -19,7 +19,7 @@ Implementations from [CML Audit 2026-03-06](../../ProjectPlan/BaseCML/CML_Audit_
 - **`cml.modeling` module** — New optional modeling module (`pip install "cognitive-memory-layer[modeling]"`). Wraps model data preparation and training into importable Python APIs (`prepare_data`, `train_models`, `run_pipeline`) and a `cml-models` CLI with subcommands (`prepare`, `train`, `pipeline`). Typed dataclass configs (`PrepareConfig`, `TrainConfig`). Legacy scripts remain as thin wrappers.
 - **Shared endpoint helpers (PKG-09)** — New `cml._endpoints` module with `build_write_body`, `build_read_body`, `build_turn_body`, `build_update_body`, `build_forget_body`, `build_create_session_body`, and `eval_mode_headers`. Sync and async clients use these for write/read to reduce duplication.
 - **Embedded `models_dir` (PKG-02)** — `EmbeddedCognitiveMemoryLayer` accepts optional `models_dir`; when set, configures `CML_MODELS_DIR` before initialization so the engine loads modelpack artifacts from that path.
-- **Training `--strict` mode (PKG-06)** — `cml.modeling.train` supports `--strict`. When set, unsupported or disabled tasks cause a hard failure instead of a skip. `TaskSpec` has optional `enabled` field; token-classification tasks are disabled in `model_pipeline.toml` with comments.
+- **Training `--strict` mode (PKG-06)** — `cml.modeling.train` supports `--strict`. When set, unsupported or disabled tasks cause a hard failure instead of a skip. `TaskSpec` has optional `enabled` field; token-classification tasks now train from dedicated task parquet splits and fail strict mode when those splits are missing.
 
 ### Changed
 
@@ -31,7 +31,7 @@ Implementations from [CML Audit 2026-03-06](../../ProjectPlan/BaseCML/CML_Audit_
 - **`locomo.py` standalone fallback** — `run_locomo_plus` now works outside the CML repository by providing a built-in `_load_unified_samples_builtin` fallback for sample loading. `phase_c_judge` raises a clear `ImportError` with instructions when the repo-local `task_eval` module is unavailable.
 - **`locomo.py` retry error handling** — `_dashboard_post` and `_cml_read` now handle the case where the retry loop exhausts without binding `resp`, avoiding potential `UnboundLocalError`.
 - **`locomo.py` main() error handling** — `main()` now catches `FileNotFoundError`, `ImportError`, and general exceptions, printing clear error messages to stderr and returning non-zero exit codes.
-- **`train.py` token_classification stub** — `_train_token_classification` now raises `NotImplementedError` with a descriptive message instead of silently returning. The `_train_task` dispatcher catches this and logs a skip message to stderr.
+- **Token model training** — `_train_token_classification` now fine-tunes dedicated Hugging Face token-classification models for `fact_extraction_structured` and `pii_span_detection`, writes per-task HF checkpoints, and exports span metrics in the manifest.
 - **`modeling/cli.py` pipeline command** — The `pipeline` subcommand now correctly uses `cml.modeling.pipeline.run_pipeline` with typed `PrepareConfig`/`TrainConfig` instead of bypassing it with raw argv delegation.
 
 
@@ -52,7 +52,7 @@ Implementations from [CML Audit 2026-03-06](../../ProjectPlan/BaseCML/CML_Audit_
 - **Retry max delay (PKG-04)** — `_sleep_with_backoff` and `_async_sleep_with_backoff` accept a `max_delay` parameter. Sync and async retry logic use `config.max_retry_delay` to cap backoff (no longer hardcoded 60s).
 - **Import fidelity (PKG-05)** — `import_memories_async` (and sync `import_memories`) now preserve `type`, `timestamp`, `confidence`, `context_tags`, `namespace`, `source_session_id` from exported JSON; confidence stored in `metadata["_imported_confidence"]` when not forwarded directly.
 - **Eval CLI paths (PKG-08)** — Default repo-root and path defaults return `None` when markers are missing. Commands that need paths call `_require_path()` and exit with a clear error when run outside the repo without explicit `--repo-root` / `--out-dir` / etc.
-- **Model pipeline (PKG-06)** — `fact_extraction_structured` and `pii_span_detection` marked `enabled = false` in `model_pipeline.toml` with comments. `packages/models/README.md` task table marks them as *(planned)*. Skipped tasks are logged; disabled tasks filtered before training.
+- **Model pipeline (PKG-06)** — `fact_extraction_structured` and `pii_span_detection` are enabled in `model_pipeline.toml`, prepared into dedicated token-task parquet splits, and trained into runtime-loadable task artifacts.
 
 ### Documentation
 

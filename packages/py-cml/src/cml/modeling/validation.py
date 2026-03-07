@@ -8,13 +8,14 @@ from typing import Any
 
 import pandas as pd
 
+from cml.modeling.token_training import load_token_task_split
+
 _KNOWN_OBJECTIVES = {
     "classification",
     "pair_ranking",
     "single_regression",
     "token_classification",
 }
-_DEFERRED_OBJECTIVES = {"token_classification"}
 _FAMILIES = {"router", "extractor", "pair"}
 
 
@@ -54,6 +55,8 @@ class PreflightValidationResult:
 
 
 def _required_columns(*, input_type: str, objective: str) -> list[str]:
+    if objective == "token_classification":
+        return ["task", "text", "spans", "source", "language"]
     cols = ["task", "text_a", "text_b"] if input_type == "pair" else ["task", "text"]
     if objective == "single_regression":
         cols.append("score")
@@ -107,7 +110,12 @@ def run_preflight_validation(
         objective = str(raw.get("objective", "")).strip()
         enabled = bool(raw.get("enabled", True))
 
-        if family in enabled_tasks_by_family and enabled and task_name:
+        if (
+            family in enabled_tasks_by_family
+            and enabled
+            and task_name
+            and objective != "token_classification"
+        ):
             enabled_tasks_by_family[family].add(task_name)
 
         if not task_name:
@@ -143,17 +151,47 @@ def run_preflight_validation(
             task_checks.append(status)
             continue
 
-        if objective in _DEFERRED_OBJECTIVES:
-            status.status = "error"
-            status.reason = f"Objective '{objective}' is deferred; keep task disabled until trainer support lands"
-            errors.append(f"[task:{task_name}] objective '{objective}' is not supported yet")
-            task_checks.append(status)
-            continue
-
         if input_type not in {"single", "pair"}:
             status.status = "error"
             status.reason = f"Invalid input_type '{input_type}'"
             errors.append(f"[task:{task_name}] invalid input_type '{input_type}'")
+            task_checks.append(status)
+            continue
+
+        if objective == "token_classification":
+            try:
+                token_df = load_token_task_split(prepared_dir, task_name, "train")
+            except Exception as exc:
+                status.status = "error"
+                status.reason = str(exc)
+                errors.append(f"[task:{task_name}] {exc}")
+                task_checks.append(status)
+                continue
+
+            required = _required_columns(input_type=input_type, objective=objective)
+            missing_cols = [col for col in required if col not in token_df.columns]
+            if missing_cols:
+                status.status = "error"
+                status.reason = (
+                    f"Missing required columns in {task_name}_train.parquet: {missing_cols}"
+                )
+                errors.append(
+                    f"[task:{task_name}] missing columns in {task_name}_train.parquet: {missing_cols}"
+                )
+                task_checks.append(status)
+                continue
+
+            subset = token_df[token_df["task"].astype(str) == task_name]
+            status.rows_found = len(subset)
+            if subset.empty:
+                status.status = "error"
+                status.reason = "No rows found for configured token task in prepared train split"
+                errors.append(
+                    f"[task:{task_name}] no prepared rows found in {task_name}_train.parquet"
+                )
+                task_checks.append(status)
+                continue
+
             task_checks.append(status)
             continue
 
@@ -245,5 +283,10 @@ def validate_manifest_artifacts(
         model_path = Path(str(summary.get("model_path", ""))).expanduser()
         if not model_path.exists():
             errors.append(f"[task:{task_name}] missing model artifact: {model_path}")
+        hf_model_dir = str(summary.get("hf_model_dir", "") or "").strip()
+        if hf_model_dir:
+            hf_path = Path(hf_model_dir).expanduser()
+            if not hf_path.exists():
+                errors.append(f"[task:{task_name}] missing HF model directory: {hf_path}")
 
     return errors

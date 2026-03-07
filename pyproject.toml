@@ -83,6 +83,9 @@ modeling = [
     "datasets>=2.20",
     "httpx>=0.27",
     "tqdm>=4.66",
+    "transformers>=4.45",
+    "torch>=2.4",
+    "accelerate>=0.34",
 ]
 dev = [
     "types-cachetools>=5.0",

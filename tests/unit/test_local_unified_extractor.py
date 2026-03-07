@@ -86,7 +86,7 @@ class TestLocalUnifiedExtractorExtract:
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
         result = asyncio.get_event_loop().run_until_complete(ext.extract("test text here"))
         assert len(result["facts"]) == 2
-        assert result["facts"][0]["label"] == "preference"
+        assert result["facts"][0].category.value == "preference"
 
     def test_extracts_importance_from_model(self):
         score = ScorePrediction(task="write_importance_regression", score=0.85)

@@ -120,7 +120,6 @@ artifact_name = "novelty_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
 
 [[tasks]]
-# Planned: requires a transformer-based span trainer not yet implemented.
 task_name = "fact_extraction_structured"
 family = "extractor"
 input_type = "single"
@@ -128,7 +127,7 @@ objective = "token_classification"
 labels = []
 artifact_name = "fact_extraction_structured"
 metrics = ["span_f1", "span_exact_match"]
-enabled = false
+enabled = true
 
 [[tasks]]
 task_name = "schema_match_pair"
@@ -159,7 +158,6 @@ metrics = ["mae", "rmse"]
 enabled = true
 
 [[tasks]]
-# Planned: requires a transformer-based span trainer not yet implemented.
 task_name = "pii_span_detection"
 family = "extractor"
 input_type = "single"
@@ -167,7 +165,7 @@ objective = "token_classification"
 labels = []
 artifact_name = "pii_span_detection"
 metrics = ["span_f1", "span_exact_match"]
-enabled = false
+enabled = true
 
 [[tasks]]
 task_name = "consolidation_gist_quality"
@@ -235,6 +233,23 @@ local_raw_scan_rows_per_file = 300
 enabled = true
 # Fraction of synthetic data that should be English (rest distributed across other languages).
 english_weight = 0.30
+
+[prepare.token]
+target_examples_per_task = 40000
+max_examples_per_task = 80000
+max_spans_per_example = 16
+
+[train.token]
+model_name_or_path = "distilbert-base-multilingual-cased"
+num_train_epochs = 3
+per_device_train_batch_size = 8
+per_device_eval_batch_size = 16
+max_seq_length = 256
+stride = 64
+learning_rate = 0.00005
+warmup_ratio = 0.1
+weight_decay = 0.01
+gradient_accumulation_steps = 1
 
 # ============================================================================
 # Remote datasets (auto-downloaded by prepare.py when enabled=true)

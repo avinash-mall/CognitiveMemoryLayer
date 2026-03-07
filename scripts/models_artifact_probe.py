@@ -18,6 +18,28 @@ from typing import Any
 
 import pandas as pd
 
+from cml.modeling.token_training import load_token_task_split
+
+
+def _token_task_probe(prepared_dir: Path, task_name: str) -> dict[str, Any]:
+    path = prepared_dir / f"{task_name}_train.parquet"
+    if not path.exists():
+        return {"exists": False}
+    df = load_token_task_split(prepared_dir, task_name, "train")
+    source_counts = Counter(df["source"].astype(str)) if "source" in df.columns else Counter()
+    label_counts: Counter[str] = Counter()
+    for spans in df["spans"].tolist():
+        for span in spans or []:
+            label_counts[str(span.get("label", ""))] += 1
+    return {
+        "exists": True,
+        "rows": len(df),
+        "columns": list(df.columns),
+        "tasks": sorted(df["task"].astype(str).unique().tolist()) if "task" in df.columns else [],
+        "span_label_counts": dict(label_counts),
+        "top_sources": dict(source_counts.most_common(10)),
+    }
+
 
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Path):
@@ -86,6 +108,7 @@ def _collect_mismatches(
     *,
     config_tasks: list[dict[str, Any]],
     prepared: dict[str, dict[str, Any]],
+    token_prepared: dict[str, dict[str, Any]],
     trained: dict[str, Any],
 ) -> list[str]:
     mismatches: list[str] = []
@@ -97,10 +120,23 @@ def _collect_mismatches(
             continue
         observed_tasks.update(str(x) for x in payload.get("tasks", []))
 
-    enabled_tasks = [
-        str(t.get("task_name", "")) for t in config_tasks if bool(t.get("enabled", True))
-    ]
-    for task_name in enabled_tasks:
+    enabled_tasks = [t for t in config_tasks if bool(t.get("enabled", True))]
+    enabled_task_names = [str(t.get("task_name", "")) for t in enabled_tasks]
+    for raw in enabled_tasks:
+        task_name = str(raw.get("task_name", ""))
+        objective = str(raw.get("objective", ""))
+        if objective == "token_classification":
+            payload = token_prepared.get(task_name, {})
+            if not payload.get("exists", False):
+                mismatches.append(
+                    f"[prepared] configured enabled token task missing split: {task_name}"
+                )
+                continue
+            if task_name not in payload.get("tasks", []):
+                mismatches.append(
+                    f"[prepared] configured enabled token task missing from token splits: {task_name}"
+                )
+            continue
         if task_name and task_name not in observed_tasks:
             mismatches.append(
                 f"[prepared] configured enabled task missing from train splits: {task_name}"
@@ -114,7 +150,7 @@ def _collect_mismatches(
             )
 
     task_models = trained.get("task_models", {})
-    for task_name in enabled_tasks:
+    for task_name in enabled_task_names:
         if task_name and not bool(task_models.get(task_name)):
             mismatches.append(f"[trained] enabled task model missing: {task_name}")
 
@@ -161,6 +197,20 @@ def _runtime_probe() -> dict[str, Any]:
             if score_pred is None
             else {"score": score_pred.score, "confidence": score_pred.confidence}
         )
+    token_checks = {
+        "pii_span_detection": "Contact me at alice@example.com and do not share the api_key sk-live-secret0001.",
+        "fact_extraction_structured": "I live in Paris and prefer vegetarian food.",
+    }
+    for task, text in token_checks.items():
+        span_pred = mp.predict_spans(task, text)
+        checks[task] = (
+            None
+            if span_pred is None
+            else {
+                "spans": [list(span) for span in span_pred.spans],
+                "confidence": span_pred.confidence,
+            }
+        )
     result["checks"] = checks
     return result
 
@@ -200,10 +250,19 @@ def main(argv: list[str] | None = None) -> int:
         family: _family_probe(args.prepared_dir, family)
         for family in ("router", "extractor", "pair")
     }
+    token_prepared = {
+        task_name: _token_task_probe(args.prepared_dir, task_name)
+        for task_name in (
+            str(task.get("task_name", ""))
+            for task in config_tasks
+            if str(task.get("objective", "")) == "token_classification"
+        )
+    }
     trained = _trained_probe(config_tasks, args.trained_dir)
     mismatches = _collect_mismatches(
         config_tasks=config_tasks,
         prepared=prepared,
+        token_prepared=token_prepared,
         trained=trained,
     )
 
@@ -211,12 +270,20 @@ def main(argv: list[str] | None = None) -> int:
         "config_path": args.config,
         "configured_task_names": [task["task_name"] for task in config_tasks],
         "prepared": prepared,
+        "token_prepared": token_prepared,
         "trained": trained,
         "mismatches": mismatches,
     }
 
     if args.runtime_probe:
-        result["runtime"] = _runtime_probe()
+        runtime = _runtime_probe()
+        result["runtime"] = runtime
+        token_checks = runtime.get("checks", {})
+        for task_name in ("pii_span_detection", "fact_extraction_structured"):
+            check = token_checks.get(task_name)
+            spans = [] if not isinstance(check, dict) else list(check.get("spans") or [])
+            if not spans:
+                mismatches.append(f"[runtime] token task produced no spans: {task_name}")
 
     print(json.dumps(_jsonable(result), indent=2))
     if args.fail_on_mismatch and mismatches:
