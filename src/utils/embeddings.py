@@ -140,6 +140,7 @@ class LocalEmbeddings(EmbeddingClient):
         torch: Any = None
         try:
             import torch as _torch
+
             torch = _torch
         except ImportError:
             pass

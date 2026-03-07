@@ -199,8 +199,7 @@ class TestWriteTimeFactExtractor:
         facts = self.extractor.extract(chunk)
         assert any(f.category == FactCategory.LOCATION and f.value == "Paris" for f in facts)
         assert any(
-            f.category == FactCategory.PREFERENCE and "comida vegetariana" in f.value
-            for f in facts
+            f.category == FactCategory.PREFERENCE and "comida vegetariana" in f.value for f in facts
         )
 
 

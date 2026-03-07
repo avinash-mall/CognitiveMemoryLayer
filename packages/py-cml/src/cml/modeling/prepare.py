@@ -1474,7 +1474,9 @@ def _build_fact_token_rows(
                     )
                     label_index[(label, language.code)] += 1
                     attempts += 1
-                    if rows.add("fact_extraction_structured", text, spans, source, language=language.code):
+                    if rows.add(
+                        "fact_extraction_structured", text, spans, source, language=language.code
+                    ):
                         label_counts[label] += 1
                         label_language_counts[(label, language.code)] += 1
                 if label_language_counts[(label, language.code)] < per_label_language_target:
@@ -4645,9 +4647,7 @@ def main(argv: list[str] | None = None) -> int:
                     "updated": needs_tokens,
                     "missing_before": token_missing.get(task_name, 0),
                     "warnings": (
-                        manifest_warnings
-                        if task_name == "fact_extraction_structured"
-                        else []
+                        manifest_warnings if task_name == "fact_extraction_structured" else []
                     ),
                 }
                 for task_name in sorted(token_tasks)
