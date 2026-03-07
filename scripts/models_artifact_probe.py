@@ -16,16 +16,38 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-from cml.modeling.token_training import load_token_task_split
+from _shared import load_repo_env, normalize_bool_env
+
+
+def _require_pandas():
+    try:
+        import pandas as pd
+    except ImportError as exc:  # pragma: no cover - depends on local extras
+        raise RuntimeError(
+            "models_artifact_probe requires pandas with parquet support such as pyarrow."
+        ) from exc
+    return pd
+
+
+def _load_token_task_split(prepared_dir: Path, task_name: str):
+    try:
+        from cml.modeling.token_training import load_token_task_split
+    except ImportError as exc:  # pragma: no cover - depends on local extras
+        raise RuntimeError(
+            "models_artifact_probe requires the modeling extras from the repo environment."
+        ) from exc
+    return load_token_task_split(prepared_dir, task_name, "train")
 
 
 def _token_task_probe(prepared_dir: Path, task_name: str) -> dict[str, Any]:
     path = prepared_dir / f"{task_name}_train.parquet"
     if not path.exists():
         return {"exists": False}
-    df = load_token_task_split(prepared_dir, task_name, "train")
+    df = _load_token_task_split(prepared_dir, task_name)
     source_counts = Counter(df["source"].astype(str)) if "source" in df.columns else Counter()
     language_counts = Counter(df["language"].astype(str)) if "language" in df.columns else Counter()
     label_counts: Counter[str] = Counter()
@@ -69,6 +91,7 @@ def _family_probe(prepared_dir: Path, family: str) -> dict[str, Any]:
     train_path = prepared_dir / f"{family}_train.parquet"
     if not train_path.exists():
         return {"exists": False}
+    pd = _require_pandas()
     df = pd.read_parquet(train_path)
     source_counts = Counter(df["source"].astype(str)) if "source" in df.columns else Counter()
     llm_rows = sum(count for src, count in source_counts.items() if src.startswith("llm:"))
@@ -139,7 +162,7 @@ def _collect_mismatches(
                     f"[prepared] configured enabled token task missing from token splits: {task_name}"
                 )
             if task_name == "fact_extraction_structured":
-                languages = {str(lang) for lang in (payload.get("languages") or {}).keys()}
+                languages = {str(lang) for lang in (payload.get("languages") or {})}
                 non_english = {lang for lang in languages if lang and lang != "en"}
                 if not non_english:
                     mismatches.append(
@@ -257,29 +280,35 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_repo_env()
+    normalize_bool_env("DEBUG")
     args = build_parser().parse_args(argv)
-    cfg = _load_toml(args.config)
-    config_tasks = cfg.get("tasks", [])
+    try:
+        cfg = _load_toml(args.config)
+        config_tasks = cfg.get("tasks", [])
 
-    prepared = {
-        family: _family_probe(args.prepared_dir, family)
-        for family in ("router", "extractor", "pair")
-    }
-    token_prepared = {
-        task_name: _token_task_probe(args.prepared_dir, task_name)
-        for task_name in (
-            str(task.get("task_name", ""))
-            for task in config_tasks
-            if str(task.get("objective", "")) == "token_classification"
+        prepared = {
+            family: _family_probe(args.prepared_dir, family)
+            for family in ("router", "extractor", "pair")
+        }
+        token_prepared = {
+            task_name: _token_task_probe(args.prepared_dir, task_name)
+            for task_name in (
+                str(task.get("task_name", ""))
+                for task in config_tasks
+                if str(task.get("objective", "")) == "token_classification"
+            )
+        }
+        trained = _trained_probe(config_tasks, args.trained_dir)
+        mismatches = _collect_mismatches(
+            config_tasks=config_tasks,
+            prepared=prepared,
+            token_prepared=token_prepared,
+            trained=trained,
         )
-    }
-    trained = _trained_probe(config_tasks, args.trained_dir)
-    mismatches = _collect_mismatches(
-        config_tasks=config_tasks,
-        prepared=prepared,
-        token_prepared=token_prepared,
-        trained=trained,
-    )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     result = {
         "config_path": args.config,

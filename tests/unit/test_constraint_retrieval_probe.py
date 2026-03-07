@@ -43,3 +43,10 @@ def test_probe_scenarios_include_shellfish_fixture() -> None:
     scenario = probe.SCENARIOS["shellfish_restaurant"]
     assert scenario.query
     assert len(scenario.writes) >= 2
+    assert "shellfish" in scenario.expected_terms
+
+
+def test_cml_api_normalizes_root_base_url() -> None:
+    probe = _load_probe_module()
+    api = probe.CMLApi("http://localhost:8000/api/v1", "test-key", "tenant")
+    assert api.base_url == "http://localhost:8000"

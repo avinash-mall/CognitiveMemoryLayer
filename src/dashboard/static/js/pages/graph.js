@@ -41,26 +41,30 @@ function errToMessage(err) {
     return String(err);
 }
 
-const EXPLORE_CYPHER = `
+function buildExploreCypher(depth) {
+    return `
 MATCH (start:Entity {tenant_id: $tenant_id, scope_id: $scope_id, entity: $entity})
-MATCH path = (start)-[*1..$depth]-(neighbor:Entity)
+MATCH path = (start)-[*1..${depth}]-(neighbor:Entity)
 WHERE neighbor.tenant_id = $tenant_id AND neighbor.scope_id = $scope_id
 WITH path LIMIT 500
 UNWIND relationships(path) AS r
 WITH DISTINCT r, startNode(r) AS sn, endNode(r) AS en
 RETURN sn, r, en
 `;
+}
 
-const OVERVIEW_CYPHER = `
+function buildOverviewCypher(depth) {
+    return `
 MATCH (n:Entity {tenant_id: $tenant_id, scope_id: $scope_id})
 WITH n ORDER BY COUNT { (n)--() } DESC LIMIT 1
-MATCH path = (n)-[*1..$depth]-(m:Entity)
+MATCH path = (n)-[*1..${depth}]-(m:Entity)
 WHERE m.tenant_id = $tenant_id AND m.scope_id = $scope_id
 WITH path LIMIT 500
 UNWIND relationships(path) AS r
 WITH DISTINCT r, startNode(r) AS sn, endNode(r) AS en
 RETURN sn, r, en
 `;
+}
 
 function buildNeovisConfig(neo4jConfig, pageEl) {
     const vizContainerId = 'graph-viz';
@@ -255,10 +259,9 @@ export async function renderGraph({ tenantId } = {}) {
         const scopeId = selectedTenant;
         const depth = getDepth(el);
         try {
-            neoViz.renderWithCypher(OVERVIEW_CYPHER, {
+            neoViz.renderWithCypher(buildOverviewCypher(depth), {
                 tenant_id: selectedTenant,
                 scope_id: scopeId,
-                depth,
             });
             lastGraphParams = { type: 'overview', tenant_id: selectedTenant, scope_id: scopeId };
         } catch (e) {
@@ -347,17 +350,15 @@ function attachListeners(el, initialTenantId) {
         try {
             neoViz.clearNetwork();
             if (lastGraphParams.type === 'overview') {
-                neoViz.renderWithCypher(OVERVIEW_CYPHER, {
+                neoViz.renderWithCypher(buildOverviewCypher(depth), {
                     tenant_id: lastGraphParams.tenant_id,
                     scope_id: lastGraphParams.scope_id,
-                    depth,
                 });
             } else {
-                neoViz.renderWithCypher(EXPLORE_CYPHER, {
+                neoViz.renderWithCypher(buildExploreCypher(depth), {
                     tenant_id: lastGraphParams.tenant_id,
                     scope_id: lastGraphParams.scope_id,
                     entity: lastGraphParams.entity,
-                    depth,
                 });
             }
         } catch (e) {
@@ -373,7 +374,7 @@ function attachListeners(el, initialTenantId) {
         const depth = getDepth(el);
         try {
             neoViz.clearNetwork();
-            neoViz.renderWithCypher(OVERVIEW_CYPHER, { tenant_id: tid, scope_id: tid, depth });
+            neoViz.renderWithCypher(buildOverviewCypher(depth), { tenant_id: tid, scope_id: tid });
             lastGraphParams = { type: 'overview', tenant_id: tid, scope_id: tid };
         } catch (e) {
             graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(String(e?.message || e))}</div>`;
@@ -438,11 +439,10 @@ async function doExplore(el, tenantId, entity, scopeId) {
 
     try {
         neoViz.clearNetwork();
-        neoViz.renderWithCypher(EXPLORE_CYPHER, {
+        neoViz.renderWithCypher(buildExploreCypher(depth), {
             tenant_id: tenantId,
             scope_id: scope,
             entity,
-            depth,
         });
         lastGraphParams = { type: 'explore', tenant_id: tenantId, scope_id: scope, entity };
     } catch (err) {

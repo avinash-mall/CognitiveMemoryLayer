@@ -44,8 +44,14 @@ _PREDICATE_KEYWORDS: dict[str, list[str]] = {
 }
 
 _PREFERENCE_LEMMAS = {"prefer", "like", "love", "enjoy", "hate", "dislike"}
-_FIRST_PERSON_TOKENS = {"i", "me", "my", "mine", "myself"}
+_FIRST_PERSON_TOKENS = {"i", "my", "mine", "myself"}
 _WRITE_TIME_CONFIDENCE_BASE: float = 0.6
+_HASH_SUFFIX_RE = re.compile(r"^[0-9a-f]{12}$")
+_DIRECT_NAME_PATTERNS = (
+    r"\bmy name is\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)(?=\s+(?:and|but)\b|$)",
+    r"\bcall me\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)(?=\s+(?:and|but)\b|$)",
+    r"\bi(?:'m| am)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})(?=\s*(?:[,.!?]|$|\band\b|\bbut\b))",
+)
 
 
 class WriteTimeFactExtractor:
@@ -70,6 +76,9 @@ class WriteTimeFactExtractor:
         if not text:
             return []
 
+        facts: list[ExtractedFact] = []
+        seen: set[tuple[str, str]] = set()
+
         # --- model path: structured span extraction ---
         try:
             if getattr(self.modelpack, "has_task_model", lambda _: False)(
@@ -84,7 +93,7 @@ class WriteTimeFactExtractor:
                         label_to_category=_label_to_category,
                         confidence=span_prediction_confidence(span_pred, multiplier=0.75),
                     )
-                    facts = [
+                    model_facts = [
                         ExtractedFact(
                             key=record.key,
                             category=record.category,
@@ -94,15 +103,14 @@ class WriteTimeFactExtractor:
                         )
                         for record in records
                     ]
-                    if facts:
-                        return facts
+                    for fact in model_facts:
+                        if self._keep_model_fact(fact):
+                            self._append_model_fact(facts, seen, fact)
         except Exception:
             pass
 
         # --- heuristic path (regex / spaCy) ---
         doc = parse_text(text)
-        facts = []
-        seen = set()
         if doc is None or not _doc_supports_dependency_parse(doc):
             self._extract_facts_without_nlp(text, facts, seen)
             return facts
@@ -125,7 +133,7 @@ class WriteTimeFactExtractor:
         value: str,
         confidence_boost: float,
     ) -> None:
-        clean_value = value.strip().strip(".")
+        clean_value = " ".join(value.strip().strip(".").split())
         if not clean_value:
             return
         dedupe_key = (key, clean_value.lower())
@@ -142,12 +150,79 @@ class WriteTimeFactExtractor:
             )
         )
 
+    def _append_model_fact(
+        self,
+        facts: list[ExtractedFact],
+        seen: set[tuple[str, str]],
+        fact: ExtractedFact,
+    ) -> None:
+        clean_value = " ".join(fact.value.strip().strip(".").split())
+        if fact.key == "user:preference:hobby":
+            clean_value = re.sub(r"\s+as hobbies?\b", "", clean_value, flags=re.IGNORECASE).strip()
+        if not clean_value:
+            return
+        dedupe_key = (fact.key, clean_value.lower())
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        facts.append(
+            ExtractedFact(
+                key=fact.key,
+                category=fact.category,
+                predicate=fact.predicate,
+                value=clean_value,
+                confidence=fact.confidence,
+            )
+        )
+
     def _extract_preference_facts(
         self,
         doc: Any,
         facts: list[ExtractedFact],
         seen: set[tuple[str, str]],
     ) -> None:
+        for sent in doc.sents:
+            sent_text = sent.text.strip()
+            hobby_match = re.search(
+                r"\bmy hobbies are\s+(.+)",
+                sent_text,
+                flags=re.IGNORECASE,
+            )
+            if hobby_match:
+                value = self._clean_match_value(hobby_match.group(1))
+                if value:
+                    self._append_fact(
+                        facts,
+                        seen,
+                        key="user:preference:hobby",
+                        category=FactCategory.PREFERENCE,
+                        predicate="hobby",
+                        value=value,
+                        confidence_boost=0.78,
+                    )
+
+            match = re.search(
+                r"\bmy favou?rite\s+(.+?)\s+is\s+(.+)",
+                sent_text,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                continue
+            descriptor = self._clean_match_value(match.group(1))
+            value = self._clean_match_value(match.group(2))
+            if not descriptor or not value:
+                continue
+            predicate = _derive_predicate(descriptor)
+            self._append_fact(
+                facts,
+                seen,
+                key=f"user:preference:{predicate}",
+                category=FactCategory.PREFERENCE,
+                predicate=predicate,
+                value=value,
+                confidence_boost=0.78,
+            )
+
         for token in doc:
             if token.lemma_.lower() not in _PREFERENCE_LEMMAS:
                 continue
@@ -169,7 +244,11 @@ class WriteTimeFactExtractor:
             if not obj:
                 continue
 
-            predicate = _derive_predicate(obj)
+            if "hobb" in token.sent.text.lower():
+                obj = re.sub(r"\s+as hobbies?\b", "", obj, flags=re.IGNORECASE).strip()
+                predicate = "hobby"
+            else:
+                predicate = _derive_predicate(obj)
             self._append_fact(
                 facts,
                 seen,
@@ -186,21 +265,19 @@ class WriteTimeFactExtractor:
         facts: list[ExtractedFact],
         seen: set[tuple[str, str]],
     ) -> None:
-        for ent in doc.ents:
-            if ent.label_ != "PERSON" or not ent.text.strip():
-                continue
-            sent = ent.sent
-            if not self._has_first_person(sent):
-                continue
-            lemmas = {t.lemma_.lower() for t in sent}
-            if lemmas & {"be", "call", "name"}:
+        for sent in doc.sents:
+            sent_text = sent.text.strip()
+            for pattern in _DIRECT_NAME_PATTERNS:
+                match = re.search(pattern, sent_text, flags=re.IGNORECASE)
+                if not match:
+                    continue
                 self._append_fact(
                     facts,
                     seen,
                     key="user:identity:name",
                     category=FactCategory.IDENTITY,
                     predicate="name",
-                    value=ent.text,
+                    value=self._clean_match_value(match.group(1)),
                     confidence_boost=0.9,
                 )
                 return
@@ -256,15 +333,22 @@ class WriteTimeFactExtractor:
                 )
                 return
 
-            for token in sent:
-                if token.dep_ in {"attr", "oprd"} and token.pos_ in {"NOUN", "PROPN"}:
+            sent_text = sent.text.strip()
+            match = re.search(
+                r"\bi(?:'m| am)\s+(?:an?|the)\s+(.+)",
+                sent_text,
+                flags=re.IGNORECASE,
+            )
+            if match:
+                role_text = self._clean_match_value(match.group(1))
+                if role_text and "favorite" not in role_text.lower():
                     self._append_fact(
                         facts,
                         seen,
                         key="user:occupation:role",
                         category=FactCategory.OCCUPATION,
                         predicate="role",
-                        value=" ".join(t.text for t in token.subtree),
+                        value=role_text,
                         confidence_boost=0.78,
                     )
                     return
@@ -284,6 +368,24 @@ class WriteTimeFactExtractor:
         if not normalized:
             return
 
+        hobby_match = re.search(
+            r"\bmy hobbies are\s+(.+)",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        if hobby_match:
+            value = self._clean_match_value(hobby_match.group(1))
+            if value:
+                self._append_fact(
+                    facts,
+                    seen,
+                    key="user:preference:hobby",
+                    category=FactCategory.PREFERENCE,
+                    predicate="hobby",
+                    value=value,
+                    confidence_boost=0.78,
+                )
+
         pref = re.search(
             r"\b(?:i|we)\s+(?:really\s+|also\s+|just\s+|still\s+)*(?:prefer|like|love|enjoy|hate|dislike)\s+(.+)",
             normalized,
@@ -292,7 +394,11 @@ class WriteTimeFactExtractor:
         if pref:
             obj = self._clean_match_value(pref.group(1))
             if obj:
-                predicate = _derive_predicate(obj)
+                if "hobb" in normalized.lower():
+                    obj = re.sub(r"\s+as hobbies?\b", "", obj, flags=re.IGNORECASE).strip()
+                    predicate = "hobby"
+                else:
+                    predicate = _derive_predicate(obj)
                 self._append_fact(
                     facts,
                     seen,
@@ -303,10 +409,27 @@ class WriteTimeFactExtractor:
                     confidence_boost=0.75,
                 )
 
-        for pattern in (
-            r"\bmy name is\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
-            r"\bcall me\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
-        ):
+        favorite = re.search(
+            r"\bmy favou?rite\s+(.+?)\s+is\s+(.+)",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        if favorite:
+            descriptor = self._clean_match_value(favorite.group(1))
+            value = self._clean_match_value(favorite.group(2))
+            if descriptor and value:
+                predicate = _derive_predicate(descriptor)
+                self._append_fact(
+                    facts,
+                    seen,
+                    key=f"user:preference:{predicate}",
+                    category=FactCategory.PREFERENCE,
+                    predicate=predicate,
+                    value=value,
+                    confidence_boost=0.78,
+                )
+
+        for pattern in _DIRECT_NAME_PATTERNS:
             match = re.search(pattern, normalized, flags=re.IGNORECASE)
             if not match:
                 continue
@@ -344,6 +467,26 @@ class WriteTimeFactExtractor:
     @staticmethod
     def _clean_match_value(value: str) -> str:
         return value.strip().strip(".,!?;:")
+
+    @staticmethod
+    def _keep_model_fact(fact: ExtractedFact) -> bool:
+        if fact.category == FactCategory.IDENTITY:
+            return False
+        if fact.category == FactCategory.LOCATION:
+            return fact.key.startswith("user:location:") and bool(fact.value.strip())
+        if fact.category == FactCategory.OCCUPATION:
+            return fact.key == "user:occupation:role" and bool(fact.value.strip())
+        if fact.category == FactCategory.PREFERENCE:
+            if not fact.key.startswith("user:preference:"):
+                return False
+            predicate = fact.key.removeprefix("user:preference:")
+            if not predicate:
+                return False
+            if not _HASH_SUFFIX_RE.fullmatch(predicate):
+                return True
+            words = re.findall(r"[a-z0-9]+", fact.value.lower())
+            return len(words) >= 2 and len(fact.value.strip()) >= 8
+        return True
 
 
 _LABEL_CATEGORY_MAP: dict[str, FactCategory] = {

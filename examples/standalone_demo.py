@@ -1,490 +1,147 @@
-"""
-Standalone Demo - Cognitive Memory Layer (no py-cml)
+"""Broader direct HTTP walkthrough for the CML API."""
 
-Full API example using only httpx. Demonstrates all memory features:
-- Health, write, read (packet + llm_context), update, forget, stats
-- process_turn (seamless retrieve + store)
-- create_session
-
-No cognitive-memory-layer package required. Only httpx.
-
-Prerequisites:
-    1. Start the API server:
-       docker compose -f docker/docker-compose.yml up api
-    2. pip install httpx
-    3. Set CML_API_KEY in environment
-"""
-
-import json
-import os
+from __future__ import annotations
 
 import httpx
-
-# API Configuration (set CML_API_KEY in environment; use same value as server AUTH__API_KEY for local dev)
-BASE_URL = "http://localhost:8000/api/v1"
-API_KEY = os.environ.get("CML_API_KEY", "")
-HEADERS = {"Content-Type": "application/json", "X-API-Key": API_KEY}
-# Read/write timeout for httpx (retrieval and process_turn can be slow)
-HTTP_TIMEOUT = 60.0
-
-# When set (e.g. CML_STANDALONE_NON_INTERACTIVE=1), run all steps without pausing for input
-NON_INTERACTIVE = os.environ.get("CML_STANDALONE_NON_INTERACTIVE", "").strip().lower() in (
-    "1",
-    "true",
-    "yes",
+from _shared import (
+    api_base_url,
+    api_headers,
+    explain_connection_failure,
+    get_env,
+    is_non_interactive,
+    print_header,
 )
 
+EXAMPLE_META = {
+    "name": "standalone_demo",
+    "kind": "python",
+    "summary": "Broader direct HTTP walkthrough for health, write, read, turn, sessions, stats, and forget.",
+    "requires_api": True,
+    "requires_api_key": True,
+    "requires_base_url": True,
+    "requires_admin_key": False,
+    "requires_embedded": False,
+    "requires_openai": False,
+    "requires_anthropic": False,
+    "interactive": False,
+    "timeout_sec": 120,
+}
 
-def _pause(prompt: str) -> None:
-    """Wait for Enter unless running non-interactively."""
-    if not NON_INTERACTIVE:
-        input(prompt)
+TIMEOUT = 60.0
 
 
-def print_section(title: str):
-    """Print a section header."""
-    print(f"\n{'=' * 60}")
-    print(f"  {title}")
-    print(f"{'=' * 60}\n")
+def maybe_pause(message: str) -> None:
+    if not is_non_interactive():
+        input(message)
 
 
-def print_response(response: httpx.Response, label: str = "Response"):
-    """Pretty print an API response."""
-    print(f"{label} [{response.status_code}]:")
+def main() -> int:
+    print_header("CML Standalone Demo")
+    base_url = api_base_url()
+    headers = api_headers()
+    session_id = "examples-standalone"
     try:
-        data = response.json()
-        print(json.dumps(data, indent=2, default=str))
-    except Exception:
-        print(response.text)
-    print()
+        with httpx.Client(timeout=TIMEOUT) as client:
+            health = client.get(f"{base_url}/health", headers=headers)
+            health.raise_for_status()
+            print(f"Health: {health.json().get('status')}")
 
+            maybe_pause("Press Enter to write sample memories...")
+            for payload in (
+                {
+                    "content": "User prefers dark mode in all applications.",
+                    "session_id": session_id,
+                    "memory_type": "preference",
+                    "context_tags": ["preferences"],
+                },
+                {
+                    "content": "User is allergic to penicillin.",
+                    "session_id": session_id,
+                    "memory_type": "constraint",
+                    "context_tags": ["medical", "constraints"],
+                },
+                {
+                    "content": "User recently started a new backend engineering role.",
+                    "session_id": session_id,
+                    "memory_type": "episodic_event",
+                    "context_tags": ["career"],
+                },
+            ):
+                response = client.post(f"{base_url}/memory/write", headers=headers, json=payload)
+                response.raise_for_status()
+                print(f"Wrote memory: {payload['content']}")
 
-def demo_health_check():
-    """Check if the API is running."""
-    print_section("Health Check")
+            maybe_pause("Press Enter to run retrieval...")
+            read = client.post(
+                f"{base_url}/memory/read",
+                headers=headers,
+                json={"query": "What preferences and constraints should I know about?", "format": "packet"},
+            )
+            read.raise_for_status()
+            read_data = read.json()
+            print(f"Read returned {read_data.get('total_count')} memories")
+            for item in read_data.get("memories", [])[:5]:
+                print(f"  - [{item.get('type')}] {item.get('text')}")
 
-    response = httpx.get(f"{BASE_URL}/health", timeout=HTTP_TIMEOUT)
-    print_response(response, "Health")
+            llm_context = client.post(
+                f"{base_url}/memory/read",
+                headers=headers,
+                json={"query": "Summarize the user", "format": "llm_context"},
+            )
+            llm_context.raise_for_status()
+            print(f"\nLLM context snippet: {llm_context.json().get('llm_context', '')[:220]}")
 
-    if response.status_code == 200:
-        print("✓ API is healthy and ready")
-        return True
-    else:
-        print("✗ API is not available. Start it with:")
-        print("  docker compose -f docker/docker-compose.yml up api")
-        return False
-
-
-def demo_write_memories():
-    """Demonstrate writing different types of memories."""
-    print_section("Writing Memories")
-
-    session_id = "standalone-demo-session"
-
-    # Example memories to store (using correct API schema fields)
-    memories = [
-        {
-            "content": "User's name is John Smith and he is 35 years old.",
-            "session_id": session_id,
-            "memory_type": "semantic_fact",
-            "context_tags": ["identity"],
-            "metadata": {"source": "user_introduction"},
-        },
-        {
-            "content": "User prefers dark mode in all applications.",
-            "session_id": session_id,
-            "memory_type": "preference",
-            "context_tags": ["preferences"],
-        },
-        {
-            "content": "User is severely allergic to penicillin - this is critical medical information.",
-            "session_id": session_id,
-            "memory_type": "constraint",
-            "context_tags": ["medical", "critical"],
-        },
-        {
-            "content": "On 2024-01-20, user mentioned starting a new job at Google.",
-            "session_id": session_id,
-            "memory_type": "episodic_event",
-            "context_tags": ["career"],
-        },
-        {
-            "content": "User seems interested in machine learning based on questions asked.",
-            "session_id": session_id,
-            "memory_type": "hypothesis",
-            "context_tags": ["interests"],
-        },
-    ]
-
-    print(f"Storing {len(memories)} memories (session: {session_id})...\n")
-
-    for i, memory in enumerate(memories, 1):
-        response = httpx.post(
-            f"{BASE_URL}/memory/write", headers=HEADERS, json=memory, timeout=HTTP_TIMEOUT
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            print(f"{i}. [{memory.get('memory_type', 'auto')}] {memory['content'][:50]}...")
-            print(f"   Memory ID: {data.get('memory_id')}")
-        else:
-            print(f"{i}. Failed: {response.text}")
-
-    return session_id
-
-
-def demo_read_memories(session_id: str):
-    """Demonstrate reading memories with different queries."""
-    print_section("Reading Memories")
-
-    queries = [
-        {"query": "What is the user's name?", "description": "Simple fact lookup"},
-        {"query": "What are the user's preferences?", "description": "Preference retrieval"},
-        {
-            "query": "Are there any medical concerns I should know about?",
-            "description": "Constraint lookup (critical info)",
-        },
-        {"query": "Tell me about the user", "description": "General retrieval"},
-    ]
-
-    for q in queries:
-        print(f"Query: '{q['query']}' ({q['description']})")
-        print("-" * 50)
-
-        response = httpx.post(
-            f"{BASE_URL}/memory/read",
-            headers=HEADERS,
-            json={"query": q["query"], "max_results": 5, "format": "packet"},
-            timeout=HTTP_TIMEOUT,
-        )
-
-        if response.status_code == 200:
-            data = response.json()
+            maybe_pause("Press Enter to run a /memory/turn request...")
+            turn = client.post(
+                f"{base_url}/memory/turn",
+                headers=headers,
+                json={
+                    "user_message": "What do you know about my preferences?",
+                    "session_id": session_id,
+                    "max_context_tokens": 500,
+                },
+            )
+            turn.raise_for_status()
+            turn_data = turn.json()
             print(
-                f"Found {data.get('total_count', 0)} memories ({data.get('elapsed_ms', 0):.1f}ms)"
+                f"Turn: retrieved={turn_data.get('memories_retrieved')} stored={turn_data.get('memories_stored')}"
             )
 
-            for mem in data.get("memories", [])[:3]:
-                conf = f"[{mem.get('confidence', 0):.0%}]"
-                print(f"  - {mem.get('type', '')}: {mem.get('text', '')[:60]}... {conf}")
-            if data.get("constraints"):
-                print("  Constraints (server-extracted when enabled):")
-                for c in data["constraints"][:3]:
-                    print(f"    - {c.get('text', '')[:60]}...")
-        else:
-            print(f"Error: {response.text}")
+            maybe_pause("Press Enter to inspect session context...")
+            context = client.get(f"{base_url}/session/{session_id}/context", headers=headers)
+            context.raise_for_status()
+            context_data = context.json()
+            print(f"Session messages: {len(context_data.get('messages', []))}")
 
-        print()
+            maybe_pause("Press Enter to create a new session...")
+            created = client.post(
+                f"{base_url}/session/create",
+                headers=headers,
+                json={"name": "examples-standalone", "ttl_hours": 24},
+            )
+            created.raise_for_status()
+            print(f"Created session: {created.json().get('session_id')}")
 
+            stats = client.get(f"{base_url}/memory/stats", headers=headers)
+            stats.raise_for_status()
+            print(f"Stats total memories: {stats.json().get('total_memories')}")
 
-def demo_llm_context_format(session_id: str):
-    """Demonstrate the LLM-ready context format."""
-    print_section("LLM Context Format")
+            forgotten = client.post(
+                f"{base_url}/memory/forget",
+                headers=headers,
+                json={"query": "backend engineering role", "action": "archive"},
+            )
+            forgotten.raise_for_status()
+            print(f"Archived memories: {forgotten.json().get('affected_count')}")
 
-    print("This format is designed for direct injection into LLM prompts.\n")
-
-    response = httpx.post(
-        f"{BASE_URL}/memory/read",
-        headers=HEADERS,
-        json={
-            "query": "Tell me everything about the user",
-            "max_results": 10,
-            "format": "llm_context",
-        },
-        timeout=HTTP_TIMEOUT,
-    )
-
-    if response.status_code == 200:
-        data = response.json()
-        print("LLM Context (ready for system prompt):")
-        print("-" * 50)
-        print(data.get("llm_context", "No context available"))
-        print("-" * 50)
-
-
-def demo_update_memory(session_id: str):
-    """Demonstrate updating memories with feedback."""
-    print_section("Updating Memories")
-
-    # First, get a memory to update
-    response = httpx.post(
-        f"{BASE_URL}/memory/read",
-        headers=HEADERS,
-        json={"query": "machine learning interest", "max_results": 1},
-        timeout=HTTP_TIMEOUT,
-    )
-
-    if response.status_code == 200 and response.json().get("memories"):
-        memory = response.json()["memories"][0]
-        memory_id = memory["id"]
-
-        print(f"Found memory: {memory.get('text', '')}")
-        print(f"Current confidence: {memory.get('confidence', 0):.0%}")
-        print()
-
-        # Confirm the hypothesis
-        print("Confirming this memory (feedback='correct')...")
-
-        update_response = httpx.post(
-            f"{BASE_URL}/memory/update",
-            headers=HEADERS,
-            json={"memory_id": memory_id, "feedback": "correct"},
-            timeout=HTTP_TIMEOUT,
-        )
-
-        if update_response.status_code == 200:
-            print(f"Memory updated: {update_response.json()}")
-        else:
-            print(f"Update failed: {update_response.text}")
-    else:
-        print("No memory found to update")
-
-
-def demo_memory_stats():
-    """Demonstrate memory statistics."""
-    print_section("Memory Statistics")
-
-    response = httpx.get(f"{BASE_URL}/memory/stats", headers=HEADERS, timeout=HTTP_TIMEOUT)
-
-    if response.status_code == 200:
-        stats = response.json()
-        print("Memory Statistics:")
-        print(f"  Total memories:  {stats.get('total_memories', 0)}")
-        print(f"  Active memories: {stats.get('active_memories', 0)}")
-        print(f"  Avg confidence:  {stats.get('avg_confidence', 0):.0%}")
-        print(f"  Avg importance:  {stats.get('avg_importance', 0):.0%}")
-        print(f"  By type:         {stats.get('by_type', {})}")
-    else:
-        print(f"Error: {response.text}")
-
-
-def demo_process_turn():
-    """Demonstrate process_turn (seamless: auto-retrieve + auto-store)."""
-    print_section("Process Turn (Seamless Memory)")
-    session_id = "standalone-demo-session"
-    print(
-        "process_turn retrieves relevant context for a user message and can auto-store the exchange.\n"
-    )
-    # Retrieve only (no assistant response)
-    response = httpx.post(
-        f"{BASE_URL}/memory/turn",
-        headers=HEADERS,
-        json={
-            "user_message": "What do you know about my preferences and medical constraints?",
-            "session_id": session_id,
-            "max_context_tokens": 500,
-        },
-        timeout=HTTP_TIMEOUT,
-    )
-    if response.status_code == 200:
-        data = response.json()
-        print("Retrieve-only turn:")
-        print(f"  Memories retrieved: {data.get('memories_retrieved', 0)}")
-        print(f"  Memory context (snippet): {(data.get('memory_context', '') or '')[:300]}...")
-    else:
-        print(f"Error: {response.text}")
-    # Retrieve + store (with assistant response)
-    response2 = httpx.post(
-        f"{BASE_URL}/memory/turn",
-        headers=HEADERS,
-        json={
-            "user_message": "I also enjoy hiking on weekends.",
-            "assistant_response": "Great, I'll remember that you enjoy hiking!",
-            "session_id": session_id,
-            "max_context_tokens": 500,
-        },
-        timeout=HTTP_TIMEOUT,
-    )
-    if response2.status_code == 200:
-        data = response2.json()
-        print("\nStore turn (user + assistant):")
-        print(f"  Memories retrieved: {data.get('memories_retrieved', 0)}")
-        print(f"  Memories stored: {data.get('memories_stored', 0)}")
-
-
-def demo_session_context(session_id: str):
-    """Demonstrate getting session context (messages, tool_results, scratch_pad)."""
-    print_section("Session Context")
-    response = httpx.get(
-        f"{BASE_URL}/session/{session_id}/context",
-        headers=HEADERS,
-        timeout=HTTP_TIMEOUT,
-    )
-    if response.status_code == 200:
-        data = response.json()
-        print(f"Session {session_id}:")
-        print(f"  Messages: {len(data.get('messages', []))}")
-        print(f"  Tool results: {len(data.get('tool_results', []))}")
-        print(f"  Scratch pad: {len(data.get('scratch_pad', []))}")
-        ctx = data.get("context_string", "")
-        if ctx:
-            print(f"  Context snippet: {ctx[:200]}...")
-    else:
-        print(f"Error: {response.text}")
-
-
-def demo_create_session():
-    """Demonstrate session creation."""
-    print_section("Create Session")
-    response = httpx.post(
-        f"{BASE_URL}/session/create",
-        headers=HEADERS,
-        json={"ttl_hours": 24},
-        timeout=HTTP_TIMEOUT,
-    )
-    if response.status_code == 200:
-        data = response.json()
-        print(f"Session created: {data.get('session_id')}")
-        print(f"Expires at: {data.get('expires_at')}")
-        return data.get("session_id")
-    else:
-        print(f"Error: {response.text}")
-        return None
-
-
-def demo_forget_memory():
-    """Demonstrate forgetting memories."""
-    print_section("Forgetting Memories")
-
-    print("Forgetting memories about 'new job'...")
-
-    response = httpx.post(
-        f"{BASE_URL}/memory/forget",
-        headers=HEADERS,
-        json={"query": "new job at Google", "action": "archive"},
-        timeout=HTTP_TIMEOUT,
-    )
-
-    if response.status_code == 200:
-        data = response.json()
-        print(f"Archived {data.get('affected_count', 0)} memories")
-    else:
-        print(f"Failed: {response.text}")
-
-
-def demo_consolidate():
-    """Demonstrate episodic to semantic consolidation."""
-    print_section("Consolidate Memories")
-
-    user_id = API_KEY  # Usually a user_id or tenant
-    print(f"Triggering consolidation for user {user_id}...")
-
-    response = httpx.post(
-        f"{BASE_URL.replace('/api/v1', '')}/api/v1/admin/consolidate/{user_id}",
-        headers=HEADERS,
-        timeout=HTTP_TIMEOUT,
-    )
-
-    if response.status_code == 200:
-        data = response.json()
-        print("Consolidation triggered:")
-        print(f"  Episodes sampled: {data.get('episodes_sampled', 0)}")
-        print(f"  Clusters formed: {data.get('clusters_formed', 0)}")
-        print(f"  Gists extracted: {data.get('gists_extracted', 0)}")
-    else:
-        print(f"Failed: {response.status_code} - {response.text}")
-
-
-def demo_curl_examples():
-    """Print curl command examples."""
-    print_section("Curl Command Examples")
-
-    print("You can also use these curl commands directly:\n")
-
-    commands = [
-        ("Health Check", "curl http://localhost:8000/api/v1/health -H 'X-API-Key: $CML_API_KEY'"),
-        (
-            "Write Memory",
-            """curl -X POST http://localhost:8000/api/v1/memory/write \\
-  -H "Content-Type: application/json" -H "X-API-Key: $CML_API_KEY" \\
-  -d '{"content": "User likes pizza", "session_id": "test-session", "context_tags": ["preferences"]}\'""",
-        ),
-        (
-            "Read Memory",
-            """curl -X POST http://localhost:8000/api/v1/memory/read \\
-  -H "Content-Type: application/json" -H "X-API-Key: $CML_API_KEY" \\
-  -d '{"query": "food preferences", "format": "llm_context"}\'""",
-        ),
-        (
-            "Process Turn",
-            """curl -X POST http://localhost:8000/api/v1/memory/turn \\
-  -H "Content-Type: application/json" -H "X-API-Key: $CML_API_KEY" \\
-  -d '{"user_message": "What do I like?", "session_id": "sess-1"}\'""",
-        ),
-        (
-            "Get Stats",
-            '''curl http://localhost:8000/api/v1/memory/stats -H "X-API-Key: $CML_API_KEY"''',
-        ),
-    ]
-
-    for name, cmd in commands:
-        print(f"# {name}")
-        print(cmd)
-        print()
-
-
-def main():
-    """Run all demonstrations."""
-    print("\n" + "=" * 60)
-    print("   Cognitive Memory Layer - Standalone Demo")
-    print("=" * 60)
-    print("\nThis demo shows the memory API without requiring LLM API keys.")
-    print("Set CML_API_KEY in your environment before running.\n")
-    if not API_KEY:
-        print("Error: CML_API_KEY is not set. Set it and run again.")
-        return
-    try:
-        # Check health first
-        if not demo_health_check():
-            return
-
-        _pause("Press Enter to continue with write demo...")
-        session_id = demo_write_memories()
-
-        _pause("Press Enter to continue with read demo...")
-        demo_read_memories(session_id)
-
-        _pause("Press Enter to continue with LLM context demo...")
-        demo_llm_context_format(session_id)
-
-        _pause("Press Enter to continue with update demo...")
-        demo_update_memory(session_id)
-
-        _pause("Press Enter to continue with stats demo...")
-        demo_memory_stats()
-
-        _pause("Press Enter to continue with process_turn demo...")
-        demo_process_turn()
-
-        _pause("Press Enter to continue with session context demo...")
-        demo_session_context(session_id)
-
-        _pause("Press Enter to continue with create_session demo...")
-        demo_create_session()
-
-        _pause("Press Enter to continue with forget demo...")
-        demo_forget_memory()
-
-        _pause("Press Enter to continue with consolidate demo...")
-        demo_consolidate()
-
-        _pause("Press Enter to see curl examples...")
-        demo_curl_examples()
-
-        print_section("Demo Complete!")
-        print("You've seen all the core memory operations.")
-        print("Check out the other examples for LLM integration:")
-        print("  - openai_tool_calling.py")
-        print("  - anthropic_tool_calling.py")
-        print("  - chat_with_memory.py")
-        print("  - langchain_integration.py")
-
-    except KeyboardInterrupt:
-        print("\n\nDemo interrupted. Goodbye!")
-    except httpx.ConnectError:
-        print("\n✗ Could not connect to API. Start it with:")
-        print("  docker compose -f docker/docker-compose.yml up api")
+        if get_env("CML_ADMIN_API_KEY"):
+            print("\nAdmin key detected. See examples/admin_dashboard.py for admin workflows.")
+        return 0
+    except Exception as exc:
+        print(f"Example failed: {exc}")
+        print(explain_connection_failure())
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

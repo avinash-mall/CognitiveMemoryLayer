@@ -150,11 +150,59 @@ class TestWriteTimeFactExtractor:
         assert any(f.key == "user:identity:name" for f in facts)
         assert any(f.value == "Alice" for f in facts)
 
+    def test_extracts_direct_im_name_identity(self):
+        chunk = SemanticChunk(id="2b", text="I'm Elena Vasquez.", chunk_type=ChunkType.FACT)
+        facts = self.extractor.extract(chunk)
+        assert any(f.key == "user:identity:name" for f in facts)
+        assert any(f.value == "Elena Vasquez" for f in facts)
+
     def test_extracts_location(self):
         chunk = SemanticChunk(id="3", text="I live in Paris", chunk_type=ChunkType.FACT)
         facts = self.extractor.extract(chunk)
         assert any("location" in f.key for f in facts)
         assert any(f.value == "Paris" for f in facts)
+
+    def test_extracts_favorite_preference(self):
+        chunk = SemanticChunk(
+            id="3b",
+            text="My favorite programming language is Python.",
+            chunk_type=ChunkType.STATEMENT,
+        )
+        facts = self.extractor.extract(chunk)
+        assert any(f.key == "user:preference:language" for f in facts)
+        assert any(f.value == "Python" for f in facts)
+
+    def test_extracts_hobbies_as_stable_preference_key(self):
+        chunk = SemanticChunk(
+            id="3bb",
+            text="I enjoy hiking and underwater photography as hobbies.",
+            chunk_type=ChunkType.STATEMENT,
+        )
+        facts = self.extractor.extract(chunk)
+        hobby_values = [f.value for f in facts if f.key == "user:preference:hobby"]
+        assert hobby_values == ["hiking and underwater photography"]
+
+    def test_ignores_third_person_identity_noise(self):
+        chunk = SemanticChunk(
+            id="3c",
+            text="Maria's thesis advisor before me was Dr. Tanaka at Woods Hole.",
+            chunk_type=ChunkType.STATEMENT,
+        )
+        facts = self.extractor.extract(chunk)
+        identity_values = [f.value for f in facts if f.key == "user:identity:name"]
+        occupation_values = [f.value for f in facts if f.key == "user:occupation:role"]
+        assert identity_values == []
+        assert occupation_values == []
+
+    def test_ignores_relational_person_mentions_as_user_identity(self):
+        chunk = SemanticChunk(
+            id="3d",
+            text="My graduate student Maria is working on the bioluminescence spectral analysis.",
+            chunk_type=ChunkType.STATEMENT,
+        )
+        facts = self.extractor.extract(chunk)
+        identity_values = [f.value for f in facts if f.key == "user:identity:name"]
+        assert identity_values == []
 
     def test_ignores_non_fact_chunks(self):
         chunk = SemanticChunk(id="4", text="It rained today", chunk_type=ChunkType.EVENT)

@@ -74,6 +74,40 @@ class TestQueryClassifier:
         assert result.is_decision_query is True
         assert "policy" in (result.constraint_dimensions or [])
 
+    @pytest.mark.asyncio
+    async def test_rules_query_uses_constraint_heuristics(self):
+        classifier = QueryClassifier(llm_client=None, modelpack=self._NoModelPack())
+        result = await classifier.classify("What are my personal rules about plastics?")
+        assert result.intent == QueryIntent.CONSTRAINT_CHECK
+        assert "policy" in (result.constraint_dimensions or [])
+
+    @pytest.mark.asyncio
+    async def test_goal_query_uses_constraint_heuristics(self):
+        classifier = QueryClassifier(llm_client=None, modelpack=self._NoModelPack())
+        result = await classifier.classify("What is my publication target?")
+        assert result.intent == QueryIntent.CONSTRAINT_CHECK
+        assert "goal" in (result.constraint_dimensions or [])
+
+    @pytest.mark.asyncio
+    async def test_hobbies_query_uses_preference_heuristics(self):
+        classifier = QueryClassifier(llm_client=None, modelpack=self._NoModelPack())
+        result = await classifier.classify("What are my hobbies?")
+        assert result.intent == QueryIntent.PREFERENCE_LOOKUP
+        assert "hobby" in (result.entities or [])
+
+    @pytest.mark.asyncio
+    async def test_decision_query_expands_constraint_dimensions(self):
+        classifier = QueryClassifier(
+            llm_client=None,
+            modelpack=self._StubModelPack(intent="constraint_check", dimension="policy"),
+        )
+        result = await classifier.classify("Should I take this job offer?")
+        assert result.intent == QueryIntent.CONSTRAINT_CHECK
+        assert result.is_decision_query is True
+        dims = result.constraint_dimensions or []
+        for expected in ("goal", "state", "value", "causal", "policy"):
+            assert expected in dims
+
 
 class TestRetrievalPlanner:
     def test_planner_preference_lookup_produces_facts_step(self):

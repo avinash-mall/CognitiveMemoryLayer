@@ -24,15 +24,16 @@ from typing import Any
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-try:
-    from dotenv import load_dotenv
+from _shared import build_api_url, load_repo_env, normalize_bool_env, normalize_cml_base_url
 
-    load_dotenv(ROOT / ".env")
-except ImportError:
-    pass
+load_repo_env()
+normalize_bool_env("DEBUG")
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ class Scenario:
     writes: list[WriteTurn]
     query: str
     assistant_response: str | None = None
+    expected_terms: list[str] = field(default_factory=list)
 
 
 SCENARIOS: dict[str, Scenario] = {
@@ -74,6 +76,7 @@ SCENARIOS: dict[str, Scenario] = {
         ],
         query="Recommend a seafood restaurant for dinner tonight.",
         assistant_response="I can suggest a restaurant once I check whether any dietary constraints matter.",
+        expected_terms=["shellfish", "allergy", "epipen"],
     ),
     "gift_plastics": Scenario(
         name="gift_plastics",
@@ -97,6 +100,7 @@ SCENARIOS: dict[str, Scenario] = {
         ],
         query="What gift should I bring to a dinner party?",
         assistant_response="I should recommend something that fits your preferences and constraints.",
+        expected_terms=["plastics", "sustainability", "handmade"],
     ),
     "budget_decision": Scenario(
         name="budget_decision",
@@ -120,6 +124,7 @@ SCENARIOS: dict[str, Scenario] = {
         ],
         query="Can I afford dinner at a Michelin-star restaurant tonight?",
         assistant_response="I should weigh your current goals and spending rules before answering.",
+        expected_terms=["save money", "budget", "plan"],
     ),
     "stale_update": Scenario(
         name="stale_update",
@@ -134,13 +139,14 @@ SCENARIOS: dict[str, Scenario] = {
         ],
         query="Should you order me a coffee tomorrow morning?",
         assistant_response="I should answer using the most current version of your routine.",
+        expected_terms=["coffee", "morning", "march"],
     ),
 }
 
 
 class CMLApi:
     def __init__(self, base_url: str, api_key: str, tenant_id: str, timeout: float = 30.0) -> None:
-        self.base_url = base_url.rstrip("/")
+        self.base_url = normalize_cml_base_url(base_url)
         self.timeout = timeout
         self.session = requests.Session()
         self.headers = {
@@ -151,7 +157,7 @@ class CMLApi:
         }
 
     def _post(self, path: str, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
-        url = f"{self.base_url}{path}"
+        url = build_api_url(self.base_url, path)
         start = time.perf_counter()
         response = self.session.post(url, json=payload, headers=self.headers, timeout=self.timeout)
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -172,7 +178,7 @@ class CMLApi:
             "session_id": session_id,
             "timestamp": timestamp,
         }
-        body, _elapsed_ms = self._post("/api/v1/memory/write", payload)
+        body, _elapsed_ms = self._post("/memory/write", payload)
         return body
 
     def read(
@@ -189,7 +195,7 @@ class CMLApi:
             "format": context_format,
             "user_timezone": user_timezone,
         }
-        return self._post("/api/v1/memory/read", payload)
+        return self._post("/memory/read", payload)
 
     def turn(
         self,
@@ -207,7 +213,7 @@ class CMLApi:
             "max_context_tokens": max_context_tokens,
             "user_timezone": user_timezone,
         }
-        return self._post("/api/v1/memory/turn", payload)
+        return self._post("/memory/turn", payload)
 
 
 def parse_args() -> argparse.Namespace:
@@ -231,7 +237,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-results", type=int, default=12)
     parser.add_argument("--max-context-tokens", type=int, default=800)
     parser.add_argument(
-        "--base-url", default=os.environ.get("CML_BASE_URL", "http://localhost:8000")
+        "--base-url",
+        default=normalize_cml_base_url(os.environ.get("CML_BASE_URL")),
+        help="CML base URL. Accepts either the root URL or a /api/v1 URL.",
     )
     parser.add_argument(
         "--api-key",
@@ -241,6 +249,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--session-id", default="constraint-probe-session")
     parser.add_argument("--user-timezone")
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--expected-term",
+        action="append",
+        default=[],
+        help="Additional term to require in retrieved memories/context summaries.",
+    )
     return parser.parse_args()
 
 
@@ -249,6 +263,7 @@ def print_scenarios() -> None:
         print(f"{scenario.name}: {scenario.description}")
         print(f"  query: {scenario.query}")
         print(f"  writes: {len(scenario.writes)}")
+        print(f"  expected_terms: {', '.join(scenario.expected_terms) or '(none)'}")
 
 
 def _fmt_float(value: Any) -> str:
@@ -396,6 +411,18 @@ def render_turn_result(result: dict[str, Any], *, full_context: bool) -> None:
     print(truncate_block(memory_context, full=full_context))
 
 
+def render_probe_metrics(label: str, metrics: dict[str, Any]) -> None:
+    print(f"\n== {label} Metrics ==")
+    print(f"expected_terms={metrics.get('expected_terms', [])}")
+    print(f"memory_hit_terms={metrics.get('memory_hit_terms', [])}")
+    print(f"context_hit_terms={metrics.get('context_hit_terms', [])}")
+    print(
+        f"memory_hit_rate={_fmt_float(metrics.get('memory_hit_rate'))} "
+        f"context_hit_rate={_fmt_float(metrics.get('context_hit_rate'))} "
+        f"all_terms_hit={metrics.get('all_terms_hit')}"
+    )
+
+
 def main() -> int:
     args = parse_args()
 
@@ -410,6 +437,7 @@ def main() -> int:
         if args.assistant_response is not None
         else scenario.assistant_response
     )
+    expected_terms = list(dict.fromkeys([*scenario.expected_terms, *args.expected_term]))
     tenant_id = args.tenant_id or f"probe-{args.scenario}-{int(time.time())}"
 
     print("== Probe ==")
@@ -419,7 +447,8 @@ def main() -> int:
     print(f"session_id={args.session_id}")
     print(f"query={query}")
     print(f"mode={args.mode}")
-    print(f"base_url={args.base_url.rstrip('/')}")
+    print(f"base_url={normalize_cml_base_url(args.base_url)}")
+    print(f"expected_terms={expected_terms or '(none)'}")
 
     api = CMLApi(args.base_url, args.api_key, tenant_id, timeout=args.timeout)
 
@@ -438,6 +467,15 @@ def main() -> int:
                 context_format="llm_context",
             )
             render_read_result(read_result, full_context=args.show_full_context)
+            render_probe_metrics(
+                "/memory/read",
+                evaluate_constraint_probe(
+                    list(read_result.get("memories", [])),
+                    read_result.get("llm_context") or "",
+                    expected_terms=expected_terms,
+                    top_k=args.max_results,
+                ),
+            )
 
         if args.mode in ("turn", "compare"):
             turn_result, _elapsed_ms = api.turn(
@@ -448,6 +486,15 @@ def main() -> int:
                 user_timezone=args.user_timezone,
             )
             render_turn_result(turn_result, full_context=args.show_full_context)
+            render_probe_metrics(
+                "/memory/turn",
+                evaluate_constraint_probe(
+                    [],
+                    turn_result.get("memory_context") or "",
+                    expected_terms=expected_terms,
+                    top_k=args.max_results,
+                ),
+            )
 
         if args.generate_answer:
             print("\n== Generated Answers ==")

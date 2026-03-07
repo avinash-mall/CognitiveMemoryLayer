@@ -1,31 +1,42 @@
-"""OpenAI tool calling with Cognitive Memory Layer.
+"""OpenAI tool-calling example backed by Cognitive Memory Layer."""
 
-Set CML_API_KEY, CML_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL in .env.
-"""
+from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
-from typing import Any
-from uuid import UUID
+from typing import Any, cast
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-except ImportError:
-    pass
-
+from _shared import (
+    build_cml_config,
+    explain_connection_failure,
+    iter_user_inputs,
+    openai_settings,
+    print_header,
+)
 from openai import OpenAI
 
 from cml import CognitiveMemoryLayer
+
+EXAMPLE_META = {
+    "name": "openai_tool_calling",
+    "kind": "python",
+    "summary": "OpenAI function-calling loop that stores and retrieves memory.",
+    "requires_api": True,
+    "requires_api_key": True,
+    "requires_base_url": True,
+    "requires_admin_key": False,
+    "requires_embedded": False,
+    "requires_openai": True,
+    "requires_anthropic": False,
+    "interactive": True,
+    "timeout_sec": 120,
+}
 
 MEMORY_TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "memory_write",
-            "description": "Store important information in long-term memory.",
+            "description": "Store explicit user information in long-term memory.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -49,40 +60,10 @@ MEMORY_TOOLS = [
         "type": "function",
         "function": {
             "name": "memory_read",
-            "description": "Retrieve relevant memories.",
+            "description": "Retrieve relevant memory context before answering.",
             "parameters": {
                 "type": "object",
                 "properties": {"query": {"type": "string"}},
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "memory_update",
-            "description": "Update or provide feedback on a memory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "memory_id": {"type": "string"},
-                    "feedback": {"type": "string", "enum": ["correct", "incorrect", "outdated"]},
-                },
-                "required": ["memory_id", "feedback"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "memory_forget",
-            "description": "Forget information when the user requests deletion.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "action": {"type": "string", "enum": ["delete", "archive", "silence"]},
-                },
                 "required": ["query"],
             },
         },
@@ -91,139 +72,114 @@ MEMORY_TOOLS = [
 
 
 class MemoryEnabledAssistant:
-    def __init__(self, session_id: str, model: str | None = None):
+    def __init__(self, session_id: str) -> None:
+        settings = openai_settings()
+        self.model = str(settings["model"])
+        client_kwargs = {"api_key": settings["api_key"]}
+        if settings["base_url"] is not None:
+            client_kwargs["base_url"] = settings["base_url"]
+        self.openai = OpenAI(**client_kwargs)
+        self.memory = CognitiveMemoryLayer(config=build_cml_config(timeout=60.0))
         self.session_id = session_id
-        # Prefer LLM_INTERNAL__* when set (e.g. .env lines 20-22)
-        self.model = (
-            model or os.environ.get("LLM_INTERNAL__MODEL") or os.environ.get("OPENAI_MODEL") or ""
-        ).strip()
-        base_url = (os.environ.get("CML_BASE_URL") or "").strip() or "http://localhost:8000"
-        llm_base = (os.environ.get("LLM_INTERNAL__BASE_URL") or "").strip()
-        if llm_base:
-            api_key = (
-                os.environ.get("LLM_INTERNAL__API_KEY")
-                or os.environ.get("OPENAI_API_KEY")
-                or "dummy"
-            )
-            self.openai = OpenAI(base_url=llm_base, api_key=api_key)
-        else:
-            self.openai = OpenAI()
-        self.memory = CognitiveMemoryLayer(
-            api_key=os.environ.get("CML_API_KEY"),
-            base_url=base_url,
-        )
-        self.messages = [
+        self.messages: list[dict[str, Any]] = [
             {
                 "role": "system",
-                "content": "You are a helpful assistant with long-term memory. Use memory_read before answering about the user; memory_write for new info; memory_update for corrections; memory_forget when asked to forget.",
+                "content": (
+                    "You are a helpful assistant with memory tools. "
+                    "Use memory_write to store durable user facts and memory_read before answering."
+                ),
             }
         ]
 
-    def _execute_tool(self, name: str, args: dict) -> str:
-        try:
-            if name == "memory_write":
-                r = self.memory.write(
-                    args["content"],
-                    session_id=self.session_id,
-                    context_tags=["conversation"],
-                    memory_type=args.get("memory_type"),
-                )
-                return json.dumps({"success": r.success, "message": r.message})
-            if name == "memory_read":
-                read_r = self.memory.read(args["query"], response_format="llm_context")
-                return read_r.context or "No relevant memories found."
-            if name == "memory_update":
-                update_r = self.memory.update(
-                    memory_id=UUID(args["memory_id"]),
-                    feedback=args["feedback"],
-                )
-                return json.dumps({"success": update_r.success, "version": update_r.version})
-            if name == "memory_forget":
-                forget_r = self.memory.forget(
-                    query=args["query"],
-                    action=args.get("action", "archive"),
-                )
-                return json.dumps({"affected_count": forget_r.affected_count})
-            return json.dumps({"error": f"Unknown tool: {name}"})
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+    def close(self) -> None:
+        self.memory.close()
+
+    def _run_tool(self, name: str, arguments: str) -> str:
+        payload = json.loads(arguments)
+        if name == "memory_write":
+            response = self.memory.write(
+                payload["content"],
+                session_id=self.session_id,
+                context_tags=["conversation"],
+                memory_type=payload.get("memory_type"),
+            )
+            return json.dumps({"success": response.success, "memory_id": str(response.memory_id)})
+
+        if name == "memory_read":
+            read_resp = self.memory.read(payload["query"], response_format="llm_context")
+            return read_resp.context or "No relevant memory found."
+
+        return json.dumps({"error": f"Unknown tool: {name}"})
 
     def chat(self, user_message: str) -> str:
         self.messages.append({"role": "user", "content": user_message})
         while True:
-            resp = self.openai.chat.completions.create(  # type: ignore[call-overload]
+            response = self.openai.chat.completions.create(
                 model=self.model,
-                messages=self.messages,
-                tools=MEMORY_TOOLS,
+                messages=cast("Any", self.messages),
+                tools=cast("Any", MEMORY_TOOLS),
                 tool_choice="auto",
             )
-            msg = resp.choices[0].message
-            if msg.tool_calls:
-                assistant_msg: dict[str, Any] = {
+            message = response.choices[0].message
+            if not message.tool_calls:
+                assistant_text = message.content or ""
+                self.messages.append({"role": "assistant", "content": assistant_text})
+                return assistant_text
+
+            self.messages.append(
+                {
                     "role": "assistant",
-                    "content": msg.content,
+                    "content": message.content,
                     "tool_calls": [
                         {
-                            "id": tc.id,
+                            "id": call.id,
                             "type": "function",
                             "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
+                                "name": call.function.name,  # type: ignore[union-attr]
+                                "arguments": call.function.arguments,  # type: ignore[union-attr]
                             },
                         }
-                        for tc in msg.tool_calls
+                        for call in message.tool_calls
                     ],
                 }
-                self.messages.append(assistant_msg)
-                for tc in msg.tool_calls:
-                    args = json.loads(tc.function.arguments)
-                    print(f"  [Tool: {tc.function.name}] {args}")
-                    result = self._execute_tool(tc.function.name, args)
-                    self.messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-            else:
-                self.messages.append({"role": "assistant", "content": msg.content})
-                return msg.content
+            )
+            for call in message.tool_calls:
+                tool_result = self._run_tool(
+                    call.function.name,  # type: ignore[union-attr]
+                    call.function.arguments,  # type: ignore[union-attr]
+                )
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": tool_result,
+                    }
+                )
 
-    def close(self):
-        self.memory.close()
 
-
-def main():
-    print("=" * 60)
-    print("OpenAI Tool Calling + Cognitive Memory Layer")
-    print("=" * 60)
-    has_llm_internal = (
-        os.environ.get("LLM_INTERNAL__PROVIDER")
-        and os.environ.get("LLM_INTERNAL__MODEL")
-        and os.environ.get("LLM_INTERNAL__BASE_URL")
-    )
-    has_openai = os.getenv("OPENAI_API_KEY") and (
-        os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")
-    )
-    if not has_llm_internal and not has_openai:
-        print(
-            "Set OPENAI_API_KEY and OPENAI_MODEL (or LLM_INTERNAL__PROVIDER/MODEL/BASE_URL) in .env"
-        )
-        return
-    if not (os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_INTERNAL__MODEL")):
-        print("Set OPENAI_MODEL or LLM_INTERNAL__MODEL in .env")
-        return
-    assistant = MemoryEnabledAssistant(session_id="openai-demo")
+def main() -> int:
+    print_header("CML OpenAI Tool Calling")
+    assistant = MemoryEnabledAssistant(session_id="examples-openai-tool")
     try:
-        print("Assistant: Hello! I can remember things. What would you like to tell me?\n")
-        while True:
-            user_input = input("You: ").strip()
-            if user_input.lower() in ("quit", "exit", "bye"):
-                print("\nAssistant: Goodbye!")
+        for user_input in iter_user_inputs(
+            "You: ",
+            default_inputs=[
+                "Use memory_write to store this preference: I prefer tea over coffee.",
+                "Use memory_read before answering: what drink do I prefer?",
+                "quit",
+            ],
+        ):
+            if user_input.lower() in {"quit", "exit"}:
                 break
-            if not user_input:
-                continue
-            print(f"\nAssistant: {assistant.chat(user_input)}\n")
-    except KeyboardInterrupt:
-        print("\nGoodbye!")
+            print(f"Assistant: {assistant.chat(user_input)}\n")
+        return 0
+    except Exception as exc:
+        print(f"Example failed: {exc}")
+        print(explain_connection_failure())
+        return 1
     finally:
-        assistant.memory.close()
+        assistant.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

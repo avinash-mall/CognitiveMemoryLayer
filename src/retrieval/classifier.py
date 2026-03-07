@@ -1,6 +1,7 @@
 """Query classifier for retrieval strategy selection."""
 
 import json
+import re
 
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
@@ -9,6 +10,66 @@ from ..utils.ner import extract_entity_texts
 from .query_types import QueryAnalysis, QueryIntent
 
 logger = get_logger(__name__)
+
+_ALL_CONSTRAINT_DIMENSIONS = ["goal", "state", "value", "causal", "policy"]
+_DECISION_QUERY_PATTERNS = (
+    r"\bshould i\b",
+    r"\bcan i\b",
+    r"\bam i allowed\b",
+    r"\bis it (?:ok|okay)\b",
+    r"\bwould it be (?:ok|okay)\b",
+    r"\brecommend\b",
+    r"\bwhat gift should\b",
+    r"\bwhat packaging should\b",
+)
+_POLICY_QUERY_PATTERNS = (
+    r"\brules?\b",
+    r"\bpolicy\b",
+    r"\bpolicies\b",
+    r"\bethics?\b",
+    r"\ballerg",
+    r"\bpersonal rules?\b",
+    r"\bplastics?\b",
+    r"\bsingle-use\b",
+    r"\bpackaging\b",
+    r"\brestaurant\b",
+)
+_GOAL_QUERY_PATTERNS = (
+    r"\bgoal\b",
+    r"\bgoals\b",
+    r"\btarget\b",
+    r"\bworking toward\b",
+    r"\bpublication\b",
+    r"\bcareer\b",
+    r"\bjob offer\b",
+    r"\btenure\b",
+)
+_VALUE_QUERY_PATTERNS = (
+    r"\bvalues?\b",
+    r"\bimportant to me\b",
+    r"\bpriorit",
+    r"\bbelieve in\b",
+)
+_STATE_QUERY_PATTERNS = (
+    r"\bright now\b",
+    r"\bcurrently\b",
+    r"\bdealing with\b",
+    r"\bchallenges?\b",
+    r"\bstress",
+    r"\bworried\b",
+)
+_CAUSAL_QUERY_PATTERNS = (
+    r"^\s*why\b",
+    r"\breason\b",
+    r"\bdue to\b",
+    r"\bbecause\b",
+)
+_PREFERENCE_ENTITY_HINTS = (
+    (r"\bhobb(?:y|ies)\b", "hobby"),
+    (r"\bcuisine\b|\bfood\b|\beat\b", "cuisine"),
+    (r"\blanguage\b", "language"),
+    (r"\bbook\b", "book"),
+)
 
 CLASSIFICATION_PROMPT = """Classify this query for a memory retrieval system.
 
@@ -97,10 +158,16 @@ class QueryClassifier:
             result.entities = self._extract_entities(query)
 
         self._enrich_with_modelpack(result)
-        result.is_decision_query = result.intent == QueryIntent.CONSTRAINT_CHECK
+        self._apply_preference_heuristics(result)
+        self._apply_constraint_heuristics(result)
+        result.is_decision_query = result.is_decision_query or (
+            result.intent == QueryIntent.CONSTRAINT_CHECK
+        )
         if result.constraint_dimensions and result.intent in {
             QueryIntent.GENERAL_QUESTION,
             QueryIntent.UNKNOWN,
+            QueryIntent.EPISODIC_RECALL,
+            QueryIntent.PROCEDURAL,
         }:
             result.intent = QueryIntent.CONSTRAINT_CHECK
             result.is_decision_query = True
@@ -179,6 +246,65 @@ class QueryClassifier:
                 analysis.intent = hint_intent
                 analysis.suggested_sources = self._get_sources_for_intent(hint_intent)
                 analysis.suggested_top_k = self._get_top_k_for_intent(hint_intent)
+
+    def _apply_constraint_heuristics(self, analysis: QueryAnalysis) -> None:
+        query = (analysis.original_query or "").strip().lower()
+        if not query:
+            return
+
+        heuristic_dims: list[str] = []
+        decision_like = any(re.search(pattern, query) for pattern in _DECISION_QUERY_PATTERNS)
+
+        if decision_like:
+            heuristic_dims.extend(_ALL_CONSTRAINT_DIMENSIONS)
+            analysis.is_decision_query = True
+        if any(re.search(pattern, query) for pattern in _POLICY_QUERY_PATTERNS):
+            heuristic_dims.append("policy")
+        if any(re.search(pattern, query) for pattern in _GOAL_QUERY_PATTERNS):
+            heuristic_dims.append("goal")
+        if any(re.search(pattern, query) for pattern in _VALUE_QUERY_PATTERNS):
+            heuristic_dims.append("value")
+        if any(re.search(pattern, query) for pattern in _STATE_QUERY_PATTERNS):
+            heuristic_dims.append("state")
+        if any(re.search(pattern, query) for pattern in _CAUSAL_QUERY_PATTERNS):
+            heuristic_dims.append("causal")
+
+        if not heuristic_dims:
+            return
+
+        merged_dims = list(dict.fromkeys((analysis.constraint_dimensions or []) + heuristic_dims))
+        analysis.constraint_dimensions = merged_dims
+
+        if analysis.intent in {
+            QueryIntent.GENERAL_QUESTION,
+            QueryIntent.UNKNOWN,
+            QueryIntent.EPISODIC_RECALL,
+            QueryIntent.PROCEDURAL,
+        }:
+            analysis.intent = QueryIntent.CONSTRAINT_CHECK
+            analysis.suggested_sources = self._get_sources_for_intent(QueryIntent.CONSTRAINT_CHECK)
+            analysis.suggested_top_k = self._get_top_k_for_intent(QueryIntent.CONSTRAINT_CHECK)
+
+    def _apply_preference_heuristics(self, analysis: QueryAnalysis) -> None:
+        query = (analysis.original_query or "").strip().lower()
+        if not query:
+            return
+
+        inferred_entity = next(
+            (entity for pattern, entity in _PREFERENCE_ENTITY_HINTS if re.search(pattern, query)),
+            None,
+        )
+        if inferred_entity is None:
+            return
+
+        entities = analysis.entities or []
+        if inferred_entity not in entities:
+            analysis.entities = [inferred_entity, *entities]
+
+        if analysis.intent in {QueryIntent.GENERAL_QUESTION, QueryIntent.UNKNOWN}:
+            analysis.intent = QueryIntent.PREFERENCE_LOOKUP
+            analysis.suggested_sources = self._get_sources_for_intent(QueryIntent.PREFERENCE_LOOKUP)
+            analysis.suggested_top_k = self._get_top_k_for_intent(QueryIntent.PREFERENCE_LOOKUP)
 
     async def _llm_classify(
         self,

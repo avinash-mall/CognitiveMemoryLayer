@@ -1,136 +1,66 @@
 # Examples
 
-Runnable scripts live in the repository [examples/](../../../examples/) and [packages/py-cml/examples/](../examples/) directories; this page describes SDK usage patterns.
-
-The `examples/` and `packages/py-cml/examples/` directories contain runnable scripts that use cognitive-memory-layer with a CML server or in embedded mode. **Set in `.env`:** `CML_API_KEY`, `CML_BASE_URL`, and for chat/OpenAI examples `OPENAI_MODEL` or `LLM_INTERNAL__MODEL`. No hardcoded URLs or model names in code. The server supports read filters (`memory_types`, `since`, `until`), response formats (`packet`, `list`, `llm_context`), and write `metadata`/`memory_type`. For timezone-aware "today"/"yesterday" retrieval, use `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")` when the server supports it. For benchmark scripts, use `write(..., eval_mode=True)` to get `eval_outcome` and `eval_reason` in the response; see [API Reference — Eval mode](api-reference.md#eval-mode-write-gate).
-
-## Quickstart
-
-**File:** [examples/quickstart.py](../../../examples/quickstart.py)
-
-Store and retrieve memories in under a minute. Uses the sync client: initialize, write several memories, read by query, use `read_stream` for SSE streaming, call `get_context`, and `stats()`. Run with:
+Runnable scripts live in the repository [examples/](../../../examples/) and [packages/py-cml/examples/](../examples/). The runner discovers both locations automatically:
 
 ```bash
-python examples/quickstart.py
+python scripts/run_examples.py --list
 ```
 
-## Chat with Memory
+Set example env in the repo root `.env`:
 
-**File:** [examples/chat_with_memory.py](../../../examples/chat_with_memory.py)
+- `CML_API_KEY`
+- `CML_BASE_URL`
+- `CML_ADMIN_API_KEY` for admin examples
+- `OPENAI_API_KEY` + `OPENAI_MODEL`, or `LLM_INTERNAL__MODEL` + `LLM_INTERNAL__BASE_URL`, for OpenAI-compatible examples
+- `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` for the Anthropic example
 
-A simple chatbot that uses OpenAI and cognitive-memory-layer for persistent memory. Each turn retrieves relevant memories and injects them into the system prompt, then stores the exchange. Requires `openai`, a CML server, and `.env` with `CML_BASE_URL`, `CML_API_KEY`, `OPENAI_MODEL` (or `LLM_INTERNAL__MODEL`). Type `quit` to exit.
+Interactive examples support unattended runs through `CML_EXAMPLE_NON_INTERACTIVE=1` and optional scripted input via `CML_EXAMPLE_INPUTS`.
+
+## Core SDK Examples
+
+| File | What it demonstrates |
+|------|----------------------|
+| [examples/quickstart.py](../../../examples/quickstart.py) | Minimal sync write/read/stream/context example |
+| [examples/basic_usage.py](../../../examples/basic_usage.py) | Typed writes plus update, stats, and forget |
+| [examples/async_example.py](../../../examples/async_example.py) | `AsyncCognitiveMemoryLayer`, `batch_read`, and SSE streaming |
+| [examples/embedded_mode.py](../../../examples/embedded_mode.py) | In-process embedded mode with in-memory and file-backed storage |
+| [examples/agent_integration.py](../../../examples/agent_integration.py) | Agent loop with graceful `read_safe()` retrieval |
+| [examples/bulk_ingestion.py](../../../examples/bulk_ingestion.py) | Semaphore-limited concurrent ingestion |
+| [examples/session_scope.py](../../../examples/session_scope.py) | SessionScope write/read/turn plus `get_session_context()` |
+| [packages/py-cml/examples/temporal_fidelity.py](../examples/temporal_fidelity.py) | Historical timestamps and temporal replay |
+
+## Admin, Direct API, and UI Examples
+
+| File | What it demonstrates |
+|------|----------------------|
+| [examples/admin_dashboard.py](../../../examples/admin_dashboard.py) | Read-only dashboard/admin helpers such as overview, facts, retrieval test, and jobs |
+| [examples/api_direct_minimal.py](../../../examples/api_direct_minimal.py) | Minimal `httpx` usage without the SDK |
+| [examples/standalone_demo.py](../../../examples/standalone_demo.py) | Broader direct HTTP walkthrough |
+| [examples/api_curl_examples.sh](../../../examples/api_curl_examples.sh) | Shell `curl` equivalents for core routes |
+| [examples/streamlit_app.py](../../../examples/streamlit_app.py) | Streamlit UI for chat, retrieval, sessions, and optional admin inspection |
+
+## LLM Integration Examples
+
+| File | What it demonstrates |
+|------|----------------------|
+| [examples/chat_with_memory.py](../../../examples/chat_with_memory.py) | OpenAI chat loop backed by `memory.turn()` |
+| [examples/openai_tool_calling.py](../../../examples/openai_tool_calling.py) | OpenAI function-calling with memory tools |
+| [examples/anthropic_tool_calling.py](../../../examples/anthropic_tool_calling.py) | Anthropic tool-use with memory tools |
+| [examples/langchain_integration.py](../../../examples/langchain_integration.py) | LangChain conversation chain backed by CML |
+
+## Runner Usage
 
 ```bash
-pip install openai
-python examples/chat_with_memory.py
+python scripts/run_examples.py --list
+python scripts/run_examples.py --all
+python scripts/run_examples.py --example quickstart
+python scripts/run_examples.py --all --include-llm
+python scripts/run_examples.py --kind shell --all
+python scripts/run_examples.py --kind streamlit --all
 ```
 
-## Async Usage
+## Notes
 
-**File:** [examples/async_example.py](../../../examples/async_example.py)
-
-Uses `AsyncCognitiveMemoryLayer` with `asyncio`: concurrent writes with `asyncio.gather`, then `read` and `batch_read`. Demonstrates async context manager and batch operations.
-
-```bash
-python examples/async_example.py
-```
-
-## Embedded Mode
-
-**File:** [examples/embedded_mode.py](../../../examples/embedded_mode.py)
-
-Run py-cml without a server. Zero-config block uses in-memory SQLite and local embeddings; a second part uses `db_path` for persistent storage and reads back in a new instance. Requires `pip install cognitive-memory-layer[embedded]` and the CML engine from the monorepo for full functionality.
-
-```bash
-python examples/embedded_mode.py
-```
-
-## Agent Integration
-
-**File:** [examples/agent_integration.py](../../../examples/agent_integration.py)
-
-A minimal agent that observes events, plans using memory context, and reflects on past observations. Uses `AsyncCognitiveMemoryLayer` with `context_tags` and `agent_id`. Illustrates how to plug cognitive-memory-layer into an agent loop.
-
-```bash
-python examples/agent_integration.py
-```
-
-## Temporal Fidelity (Historical Data)
-
-**File:** [packages/py-cml/examples/temporal_fidelity.py](../examples/temporal_fidelity.py)
-
-Demonstrates the `timestamp` parameter for storing memories with specific event times, enabling historical data replay and temporal reasoning. Shows:
-- Storing historical memories with specific timestamps
-- Processing historical conversation turns
-- Benchmark evaluation scenarios (Locomo-style)
-- Temporal ordering verification
-
-```bash
-python packages/py-cml/examples/temporal_fidelity.py
-```
-
-**Quick example:**
-
-```python
-from datetime import datetime, timezone
-from cml import CognitiveMemoryLayer
-
-memory = CognitiveMemoryLayer(api_key="...", base_url="...")
-
-# Store historical memories with their original timestamps
-session_date = datetime(2023, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
-
-memory.write(
-    "User mentioned they prefer dark mode",
-    timestamp=session_date,
-    session_id="session_1"
-)
-
-# Process historical conversation turns
-memory.turn(
-    user_message="What's the weather like?",
-    assistant_response="It's sunny today!",
-    timestamp=session_date,
-    session_id="session_1"
-)
-
-# When timestamp is omitted, it defaults to "now"
-memory.write("This memory gets the current timestamp")
-```
-
-This feature is particularly useful for:
-- **Benchmark evaluations** (e.g., Locomo) that replay historical conversations with correct temporal ordering
-- **Data migration** when importing historical records from other systems
-- **Testing** temporal reasoning and memory consolidation over time
-
-## Cognitive Constraints
-
-When the CML server has `FEATURES__CONSTRAINT_EXTRACTION_ENABLED=true` (default), the system automatically detects goals, values, policies, states, and causal rules from stored memories. Decision-style queries surface these constraints in `ReadResponse.constraints`:
-
-```python
-from cml import CognitiveMemoryLayer
-
-with CognitiveMemoryLayer(api_key="...", base_url="...") as memory:
-    # Store memories containing latent constraints
-    memory.write("I'm trying to eat healthier this year.")
-    memory.write("We should save money for the trip to Japan.")
-    memory.write("I'm allergic to shellfish.")
-
-    # Decision query triggers constraint retrieval
-    result = memory.read("Should I order the lobster for dinner?")
-    print(f"Constraints found: {len(result.constraints)}")
-    for c in result.constraints:
-        print(f"  [{c.type}] {c.text} (confidence: {c.confidence:.2f})")
-    # e.g.:
-    #   [constraint] User is allergic to shellfish (confidence: 0.90)
-    #   [constraint] Trying to eat healthier (confidence: 0.75)
-
-    # Non-decision queries still return constraints if relevant
-    result = memory.read("What are my dietary restrictions?")
-    for c in result.constraints:
-        print(f"  {c.text}")
-```
-
-The constraint extraction runs at **write time** and stores structured `ConstraintObject` data in both episodic (vector) and semantic (fact) stores. At **read time**, queries classified as `CONSTRAINT_CHECK` (e.g. "should I", "can I", "is it ok", "recommend") trigger a highest-priority retrieval step that fetches constraints first.
-
-
+- `read(..., user_timezone="America/New_York")` and `turn(..., user_timezone="America/New_York")` are demonstrated in the session-scoped example.
+- `timestamp=` for historical replay is demonstrated in the temporal fidelity example.
+- Admin helpers require `CML_ADMIN_API_KEY`.
