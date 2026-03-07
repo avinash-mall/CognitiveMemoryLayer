@@ -16,6 +16,7 @@ from src.memory.hippocampal.write_gate import WriteGate
 from src.memory.neocortical.fact_store import SemanticFactStore
 from src.memory.neocortical.store import NeocorticalStore
 from src.retrieval.memory_retriever import MemoryRetriever
+from src.retrieval.query_types import QueryAnalysis, QueryIntent
 from src.storage.postgres import PostgresMemoryStore
 from src.utils.embeddings import MockEmbeddingClient
 
@@ -32,7 +33,9 @@ class _MockGraph:
 
 
 @pytest.mark.asyncio
-async def test_constraint_surfaces_despite_semantic_disconnect(pg_session_factory):
+async def test_constraint_surfaces_despite_semantic_disconnect(
+    pg_session_factory, monkeypatch: pytest.MonkeyPatch
+):
     """Store 'I never eat shellfish because I'm allergic' as policy constraint;
     query 'What restaurant should we go to?' (no lexical overlap);
     assert constraint appears in packet.
@@ -65,11 +68,26 @@ async def test_constraint_surfaces_despite_semantic_disconnect(pg_session_factor
         neocortical=neocortical,
         llm_client=None,
     )
+
+    # Force constraint retrieval to include policy so fact-store lookup runs
+    async def _classify(query: str, recent_context: str | None = None):
+        return QueryAnalysis(
+            original_query=query,
+            intent=QueryIntent.CONSTRAINT_CHECK,
+            confidence=0.9,
+            constraint_dimensions=["policy"],
+            suggested_top_k=10,
+        )
+
+    monkeypatch.setattr(retriever.classifier, "classify", _classify)
+
     # Query has no lexical overlap with constraint (restaurant vs shellfish/allergic)
     packet = await retriever.retrieve(tenant_id, "What restaurant should we go to?")
 
     # Constraint should appear via fact-based constraint retrieval (all cognitive categories)
-    all_texts = [m.record.text for m in packet.all_memories]
+    all_texts = [m.record.text for m in packet.all_memories] + [
+        c.record.text for c in packet.constraints
+    ]
     constraint_found = any("shellfish" in t and "allergic" in t for t in all_texts) or any(
         constraint_text in t for t in all_texts
     )

@@ -1,7 +1,7 @@
-"""Write-time fact extraction: populate the semantic store at write time.
+"""Write-time fact extraction for non-LLM write paths.
 
-LLM path remains in unified extractor.
-Non-LLM path uses spaCy parse + NER only.
+LLM extraction remains in the unified extractor. When available, the
+fact_extraction_structured token model is the primary structured-fact path.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from .fact_span_adapter import build_structured_fact_records, span_prediction_confidence
 from ..memory.neocortical.schemas import FactCategory
 from ..utils.modelpack import get_modelpack_runtime
 from ..utils.ner import parse_text
@@ -76,28 +77,23 @@ class WriteTimeFactExtractor:
             ):
                 span_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
                 if span_pred is not None and span_pred.spans:
-                    facts: list[ExtractedFact] = []
-                    seen: set[tuple[str, str]] = set()
-                    for start, end, label in span_pred.spans:
-                        value = text[start:end].strip().strip(".")
-                        if not value:
-                            continue
-                        predicate = _derive_predicate(value)
-                        category = _label_to_category(label)
-                        key = f"user:{category.value}:{predicate}"
-                        dedupe_key = (key, value.lower())
-                        if dedupe_key in seen:
-                            continue
-                        seen.add(dedupe_key)
-                        facts.append(
-                            ExtractedFact(
-                                key=key,
-                                category=category,
-                                predicate=predicate,
-                                value=value,
-                                confidence=min(1.0, span_pred.confidence * 0.85),
-                            )
+                    records = build_structured_fact_records(
+                        text,
+                        span_pred,
+                        derive_predicate=_derive_predicate,
+                        label_to_category=_label_to_category,
+                        confidence=span_prediction_confidence(span_pred, multiplier=0.85),
+                    )
+                    facts = [
+                        ExtractedFact(
+                            key=record.key,
+                            category=record.category,
+                            predicate=record.predicate,
+                            value=record.value,
+                            confidence=record.confidence,
                         )
+                        for record in records
+                    ]
                     if facts:
                         return facts
         except Exception:
@@ -107,7 +103,7 @@ class WriteTimeFactExtractor:
         doc = parse_text(text)
         facts = []
         seen = set()
-        if doc is None:
+        if doc is None or not _doc_supports_dependency_parse(doc):
             self._extract_facts_without_nlp(text, facts, seen)
             return facts
 
@@ -375,3 +371,10 @@ def _derive_predicate(value: str) -> str:
         if any(kw in value_lower for kw in keywords):
             return predicate
     return hashlib.sha256(value_lower.encode()).hexdigest()[:12]
+
+
+def _doc_supports_dependency_parse(doc: Any) -> bool:
+    try:
+        return bool(doc.has_annotation("DEP"))
+    except Exception:
+        return False

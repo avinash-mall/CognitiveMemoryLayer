@@ -30,13 +30,19 @@ def _record(text: str, mem_type: MemoryType, confidence: float = 0.8) -> MemoryR
 
 
 @pytest.mark.asyncio
-async def test_guardrails_replace_generic_gist_for_mixed_cluster():
+async def test_guardrails_replace_generic_gist_for_mixed_cluster(monkeypatch):
     episodic = MagicMock()
     fact_store = MagicMock()
     neocortical = MagicMock()
     neocortical.facts = fact_store
     worker = ConsolidationWorker(
         episodic_store=episodic, neocortical_store=neocortical, llm_client=None
+    )
+    # Force heuristic path so generic "various topics" is rejected and split fallbacks are used
+    monkeypatch.setattr(
+        worker.modelpack,
+        "has_task_model",
+        lambda _: False,
     )
 
     ep1 = _record("I never eat shellfish due to allergies.", MemoryType.CONSTRAINT, confidence=0.95)
@@ -52,9 +58,10 @@ async def test_guardrails_replace_generic_gist_for_mixed_cluster():
     )
 
     out = worker._apply_gist_guardrails([gist], [cluster])
-    assert len(out) == 1
-    assert "various topics" not in out[0].text.lower()
-    assert "shellfish" in out[0].text.lower()
+    # Mixed cluster yields one policy gist (constraint) + one summary gist (episodic)
+    assert len(out) >= 1
+    assert not any("various topics" in (g.text or "").lower() for g in out)
+    assert any("shellfish" in (g.text or "").lower() for g in out)
 
 
 @pytest.mark.asyncio

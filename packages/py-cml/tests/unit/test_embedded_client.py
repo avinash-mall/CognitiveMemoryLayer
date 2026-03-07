@@ -7,6 +7,14 @@ from uuid import uuid4
 
 import pytest
 
+try:
+    from cml.storage.sqlite_store import SQLiteMemoryStore  # noqa: F401
+except ImportError:
+    pytest.skip(
+        'Embedded engine not available. From repo root: pip install -e ".[embedded]".',
+        allow_module_level=True,
+    )
+
 from cml.embedded import EmbeddedCognitiveMemoryLayer
 from cml.embedded_config import EmbeddedConfig
 

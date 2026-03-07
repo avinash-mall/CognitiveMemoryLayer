@@ -33,7 +33,7 @@ Beyond the three family-level classifiers, the pipeline supports 10 task-specifi
 | `retrieval_constraint_relevance_pair` | Domain keyword bonus in retriever | `pair_ranking` | MS MARCO, BEIR, Quora duplicates | Yes |
 | `memory_rerank_pair` | Weighted reranker core | `pair_ranking` | MS MARCO, BEIR, SNLI, MultiNLI, ANLI | Yes |
 | `novelty_pair` | Jaccard novelty in write gate and interference detector | `pair_ranking` | Quora duplicates, PAWS, GLUE (QQP/MRPC/STS-B) | Yes |
-| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `token_classification` | Project weak labels, DocRED/Re-TACRED seeds | Yes |
+| `fact_extraction_structured` | Primary non-LLM structured fact extraction and model-first relation fallback | `token_classification` | Project weak labels, DocRED/Re-TACRED seeds, multilingual templates | Yes |
 | `schema_match_pair` | Jaccard schema similarity in consolidation | `pair_ranking` | STS-B, FEVER, SNLI, MultiNLI | Yes |
 | `reconsolidation_candidate_pair` | Word-overlap top-k in reconsolidation | `pair_ranking` | MS MARCO, FEVER, SNLI, ANLI | Yes |
 | `write_importance_regression` *(deferred)* | Fixed importance bins in write gate | `single_regression` | None (internal labels only) | Yes (after score supervision) |
@@ -85,7 +85,7 @@ Modelpack inference is consumed from `src/utils/modelpack.py`.
 | `retrieval_constraint_relevance_pair` | `retriever.py::_rescore_constraints` | Replace domain keyword bonus with learned relevance score; keep deterministic tie-break floor. |
 | `memory_rerank_pair` | `reranker.py::_calculate_score` | Model score as primary relevance component; subsumes stability-based recency weights. MMR diversity post-pass retained. |
 | `novelty_pair` | `write_gate.py::_compute_novelty`, `interference.py::detect_duplicates`, `detect_overlapping` | Replace Jaccard heuristic with pair scoring. Replace interference detector's word-overlap and cosine-threshold detection. |
-| `fact_extraction_structured` | `write_time_facts.py::extract`, `ner.py::extract_relations`, `service.py::_extract_new_facts` | Replace regex/spaCy fallback, `_PREDICATE_KEYWORDS` mapping, dependency-based relation extraction, and reconsolidation sentence-split fallback. |
+| `fact_extraction_structured` | `write_time_facts.py::extract`, `ner.py::extract_relations`, `service.py::_extract_new_facts` | Primary non-LLM structured fact path. Relation fallback is model-first, with spaCy dependency parsing used only as a best-effort fallback when parser annotations are available. |
 | `schema_match_pair` | `schema_aligner.py::_calculate_similarity` | Replace Jaccard with semantic pair match score. |
 | `reconsolidation_candidate_pair` | `service.py::_top_k_similar_memories` | Replace word-overlap top-k with pair candidate relevance. |
 | `write_importance_regression` | `write_gate.py::_predict_importance` | Calibrated regression output; retain clipping/floor. |
@@ -94,6 +94,12 @@ Modelpack inference is consumed from `src/utils/modelpack.py`.
 | `forgetting_action_policy` | `scorer.py::_suggest_action` | Model proposes action; hard protected-type rules remain deterministic. |
 
 If model artifacts are not present, runtime falls back to safe heuristic defaults for all paths. All model calls are wrapped in `try/except` with graceful fallthrough.
+
+spaCy fallback defaults to `xx_ent_wiki_sm`, then falls back to `en_core_web_sm` when the multilingual model is not installed. Install it explicitly with:
+
+```bash
+python -m spacy download xx_ent_wiki_sm
+```
 
 ### Dashboard integration
 
@@ -242,6 +248,8 @@ When `[multilingual]` is enabled in config (default), synthetic LLM generation i
 - **Prompt definitions**: `packages/models/scripts/multilingual_prompts.py` defines `SUPPORTED_LANGUAGES`, `pick_language()`, and language-specific system/user prompt builders (`system_prompt_single`, `user_prompt_single`, etc.). Label guidance stays in English (semantic intent); the LLM generates text in the chosen language.
 - **Config**: `model_pipeline.toml` section `[multilingual]` with `enabled = true` and `english_weight = 0.30`. Disable with `--no-multilingual` for English-only synthetic data (e.g. faster iteration).
 - **Output**: Prepared parquet includes a `language` column (ISO 639-1 code, e.g. `en`, `zh`, `es`). Existing prepared data without `language` is treated as `en` when loaded.
+
+For `fact_extraction_structured`, token prep now guarantees multilingual template coverage per `(label, language)` combination before filling the remainder of the target count. The prep manifest records `language_counts` so multilingual coverage is visible in shipped artifacts.
 
 ## Training
 

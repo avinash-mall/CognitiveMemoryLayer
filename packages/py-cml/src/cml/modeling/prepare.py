@@ -896,6 +896,9 @@ def _token_summary(df: pd.DataFrame) -> dict[str, Any]:
     source_top = df["source"].value_counts().head(20).to_dict() if "source" in df.columns else {}
     source_mix: dict[str, dict[str, int]] = {}
     label_counts: dict[str, int] = {}
+    language_counts = (
+        df["language"].astype(str).value_counts().to_dict() if "language" in df.columns else {}
+    )
     if not df.empty:
         for _, row in df.iterrows():
             task = str(row.get("task", "") or "")
@@ -909,6 +912,7 @@ def _token_summary(df: pd.DataFrame) -> dict[str, Any]:
         "rows": len(df),
         "task_counts": df["task"].value_counts().to_dict() if "task" in df.columns else {},
         "span_label_counts": label_counts,
+        "language_counts": language_counts,
         "source_top_20": source_top,
         "source_mix_per_task": source_mix,
     }
@@ -983,54 +987,277 @@ def _pii_template_example(label: str, idx: int) -> tuple[str, list[dict], str]:
     return text, [{"start": start, "end": end, "label": normalized}], f"template:pii:{normalized}"
 
 
-def _fact_template_example(label: str, idx: int) -> tuple[str, list[dict], str]:
-    subjects = [
-        "I",
-        "I usually",
-        "I often",
-        "I still",
-        "I generally",
-    ]
-    subject = subjects[idx % len(subjects)]
-    if label == "preference":
-        value = f"vegetarian dinner option {idx}"
-        text = f"{subject} prefer {value} when cooking at home."
-    elif label == "identity":
-        value = f"Alex Carter {idx}"
-        text = f"My name is {value}."
-    elif label == "location":
-        value = f"City {idx}"
-        text = f"{subject} live in {value}."
-    elif label == "occupation":
-        value = f"product manager level {idx}"
-        text = f"{subject} work as a {value}."
-    elif label == "attribute":
-        value = f"detail oriented in sprint {idx}"
-        text = f"{subject} am {value}."
-    elif label == "goal":
-        value = f"finish milestone {idx} before quarter end"
-        text = f"My goal is to {value}."
-    elif label == "value":
-        value = f"honesty in team review {idx}"
-        text = f"{subject} value {value}."
-    elif label == "state":
-        value = f"stressed about deadline batch {idx}"
-        text = f"{subject} am currently {value}."
-    elif label == "causal":
-        value = f"because sugar triggers migraine cycle {idx}"
-        text = f"{subject} avoid desserts {value}."
-    elif label == "policy":
-        value = f"never schedule meetings after {6 + (idx % 5)} PM in block {idx}"
-        text = f"{subject} {value}."
-    else:
-        value = f"fact span {idx}"
-        text = f"{subject} note {value}."
-    start = text.lower().find(value.lower())
+_ENGLISH_FACT_VALUE_TEMPLATES: dict[str, str] = {
+    "preference": "vegetarian food batch {idx}",
+    "identity": "Alex Carter {idx}",
+    "location": "Paris {idx}",
+    "occupation": "product manager level {idx}",
+    "attribute": "detail oriented in sprint {idx}",
+    "goal": "finish milestone {idx} before quarter end",
+    "value": "honesty in team review {idx}",
+    "state": "stressed about deadline batch {idx}",
+    "causal": "sugar triggers migraine cycle {idx}",
+    "policy": "do not schedule meetings after {hour} PM in block {idx}",
+}
+
+_LOCALIZED_FACT_VALUE_TEMPLATES: dict[str, dict[str, str]] = {
+    "es": {
+        "preference": "comida vegetariana lote {idx}",
+        "goal": "terminar el hito {idx} antes del fin del trimestre",
+        "value": "la honestidad en la revision del equipo {idx}",
+        "state": "estresado por la fecha limite lote {idx}",
+    },
+    "fr": {
+        "preference": "repas vegetarien lot {idx}",
+        "goal": "terminer le jalon {idx} avant la fin du trimestre",
+        "value": "l'honnetete dans la revue d'equipe {idx}",
+        "state": "stresse par l'echeance lot {idx}",
+    },
+    "pt": {
+        "preference": "refeicao vegetariana lote {idx}",
+        "goal": "terminar o marco {idx} antes do fim do trimestre",
+        "value": "a honestidade na revisao da equipe {idx}",
+        "state": "estressado com o prazo lote {idx}",
+    },
+    "de": {
+        "preference": "vegetarisches essen stapel {idx}",
+        "goal": "meilenstein {idx} vor quartalsende abschliessen",
+        "value": "ehrlichkeit in der teamprufung {idx}",
+        "state": "wegen der frist belastet stapel {idx}",
+    },
+    "it": {
+        "preference": "pasto vegetariano lotto {idx}",
+        "goal": "completare la milestone {idx} prima della fine del trimestre",
+        "value": "l'onesta nella revisione del team {idx}",
+        "state": "stressato per la scadenza lotto {idx}",
+    },
+}
+
+_FACT_TEMPLATE_SENTENCES: dict[str, dict[str, str]] = {
+    "en": {
+        "preference": "I prefer [[[{value}]]] when cooking at home.",
+        "identity": "My name is [[[{value}]]].",
+        "location": "I live in [[[{value}]]].",
+        "occupation": "I work as a [[[{value}]]].",
+        "attribute": "I am [[[{value}]]].",
+        "goal": "My goal is to [[[{value}]]].",
+        "value": "I value [[[{value}]]].",
+        "state": "I am currently [[[{value}]]].",
+        "causal": "I avoid desserts because [[[{value}]]].",
+        "policy": "Please [[[{value}]]].",
+    },
+    "es": {
+        "preference": "Yo prefiero [[[{value}]]] cuando cocino en casa.",
+        "identity": "Me llamo [[[{value}]]].",
+        "location": "Vivo en [[[{value}]]].",
+        "occupation": "Trabajo como [[[{value}]]].",
+        "attribute": "Soy [[[{value}]]].",
+        "goal": "Mi objetivo es [[[{value}]]].",
+        "value": "Valoro [[[{value}]]].",
+        "state": "Ahora estoy [[[{value}]]].",
+        "causal": "Evito los postres porque [[[{value}]]].",
+        "policy": "Por favor [[[{value}]]].",
+    },
+    "fr": {
+        "preference": "Je prefere [[[{value}]]] quand je cuisine chez moi.",
+        "identity": "Je m'appelle [[[{value}]]].",
+        "location": "J'habite a [[[{value}]]].",
+        "occupation": "Je travaille comme [[[{value}]]].",
+        "attribute": "Je suis [[[{value}]]].",
+        "goal": "Mon objectif est de [[[{value}]]].",
+        "value": "J'accorde de la valeur a [[[{value}]]].",
+        "state": "En ce moment je suis [[[{value}]]].",
+        "causal": "J'evite les desserts parce que [[[{value}]]].",
+        "policy": "S'il te plait [[[{value}]]].",
+    },
+    "pt": {
+        "preference": "Eu prefiro [[[{value}]]] quando cozinho em casa.",
+        "identity": "Meu nome e [[[{value}]]].",
+        "location": "Eu moro em [[[{value}]]].",
+        "occupation": "Eu trabalho como [[[{value}]]].",
+        "attribute": "Eu sou [[[{value}]]].",
+        "goal": "Meu objetivo e [[[{value}]]].",
+        "value": "Eu valorizo [[[{value}]]].",
+        "state": "Agora estou [[[{value}]]].",
+        "causal": "Eu evito sobremesas porque [[[{value}]]].",
+        "policy": "Por favor [[[{value}]]].",
+    },
+    "de": {
+        "preference": "Ich bevorzuge [[[{value}]]], wenn ich zu Hause koche.",
+        "identity": "Ich heisse [[[{value}]]].",
+        "location": "Ich wohne in [[[{value}]]].",
+        "occupation": "Ich arbeite als [[[{value}]]].",
+        "attribute": "Ich bin [[[{value}]]].",
+        "goal": "Mein Ziel ist es, [[[{value}]]].",
+        "value": "Ich schatze [[[{value}]]].",
+        "state": "Im Moment bin ich [[[{value}]]].",
+        "causal": "Ich vermeide Desserts, weil [[[{value}]]].",
+        "policy": "Bitte [[[{value}]]].",
+    },
+    "it": {
+        "preference": "Preferisco [[[{value}]]] quando cucino a casa.",
+        "identity": "Mi chiamo [[[{value}]]].",
+        "location": "Vivo a [[[{value}]]].",
+        "occupation": "Lavoro come [[[{value}]]].",
+        "attribute": "Sono [[[{value}]]].",
+        "goal": "Il mio obiettivo e [[[{value}]]].",
+        "value": "Do valore a [[[{value}]]].",
+        "state": "In questo momento sono [[[{value}]]].",
+        "causal": "Evito i dolci perche [[[{value}]]].",
+        "policy": "Per favore [[[{value}]]].",
+    },
+    "zh": {
+        "preference": "我更喜欢[[[{value}]]]。",
+        "identity": "我叫[[[{value}]]]。",
+        "location": "我住在[[[{value}]]]。",
+        "occupation": "我的工作是[[[{value}]]]。",
+        "attribute": "我[[[{value}]]]。",
+        "goal": "我的目标是[[[{value}]]]。",
+        "value": "我重视[[[{value}]]]。",
+        "state": "我现在[[[{value}]]]。",
+        "causal": "我避开甜点，因为[[[{value}]]]。",
+        "policy": "请[[[{value}]]]。",
+    },
+    "ar": {
+        "preference": "انا افضل [[[{value}]]] عندما اطبخ في المنزل.",
+        "identity": "اسمي [[[{value}]]].",
+        "location": "انا اعيش في [[[{value}]]].",
+        "occupation": "اعمل كـ [[[{value}]]].",
+        "attribute": "انا [[[{value}]]].",
+        "goal": "هدفي هو [[[{value}]]].",
+        "value": "انا اقدر [[[{value}]]].",
+        "state": "انا حاليا [[[{value}]]].",
+        "causal": "اتجنب الحلويات لان [[[{value}]]].",
+        "policy": "من فضلك [[[{value}]]].",
+    },
+    "hi": {
+        "preference": "मैं घर पर पकाते समय [[[{value}]]] पसंद करता हूँ।",
+        "identity": "मेरा नाम [[[{value}]]] है।",
+        "location": "मैं [[[{value}]]] में रहता हूँ।",
+        "occupation": "मैं [[[{value}]]] के रूप में काम करता हूँ।",
+        "attribute": "मैं [[[{value}]]] हूँ।",
+        "goal": "मेरा लक्ष्य [[[{value}]]] है।",
+        "value": "मैं [[[{value}]]] को महत्व देता हूँ।",
+        "state": "मैं अभी [[[{value}]]] हूँ।",
+        "causal": "मैं मिठाई से बचता हूँ क्योंकि [[[{value}]]]।",
+        "policy": "कृपया [[[{value}]]]।",
+    },
+    "ja": {
+        "preference": "家で料理するときは[[[{value}]]]が好きです。",
+        "identity": "私の名前は[[[{value}]]]です。",
+        "location": "[[[{value}]]]に住んでいます。",
+        "occupation": "私は[[[{value}]]]として働いています。",
+        "attribute": "私は[[[{value}]]]です。",
+        "goal": "私の目標は[[[{value}]]]ことです。",
+        "value": "私は[[[{value}]]]を大切にします。",
+        "state": "今は[[[{value}]]]です。",
+        "causal": "[[[{value}]]]ので甘い物を避けます。",
+        "policy": "どうか[[[{value}]]]。",
+    },
+    "ru": {
+        "preference": "Я предпочитаю [[[{value}]]], когда готовлю дома.",
+        "identity": "Меня зовут [[[{value}]]].",
+        "location": "Я живу в [[[{value}]]].",
+        "occupation": "Я работаю [[[{value}]]].",
+        "attribute": "Я [[[{value}]]].",
+        "goal": "Моя цель - [[[{value}]]].",
+        "value": "Я ценю [[[{value}]]].",
+        "state": "Сейчас я [[[{value}]]].",
+        "causal": "Я избегаю десертов, потому что [[[{value}]]].",
+        "policy": "Пожалуйста, [[[{value}]]].",
+    },
+    "ko": {
+        "preference": "집에서 요리할 때는 [[[{value}]]]를 더 좋아합니다.",
+        "identity": "제 이름은 [[[{value}]]]입니다.",
+        "location": "저는 [[[{value}]]]에 살아요.",
+        "occupation": "저는 [[[{value}]]]로 일합니다.",
+        "attribute": "저는 [[[{value}]]]입니다.",
+        "goal": "제 목표는 [[[{value}]]]입니다.",
+        "value": "저는 [[[{value}]]]를 중요하게 생각합니다.",
+        "state": "저는 지금 [[[{value}]]] 상태입니다.",
+        "causal": "[[[{value}]]] 때문에 디저트를 피합니다.",
+        "policy": "제발 [[[{value}]]].",
+    },
+    "tr": {
+        "preference": "Evde yemek yaparken [[[{value}]]] tercih ederim.",
+        "identity": "Benim adim [[[{value}]]].",
+        "location": "[[[{value}]]] sehrinde yasiyorum.",
+        "occupation": "[[[{value}]]] olarak calisiyorum.",
+        "attribute": "Ben [[[{value}]]].",
+        "goal": "Hedefim [[[{value}]]].",
+        "value": "[[[{value}]]] benim icin onemli.",
+        "state": "Su anda [[[{value}]]].",
+        "causal": "[[[{value}]]] oldugu icin tatlidan kacinirim.",
+        "policy": "Lutfen [[[{value}]]].",
+    },
+    "id": {
+        "preference": "Saat memasak di rumah, saya lebih suka [[[{value}]]].",
+        "identity": "Nama saya [[[{value}]]].",
+        "location": "Saya tinggal di [[[{value}]]].",
+        "occupation": "Saya bekerja sebagai [[[{value}]]].",
+        "attribute": "Saya [[[{value}]]].",
+        "goal": "Tujuan saya adalah [[[{value}]]].",
+        "value": "Saya menghargai [[[{value}]]].",
+        "state": "Sekarang saya sedang [[[{value}]]].",
+        "causal": "Saya menghindari makanan penutup karena [[[{value}]]].",
+        "policy": "Tolong [[[{value}]]].",
+    },
+    "vi": {
+        "preference": "Khi nau an o nha, toi thich [[[{value}]]].",
+        "identity": "Ten toi la [[[{value}]]].",
+        "location": "Toi song o [[[{value}]]].",
+        "occupation": "Toi lam viec nhu mot [[[{value}]]].",
+        "attribute": "Toi la nguoi [[[{value}]]].",
+        "goal": "Muc tieu cua toi la [[[{value}]]].",
+        "value": "Toi coi trong [[[{value}]]].",
+        "state": "Luc nay toi dang [[[{value}]]].",
+        "causal": "Toi tranh do ngot vi [[[{value}]]].",
+        "policy": "Xin hay [[[{value}]]].",
+    },
+}
+
+
+def _fact_supported_languages(*, use_multilingual: bool) -> list[_multilingual_prompts.Language]:
+    if not use_multilingual:
+        return [lang for lang in _multilingual_prompts.SUPPORTED_LANGUAGES if lang.code == "en"]
+    return list(_multilingual_prompts.SUPPORTED_LANGUAGES)
+
+
+def _fact_value_template(label: str, idx: int, *, lang_code: str) -> str:
+    hour = 6 + (idx % 5)
+    localized = _LOCALIZED_FACT_VALUE_TEMPLATES.get(lang_code, {})
+    template = localized.get(label) or _ENGLISH_FACT_VALUE_TEMPLATES.get(label, "fact span {idx}")
+    return template.format(idx=idx, hour=hour)
+
+
+def _render_marked_fact_template(text: str, *, label: str) -> tuple[str, list[dict], str]:
+    start_marker = text.find("[[[")
+    end_marker = text.find("]]]", start_marker + 3)
+    if start_marker < 0 or end_marker < 0:
+        raise ValueError(f"Fact template is missing span markers for label '{label}'")
+    value = text[start_marker + 3 : end_marker]
+    clean_text = text[:start_marker] + value + text[end_marker + 3 :]
+    start = start_marker
     end = start + len(value)
+    return clean_text, [{"start": start, "end": end, "label": label}], value
+
+
+def _fact_template_example(
+    label: str,
+    idx: int,
+    *,
+    lang_code: str = "en",
+) -> tuple[str, list[dict], str]:
+    templates = _FACT_TEMPLATE_SENTENCES.get(lang_code) or _FACT_TEMPLATE_SENTENCES["en"]
+    template = templates.get(label) or _FACT_TEMPLATE_SENTENCES["en"].get(label)
+    if template is None:
+        template = "I note [[[{value}]]]."
+    value = _fact_value_template(label, idx, lang_code=lang_code)
+    text, spans, _ = _render_marked_fact_template(template.format(value=value), label=label)
     return (
         text,
-        [{"start": start, "end": end, "label": label}],
-        f"template:fact_extraction_structured:{label}",
+        spans,
+        f"template:fact_extraction_structured:{label}:{lang_code}",
     )
 
 
@@ -1180,6 +1407,8 @@ def _build_fact_token_rows(
     *,
     single_pools: dict[str, list[str]],
     token_cfg: dict[str, Any],
+    seed: int,
+    use_multilingual: bool,
     existing_df: pd.DataFrame | None = None,
 ) -> list[dict]:
     target = int(token_cfg["target_examples_per_task"])
@@ -1197,6 +1426,9 @@ def _build_fact_token_rows(
     candidate_texts = list(
         dict.fromkeys([_clean(text, 2000) for text in candidate_texts if _clean(text, 2000)])
     )
+    supported_languages = _fact_supported_languages(use_multilingual=use_multilingual)
+    language_weights = [float(lang.weight) for lang in supported_languages]
+    rng = random.Random(seed)
 
     heuristic_target = min(target // 4, 4000)
     heuristic_scan_limit = min(len(candidate_texts), 5000)
@@ -1208,13 +1440,50 @@ def _build_fact_token_rows(
             break
 
     per_label_target = max(1, target // max(1, len(FACT_SPAN_LABELS)))
-    label_index = {label: 0 for label in FACT_SPAN_LABELS}
+    label_index = {
+        (label, language.code): 0 for label in FACT_SPAN_LABELS for language in supported_languages
+    }
     label_counts = {label: 0 for label in FACT_SPAN_LABELS}
+    label_language_counts = {
+        (label, language.code): 0 for label in FACT_SPAN_LABELS for language in supported_languages
+    }
     for row in rows.rows:
+        language = str(row.get("language", "en") or "en")
         for span in row.get("spans", []):
             label = str(span.get("label", "")).lower()
             if label in label_counts:
                 label_counts[label] += 1
+                if (label, language) in label_language_counts:
+                    label_language_counts[(label, language)] += 1
+
+    if use_multilingual:
+        per_label_language_target = 25
+        for language in supported_languages:
+            for label in FACT_SPAN_LABELS:
+                attempts = 0
+                max_attempts = max(per_label_language_target * 8, 256)
+                while (
+                    label_language_counts[(label, language.code)] < per_label_language_target
+                    and rows.count("fact_extraction_structured") < cap
+                    and attempts < max_attempts
+                ):
+                    text, spans, source = _fact_template_example(
+                        label,
+                        label_index[(label, language.code)],
+                        lang_code=language.code,
+                    )
+                    label_index[(label, language.code)] += 1
+                    attempts += 1
+                    if rows.add("fact_extraction_structured", text, spans, source, language=language.code):
+                        label_counts[label] += 1
+                        label_language_counts[(label, language.code)] += 1
+                if label_language_counts[(label, language.code)] < per_label_language_target:
+                    raise RuntimeError(
+                        "Unable to reach multilingual template coverage for "
+                        f"{label}:{language.code} "
+                        f"(have={label_language_counts[(label, language.code)]} "
+                        f"target={per_label_language_target})"
+                    )
 
     for label in FACT_SPAN_LABELS:
         attempts = 0
@@ -1224,10 +1493,15 @@ def _build_fact_token_rows(
             and rows.count("fact_extraction_structured") < cap
             and attempts < max_attempts
         ):
-            text, spans, source = _fact_template_example(label, label_index[label])
-            label_index[label] += 1
+            language = rng.choices(supported_languages, weights=language_weights, k=1)[0]
+            text, spans, source = _fact_template_example(
+                label,
+                label_index[(label, language.code)],
+                lang_code=language.code,
+            )
+            label_index[(label, language.code)] += 1
             attempts += 1
-            if rows.add("fact_extraction_structured", text, spans, source, language="en"):
+            if rows.add("fact_extraction_structured", text, spans, source, language=language.code):
                 label_counts[label] += 1
         if label_counts[label] < per_label_target:
             raise RuntimeError(
@@ -1238,9 +1512,14 @@ def _build_fact_token_rows(
     cycle = 0
     while rows.count("fact_extraction_structured") < target:
         label = FACT_SPAN_LABELS[cycle % len(FACT_SPAN_LABELS)]
-        text, spans, source = _fact_template_example(label, label_index[label])
-        label_index[label] += 1
-        rows.add("fact_extraction_structured", text, spans, source, language="en")
+        language = rng.choices(supported_languages, weights=language_weights, k=1)[0]
+        text, spans, source = _fact_template_example(
+            label,
+            label_index[(label, language.code)],
+            lang_code=language.code,
+        )
+        label_index[(label, language.code)] += 1
+        rows.add("fact_extraction_structured", text, spans, source, language=language.code)
         cycle += 1
 
     return rows.rows
@@ -4118,6 +4397,12 @@ def main(argv: list[str] | None = None) -> int:
             f"concurrency={llm.concurrency} timeout={llm.timeout_seconds}s "
             f"multilingual={use_multilingual}"
         )
+    manifest_warnings: list[str] = []
+    if use_multilingual and "fact_extraction_structured" in token_tasks and llm is None:
+        manifest_warnings.append(
+            "fact_extraction_structured multilingual token prep used deterministic templates only; "
+            "token-specific LLM fill was unavailable."
+        )
     try:
         if needs_router:
             print("Preparing router dataset (missing-only mode)...")
@@ -4217,6 +4502,8 @@ def main(argv: list[str] | None = None) -> int:
                     token_rows = _build_fact_token_rows(
                         single_pools=single_pools,
                         token_cfg=token_prepare_cfg,
+                        seed=int(prepare_cfg["seed"]),
+                        use_multilingual=use_multilingual,
                         existing_df=token_existing_dfs.get(task_name),
                     )
                 else:
@@ -4243,6 +4530,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = {
             "config_path": str(args.config.resolve()),
             "seed": int(prepare_cfg["seed"]),
+            "warnings": manifest_warnings,
             "incremental": {
                 "mode": "missing_only",
                 "force_full": bool(args.force_full),
@@ -4356,6 +4644,11 @@ def main(argv: list[str] | None = None) -> int:
                     "splits": token_task_splits.get(task_name, {}),
                     "updated": needs_tokens,
                     "missing_before": token_missing.get(task_name, 0),
+                    "warnings": (
+                        manifest_warnings
+                        if task_name == "fact_extraction_structured"
+                        else []
+                    ),
                 }
                 for task_name in sorted(token_tasks)
             },

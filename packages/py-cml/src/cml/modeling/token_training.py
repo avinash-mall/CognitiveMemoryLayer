@@ -288,7 +288,7 @@ def train_token_task(
 ) -> dict[str, Any]:
     try:
         import torch
-        from torch.utils.data import DataLoader
+        from torch.utils.data import DataLoader, Dataset
         from transformers import AutoModelForTokenClassification, AutoTokenizer
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise ImportError(
@@ -322,8 +322,18 @@ def train_token_task(
     if not train_features:
         raise RuntimeError(f"[task:{task_name}] token split produced no train features")
 
-    train_loader: Any = DataLoader(
-        train_features,  # type: ignore[arg-type]
+    class _FeatureDataset(Dataset[_TokenFeature]):
+        def __init__(self, items: list[_TokenFeature]) -> None:
+            self._items = items
+
+        def __len__(self) -> int:
+            return len(self._items)
+
+        def __getitem__(self, idx: int) -> _TokenFeature:
+            return self._items[idx]
+
+    train_loader = DataLoader(
+        _FeatureDataset(train_features),
         batch_size=max(1, int(token_cfg["per_device_train_batch_size"])),
         shuffle=True,
         collate_fn=lambda batch: _collate_token_features(batch, tokenizer=tokenizer),

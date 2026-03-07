@@ -7,6 +7,7 @@ pii_span_detection, and router tasks (context_tag, confidence_bin, decay_profile
 
 from __future__ import annotations
 
+from .fact_span_adapter import build_structured_fact_records, span_prediction_confidence
 from ..utils.logging_config import get_logger
 from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 from .write_time_facts import ExtractedFact, _derive_predicate, _label_to_category
@@ -87,19 +88,22 @@ class LocalUnifiedWriteExtractor:
             ):
                 spans_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
                 if spans_pred is not None and spans_pred.spans:
+                    records = build_structured_fact_records(
+                        text,
+                        spans_pred,
+                        derive_predicate=_derive_predicate,
+                        label_to_category=_label_to_category,
+                        confidence=span_prediction_confidence(spans_pred),
+                    )
                     result["facts"] = [
                         ExtractedFact(
-                            key=(
-                                f"user:{_label_to_category(s[2]).value}:"
-                                f"{_derive_predicate(text[s[0] : s[1]])}"
-                            ),
-                            category=_label_to_category(s[2]),
-                            predicate=_derive_predicate(text[s[0] : s[1]]),
-                            value=text[s[0] : s[1]],
-                            confidence=max(0.0, min(1.0, spans_pred.confidence)),
+                            key=record.key,
+                            category=record.category,
+                            predicate=record.predicate,
+                            value=record.value,
+                            confidence=record.confidence,
                         )
-                        for s in spans_pred.spans
-                        if s[0] < len(text) and s[1] <= len(text) and text[s[0] : s[1]].strip()
+                        for record in records
                     ]
         except Exception as exc:
             logger.debug("local_fact_extraction_failed", extra={"error": str(exc)})

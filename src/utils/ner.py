@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+from ..extraction.fact_span_adapter import build_user_relation_records
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -24,6 +25,7 @@ except Exception:  # pragma: no cover - optional dependency
 _DEFAULT_MODEL_CANDIDATES = (
     os.getenv("NER__MODEL", "").strip(),
     os.getenv("SPACY_MODEL", "").strip(),
+    "xx_ent_wiki_sm",
     "en_core_web_sm",
 )
 
@@ -181,7 +183,14 @@ def get_nlp() -> Any | None:
             continue
         try:
             nlp = spacy.load(model)
-            logger.info("spacy_model_loaded", extra={"model": model})
+            logger.info(
+                "spacy_model_loaded",
+                extra={
+                    "model": model,
+                    "pipes": list(getattr(nlp, "pipe_names", [])),
+                    "has_parser": bool(getattr(nlp, "has_pipe", lambda _: False)("parser")),
+                },
+            )
             return nlp
         except Exception as exc:
             last_error = str(exc)
@@ -283,6 +292,13 @@ def _entity_for_token(token: Any, doc_entities: list[NEREntity]) -> str:
     return str(getattr(token, "text", "")).strip()
 
 
+def _doc_has_dependency_parse(doc: Any) -> bool:
+    try:
+        return bool(doc.has_annotation("DEP"))
+    except Exception:
+        return False
+
+
 def extract_relations(
     text: str,
     *,
@@ -295,21 +311,20 @@ def extract_relations(
         if getattr(mp, "has_task_model", lambda _: False)("fact_extraction_structured"):
             span_pred = mp.predict_spans("fact_extraction_structured", text)
             if span_pred is not None and span_pred.spans:
-                span_relations: list[NERRelation] = []
-                for span in span_pred.spans:
-                    start, end, label = span[0], span[1], span[2]
-                    span_text = text[start:end] if start < len(text) and end <= len(text) else ""
-                    if span_text and label:
-                        span_relations.append(
-                            NERRelation(
-                                subject=span_text,
-                                predicate=label,
-                                object="",
-                                confidence=0.85,
-                            )
-                        )
-                    if len(span_relations) >= max_relations:
-                        break
+                span_relations = [
+                    NERRelation(
+                        subject=relation.subject,
+                        predicate=relation.predicate,
+                        object=relation.object,
+                        confidence=relation.confidence,
+                    )
+                    for relation in build_user_relation_records(
+                        text,
+                        span_pred,
+                        confidence=0.85,
+                        max_relations=max_relations,
+                    )
+                ]
                 if span_relations:
                     return span_relations
     except Exception:
@@ -317,6 +332,8 @@ def extract_relations(
 
     doc = parse_text(text)
     if doc is None:
+        return []
+    if not _doc_has_dependency_parse(doc):
         return []
     doc_entities = extract_entities(text)
     relations: list[NERRelation] = []
