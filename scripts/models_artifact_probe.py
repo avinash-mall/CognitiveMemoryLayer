@@ -27,6 +27,7 @@ def _token_task_probe(prepared_dir: Path, task_name: str) -> dict[str, Any]:
         return {"exists": False}
     df = load_token_task_split(prepared_dir, task_name, "train")
     source_counts = Counter(df["source"].astype(str)) if "source" in df.columns else Counter()
+    language_counts = Counter(df["language"].astype(str)) if "language" in df.columns else Counter()
     label_counts: Counter[str] = Counter()
     for spans in df["spans"].tolist():
         for span in spans or []:
@@ -36,6 +37,7 @@ def _token_task_probe(prepared_dir: Path, task_name: str) -> dict[str, Any]:
         "rows": len(df),
         "columns": list(df.columns),
         "tasks": sorted(df["task"].astype(str).unique().tolist()) if "task" in df.columns else [],
+        "languages": dict(language_counts),
         "span_label_counts": dict(label_counts),
         "top_sources": dict(source_counts.most_common(10)),
     }
@@ -136,6 +138,13 @@ def _collect_mismatches(
                 mismatches.append(
                     f"[prepared] configured enabled token task missing from token splits: {task_name}"
                 )
+            if task_name == "fact_extraction_structured":
+                languages = {str(lang) for lang in (payload.get("languages") or {}).keys()}
+                non_english = {lang for lang in languages if lang and lang != "en"}
+                if not non_english:
+                    mismatches.append(
+                        "[prepared] fact_extraction_structured token split has no non-English rows"
+                    )
             continue
         if task_name and task_name not in observed_tasks:
             mismatches.append(
@@ -200,9 +209,15 @@ def _runtime_probe() -> dict[str, Any]:
     token_checks = {
         "pii_span_detection": "Contact me at alice@example.com and do not share the api_key sk-live-secret0001.",
         "fact_extraction_structured": "I live in Paris and prefer vegetarian food.",
+        "fact_extraction_structured_multilingual": "Vivo en Paris y prefiero comida vegetariana.",
     }
     for task, text in token_checks.items():
-        span_pred = mp.predict_spans(task, text)
+        runtime_task = (
+            "fact_extraction_structured"
+            if task == "fact_extraction_structured_multilingual"
+            else task
+        )
+        span_pred = mp.predict_spans(runtime_task, text)
         checks[task] = (
             None
             if span_pred is None
@@ -279,7 +294,11 @@ def main(argv: list[str] | None = None) -> int:
         runtime = _runtime_probe()
         result["runtime"] = runtime
         token_checks = runtime.get("checks", {})
-        for task_name in ("pii_span_detection", "fact_extraction_structured"):
+        for task_name in (
+            "pii_span_detection",
+            "fact_extraction_structured",
+            "fact_extraction_structured_multilingual",
+        ):
             check = token_checks.get(task_name)
             spans = [] if not isinstance(check, dict) else list(check.get("spans") or [])
             if not spans:

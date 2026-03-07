@@ -137,10 +137,12 @@ class LocalEmbeddings(EmbeddingClient):
             from sentence_transformers import SentenceTransformer
         except ImportError:
             raise ImportError("sentence-transformers is required for LocalEmbeddings")
+        torch: Any = None
         try:
-            import torch
+            import torch as _torch
+            torch = _torch
         except ImportError:
-            torch = None  # type: ignore[assignment]
+            pass
         settings = get_settings()
         ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
         name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL

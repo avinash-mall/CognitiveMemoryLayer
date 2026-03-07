@@ -6,7 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+pytest.importorskip("pandas", reason="modeling scripts require [modeling] deps")
 
 
 def test_prepare_wrapper_module_help() -> None:

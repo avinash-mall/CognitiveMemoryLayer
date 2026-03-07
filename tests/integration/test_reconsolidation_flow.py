@@ -57,7 +57,7 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     # In CI there is often no LLM/modelpack, so conflict detection returns NONE and no
     # correction is applied. Mock the detector to return CORRECTION so we exercise the
     # full revision + store path.
-    async def _mock_detect(old_memory, new_statement, context=None):
+    async def _mock_detect(old_memory, new_statement, context=None, *, new_memory=None):
         return ConflictResult(
             conflict_type=ConflictType.CORRECTION,
             confidence=0.95,

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from ..extraction.fact_span_adapter import build_reconsolidation_fact_dicts
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
 from ..storage.base import MemoryStoreBase
@@ -323,15 +324,7 @@ class ReconsolidationService:
                 combined = f"{user_message} {assistant_response or ''}".strip()
                 span_pred = self.modelpack.predict_spans("fact_extraction_structured", combined)
                 if span_pred is not None and span_pred.spans:
-                    facts = []
-                    for s in span_pred.spans:
-                        span_text = (
-                            combined[s[0] : s[1]]
-                            if s[0] < len(combined) and s[1] <= len(combined)
-                            else ""
-                        )
-                        if span_text:
-                            facts.append({"text": span_text, "type": s[2] or "semantic_fact"})
+                    facts = build_reconsolidation_fact_dicts(combined, span_pred)
                     if facts:
                         return facts
         except Exception:

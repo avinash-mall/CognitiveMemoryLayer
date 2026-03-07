@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -171,6 +172,85 @@ class TestWriteTimeFactExtractor:
         facts = self.extractor.extract(chunk)
         for f in facts:
             assert f.confidence < 0.8  # Write-time < consolidation
+
+    def test_model_path_extracts_multilingual_facts(self):
+        text = "Vivo en Paris y prefiero comida vegetariana hoy"
+        location_start = text.index("Paris")
+        preference_start = text.index("comida vegetariana")
+        self.extractor.modelpack = MagicMock()
+        self.extractor.modelpack.has_task_model.return_value = True
+        self.extractor.modelpack.predict_spans.return_value = SimpleNamespace(
+            spans=(
+                (location_start, location_start + len("Paris"), "location"),
+                (
+                    preference_start,
+                    preference_start + len("comida vegetariana"),
+                    "preference",
+                ),
+            ),
+            confidence=0.9,
+        )
+        chunk = SemanticChunk(
+            id="7",
+            text=text,
+            chunk_type=ChunkType.STATEMENT,
+        )
+
+        facts = self.extractor.extract(chunk)
+        assert any(f.category == FactCategory.LOCATION and f.value == "Paris" for f in facts)
+        assert any(
+            f.category == FactCategory.PREFERENCE and "comida vegetariana" in f.value
+            for f in facts
+        )
+
+
+class TestMultilingualNerFallback:
+    def test_default_spacy_candidates_prefer_multilingual(self):
+        from src.utils import ner
+
+        assert ner._DEFAULT_MODEL_CANDIDATES[2] == "xx_ent_wiki_sm"
+        assert ner._DEFAULT_MODEL_CANDIDATES[3] == "en_core_web_sm"
+
+    def test_extract_relations_model_path_returns_user_centric_triples(self, monkeypatch):
+        from src.utils.ner import extract_relations
+
+        text = "I live in Paris and prefer vegetarian food today."
+        location_start = text.index("Paris")
+        preference_start = text.index("vegetarian food")
+        mock_modelpack = MagicMock()
+        mock_modelpack.has_task_model.return_value = True
+        mock_modelpack.predict_spans.return_value = SimpleNamespace(
+            spans=(
+                (location_start, location_start + len("Paris"), "location"),
+                (
+                    preference_start,
+                    preference_start + len("vegetarian food"),
+                    "preference",
+                ),
+            ),
+            confidence=0.95,
+        )
+        monkeypatch.setattr("src.utils.modelpack.get_modelpack_runtime", lambda: mock_modelpack)
+
+        relations = extract_relations(text)
+        assert relations
+        assert relations[0].subject == "user"
+        assert relations[0].predicate == "location"
+        assert relations[0].object == "Paris"
+        assert any(r.predicate == "preference" and "vegetarian food" in r.object for r in relations)
+
+    def test_extract_relations_returns_empty_for_parserless_doc(self, monkeypatch):
+        from src.utils.ner import extract_relations
+
+        mock_modelpack = MagicMock()
+        mock_modelpack.has_task_model.return_value = False
+        monkeypatch.setattr("src.utils.modelpack.get_modelpack_runtime", lambda: mock_modelpack)
+        monkeypatch.setattr(
+            "src.utils.ner.parse_text",
+            lambda _text: SimpleNamespace(has_annotation=lambda _name: False),
+        )
+
+        assert extract_relations("Vivo en Paris.") == []
 
 
 class TestDerivePredicateFunction:

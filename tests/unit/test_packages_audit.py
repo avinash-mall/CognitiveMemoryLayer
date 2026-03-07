@@ -210,6 +210,7 @@ class TestTrainingConfigAndStrictMode:
     """Verify disabled tasks are skipped and --strict causes failures."""
 
     def test_taskspec_enabled_default_true(self):
+        pytest.importorskip("pandas", reason="cml.modeling.train requires [modeling] deps")
         from cml.modeling.train import TaskSpec
 
         spec = TaskSpec(
@@ -224,6 +225,7 @@ class TestTrainingConfigAndStrictMode:
         assert spec.enabled is True
 
     def test_taskspec_enabled_false(self):
+        pytest.importorskip("pandas", reason="cml.modeling.train requires [modeling] deps")
         from cml.modeling.train import TaskSpec
 
         spec = TaskSpec(
@@ -239,6 +241,7 @@ class TestTrainingConfigAndStrictMode:
         assert spec.enabled is False
 
     def test_train_task_strict_mode_raises(self):
+        pytest.importorskip("pandas", reason="cml.modeling.train requires [modeling] deps")
         from cml.modeling.train import TaskSpec, _train_task
 
         spec = TaskSpec(
@@ -260,6 +263,7 @@ class TestTrainingConfigAndStrictMode:
             )
 
     def test_train_task_default_skips_gracefully(self):
+        pytest.importorskip("pandas", reason="cml.modeling.train requires [modeling] deps")
         from cml.modeling.train import TaskSpec, _train_task
 
         spec = TaskSpec(
