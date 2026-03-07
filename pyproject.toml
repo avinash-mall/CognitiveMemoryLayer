@@ -143,6 +143,7 @@ ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", 
 "migrations/env.py" = ["E402"]
 "scripts/*.py" = ["E402"]
 "src/memory/neocortical/fact_store.py" = ["B010"]
+"tests/**/*.py" = ["TC002"]
 [tool.ruff.lint.isort]
 known-first-party = ["cml", "src"]
 
@@ -153,7 +154,7 @@ target-version = ["py311"]
 [tool.mypy]
 python_version = "3.11"
 explicit_package_bases = true
-exclude = "packages/py-cml/tests"
+exclude = "packages/py-cml/tests|^tests/"
 warn_return_any = false
 warn_unused_ignores = true
 disallow_untyped_defs = false
@@ -203,8 +204,8 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
-# Ramp up toward 70% as tests expand; target 70% (Issues.md A-04)
-fail_under = 60
+# Full-suite CI enforces a 75% repository coverage floor.
+fail_under = 75
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

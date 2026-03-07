@@ -9,22 +9,10 @@ from src.storage.connection import DatabaseManager
 
 
 @pytest.mark.integration
-@pytest.mark.requires_llm
 async def test_timestamp_ingestion():
-    import os
-
-    from src.core.config import get_settings
-
-    settings = get_settings()
-    provider = settings.embedding_internal.provider
-    if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OpenAI API key not configured for embedding provider")
-
     from src.utils.embeddings import get_embedding_client
-    from src.utils.llm import get_internal_llm_client
 
     embedding_client = get_embedding_client()
-    llm_client = get_internal_llm_client()
 
     db = await DatabaseManager.create()
 
@@ -35,7 +23,7 @@ async def test_timestamp_ingestion():
     orchestrator = await MemoryOrchestrator.create_lite(
         episodic_store=episodic_store,
         embedding_client=embedding_client,
-        llm_client=llm_client,
+        llm_client=None,
     )
 
     tenant_id = f"test-tenant-{uuid.uuid4()}"

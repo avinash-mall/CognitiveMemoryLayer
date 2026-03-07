@@ -114,6 +114,49 @@ class SQLiteMemoryStore(MemoryStoreBase):
         except (ValueError, TypeError):
             return None
 
+    def _apply_filters(
+        self,
+        query: str,
+        params: list[Any],
+        filters: dict[str, Any] | None,
+    ) -> tuple[str, list[Any]]:
+        if not filters:
+            return query, params
+
+        def _append_equality(field: str, value: Any) -> None:
+            nonlocal query
+            if isinstance(value, (list, tuple, set, frozenset)):
+                values = [item for item in value if item is not None]
+                if not values:
+                    return
+                placeholders = ", ".join("?" for _ in values)
+                query += f" AND {field} IN ({placeholders})"
+                params.extend(values)
+                return
+            query += f" AND {field} = ?"
+            params.append(value)
+
+        for field in ("status", "type", "source_session_id", "namespace", "key"):
+            value = filters.get(field)
+            if value:
+                _append_equality(field, value)
+
+        since = filters.get("since")
+        if since:
+            query += " AND timestamp >= ?"
+            params.append(self._dt_iso(since) if isinstance(since, datetime) else since)
+
+        until = filters.get("until")
+        if until:
+            query += " AND timestamp <= ?"
+            params.append(self._dt_iso(until) if isinstance(until, datetime) else until)
+
+        if filters.get("exclude_expired"):
+            query += " AND (valid_to IS NULL OR valid_to >= ?)"
+            params.append(datetime.now(UTC).isoformat())
+
+        return query, params
+
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
         content_hash = self._hash_content(record.text, record.tenant_id)
         if self._db is None:
@@ -342,13 +385,7 @@ class SQLiteMemoryStore(MemoryStoreBase):
         self._db.row_factory = aiosqlite.Row
         q = "SELECT * FROM memories WHERE tenant_id = ?"
         params: list[Any] = [tenant_id]
-        if filters:
-            if filters.get("status"):
-                q += " AND status = ?"
-                params.append(filters["status"])
-            if filters.get("type"):
-                q += " AND type = ?"
-                params.append(filters["type"])
+        q, params = self._apply_filters(q, params, filters)
         q += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         async with self._db.execute(q, params) as cursor:
@@ -365,13 +402,7 @@ class SQLiteMemoryStore(MemoryStoreBase):
         assert self._db is not None
         q = "SELECT COUNT(*) FROM memories WHERE tenant_id = ?"
         params: list[Any] = [tenant_id]
-        if filters:
-            if filters.get("status"):
-                q += " AND status = ?"
-                params.append(filters["status"])
-            if filters.get("type"):
-                q += " AND type = ?"
-                params.append(filters["type"])
+        q, params = self._apply_filters(q, params, filters)
         async with self._db.execute(q, params) as cursor:
             row = await cursor.fetchone()
         return row[0] if row else 0
@@ -387,13 +418,7 @@ class SQLiteMemoryStore(MemoryStoreBase):
         assert self._db is not None
         q = "DELETE FROM memories WHERE tenant_id = ?"
         params: list[Any] = [tenant_id]
-        if filters:
-            if filters.get("status"):
-                q += " AND status = ?"
-                params.append(filters["status"])
-            if filters.get("type"):
-                q += " AND type = ?"
-                params.append(filters["type"])
+        q, params = self._apply_filters(q, params, filters)
         cursor = await self._db.execute(q, params)
         await self._db.commit()
         return cursor.rowcount if cursor.rowcount is not None else 0

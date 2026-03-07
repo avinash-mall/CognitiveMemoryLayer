@@ -68,6 +68,8 @@ RUN pip install --no-cache-dir -r requirements-test.txt
 FROM test-dependencies AS test
 
 COPY pyproject.toml README.md hatch_build.py ./
+COPY evaluation ./evaluation
+COPY examples ./examples
 COPY src ./src
 COPY tests ./tests
 COPY packages ./packages
@@ -75,8 +77,8 @@ COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations/
 
-# Install package in editable form so src/packages are importable in tests.
-RUN pip install --no-cache-dir -e . --no-deps
+# Install package with the extras required by the full GitHub test suite.
+RUN pip install --no-cache-dir -e ".[embedded,eval,modeling]"
 
 ENV PYTHONPATH=/app \
     NER__MODEL=en_core_web_sm

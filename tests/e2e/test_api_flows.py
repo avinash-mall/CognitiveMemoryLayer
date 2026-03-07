@@ -85,6 +85,7 @@ def test_full_memory_lifecycle(client):
     assert write_resp.status_code == 200
     write_data = write_resp.json()
     assert write_data["success"] is True
+    written_memory_id = write_data["memory_id"]
 
     read_resp = client.post(
         "/api/v1/memory/read",
@@ -98,16 +99,17 @@ def test_full_memory_lifecycle(client):
     assert "total_count" in read_data
     assert "memories" in read_data
 
-    if read_data["memories"]:
-        memory_id = read_data["memories"][0]["id"]
+    if written_memory_id is not None:
         update_resp = client.post(
             "/api/v1/memory/update",
             json={
-                "memory_id": str(memory_id),
+                "memory_id": str(written_memory_id),
                 "feedback": "correct",
             },
         )
         assert update_resp.status_code == 200
+    else:
+        assert write_data["chunks_created"] == 0
 
     forget_resp = client.post(
         "/api/v1/memory/forget",

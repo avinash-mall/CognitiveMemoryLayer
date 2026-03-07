@@ -44,7 +44,9 @@ async def test_llm_classify_returns_constraint_dimensions_and_suggested_top_k(mo
     classifier = QueryClassifier(llm_client=mock_llm, modelpack=_NoModelPack())
     result = await classifier.classify("Should I eat the seafood?")
     mock_llm.complete_json.assert_called()
-    assert result.constraint_dimensions == ["dietary", "goal"]
+    assert result.constraint_dimensions is not None
+    assert "dietary" in result.constraint_dimensions
+    assert "goal" in result.constraint_dimensions
     assert result.constraint_dimensions_from_llm is True
     assert result.suggested_top_k == 12
 

@@ -57,8 +57,8 @@ def _server_reachable(config: CMLConfig) -> bool:
 async def live_client(integration_config: CMLConfig):
     """Async client against live server (e2e)."""
     if not _server_reachable(integration_config):
-        pytest.skip(
-            f"CML server not reachable at {integration_config.base_url} (start server and re-run)"
+        raise RuntimeError(
+            f"CML server not reachable at {integration_config.base_url}; start the API before running e2e tests"
         )
     client = AsyncCognitiveMemoryLayer(config=integration_config)
     yield client

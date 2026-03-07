@@ -107,6 +107,8 @@ def test_build_router_rows_skips_llm_if_existing_complete():
         synthetic_cfg={"max_attempts_per_label": 1},
         single_pools={"router": ["seed"], "extractor": ["seed"], "pair": ["seed"]},
         llm=llm,
+        task_labels=all_labels,
+        regression_tasks=set(),
         existing_df=existing,
     )
     assert len(rows) == len(existing)
@@ -139,6 +141,7 @@ def test_build_pair_rows_skips_llm_if_existing_complete():
         single_pools={"router": ["seed"], "extractor": ["seed"], "pair": ["seed"]},
         pair_pool=[("a", "b")],
         llm=llm,
+        task_labels=all_labels,
         existing_df=existing,
     )
     assert len(rows) == len(existing)
