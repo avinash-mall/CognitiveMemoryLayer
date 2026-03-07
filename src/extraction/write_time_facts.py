@@ -11,10 +11,10 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .fact_span_adapter import build_structured_fact_records, span_prediction_confidence
 from ..memory.neocortical.schemas import FactCategory
 from ..utils.modelpack import get_modelpack_runtime
 from ..utils.ner import parse_text
+from .fact_span_adapter import build_structured_fact_records, span_prediction_confidence
 
 if TYPE_CHECKING:
     from ..memory.working.models import SemanticChunk
@@ -82,7 +82,7 @@ class WriteTimeFactExtractor:
                         span_pred,
                         derive_predicate=_derive_predicate,
                         label_to_category=_label_to_category,
-                        confidence=span_prediction_confidence(span_pred, multiplier=0.85),
+                        confidence=span_prediction_confidence(span_pred, multiplier=0.75),
                     )
                     facts = [
                         ExtractedFact(

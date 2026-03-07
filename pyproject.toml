@@ -195,6 +195,10 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.coverage.run]
 source = ["src", "packages/py-cml/src/cml"]
 branch = true
+omit = [
+    "packages/py-cml/src/cml/modeling/*",
+    "packages/py-cml/src/cml/eval/*",
+]
 
 [tool.coverage.report]
 show_missing = true

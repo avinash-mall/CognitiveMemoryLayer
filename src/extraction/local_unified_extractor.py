@@ -7,9 +7,9 @@ pii_span_detection, and router tasks (context_tag, confidence_bin, decay_profile
 
 from __future__ import annotations
 
-from .fact_span_adapter import build_structured_fact_records, span_prediction_confidence
 from ..utils.logging_config import get_logger
 from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
+from .fact_span_adapter import build_structured_fact_records, span_prediction_confidence
 from .write_time_facts import ExtractedFact, _derive_predicate, _label_to_category
 
 logger = get_logger(__name__)

@@ -1,7 +1,7 @@
 {
   "manifest_schema_version": 2,
   "config_path": "E:\\CognitiveMemoryLayer\\packages\\models\\model_pipeline.toml",
-  "trained_at_utc": "2026-03-06T18:09:07.232289+00:00",
+  "trained_at_utc": "2026-03-07T06:13:43.162871+00:00",
   "paths": {
     "prepared_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack",
     "trained_models_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models"
@@ -41,7 +41,7 @@
       "joblib": "1.5.2",
       "pandas": "2.3.3"
     },
-    "commit_sha": "c817160734e2ebfa7ca782623b30340db84c8689",
+    "commit_sha": "e7896b0fb93a04ee68929824a4496ea1b1752b24",
     "dirty": true
   },
   "configured_tasks": [
@@ -220,7 +220,7 @@
         "enabled": true,
         "status": "ok",
         "reason": null,
-        "rows_found": 31979,
+        "rows_found": 32000,
         "valid_score_rows": 0
       },
       {
@@ -291,13 +291,6 @@
       }
     ],
     "observed_tasks_by_family": {
-      "extractor": [
-        "constraint_scope",
-        "constraint_stability",
-        "constraint_type",
-        "fact_type",
-        "pii_presence"
-      ],
       "pair": [
         "conflict_detection",
         "constraint_rerank",
@@ -322,6 +315,13 @@
         "query_intent",
         "salience_bin",
         "write_importance_regression"
+      ],
+      "extractor": [
+        "constraint_scope",
+        "constraint_stability",
+        "constraint_type",
+        "fact_type",
+        "pii_presence"
       ]
     },
     "coverage_vs_config": {
@@ -11477,13 +11477,11 @@
       "enabled": true
     },
     "fact_extraction_structured": {
-      "status": "trained",
-      "reason": null,
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
       "family": "extractor",
       "objective": "token_classification",
-      "enabled": true,
-      "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_model.joblib",
-      "train_rows": 31979
+      "enabled": true
     },
     "schema_match_pair": {
       "status": "filtered_out",
@@ -11645,20 +11643,20 @@
       "objective": "token_classification",
       "model_path": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_model.joblib",
       "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_hf",
-      "train_rows": 31979,
+      "train_rows": 32000,
       "test": {
-        "span_precision": 0.9788749692950135,
-        "span_recall": 0.9868746904408123,
-        "span_f1": 0.9828585522259219,
-        "span_exact_match": 0.9887584311766175,
-        "rows": 4003
+        "span_precision": 0.990324981394195,
+        "span_recall": 0.998,
+        "span_f1": 0.9941476777487237,
+        "span_exact_match": 0.9975,
+        "rows": 4000
       },
       "eval": {
-        "span_precision": 0.9665940450254176,
-        "span_recall": 0.9849531327084361,
-        "span_f1": 0.9756872327428222,
-        "span_exact_match": 0.9868093578894973,
-        "rows": 4018
+        "span_precision": 0.9803536345776032,
+        "span_recall": 0.998,
+        "span_f1": 0.9890981169474727,
+        "span_exact_match": 0.9975,
+        "rows": 4000
       },
       "labels": {
         "0": "O",
@@ -11686,15 +11684,15 @@
       "epoch_stats": [
         {
           "epoch": 1,
-          "train_loss": 0.15289378855089952
+          "train_loss": 0.13823480905145438
         },
         {
           "epoch": 2,
-          "train_loss": 0.030943315989880225
+          "train_loss": 0.011528402022236805
         },
         {
           "epoch": 3,
-          "train_loss": 0.015555097514015405
+          "train_loss": 0.007955234421741718
         }
       ]
     },
@@ -11776,17 +11774,17 @@
       "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\pii_span_detection_hf",
       "train_rows": 30516,
       "test": {
-        "span_precision": 0.9131036391310364,
-        "span_recall": 0.9390252579153326,
-        "span_f1": 0.9258830544740257,
-        "span_exact_match": 0.8276137270550679,
+        "span_precision": 0.91598972436298,
+        "span_recall": 0.9386695126289577,
+        "span_f1": 0.9271909480638134,
+        "span_exact_match": 0.8284118116520351,
         "rows": 5012
       },
       "eval": {
-        "span_precision": 0.9067855893669116,
-        "span_recall": 0.9363431151241535,
-        "span_f1": 0.9213273510728087,
-        "span_exact_match": 0.8369856887298748,
+        "span_precision": 0.9156976744186046,
+        "span_recall": 0.9386004514672687,
+        "span_f1": 0.9270076247380389,
+        "span_exact_match": 0.8419051878354203,
         "rows": 4472
       },
       "labels": {
@@ -11909,15 +11907,15 @@
       "epoch_stats": [
         {
           "epoch": 1,
-          "train_loss": 0.3775817048706637
+          "train_loss": 0.3739942553037627
         },
         {
           "epoch": 2,
-          "train_loss": 0.0740108163230695
+          "train_loss": 0.0751936512471662
         },
         {
           "epoch": 3,
-          "train_loss": 0.0533298082313119
+          "train_loss": 0.054020215676810625
         }
       ]
     },
