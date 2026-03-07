@@ -60,7 +60,9 @@ def test_openai_compatible_client_uses_provider_defaults(monkeypatch: pytest.Mon
             self.chat = SimpleNamespace(completions=SimpleNamespace(create=AsyncMock()))
 
     monkeypatch.setattr(llm, "AsyncOpenAI", _FakeAsyncOpenAI)
-    monkeypatch.setattr(llm, "get_settings", lambda: _settings(provider="openai", api_key="real-key"))
+    monkeypatch.setattr(
+        llm, "get_settings", lambda: _settings(provider="openai", api_key="real-key")
+    )
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
     openai_client = llm.OpenAICompatibleClient(_provider="openai")
 
@@ -122,8 +124,7 @@ def test_build_llm_client_from_config_routes_supported_providers(
 
     assert llm._build_llm_client_from_config("openai", "m", "k", None) == "openai-client"
     assert (
-        llm._build_llm_client_from_config("openai_compatible", "m", None, None)
-        == "openai-client"
+        llm._build_llm_client_from_config("openai_compatible", "m", None, None) == "openai-client"
     )
     assert llm._build_llm_client_from_config("gemini", "m", "k", None) == "gemini-client"
     assert llm._build_llm_client_from_config("anthropic", "m", "k", None) == "claude-client"
@@ -151,7 +152,9 @@ def test_build_llm_client_from_config_propagates_helper_import_errors(
         llm._build_llm_client_from_config("claude", "m", "k", None)
 
 
-def test_get_internal_llm_client_uses_internal_config_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_internal_llm_client_uses_internal_config_and_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     builder = MagicMock(return_value="client")
     monkeypatch.setattr(llm, "_build_llm_client_from_config", builder)
     monkeypatch.setattr(

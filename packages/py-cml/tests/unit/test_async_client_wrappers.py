@@ -113,7 +113,9 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
             return {"affected_count": 0}
         if path == "/dashboard/tenants":
             return {
-                "tenants": [{"tenant_id": "tenant-a", "memory_count": 1, "fact_count": 0, "event_count": 0}]
+                "tenants": [
+                    {"tenant_id": "tenant-a", "memory_count": 1, "fact_count": 0, "event_count": 0}
+                ]
             }
         if path == "/dashboard/overview":
             return {}
@@ -171,7 +173,12 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
         if path == "/dashboard/request-stats":
             return {"points": [], "total_last_24h": 0}
         if path == "/dashboard/graph/stats":
-            return {"total_nodes": 1, "total_edges": 0, "entity_types": {}, "tenants_with_graph": []}
+            return {
+                "total_nodes": 1,
+                "total_edges": 0,
+                "entity_types": {},
+                "tenants_with_graph": [],
+            }
         if path == "/dashboard/graph/overview":
             return {"nodes": [], "edges": [], "center_entity": None}
         if path == "/dashboard/graph/explore":
@@ -325,7 +332,12 @@ async def test_async_client_batch_iter_and_namespace_wrappers(
                 }
             return {"items": [], "total": 2, "page": 2, "per_page": 1, "total_pages": 2}
         if path == "/session/sess-1/write":
-            return {"success": True, "memory_id": str(memory_id), "chunks_created": 1, "message": "ok"}
+            return {
+                "success": True,
+                "memory_id": str(memory_id),
+                "chunks_created": 1,
+                "message": "ok",
+            }
         if path == "/session/sess-1/read":
             return {
                 "query": "food",
@@ -380,10 +392,16 @@ async def test_async_client_batch_iter_and_namespace_wrappers(
     monkeypatch.setattr(client, "write", lambda *args, **kwargs: _constant("write-ok"))
     monkeypatch.setattr(client, "read", lambda *args, **kwargs: _constant("read-ok"))
     monkeypatch.setattr(client, "dashboard_overview", lambda *args, **kwargs: _constant("overview"))
-    monkeypatch.setattr(client, "dashboard_memory_detail", lambda *args, **kwargs: _constant("detail"))
+    monkeypatch.setattr(
+        client, "dashboard_memory_detail", lambda *args, **kwargs: _constant("detail")
+    )
     monkeypatch.setattr(client, "dashboard_facts", lambda *args, **kwargs: _constant("facts"))
-    monkeypatch.setattr(client, "dashboard_invalidate_fact", lambda *args, **kwargs: _constant("invalidate"))
-    monkeypatch.setattr(client, "dashboard_export_memories", lambda *args, **kwargs: _constant("export"))
+    monkeypatch.setattr(
+        client, "dashboard_invalidate_fact", lambda *args, **kwargs: _constant("invalidate")
+    )
+    monkeypatch.setattr(
+        client, "dashboard_export_memories", lambda *args, **kwargs: _constant("export")
+    )
     monkeypatch.setattr(client, "get_events", lambda *args, **kwargs: _constant("events"))
     monkeypatch.setattr(client, "dashboard_timeline", lambda *args, **kwargs: _constant("timeline"))
     monkeypatch.setattr(client, "component_health", lambda *args, **kwargs: _constant("components"))
@@ -391,10 +409,14 @@ async def test_async_client_batch_iter_and_namespace_wrappers(
     monkeypatch.setattr(client, "get_rate_limits", lambda *args, **kwargs: _constant("limits"))
     monkeypatch.setattr(client, "get_request_stats", lambda *args, **kwargs: _constant("stats"))
     monkeypatch.setattr(client, "get_graph_stats", lambda *args, **kwargs: _constant("graph-stats"))
-    monkeypatch.setattr(client, "graph_overview", lambda *args, **kwargs: _constant("graph-overview"))
+    monkeypatch.setattr(
+        client, "graph_overview", lambda *args, **kwargs: _constant("graph-overview")
+    )
     monkeypatch.setattr(client, "explore_graph", lambda *args, **kwargs: _constant("explore"))
     monkeypatch.setattr(client, "search_graph", lambda *args, **kwargs: _constant("search"))
-    monkeypatch.setattr(client, "dashboard_neo4j_config", lambda *args, **kwargs: _constant("neo4j"))
+    monkeypatch.setattr(
+        client, "dashboard_neo4j_config", lambda *args, **kwargs: _constant("neo4j")
+    )
     monkeypatch.setattr(client, "get_config", lambda *args, **kwargs: _constant("config"))
     monkeypatch.setattr(client, "update_config", lambda *args, **kwargs: _constant("updated"))
     monkeypatch.setattr(client, "get_labile_status", lambda *args, **kwargs: _constant("labile"))
@@ -402,7 +424,9 @@ async def test_async_client_batch_iter_and_namespace_wrappers(
     monkeypatch.setattr(client, "get_jobs", lambda *args, **kwargs: _constant("jobs"))
     monkeypatch.setattr(client, "reset_database", lambda *args, **kwargs: _constant("reset"))
     monkeypatch.setattr(client, "bulk_memory_action", lambda *args, **kwargs: _constant("bulk"))
-    monkeypatch.setattr(client, "admin_consolidate", lambda *args, **kwargs: _constant("admin-consolidate"))
+    monkeypatch.setattr(
+        client, "admin_consolidate", lambda *args, **kwargs: _constant("admin-consolidate")
+    )
     monkeypatch.setattr(client, "admin_forget", lambda *args, **kwargs: _constant("admin-forget"))
 
     assert await namespace_client.write("hello") == "write-ok"

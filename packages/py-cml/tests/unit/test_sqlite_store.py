@@ -4,9 +4,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from cml.storage.sqlite_store import SQLiteMemoryStore
-from src.core.enums import MemorySource, MemoryStatus, MemoryType
-from src.core.schemas import MemoryRecordCreate, Provenance
+try:
+    from cml.storage.sqlite_store import SQLiteMemoryStore
+    from src.core.enums import MemorySource, MemoryStatus, MemoryType
+    from src.core.schemas import MemoryRecordCreate, Provenance
+except ImportError as e:
+    pytest.skip(
+        f"CML engine (src) and redis required for sqlite_store tests: {e}",
+        allow_module_level=True,
+    )
 
 
 def _record(

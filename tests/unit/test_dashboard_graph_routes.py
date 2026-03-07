@@ -76,7 +76,11 @@ async def test_dashboard_graph_overview_dedupes_and_strips_props() -> None:
                         {
                             "entity": "Paris",
                             "entity_type": "city",
-                            "properties": {"tenant_id": "tenant-a", "scope_id": "tenant-a", "rank": 1},
+                            "properties": {
+                                "tenant_id": "tenant-a",
+                                "scope_id": "tenant-a",
+                                "rank": 1,
+                            },
                         },
                         {
                             "entity": "Paris",
@@ -127,7 +131,11 @@ async def test_dashboard_graph_explore_respects_depth_cap_and_dedupes() -> None:
             NeoResultStub(
                 single={
                     "neighbors": [
-                        {"entity": "Bob", "entity_type": "person", "properties": {"tenant_id": "tenant-a"}},
+                        {
+                            "entity": "Bob",
+                            "entity_type": "person",
+                            "properties": {"tenant_id": "tenant-a"},
+                        },
                         {"entity": "Bob", "entity_type": "person", "properties": {}},
                     ],
                     "rels": [
@@ -165,8 +173,26 @@ async def test_dashboard_graph_explore_respects_depth_cap_and_dedupes() -> None:
 async def test_dashboard_graph_search_supports_tenant_filtered_and_global() -> None:
     neo_session = NeoSessionStub(
         [
-            NeoResultStub(items=[{"entity": "Alice", "entity_type": "person", "tid": "tenant-a", "sid": "scope-a"}]),
-            NeoResultStub(items=[{"entity": "Global", "entity_type": "topic", "tid": "tenant-b", "sid": "scope-b"}]),
+            NeoResultStub(
+                items=[
+                    {
+                        "entity": "Alice",
+                        "entity_type": "person",
+                        "tid": "tenant-a",
+                        "sid": "scope-a",
+                    }
+                ]
+            ),
+            NeoResultStub(
+                items=[
+                    {
+                        "entity": "Global",
+                        "entity_type": "topic",
+                        "tid": "tenant-b",
+                        "sid": "scope-b",
+                    }
+                ]
+            ),
         ]
     )
     db, _ = make_db(neo_session=neo_session)
