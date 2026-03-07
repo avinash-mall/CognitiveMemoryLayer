@@ -201,6 +201,11 @@ class TestInterferenceDetector:
 
     def test_detect_duplicates_identical_embedding(self):
         det = InterferenceDetector(similarity_threshold=0.99)
+        det.modelpack = type(
+            "_NoNoveltyModelPack",
+            (),
+            {"has_task_model": staticmethod(lambda task: False)},
+        )()
         emb = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
         r1 = _make_record(text="a")
         r1.embedding = emb

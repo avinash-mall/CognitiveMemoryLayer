@@ -34,90 +34,98 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
 
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: memory
-          POSTGRES_PASSWORD: memory
-          POSTGRES_DB: memory
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U memory -d memory"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      neo4j:
-        image: neo4j:5
-        env:
-          NEO4J_AUTH: neo4j/password
-        ports:
-          - 7474:7474
-          - 7687:7687
-        options: >-
-          --health-cmd "wget -q --spider http://localhost:7474 || exit 1"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 10
-          --health-start-period 30s
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-
-    env:
-      POSTGRES_USER: memory
-      POSTGRES_PASSWORD: memory
-      POSTGRES_DB: memory
-      NEO4J_USER: neo4j
-      NEO4J_PASSWORD: password
-      DATABASE__POSTGRES_URL: postgresql+asyncpg://memory:memory@localhost:5432/memory
-      DATABASE__NEO4J_URL: bolt://localhost:7687
-      DATABASE__NEO4J_USER: neo4j
-      DATABASE__NEO4J_PASSWORD: password
-      DATABASE__REDIS_URL: redis://localhost:6379
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create CI .env
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=memory
+          POSTGRES_PASSWORD=memory
+          POSTGRES_DB=memory
+          NEO4J_USER=neo4j
+          NEO4J_PASSWORD=password
+          NEO4J_AUTH=neo4j/password
+          DATABASE__POSTGRES_URL=postgresql+asyncpg://memory:memory@postgres:5432/memory
+          DATABASE__NEO4J_URL=bolt://neo4j:7687
+          DATABASE__NEO4J_USER=neo4j
+          DATABASE__NEO4J_PASSWORD=password
+          DATABASE__NEO4J_BROWSER_URL=bolt://localhost:7687
+          DATABASE__REDIS_URL=redis://redis:6379
+          AUTH__API_KEY=test-key
+          AUTH__ADMIN_API_KEY=test-key
+          CML_API_KEY=test-key
+          CML_ADMIN_API_KEY=test-key
+          CML_BASE_URL=http://api:8000
+          CML_TEST_URL=http://api:8000
+          CML_TEST_API_KEY=test-key
+          DEBUG=false
+          EMBEDDING_INTERNAL__PROVIDER=mock
+          FEATURES__USE_LLM_ENABLED=false
+          LLM_STARTUP_VALIDATION_ENABLED=false
+          LLM_STARTUP_VALIDATE_IN_CI=false
+          EOF
+
+      - name: Build app image
+        uses: docker/build-push-action@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          context: .
+          file: docker/Dockerfile
+          target: test
+          tags: cml-app-ci:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements-docker.txt
-          pip install -e . --no-deps
+      - name: Build api image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: production
+          tags: cml-api-ci:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Wait for Neo4j to be ready
+      - name: Start stack
+        run: docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml up -d postgres neo4j redis api
+
+      - name: Wait for API
         run: |
-          for i in $(seq 1 30); do
-            wget -q --spider http://localhost:7474 && break
-            echo "Waiting for Neo4j... ($i/30)"
+          for i in $(seq 1 60); do
+            if docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml exec -T api curl -fsS http://localhost:8000/api/v1/health >/dev/null; then
+              exit 0
+            fi
+            echo "Waiting for API... ($i/60)"
             sleep 2
           done
+          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml logs api
+          exit 1
 
-      - name: Run migrations
-        run: alembic upgrade head
+      - name: Run full suite with coverage
+        run: |
+          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml run --name cml-app-tests app sh -lc "pytest tests packages/py-cml/tests -v --tb=short -rs --cov=src --cov=packages/py-cml/src/cml --cov-report=xml:/app/coverage.xml --cov-report=term && coverage report --include='src/*' --fail-under=75 && coverage report --include='src/*,packages/py-cml/src/cml/*' --fail-under=75"
 
-      - name: Run tests with coverage
-        run: pytest tests -v --tb=short --cov=src --cov-report=xml --cov-report=term -m "not e2e"
+      - name: Copy coverage artifact
+        if: always()
+        run: docker cp cml-app-tests:/app/coverage.xml coverage.xml
 
-      - name: Upload coverage to Codecov (optional)
+      - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
+
+      - name: Stop stack
+        if: always()
+        run: |
+          docker rm -f cml-app-tests >/dev/null 2>&1 || true
+          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml down -v
 
   build:
     runs-on: ubuntu-latest

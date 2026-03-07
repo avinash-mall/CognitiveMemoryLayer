@@ -2,11 +2,8 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-import pytest
 import requests
 
-# Skip entire module when evaluation package is not available (e.g. in Docker/CI)
-pytest.importorskip("evaluation")
 from evaluation.scripts.eval_locomo_plus import _cml_write
 
 
@@ -26,11 +23,8 @@ def _server_authed() -> bool:
         return False
 
 
-@pytest.mark.e2e
-@pytest.mark.skipif(
-    not _server_authed(), reason="CML API server not running or auth not configured"
-)
 def test_api_ingestion():
+    assert _server_authed(), "CML API server is not reachable with the configured auth"
     base_url = os.environ.get("CML_BASE_URL", "").rstrip("/")
     api_key = os.environ.get("CML_API_KEY", "")
     tenant_id = f"test-tenant-{uuid.uuid4()}"

@@ -1,7 +1,6 @@
 import os
 from datetime import UTC, datetime
 
-import pytest
 import requests
 
 
@@ -15,9 +14,8 @@ def _server_reachable() -> bool:
         return False
 
 
-@pytest.mark.e2e
-@pytest.mark.skipif(not _server_reachable(), reason="CML API server not running")
 def test_api():
+    assert _server_reachable(), "CML API server is not running"
     base_url = os.environ.get("CML_BASE_URL", "").rstrip("/")
     api_key = os.environ.get("CML_API_KEY", "")
     tenant_id = "test-temporal-range-tenant"
@@ -45,15 +43,9 @@ def test_api():
         f"{base_url}/api/v1/memory/read", headers=headers, json={"query": "New York"}
     )
     print(f"Read response: {read_resp.status_code}")
-    if read_resp.status_code == 200:
-        data = read_resp.json()
-        print("Facts:")
-        for f in data.get("facts", []):
-            print(f"- {f.get('text')} (timestamp: {f.get('timestamp')})")
-
-        print("Memories:")
-        for m in data.get("memories", []):
-            print(f"- {m.get('text')} (timestamp: {m.get('timestamp')})")
+    assert read_resp.status_code == 200
+    data = read_resp.json()
+    assert data["total_count"] >= 1
 
 
 if __name__ == "__main__":

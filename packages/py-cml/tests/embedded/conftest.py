@@ -15,6 +15,10 @@ try:
 except ImportError:
     pass
 
+import os
+
+os.environ.setdefault("EMBEDDING_INTERNAL__PROVIDER", "mock")
+
 # Optional: skip entire embedded dir if embedded extras not installed.
 # Actual engine (src.memory.orchestrator) may still be missing; tests skip on first use.
 try:
