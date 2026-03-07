@@ -133,7 +133,10 @@ def test_skip_reason_covers_missing_env_and_tools(monkeypatch: pytest.MonkeyPatc
         requires_api_key=True,
         requires_base_url=True,
     )
-    assert RUN_EXAMPLES.skip_reason(api_spec, include_llm=False, no_skip=False) == "missing CML_API_KEY"
+    assert (
+        RUN_EXAMPLES.skip_reason(api_spec, include_llm=False, no_skip=False)
+        == "missing CML_API_KEY"
+    )
 
     admin_spec = RUN_EXAMPLES.ExampleSpec(
         name="admin_dashboard",
@@ -158,7 +161,10 @@ def test_skip_reason_covers_missing_env_and_tools(monkeypatch: pytest.MonkeyPatc
         summary="",
         requires_openai=True,
     )
-    assert RUN_EXAMPLES.skip_reason(llm_spec, include_llm=False, no_skip=False) == "LLM example (use --include-llm)"
+    assert (
+        RUN_EXAMPLES.skip_reason(llm_spec, include_llm=False, no_skip=False)
+        == "LLM example (use --include-llm)"
+    )
     assert "missing OPENAI_API_KEY" in RUN_EXAMPLES.skip_reason(
         llm_spec, include_llm=True, no_skip=False
     )
@@ -170,7 +176,9 @@ def test_skip_reason_covers_missing_env_and_tools(monkeypatch: pytest.MonkeyPatc
         summary="",
     )
     monkeypatch.setattr(RUN_EXAMPLES, "find_shell_executable", lambda: None)
-    assert RUN_EXAMPLES.skip_reason(shell_spec, include_llm=False, no_skip=False) == "missing bash/sh"
+    assert (
+        RUN_EXAMPLES.skip_reason(shell_spec, include_llm=False, no_skip=False) == "missing bash/sh"
+    )
 
     streamlit_spec = RUN_EXAMPLES.ExampleSpec(
         name="streamlit_app",
