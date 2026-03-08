@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
+from typing import Any
+
 import httpx
 import streamlit as st
-from _shared import get_env, normalize_base_url
+
+try:
+    from _shared import get_env, normalize_base_url
+except ModuleNotFoundError:  # pragma: no cover - exercised by streamlit test harness
+    from examples._shared import get_env, normalize_base_url
+
+_get_settings: Callable[[], Any] | None
+_get_eval_llm_client: Callable[[], Any] | None
+try:
+    from src.core.config import get_settings as _get_settings
+    from src.utils.llm import get_eval_llm_client as _get_eval_llm_client
+except Exception:  # pragma: no cover - optional for pure-API startup checks
+    _get_settings = None
+    _get_eval_llm_client = None
 
 EXAMPLE_META = {
     "name": "streamlit_app",
@@ -29,6 +46,102 @@ def _default_api_url() -> str:
     if not base_url:
         return ""
     return normalize_base_url(base_url, api_path=True)
+
+
+def _turn_context_message(payload: dict) -> str:
+    """Render a helpful chat message from /memory/turn response payload."""
+    memory_context = str(payload.get("memory_context") or "").strip()
+    if memory_context:
+        return memory_context
+
+    retrieved = int(payload.get("memories_retrieved") or 0)
+    if retrieved == 0:
+        return (
+            "No matching memories yet. This is expected on a first turn.\n\n"
+            "Try writing a memory in the 'Write & Read' tab, then ask a follow-up question."
+        )
+    return "Turn completed, but memory context was empty."
+
+
+def _run_async(coro: Any) -> Any:
+    """Run an async LLM call without relying on global event loop state."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _chat_model_info() -> str:
+    if _get_settings is None:
+        return "Chat model: unavailable (server LLM utilities not importable)"
+    try:
+        settings = _get_settings()
+        provider = settings.llm_eval.provider or settings.llm_internal.provider
+        model = settings.llm_eval.model or settings.llm_internal.model
+        return f"Chat model: {provider}:{model} (from LLM_EVAL__* fallback)"
+    except Exception as exc:
+        return f"Chat model: unavailable ({exc})"
+
+
+def _build_chat_prompt(
+    *,
+    user_message: str,
+    memory_context: str,
+    chat_history: list[dict],
+    max_messages: int = 6,
+) -> str:
+    recent = chat_history[-max_messages:]
+    transcript_lines: list[str] = []
+    for message in recent:
+        role = str(message.get("role", "assistant")).upper()
+        content = str(message.get("content", "")).strip()
+        if content:
+            transcript_lines.append(f"{role}: {content}")
+    transcript = "\n".join(transcript_lines) if transcript_lines else "(none)"
+
+    context_text = memory_context.strip() or "(none)"
+    return (
+        "Retrieved memory context:\n"
+        f"{context_text}\n\n"
+        "Recent conversation:\n"
+        f"{transcript}\n\n"
+        "Current user message:\n"
+        f"{user_message}"
+    )
+
+
+def _generate_assistant_reply(
+    *,
+    user_message: str,
+    memory_context: str,
+    chat_history: list[dict],
+) -> str:
+    if _get_eval_llm_client is None:
+        raise RuntimeError(
+            "Eval LLM client is unavailable. Start Streamlit from the repo root with server deps installed."
+        )
+
+    llm = _get_eval_llm_client()
+    prompt = _build_chat_prompt(
+        user_message=user_message,
+        memory_context=memory_context,
+        chat_history=chat_history,
+    )
+    response = _run_async(
+        llm.complete(
+            prompt=prompt,
+            temperature=0.2,
+            max_tokens=450,
+            system_prompt=(
+                "You are a helpful assistant in a chat UI. "
+                "Use retrieved memory context when relevant. "
+                "If context is empty, still answer normally from the current message."
+            ),
+        )
+    )
+    text = str(response).strip()
+    return text or "I do not have enough information yet. Please provide more detail."
 
 
 if "base_url" not in st.session_state:
@@ -102,6 +215,7 @@ with st.sidebar:
         type="password",
     )
     st.session_state.session_id = st.text_input("Session id", value=st.session_state.session_id)
+    st.caption(_chat_model_info())
 
     if st.button("Test /health"):
         try:
@@ -117,6 +231,7 @@ chat_tab, browse_tab, session_tab, admin_tab = st.tabs(
 
 with chat_tab:
     st.subheader("/memory/turn")
+    st.caption("This tab retrieves context via /memory/turn, then generates assistant replies using LLM_EVAL.")
     for item in st.session_state.chat_history:
         with st.chat_message(item["role"]):
             st.write(item["content"])
@@ -136,7 +251,21 @@ with chat_tab:
             )
             response.raise_for_status()
             payload = response.json()
-            assistant_text = payload.get("memory_context") or "No context returned."
+            memory_context = str(payload.get("memory_context") or "")
+            assistant_text = _generate_assistant_reply(
+                user_message=prompt,
+                memory_context=memory_context,
+                chat_history=st.session_state.chat_history,
+            )
+            # Store assistant response so later turns can reference it.
+            client().post(
+                "/memory/write",
+                {
+                    "content": assistant_text,
+                    "session_id": st.session_state.session_id,
+                    "context_tags": ["assistant", "conversation", "streamlit"],
+                },
+            )
             st.session_state.chat_history.append(
                 {
                     "role": "assistant",
@@ -150,6 +279,7 @@ with chat_tab:
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
+            st.info(_turn_context_message(payload if "payload" in locals() else {}))
 
 with browse_tab:
     st.subheader("/memory/write")
