@@ -1,4 +1,11 @@
 services:
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_server_memory_heap_initial__size: 256M
+      NEO4J_server_memory_heap_max__size: 512M
+      NEO4J_server_memory_pagecache_size: 256M
+
   app:
     image: cml-app-ci:latest
     environment:

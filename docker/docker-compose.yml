@@ -18,7 +18,7 @@ services:
       retries: 10
 
   neo4j:
-    image: neo4j:5
+    image: neo4j:5.26-community
     env_file:
       - ../.env
     environment:

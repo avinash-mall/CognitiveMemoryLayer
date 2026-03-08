@@ -1,17 +1,21 @@
 /**
  * Knowledge Graph Page
- * Interactive graph visualization using neovis.js (connects directly to Neo4j).
+ * Interactive graph visualization using vis-network (loaded from CDN)
+ * and the REST API endpoints for graph data.
  */
 
-import NeoVis from 'neovis.js/dist/neovis.js';
-import { getGraphStats, getGraphNeo4jConfig, getGraphSearch, getTenants } from '../api.js';
+import { getGraphStats, getGraphOverview, getGraphExplore, getGraphSearch, getTenants } from '../api.js';
 import { formatNumber, escapeHtml } from '../utils/formatters.js';
 
 const container = () => document.getElementById('page-graph');
 
-let neoViz = null;
+let visNetwork = null;
+let visNodes = null;
+let visEdges = null;
 let currentTenants = [];
 let lastGraphParams = null;
+let visLoaded = false;
+let visLoadPromise = null;
 
 const TYPE_COLORS = {
     person: '#6c8cff', location: '#34d399', organization: '#fbbf24',
@@ -41,168 +45,180 @@ function errToMessage(err) {
     return String(err);
 }
 
-function buildExploreCypher(depth) {
-    return `
-MATCH (start:Entity {tenant_id: $tenant_id, scope_id: $scope_id, entity: $entity})
-MATCH path = (start)-[*1..${depth}]-(neighbor:Entity)
-WHERE neighbor.tenant_id = $tenant_id AND neighbor.scope_id = $scope_id
-WITH path LIMIT 500
-UNWIND relationships(path) AS r
-WITH DISTINCT r, startNode(r) AS sn, endNode(r) AS en
-RETURN sn, r, en
-`;
+function ensureVisLoaded() {
+    if (visLoaded && window.vis) return Promise.resolve();
+    if (visLoadPromise) return visLoadPromise;
+    visLoadPromise = new Promise((resolve, reject) => {
+        if (window.vis) { visLoaded = true; resolve(); return; }
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css';
+        document.head.appendChild(link);
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js';
+        script.onload = () => { visLoaded = true; resolve(); };
+        script.onerror = () => reject(new Error('Failed to load vis-network library'));
+        document.head.appendChild(script);
+    });
+    return visLoadPromise;
 }
 
-function buildOverviewCypher(depth) {
-    return `
-MATCH (n:Entity {tenant_id: $tenant_id, scope_id: $scope_id})
-WITH n ORDER BY COUNT { (n)--() } DESC LIMIT 1
-MATCH path = (n)-[*1..${depth}]-(m:Entity)
-WHERE m.tenant_id = $tenant_id AND m.scope_id = $scope_id
-WITH path LIMIT 500
-UNWIND relationships(path) AS r
-WITH DISTINCT r, startNode(r) AS sn, endNode(r) AS en
-RETURN sn, r, en
-`;
+const VIS_OPTIONS = {
+    nodes: {
+        font: {
+            color: '#fff',
+            size: 13,
+            face: 'Inter, system-ui, sans-serif',
+            background: 'rgba(0,0,0,0.5)',
+            strokeWidth: 2,
+            strokeColor: 'rgba(0,0,0,0.8)',
+        },
+        borderWidth: 2,
+        shadow: true,
+        shape: 'dot',
+        size: 20,
+    },
+    edges: {
+        font: {
+            size: 10,
+            color: 'rgba(255,255,255,0.9)',
+            strokeWidth: 0,
+            background: 'rgba(0,0,0,0.5)',
+            align: 'middle',
+        },
+        color: { color: 'rgba(108, 140, 255, 0.6)', highlight: '#6c8cff' },
+        smooth: { type: 'cubicBezier', roundness: 0.4 },
+        arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+        width: 1.5,
+    },
+    physics: {
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: {
+            springLength: 160,
+            springConstant: 0.03,
+            gravitationalConstant: -80,
+            damping: 0.4,
+        },
+        stabilization: { iterations: 200, fit: true },
+    },
+    interaction: {
+        hover: true,
+        tooltipDelay: 150,
+    },
+};
+
+function apiDataToVis(data) {
+    const nodes = (data.nodes || []).map(n => {
+        const c = colorForType(n.entity_type);
+        return {
+            id: n.id || n.entity,
+            label: n.entity,
+            title: `<b>${escapeHtml(n.entity)}</b><br/><span style="color:#94a3b8">${escapeHtml(n.entity_type || 'unknown')}</span>`,
+            color: { background: c, border: c, highlight: { background: c, border: '#fff' } },
+            shape: 'dot',
+            size: n.entity_type === 'center' ? 28 : 20,
+            _entity: n.entity,
+            _entity_type: n.entity_type || 'unknown',
+            _properties: n.properties || {},
+        };
+    });
+    const edges = (data.edges || []).map((e, i) => ({
+        id: `e-${i}`,
+        from: e.source,
+        to: e.target,
+        label: e.predicate || '',
+        title: `<b>${escapeHtml(e.predicate || 'RELATED')}</b>${e.confidence != null ? ` (${Number(e.confidence).toFixed(2)})` : ''}`,
+        _predicate: e.predicate,
+        _confidence: e.confidence,
+    }));
+    return { nodes, edges };
 }
 
-function buildNeovisConfig(neo4jConfig, pageEl) {
-    const vizContainerId = 'graph-viz';
-    const defaultRelConfig = {
-        label: 'predicate',
-        [NeoVis.NEOVIS_ADVANCED_CONFIG]: {
-            function: {
-                title: (edge) => {
-                    const props = edge.properties || {};
-                    const pred = props.predicate || edge.type || 'RELATED';
-                    const conf = props.confidence != null ? ` (${Number(props.confidence).toFixed(2)})` : '';
-                    const div = document.createElement('div');
-                    div.innerHTML = `<div style="padding:6px;max-width:200px"><strong>${escapeHtml(String(pred))}</strong>${conf}</div>`;
-                    return div;
-                },
-            },
-        },
-    };
-    return {
-        containerId: vizContainerId,
-        neo4j: {
-            serverUrl: neo4jConfig.server_url,
-            serverUser: neo4jConfig.server_user,
-            serverPassword: neo4jConfig.server_password,
-        },
-        labels: {
-            Entity: {
-                label: 'entity',
-                group: 'entity_type',
-                value: 'entity',
-                [NeoVis.NEOVIS_ADVANCED_CONFIG]: {
-                    function: {
-                        title: (node) => {
-                            const props = node.properties || {};
-                            const ent = props.entity || node.id;
-                            const typ = props.entity_type || 'unknown';
-                            const html = `<div style="padding:8px;max-width:240px"><strong>${escapeHtml(String(ent))}</strong><br/><span style="color:#94a3b8">${escapeHtml(String(typ))}</span></div>`;
-                            const div = document.createElement('div');
-                            div.innerHTML = html;
-                            return div;
-                        },
-                    },
-                },
-            },
-        },
-        relationships: {
-            [NeoVis.NEOVIS_DEFAULT_CONFIG]: defaultRelConfig,
-            RELATES_TO: defaultRelConfig,
-            RELATED_TO: defaultRelConfig,
-        },
-        visConfig: {
-            groups: Object.fromEntries(
-                Object.entries(TYPE_COLORS).map(([k, v]) => [k, { color: { background: v, border: v } }])
-            ),
-            nodes: {
-                font: {
-                    color: '#fff',
-                    size: 12,
-                    face: 'Inter, system-ui, sans-serif',
-                    background: 'rgba(0,0,0,0.5)',
-                    strokeWidth: 2,
-                    strokeColor: 'rgba(0,0,0,0.8)',
-                },
-                borderWidth: 2,
-                shadow: true,
-                shape: 'dot',
-                size: 18,
-            },
-            edges: {
-                font: {
-                    size: 10,
-                    color: 'rgba(255,255,255,0.9)',
-                    strokeWidth: 0,
-                    background: 'rgba(0,0,0,0.5)',
-                    align: 'middle',
-                },
-                color: { color: 'rgba(108, 140, 255, 0.7)', highlight: '#6c8cff' },
-                smooth: { type: 'cubicBezier', roundness: 0.5 },
-                arrows: { to: { enabled: true, scaleFactor: 0.8 } },
-                width: 1.5,
-            },
-            physics: {
-                solver: 'forceAtlas2Based',
-                forceAtlas2Based: {
-                    springLength: 140,
-                    springConstant: 0.04,
-                    gravitationalConstant: -60,
-                    damping: 0.4,
-                },
-                stabilization: { iterations: 250, fit: true },
-            },
-        },
-    };
-}
+function createNetwork(vizDiv, nodesArr, edgesArr, pageEl) {
+    visNodes = new vis.DataSet(nodesArr);
+    visEdges = new vis.DataSet(edgesArr);
 
-function attachClickHandlers(neoVizInstance, pageEl) {
+    visNetwork = new vis.Network(vizDiv, { nodes: visNodes, edges: visEdges }, VIS_OPTIONS);
+
     const detailPanel = pageEl.querySelector('#graph-detail-panel');
     const detailContent = pageEl.querySelector('#graph-detail-content');
     if (!detailPanel || !detailContent) return;
 
-    neoVizInstance.registerOnEvent('clickNode', (event) => {
-        const nodeId = event.node;
-        const nodes = neoVizInstance.nodes;
-        if (!nodes) return;
-        const node = nodes.get(nodeId);
-        if (!node) return;
-        const props = node.properties || node;
-        const entity = props.entity ?? props.id ?? String(nodeId);
-        const entityType = props.entity_type ?? 'unknown';
-        const rest = Object.entries(props).filter(([k]) => !['entity', 'entity_type', 'tenant_id', 'scope_id'].includes(k));
-        detailContent.innerHTML = `
-            <div class="detail-grid">
-                <div class="component-detail"><span class="component-detail-label">Entity</span><span class="component-detail-value">${escapeHtml(String(entity))}</span></div>
-                <div class="component-detail"><span class="component-detail-label">Type</span><span class="component-detail-value"><span class="badge badge-type">${escapeHtml(String(entityType))}</span></span></div>
-                ${rest.map(([k, v]) => `<div class="component-detail"><span class="component-detail-label">${escapeHtml(k)}</span><span class="component-detail-value">${escapeHtml(String(v))}</span></div>`).join('')}
-            </div>`;
-        detailPanel.classList.remove('hidden');
+    visNetwork.on('click', (params) => {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const node = visNodes.get(nodeId);
+            if (!node) return;
+            const rest = Object.entries(node._properties || {}).filter(([k]) => !['entity', 'entity_type', 'tenant_id', 'scope_id'].includes(k));
+            detailContent.innerHTML = `
+                <div class="detail-grid">
+                    <div class="component-detail"><span class="component-detail-label">Entity</span><span class="component-detail-value">${escapeHtml(String(node._entity))}</span></div>
+                    <div class="component-detail"><span class="component-detail-label">Type</span><span class="component-detail-value"><span class="badge badge-type">${escapeHtml(String(node._entity_type))}</span></span></div>
+                    ${rest.map(([k, v]) => `<div class="component-detail"><span class="component-detail-label">${escapeHtml(k)}</span><span class="component-detail-value">${escapeHtml(String(v))}</span></div>`).join('')}
+                </div>`;
+            detailPanel.classList.remove('hidden');
+        } else if (params.edges.length > 0) {
+            const edgeId = params.edges[0];
+            const edge = visEdges.get(edgeId);
+            if (!edge) return;
+            detailContent.innerHTML = `
+                <div class="detail-grid">
+                    <div class="component-detail"><span class="component-detail-label">Source</span><span class="component-detail-value">${escapeHtml(String(edge.from))}</span></div>
+                    <div class="component-detail"><span class="component-detail-label">Predicate</span><span class="component-detail-value">${escapeHtml(String(edge._predicate || 'RELATED'))}</span></div>
+                    <div class="component-detail"><span class="component-detail-label">Target</span><span class="component-detail-value">${escapeHtml(String(edge.to))}</span></div>
+                    <div class="component-detail"><span class="component-detail-label">Confidence</span><span class="component-detail-value">${escapeHtml(String(edge._confidence ?? '-'))}</span></div>
+                </div>`;
+            detailPanel.classList.remove('hidden');
+        }
     });
+}
 
-    neoVizInstance.registerOnEvent('clickEdge', (event) => {
-        const edgeId = event.edge;
-        const edges = neoVizInstance.edges;
-        if (!edges) return;
-        const edge = edges.get(edgeId);
-        if (!edge) return;
-        const from = edge.from ?? edge.fromId;
-        const to = edge.to ?? edge.toId;
-        const label = edge.label ?? edge.type ?? 'RELATED';
-        const conf = edge.confidence ?? edge.properties?.confidence ?? '-';
-        detailContent.innerHTML = `
-            <div class="detail-grid">
-                <div class="component-detail"><span class="component-detail-label">Source</span><span class="component-detail-value">${escapeHtml(String(from))}</span></div>
-                <div class="component-detail"><span class="component-detail-label">Predicate</span><span class="component-detail-value">${escapeHtml(String(label))}</span></div>
-                <div class="component-detail"><span class="component-detail-label">Target</span><span class="component-detail-value">${escapeHtml(String(to))}</span></div>
-                <div class="component-detail"><span class="component-detail-label">Confidence</span><span class="component-detail-value">${escapeHtml(String(conf))}</span></div>
-            </div>`;
-        detailPanel.classList.remove('hidden');
-    });
+async function loadOverview(el, tenantId, scopeId) {
+    const graphContainer = el.querySelector('#graph-container');
+    graphContainer.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading graph...</div>';
+    try {
+        const data = await getGraphOverview(tenantId, scopeId);
+        if (!data.nodes || data.nodes.length === 0) {
+            graphContainer.innerHTML = `<div class="empty-state graph-empty-state" style="padding:60px">No graph data for this tenant. Add memories to build the knowledge graph.</div>`;
+            return;
+        }
+        await ensureVisLoaded();
+        const { nodes, edges } = apiDataToVis(data);
+        const vizDiv = document.createElement('div');
+        vizDiv.id = 'graph-viz';
+        vizDiv.style.cssText = 'width:100%;height:100%;min-height:400px;';
+        graphContainer.innerHTML = '';
+        graphContainer.appendChild(vizDiv);
+        createNetwork(vizDiv, nodes, edges, el);
+        lastGraphParams = { type: 'overview', tenant_id: tenantId, scope_id: scopeId || tenantId };
+    } catch (err) {
+        graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Failed to load graph: ${escapeHtml(errToMessage(err))}</div>`;
+    }
+}
+
+async function loadExplore(el, tenantId, entity, scopeId) {
+    const graphContainer = el.querySelector('#graph-container');
+    const depth = getDepth(el);
+    const scope = scopeId || tenantId;
+    graphContainer.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading graph...</div>';
+    try {
+        const data = await getGraphExplore(tenantId, entity, scope, depth);
+        if (!data.nodes || data.nodes.length === 0) {
+            graphContainer.innerHTML = `<div class="empty-state graph-empty-state" style="padding:60px">Entity not found or no connections.</div>`;
+            return;
+        }
+        await ensureVisLoaded();
+        const { nodes, edges } = apiDataToVis(data);
+        const vizDiv = document.createElement('div');
+        vizDiv.id = 'graph-viz';
+        vizDiv.style.cssText = 'width:100%;height:100%;min-height:400px;';
+        graphContainer.innerHTML = '';
+        graphContainer.appendChild(vizDiv);
+        createNetwork(vizDiv, nodes, edges, el);
+        lastGraphParams = { type: 'explore', tenant_id: tenantId, scope_id: scope, entity };
+    } catch (err) {
+        graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Failed to load graph: ${escapeHtml(errToMessage(err))}</div>`;
+    }
 }
 
 export async function renderGraph({ tenantId } = {}) {
@@ -210,63 +226,31 @@ export async function renderGraph({ tenantId } = {}) {
     el.innerHTML = `<div class="loading-overlay"><div class="spinner"></div> Loading graph data...</div>`;
 
     try {
-        const [stats, tenantsData, neo4jConfig] = await Promise.all([
+        const [stats, tenantsData] = await Promise.all([
             getGraphStats(),
             getTenants(),
-            getGraphNeo4jConfig(),
         ]);
         currentTenants = tenantsData.tenants || [];
         el.innerHTML = buildPage(stats, tenantId);
         attachListeners(el, tenantId);
 
         const graphTenants = stats.tenants_with_graph || [];
-        const firstTenantId = graphTenants[0];
         const graphContainer = el.querySelector('#graph-container');
-
         if (!graphContainer) return;
 
-        const hasGraphData = graphTenants.length > 0;
-        if (!hasGraphData) {
+        if (graphTenants.length === 0) {
             graphContainer.innerHTML = `<div class="empty-state graph-empty-state" style="padding:60px">No graph data yet. Select a tenant and add memories to build the knowledge graph.</div>`;
             return;
         }
 
         const tenantSelect = el.querySelector('#graph-tenant');
-        const selectedTenant = tenantSelect?.value || firstTenantId;
+        const selectedTenant = tenantSelect?.value || graphTenants[0];
         if (!selectedTenant) {
             graphContainer.innerHTML = `<div class="empty-state graph-empty-state" style="padding:60px">Select a tenant to explore the graph.</div>`;
             return;
         }
 
-        const vizDiv = document.createElement('div');
-        vizDiv.id = 'graph-viz';
-        vizDiv.style.cssText = 'width:100%;height:100%;min-height:400px;';
-        graphContainer.innerHTML = '';
-        graphContainer.appendChild(vizDiv);
-
-        // Ensure DOM is flushed before NeoVis reads containerId
-        await new Promise(r => requestAnimationFrame(r));
-
-        const config = buildNeovisConfig(neo4jConfig, el);
-        neoViz = new NeoVis(config);
-        attachClickHandlers(neoViz, el);
-        neoViz.registerOnEvent('error', (event) => {
-            const err = event?.error ?? event;
-            const msg = errToMessage(err);
-            graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Neo4j error: ${escapeHtml(msg)}. Check that Neo4j is running at bolt://localhost:7687 and reachable from your browser.</div>`;
-        });
-
-        const scopeId = selectedTenant;
-        const depth = getDepth(el);
-        try {
-            neoViz.renderWithCypher(buildOverviewCypher(depth), {
-                tenant_id: selectedTenant,
-                scope_id: scopeId,
-            });
-            lastGraphParams = { type: 'overview', tenant_id: selectedTenant, scope_id: scopeId };
-        } catch (e) {
-            graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Failed to load graph: ${escapeHtml(errToMessage(e))}</div>`;
-        }
+        await loadOverview(el, selectedTenant, selectedTenant);
     } catch (err) {
         el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#9888;</div><p>Failed to load graph: ${escapeHtml(errToMessage(err))}</p></div>`;
     }
@@ -343,42 +327,20 @@ function attachListeners(el, initialTenantId) {
     const depthLabel = el.querySelector('#graph-depth-label');
     depthSlider?.addEventListener('input', () => {
         depthLabel.textContent = `Depth: ${depthSlider.value}`;
-        if (!lastGraphParams || !neoViz) return;
-        const graphContainer = el.querySelector('#graph-container');
-        if (!graphContainer?.querySelector('#graph-viz')) return;
-        const depth = getDepth(el);
-        try {
-            neoViz.clearNetwork();
-            if (lastGraphParams.type === 'overview') {
-                neoViz.renderWithCypher(buildOverviewCypher(depth), {
-                    tenant_id: lastGraphParams.tenant_id,
-                    scope_id: lastGraphParams.scope_id,
-                });
-            } else {
-                neoViz.renderWithCypher(buildExploreCypher(depth), {
-                    tenant_id: lastGraphParams.tenant_id,
-                    scope_id: lastGraphParams.scope_id,
-                    entity: lastGraphParams.entity,
-                });
-            }
-        } catch (e) {
-            graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(String(e?.message || e))}</div>`;
+    });
+    depthSlider?.addEventListener('change', () => {
+        if (!lastGraphParams) return;
+        if (lastGraphParams.type === 'overview') {
+            loadOverview(el, lastGraphParams.tenant_id, lastGraphParams.scope_id);
+        } else {
+            loadExplore(el, lastGraphParams.tenant_id, lastGraphParams.entity, lastGraphParams.scope_id);
         }
     });
 
     el.querySelector('#graph-tenant')?.addEventListener('change', () => {
         const tid = el.querySelector('#graph-tenant')?.value;
-        if (!tid || !neoViz) return;
-        const graphContainer = el.querySelector('#graph-container');
-        if (!graphContainer?.querySelector('#graph-viz')) return;
-        const depth = getDepth(el);
-        try {
-            neoViz.clearNetwork();
-            neoViz.renderWithCypher(buildOverviewCypher(depth), { tenant_id: tid, scope_id: tid });
-            lastGraphParams = { type: 'overview', tenant_id: tid, scope_id: tid };
-        } catch (e) {
-            graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(String(e?.message || e))}</div>`;
-        }
+        if (!tid) return;
+        loadOverview(el, tid, tid);
     });
 
     let searchTimeout;
@@ -407,7 +369,7 @@ function attachListeners(el, initialTenantId) {
                             searchInput.value = item.dataset.entity;
                             el.querySelector('#graph-tenant').value = item.dataset.tenant;
                             searchResults.classList.add('hidden');
-                            doExplore(el, item.dataset.tenant, item.dataset.entity, item.dataset.scope);
+                            loadExplore(el, item.dataset.tenant, item.dataset.entity, item.dataset.scope);
                         });
                     });
                 } else {
@@ -423,29 +385,6 @@ function attachListeners(el, initialTenantId) {
         const entity = searchInput?.value?.trim();
         if (!tid || !entity) return;
         searchResults?.classList.add('hidden');
-        doExplore(el, tid, entity, null);
+        loadExplore(el, tid, entity, null);
     });
-}
-
-async function doExplore(el, tenantId, entity, scopeId) {
-    const graphContainer = el.querySelector('#graph-container');
-    const depth = getDepth(el);
-    const scope = scopeId || tenantId;
-
-    if (!neoViz || !graphContainer?.querySelector('#graph-viz')) {
-        graphContainer.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading graph...</div>';
-        return;
-    }
-
-    try {
-        neoViz.clearNetwork();
-        neoViz.renderWithCypher(buildExploreCypher(depth), {
-            tenant_id: tenantId,
-            scope_id: scope,
-            entity,
-        });
-        lastGraphParams = { type: 'explore', tenant_id: tenantId, scope_id: scope, entity };
-    } catch (err) {
-        graphContainer.innerHTML = `<div class="empty-state" style="padding:40px">Error: ${escapeHtml(errToMessage(err))}</div>`;
-    }
 }
