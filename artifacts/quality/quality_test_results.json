@@ -1,0 +1,410 @@
+{
+  "tenant": "quality-test-1772880777",
+  "timestamp": "2026-03-07T11:26:57.481341+00:00",
+  "corpus_size": 46,
+  "probes": [
+    {
+      "query": "What is my name?",
+      "category": "identity",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 125.0,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Where do I work?",
+      "category": "identity",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 90.7,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my qualifications?",
+      "category": "identity",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 117.9,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What kind of food do I like?",
+      "category": "preference",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 97.9,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "When do I prefer to work?",
+      "category": "preference",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 129.1,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my hobbies?",
+      "category": "preference",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 111.4,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Do I have any food allergies?",
+      "category": "constraint_direct",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 115.9,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my personal rules about plastics?",
+      "category": "constraint_direct",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 91.3,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my research ethics rules?",
+      "category": "constraint_direct",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 114.5,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Recommend a seafood restaurant for dinner tonight.",
+      "category": "semantic_disconnect",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 48.5,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What gift should I bring to a dinner party?",
+      "category": "semantic_disconnect",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 85.8,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What packaging should I use for shipping samples?",
+      "category": "semantic_disconnect",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 79.3,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Should I take this job offer?",
+      "category": "constraint_dilution",
+      "failure_mode": "constraint_dilution",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 94.1,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Where do I live now?",
+      "category": "temporal",
+      "failure_mode": "temporal_recency",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 87.8,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Do I drink coffee?",
+      "category": "temporal",
+      "failure_mode": "stale_constraint",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 88.5,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What am I working toward in my career?",
+      "category": "goal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 100.4,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What is my publication target?",
+      "category": "goal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 109.0,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What challenges am I dealing with right now?",
+      "category": "state",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 85.5,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Who am I mentoring?",
+      "category": "state",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 94.5,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Why did I switch to ROV surveys?",
+      "category": "causal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 40.0,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Why do I need alternative funding?",
+      "category": "causal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 83.9,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Who is Maria's previous advisor?",
+      "category": "multi_hop",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 53.7,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Who recommended the Scripps collaboration?",
+      "category": "multi_hop",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 69.9,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "How do I calibrate the spectrometer?",
+      "category": "procedural",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 83.0,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What's on the ROV pre-dive checklist?",
+      "category": "procedural",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 50.5,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What happened at the MBARI seminar?",
+      "category": "episodic",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 57.2,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What went wrong during the May expedition?",
+      "category": "episodic",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 50.1,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What drives bioluminescence in deep-sea organisms?",
+      "category": "knowledge",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 82.7,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What percentage of deep-sea organisms produce light?",
+      "category": "knowledge",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 90.0,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What is my research budget?",
+      "category": "financial",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 104.8,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "How much does ROV rental cost?",
+      "category": "financial",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 45.8,
+      "judge_score": null,
+      "judge_reason": "",
+      "keyword_hits": [
+        true
+      ]
+    }
+  ]
+}

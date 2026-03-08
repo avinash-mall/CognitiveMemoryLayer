@@ -108,11 +108,7 @@ jobs:
 
       - name: Run full suite with coverage
         run: |
-          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml run --name cml-app-tests app sh -lc "pytest tests packages/py-cml/tests -v --tb=short -rs --cov=src --cov=packages/py-cml/src/cml --cov-report=xml:/app/coverage.xml --cov-report=term && coverage report --include='src/*' --fail-under=75 && coverage report --include='src/*,packages/py-cml/src/cml/*' --fail-under=75"
-
-      - name: Copy coverage artifact
-        if: always()
-        run: docker cp cml-app-tests:/app/coverage.xml coverage.xml
+          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml run --rm -v "$PWD:/workspace" app sh -lc "pytest tests packages/py-cml/tests -v --tb=short -rs --cov=src --cov=packages/py-cml/src/cml --cov-report=xml:/workspace/coverage.xml --cov-report=term && coverage report --include='src/*' --fail-under=75 && coverage report --include='src/*,packages/py-cml/src/cml/*' --fail-under=75"
 
       - name: Upload coverage to Codecov
         if: always()
@@ -124,7 +120,6 @@ jobs:
       - name: Stop stack
         if: always()
         run: |
-          docker rm -f cml-app-tests >/dev/null 2>&1 || true
           docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml down -v
 
   build:
