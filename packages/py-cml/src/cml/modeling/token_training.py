@@ -143,7 +143,7 @@ def _token_cfg(train_cfg: dict[str, Any]) -> dict[str, Any]:
         parsed_predict_batch_size = 64
     else:
         try:
-            parsed_predict_batch_size = int(cast(str | int, predict_batch_size))
+            parsed_predict_batch_size = int(cast("str | int", predict_batch_size))
         except (TypeError, ValueError):
             parsed_predict_batch_size = 64
     cfg.setdefault("model_name_or_path", "distilbert-base-multilingual-cased")
