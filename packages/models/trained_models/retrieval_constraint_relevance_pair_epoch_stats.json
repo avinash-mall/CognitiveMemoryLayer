@@ -3,14 +3,14 @@
   "epoch_stats": [
     {
       "epoch": 1,
-      "train_loss": 0.5499494259604948,
+      "train_loss": 0.5499494259604949,
       "train_accuracy": 0.765275,
       "train_macro_f1": 0.7646144255460151,
       "train_weighted_f1": 0.7646144255460151
     },
     {
       "epoch": 2,
-      "train_loss": 0.5461382874739036,
+      "train_loss": 0.5461382874739037,
       "train_accuracy": 0.7703875,
       "train_macro_f1": 0.7697574186916225,
       "train_weighted_f1": 0.7697574186916226
@@ -24,14 +24,14 @@
     },
     {
       "epoch": 4,
-      "train_loss": 0.5459263937261131,
+      "train_loss": 0.5459263937261132,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
     },
     {
       "epoch": 5,
-      "train_loss": 0.5459257783813023,
+      "train_loss": 0.5459257783813024,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
@@ -52,7 +52,7 @@
     },
     {
       "epoch": 8,
-      "train_loss": 0.5459257563658785,
+      "train_loss": 0.5459257563658786,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
@@ -73,14 +73,14 @@
     },
     {
       "epoch": 11,
-      "train_loss": 0.5459257563476105,
+      "train_loss": 0.5459257563476104,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
     },
     {
       "epoch": 12,
-      "train_loss": 0.5459257563476169,
+      "train_loss": 0.5459257563476168,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
@@ -129,7 +129,7 @@
     },
     {
       "epoch": 19,
-      "train_loss": 0.5459257563476162,
+      "train_loss": 0.5459257563476163,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
@@ -157,7 +157,7 @@
     },
     {
       "epoch": 23,
-      "train_loss": 0.5459257563476162,
+      "train_loss": 0.5459257563476163,
       "train_accuracy": 0.770725,
       "train_macro_f1": 0.7700985553475532,
       "train_weighted_f1": 0.7700985553475532
