@@ -1,6 +1,6 @@
 {
   "family": "pair",
-  "trained_at_utc": "2026-03-06T17:35:37.455865+00:00",
+  "trained_at_utc": "2026-03-09T14:47:16.211570+00:00",
   "rows": {
     "train": 795227,
     "test": 99403,
@@ -196,7 +196,7 @@
   "epoch_stats": [
     {
       "epoch": 1,
-      "train_loss": 0.8833188594953616,
+      "train_loss": 0.8833188594953615,
       "train_accuracy": 0.670216177267623,
       "train_macro_f1": 0.6649074558288667,
       "train_weighted_f1": 0.6635555215186291
@@ -210,28 +210,28 @@
     },
     {
       "epoch": 3,
-      "train_loss": 0.8825831892672065,
+      "train_loss": 0.8825831892672062,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
     },
     {
       "epoch": 4,
-      "train_loss": 0.8825826839150044,
+      "train_loss": 0.8825826839150046,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
     },
     {
       "epoch": 5,
-      "train_loss": 0.8825826689612705,
+      "train_loss": 0.8825826689612709,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
     },
     {
       "epoch": 6,
-      "train_loss": 0.8825826685138096,
+      "train_loss": 0.8825826685138093,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -245,7 +245,7 @@
     },
     {
       "epoch": 8,
-      "train_loss": 0.8825826684999079,
+      "train_loss": 0.8825826684999081,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -259,21 +259,21 @@
     },
     {
       "epoch": 10,
-      "train_loss": 0.8825826684998946,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
     },
     {
       "epoch": 11,
-      "train_loss": 0.8825826684998945,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
     },
     {
       "epoch": 12,
-      "train_loss": 0.8825826684998949,
+      "train_loss": 0.882582668499895,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -287,7 +287,7 @@
     },
     {
       "epoch": 14,
-      "train_loss": 0.8825826684998946,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -308,7 +308,7 @@
     },
     {
       "epoch": 17,
-      "train_loss": 0.8825826684998945,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -329,14 +329,14 @@
     },
     {
       "epoch": 20,
-      "train_loss": 0.8825826684998946,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
     },
     {
       "epoch": 21,
-      "train_loss": 0.8825826684998946,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -350,7 +350,7 @@
     },
     {
       "epoch": 23,
-      "train_loss": 0.8825826684998946,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003
@@ -364,7 +364,7 @@
     },
     {
       "epoch": 25,
-      "train_loss": 0.8825826684998945,
+      "train_loss": 0.8825826684998949,
       "train_accuracy": 0.6704136051718566,
       "train_macro_f1": 0.6651100441908042,
       "train_weighted_f1": 0.6637588159388003

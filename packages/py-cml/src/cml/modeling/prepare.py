@@ -4480,10 +4480,12 @@ def main(argv: list[str] | None = None) -> int:
                 existing_df=pair_existing_df,
                 use_multilingual=use_multilingual,
             )
+            print(f"Building pair DataFrame ({len(pair_rows)} rows)...")
             pair_df = pd.DataFrame(_sanitize_row_dicts(pair_rows))
             if pair_df.empty:
                 print("Pair dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
+            print("Writing pair splits...")
             pair_splits = _write_splits(
                 pair_df,
                 prefix="pair",
@@ -4674,10 +4676,16 @@ def main(argv: list[str] | None = None) -> int:
                 llm.maybe_report(context="final", force=True)
             except Exception:
                 pass
-            try:
-                llm.client.close()
-            except Exception:
-                pass
+            # Close client in a daemon thread so we never block on connection pool shutdown
+            # (httpx.Client.close() can hang after many requests). Process exit will clean up.
+            def _close_llm_client() -> None:
+                try:
+                    llm.client.close()
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_close_llm_client, daemon=True)
+            t.start()
 
 
 def prepare_data(config: PrepareConfig) -> int:

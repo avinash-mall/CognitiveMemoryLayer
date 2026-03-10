@@ -138,10 +138,16 @@ class _TokenFeature:
 
 def _token_cfg(train_cfg: dict[str, Any]) -> dict[str, Any]:
     cfg = dict(train_cfg.get("token", {}))
+    predict_batch_size = train_cfg.get("predict_batch_size")
+    try:
+        parsed_predict_batch_size = int(predict_batch_size)
+    except (TypeError, ValueError):
+        parsed_predict_batch_size = 64
     cfg.setdefault("model_name_or_path", "distilbert-base-multilingual-cased")
     cfg.setdefault("num_train_epochs", 3)
     cfg.setdefault("per_device_train_batch_size", 8)
     cfg.setdefault("per_device_eval_batch_size", 16)
+    cfg.setdefault("predict_batch_size", max(1, parsed_predict_batch_size))
     cfg.setdefault("max_seq_length", 256)
     cfg.setdefault("stride", 64)
     cfg.setdefault("learning_rate", 5e-5)
@@ -253,12 +259,15 @@ def _collate_token_features(features: list[_TokenFeature], *, tokenizer: Any) ->
 
 def _predict_spans_for_texts(
     *,
+    task_name: str,
+    split_name: str,
     model: Any,
     tokenizer: Any,
     texts: list[str],
     id_to_label: dict[int, str],
     max_seq_length: int,
     stride: int,
+    predict_batch_size: int,
 ) -> list[list[tuple[int, int, str]]]:
     wrapper = HFTokenSpanPredictor(
         task_name="runtime",
@@ -275,7 +284,21 @@ def _predict_spans_for_texts(
         raise ImportError("torch is required for token prediction") from exc
     first_param = next(model.parameters(), None)
     wrapper._device = first_param.device if first_param is not None else torch.device("cpu")
-    return wrapper.predict(texts)
+
+    total_rows = len(texts)
+    if total_rows == 0:
+        print(f"[task:{task_name}] predict {split_name}: 0/0 rows")
+        return []
+
+    report_every = max(500, predict_batch_size * 10)
+    preds: list[list[tuple[int, int, str]]] = []
+    print(f"[task:{task_name}] predict {split_name}: 0/{total_rows} rows")
+    for start in range(0, total_rows, predict_batch_size):
+        end = min(start + predict_batch_size, total_rows)
+        preds.extend(wrapper.predict(texts[start:end]))
+        if end == total_rows or end % report_every == 0:
+            print(f"[task:{task_name}] predict {split_name}: {end}/{total_rows} rows")
+    return preds
 
 
 def train_token_task(
@@ -355,6 +378,7 @@ def train_token_task(
     )
     gradient_accumulation = max(1, int(token_cfg["gradient_accumulation_steps"]))
     epochs = max(1, int(token_cfg["num_train_epochs"]))
+    predict_batch_size = max(1, int(token_cfg["predict_batch_size"]))
     total_steps = max(1, math.ceil(len(train_loader) / gradient_accumulation) * epochs)
     warmup_steps = int(total_steps * float(token_cfg["warmup_ratio"]))
     from transformers import get_linear_schedule_with_warmup
@@ -370,6 +394,7 @@ def train_token_task(
     for epoch in range(1, epochs + 1):
         total_loss = 0.0
         optimizer.zero_grad(set_to_none=True)
+        print(f"[task:{task_name}] epoch {epoch}/{epochs} start (steps={len(train_loader)})")
         for step, batch in enumerate(train_loader, start=1):
             batch = {k: v.to(device) for k, v in batch.items()}
             loss = model(**batch).loss / gradient_accumulation
@@ -379,29 +404,39 @@ def train_token_task(
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
+            if step == len(train_loader) or step % 200 == 0:
+                print(f"[task:{task_name}] epoch {epoch}/{epochs} progress {step}/{len(train_loader)}")
+        epoch_loss = float(total_loss / max(1, len(train_loader)))
         epoch_stats.append(
             {
                 "epoch": epoch,
-                "train_loss": float(total_loss / max(1, len(train_loader))),
+                "train_loss": epoch_loss,
             }
         )
+        print(f"[task:{task_name}] epoch {epoch}/{epochs} train_loss={epoch_loss:.4f}")
 
     model.eval()
     test_pred = _predict_spans_for_texts(
+        task_name=task_name,
+        split_name="test",
         model=model,
         tokenizer=tokenizer,
         texts=test_df["text"].astype(str).tolist(),
         id_to_label=id_to_label,
         max_seq_length=max_seq_length,
         stride=stride,
+        predict_batch_size=predict_batch_size,
     )
     eval_pred = _predict_spans_for_texts(
+        task_name=task_name,
+        split_name="eval",
         model=model,
         tokenizer=tokenizer,
         texts=eval_df["text"].astype(str).tolist(),
         id_to_label=id_to_label,
         max_seq_length=max_seq_length,
         stride=stride,
+        predict_batch_size=predict_batch_size,
     )
 
     test_metrics = span_metrics(test_df["spans"].tolist(), test_pred)
