@@ -40,7 +40,9 @@ async def main_async() -> int:
                     for text, memory_type in writes
                 ]
             )
-            print(f"Stored {sum(1 for result in results if result.success)}/{len(results)} memories")
+            print(
+                f"Stored {sum(1 for result in results if result.success)}/{len(results)} memories"
+            )
 
             query_results = await memory.batch_read(
                 ["exercise habits", "outdoor activities"],

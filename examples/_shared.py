@@ -101,7 +101,9 @@ def build_cml_config(*, timeout: float = 30.0, require_admin_key: bool = False) 
     return CMLConfig(
         api_key=require_env("CML_API_KEY"),
         base_url=sdk_base_url(),
-        admin_api_key=require_env("CML_ADMIN_API_KEY") if require_admin_key else get_env("CML_ADMIN_API_KEY"),
+        admin_api_key=require_env("CML_ADMIN_API_KEY")
+        if require_admin_key
+        else get_env("CML_ADMIN_API_KEY"),
         timeout=timeout,
         tenant_id=get_env("CML_TENANT_ID") or "default",
     )

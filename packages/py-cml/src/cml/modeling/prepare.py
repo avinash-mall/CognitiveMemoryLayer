@@ -4676,6 +4676,7 @@ def main(argv: list[str] | None = None) -> int:
                 llm.maybe_report(context="final", force=True)
             except Exception:
                 pass
+
             # Close client in a daemon thread so we never block on connection pool shutdown
             # (httpx.Client.close() can hang after many requests). Process exit will clean up.
             def _close_llm_client() -> None:

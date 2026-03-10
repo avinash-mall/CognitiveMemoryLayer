@@ -75,7 +75,10 @@ def main() -> int:
             read = client.post(
                 f"{base_url}/memory/read",
                 headers=headers,
-                json={"query": "What preferences and constraints should I know about?", "format": "packet"},
+                json={
+                    "query": "What preferences and constraints should I know about?",
+                    "format": "packet",
+                },
             )
             read.raise_for_status()
             read_data = read.json()

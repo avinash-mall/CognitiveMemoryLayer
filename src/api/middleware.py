@@ -6,7 +6,7 @@ import time
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from cachetools import TTLCache  # type: ignore[import-untyped]
+from cachetools import TTLCache
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 

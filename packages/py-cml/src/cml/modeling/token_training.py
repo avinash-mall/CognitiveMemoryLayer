@@ -6,7 +6,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -139,10 +139,13 @@ class _TokenFeature:
 def _token_cfg(train_cfg: dict[str, Any]) -> dict[str, Any]:
     cfg = dict(train_cfg.get("token", {}))
     predict_batch_size = train_cfg.get("predict_batch_size")
-    try:
-        parsed_predict_batch_size = int(predict_batch_size)
-    except (TypeError, ValueError):
+    if predict_batch_size is None:
         parsed_predict_batch_size = 64
+    else:
+        try:
+            parsed_predict_batch_size = int(cast(str | int, predict_batch_size))
+        except (TypeError, ValueError):
+            parsed_predict_batch_size = 64
     cfg.setdefault("model_name_or_path", "distilbert-base-multilingual-cased")
     cfg.setdefault("num_train_epochs", 3)
     cfg.setdefault("per_device_train_batch_size", 8)
@@ -405,7 +408,9 @@ def train_token_task(
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
             if step == len(train_loader) or step % 200 == 0:
-                print(f"[task:{task_name}] epoch {epoch}/{epochs} progress {step}/{len(train_loader)}")
+                print(
+                    f"[task:{task_name}] epoch {epoch}/{epochs} progress {step}/{len(train_loader)}"
+                )
         epoch_loss = float(total_loss / max(1, len(train_loader)))
         epoch_stats.append(
             {

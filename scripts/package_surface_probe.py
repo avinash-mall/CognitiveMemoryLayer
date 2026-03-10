@@ -98,7 +98,9 @@ async def _run_embedded(args: argparse.Namespace) -> ProbeResult:
 
     timestamp = _parse_timestamp(args.timestamp)
     memory_type = _resolve_memory_type(args.memory_type)
-    async with EmbeddedCognitiveMemoryLayer(db_path=args.db_path, tenant_id=args.tenant_id) as memory:
+    async with EmbeddedCognitiveMemoryLayer(
+        db_path=args.db_path, tenant_id=args.tenant_id
+    ) as memory:
         writes = []
         for text in args.write:
             writes.append(
