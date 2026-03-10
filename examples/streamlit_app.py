@@ -231,7 +231,9 @@ chat_tab, browse_tab, session_tab, admin_tab = st.tabs(
 
 with chat_tab:
     st.subheader("/memory/turn")
-    st.caption("This tab retrieves context via /memory/turn, then generates assistant replies using LLM_EVAL.")
+    st.caption(
+        "This tab retrieves context via /memory/turn, then generates assistant replies using LLM_EVAL."
+    )
     for item in st.session_state.chat_history:
         with st.chat_message(item["role"]):
             st.write(item["content"])

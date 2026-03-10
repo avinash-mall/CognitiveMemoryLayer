@@ -25,7 +25,9 @@ EXAMPLE_META = {
 def main() -> int:
     print_header("CML Admin Dashboard")
     try:
-        with CognitiveMemoryLayer(config=build_cml_config(require_admin_key=True, timeout=60.0)) as memory:
+        with CognitiveMemoryLayer(
+            config=build_cml_config(require_admin_key=True, timeout=60.0)
+        ) as memory:
             overview = memory.dashboard_overview()
             print(f"Overview total memories: {overview.total_memories}")
             print(f"Overview active memories: {overview.active_memories}")

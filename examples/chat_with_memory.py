@@ -53,7 +53,9 @@ def main() -> int:
                 if user_input.lower() in {"quit", "exit"}:
                     break
 
-                turn = memory.turn(user_message=user_input, session_id=session_id, max_context_tokens=800)
+                turn = memory.turn(
+                    user_message=user_input, session_id=session_id, max_context_tokens=800
+                )
                 messages = [
                     {
                         "role": "system",

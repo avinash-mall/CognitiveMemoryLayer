@@ -73,7 +73,9 @@ CML_API_KEY = os.environ.get("AUTH__API_KEY") or os.environ.get("CML_API_KEY") o
 TENANT_ID = f"quality-test-{int(time.time())}"
 MAX_RETRIES = 5
 RETRY_BACKOFF = 3
-DEFAULT_RESULTS_PATH = Path(__file__).resolve().parent.parent / "artifacts" / "quality" / "quality_test_results.json"
+DEFAULT_RESULTS_PATH = (
+    Path(__file__).resolve().parent.parent / "artifacts" / "quality" / "quality_test_results.json"
+)
 LEGACY_RESULTS_PATH = Path(__file__).resolve().with_name("quality_test_results.json")
 RESULTS_PATH = DEFAULT_RESULTS_PATH
 JUDGE_CONTEXT_LIMIT = 2000
@@ -469,14 +471,16 @@ _LLM_DEFAULT_BASE: dict[str, str] = {
 
 def _get_llm_config() -> tuple[str, str, str]:
     provider = (
-        os.environ.get("LLM_EVAL__PROVIDER")
-        or os.environ.get("LLM_INTERNAL__PROVIDER")
-        or "openai"
-    ).strip().lower()
+        (
+            os.environ.get("LLM_EVAL__PROVIDER")
+            or os.environ.get("LLM_INTERNAL__PROVIDER")
+            or "openai"
+        )
+        .strip()
+        .lower()
+    )
     model = (
-        os.environ.get("LLM_EVAL__MODEL")
-        or os.environ.get("LLM_INTERNAL__MODEL")
-        or "gpt-4o-mini"
+        os.environ.get("LLM_EVAL__MODEL") or os.environ.get("LLM_INTERNAL__MODEL") or "gpt-4o-mini"
     ).strip()
     api_key = (
         os.environ.get("LLM_EVAL__API_KEY")
@@ -580,7 +584,11 @@ def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> s
 def _api(method: str, path: str, payload: dict | None = None, tenant: str | None = None) -> dict:
     url = build_api_url(CML_BASE_URL, path)
     tenant_id = tenant or TENANT_ID
-    headers = {"X-API-Key": CML_API_KEY, "X-Tenant-ID": tenant_id, "Content-Type": "application/json"}
+    headers = {
+        "X-API-Key": CML_API_KEY,
+        "X-Tenant-ID": tenant_id,
+        "Content-Type": "application/json",
+    }
     for attempt in range(MAX_RETRIES):
         try:
             if method == "GET":
@@ -964,7 +972,9 @@ def print_report(
         worst = sorted(results, key=lambda r: r.llm_judge_score)[:5]
         for r in worst:
             emoji = "\u274c" if r.llm_judge_score < 4 else "\u26a0\ufe0f"
-            print(f"  {emoji} {r.llm_judge_score:.1f}/10 | {r.probe.category:22s} | {r.probe.query}")
+            print(
+                f"  {emoji} {r.llm_judge_score:.1f}/10 | {r.probe.category:22s} | {r.probe.query}"
+            )
             if r.llm_judge_reason:
                 print(f"        Reason: {r.llm_judge_reason[:100]}")
         print()

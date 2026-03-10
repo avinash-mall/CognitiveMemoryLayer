@@ -211,7 +211,9 @@ def skip_reason(spec: ExampleSpec, *, include_llm: bool, no_skip: bool) -> str |
         if not include_llm:
             return "LLM example (use --include-llm)"
         if not _has_openai_env():
-            return "missing OPENAI_API_KEY+OPENAI_MODEL or LLM_INTERNAL__MODEL+LLM_INTERNAL__BASE_URL"
+            return (
+                "missing OPENAI_API_KEY+OPENAI_MODEL or LLM_INTERNAL__MODEL+LLM_INTERNAL__BASE_URL"
+            )
     if spec.requires_anthropic:
         if not include_llm:
             return "LLM example (use --include-llm)"
@@ -431,9 +433,7 @@ def print_summary(results: list[tuple[ExampleSpec, ExampleResult]]) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Discover and run CML examples from the repo."
-    )
+    parser = argparse.ArgumentParser(description="Discover and run CML examples from the repo.")
     parser.add_argument("--list", action="store_true", help="List discovered examples and exit.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--all", action="store_true", help="Run all discovered examples.")

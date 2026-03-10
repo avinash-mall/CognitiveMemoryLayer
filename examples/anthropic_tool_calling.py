@@ -109,7 +109,9 @@ class ClaudeMemoryAssistant:
             )
             if response.stop_reason != "tool_use":
                 text = "".join(
-                    getattr(block, "text", "") for block in response.content if hasattr(block, "text")
+                    getattr(block, "text", "")
+                    for block in response.content
+                    if hasattr(block, "text")
                 )
                 self.messages.append({"role": "assistant", "content": response.content})
                 return text
