@@ -552,3 +552,46 @@ True: relevant        2120        2880
 - Preflight validation: passed (strict)
 - Artifact validation: passed
 - All 10 configured tasks: status `trained`
+
+---
+
+## Artifact Validation Addendum (March 12, 2026)
+
+This addendum supersedes the March 10 source-only note. The prepared data and trained artifacts were rebuilt or refreshed and validated against the leakage-free recovery plan.
+
+### Validation status
+
+- Prepared split integrity now passes for `router`, `extractor`, and `pair` with zero cross-split `group_id` overlap.
+- `schema_match_pair` train data is non-template dominated as intended: 80,000 train rows, 0 template rows, 4,000 `hf:fever` rows, and 76,000 derived non-template rows.
+- Adversarial suites are present and evaluation-only with sufficient size: `consolidation_gist_quality` = 120 rows, `forgetting_action_policy` = 125 rows, `schema_match_pair` = 120 rows.
+- Family post-calibration ECE is below the `< 0.10` target for all three families:
+  - `router`: `0.0066`
+  - `extractor`: `0.0069`
+  - `pair`: `0.0114`
+
+### Resolution status
+
+- `R1` resolved: early stopping is active in the rebuilt family artifacts. Final family epoch counts are `router=4`, `extractor=4`, `pair=6`.
+- `R2` resolved: all three embedding-backed pair-ranking tasks exceed the `>= 0.70` target on test:
+  - `retrieval_constraint_relevance_pair`: `74.71%`
+  - `memory_rerank_pair`: `74.56%`
+  - `reconsolidation_candidate_pair`: `74.56%`
+- `R3` resolved: the suspicious-perfect tasks are no longer perfect on both clean and adversarial evaluation:
+  - `consolidation_gist_quality`: clean `100.0%`, adversarial `55.0%`
+  - `forgetting_action_policy`: clean `99.82%`, adversarial `76.8%`
+  - `schema_match_pair`: clean `70.6%`, adversarial `52.5%`
+- `R4` resolved: calibration coverage is in place for family and task artifacts, and family-level post-ECE is below target for all three families.
+- `R5` resolved: `novelty_pair` remains 3-class (`duplicate`, `changed`, `novel`) and reaches `77.74%` test accuracy.
+- `R6` resolved: ordinal task models now preserve ordering without reverting to trivially perfect outputs:
+  - `confidence_bin`: `83.27%`, `off_by_two_rate = 0.0`
+  - `importance_bin`: `85.93%`, `off_by_two_rate = 0.0`
+  - `salience_bin`: `86.20%`, `off_by_two_rate = 0.0`
+  - `decay_profile`: `78.04%`, `off_by_two_rate = 0.0`
+- `R7` resolved: `memory_type` reaches `82.5%` test accuracy.
+- `R8` resolved: `write_importance_regression` remains well within the acceptance gate with `test_mae = 0.00414` versus mean/median baseline MAEs of `0.26455` and `0.26333`.
+
+### Artifact references
+
+- Prepared manifest: `packages/models/prepared_data/modelpack/manifest.json`
+- Trained manifest: `packages/models/trained_models/manifest.json`
+- The acceptance gates in the recovery plan now pass on the refreshed artifacts.

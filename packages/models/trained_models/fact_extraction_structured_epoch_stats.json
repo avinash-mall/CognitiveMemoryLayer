@@ -1,0 +1,46 @@
+{
+  "task": "fact_extraction_structured",
+  "epoch_stats": [
+    {
+      "epoch": 1,
+      "train_loss": 0.1525324375963473
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.020874904501430955
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.009916029358250759
+    }
+  ],
+  "training_summary": {
+    "actual_epochs": 3,
+    "best_epoch": 3,
+    "early_stopped": false
+  },
+  "labels": {
+    "0": "O",
+    "1": "B-attribute",
+    "2": "I-attribute",
+    "3": "B-causal",
+    "4": "I-causal",
+    "5": "B-goal",
+    "6": "I-goal",
+    "7": "B-identity",
+    "8": "I-identity",
+    "9": "B-location",
+    "10": "I-location",
+    "11": "B-occupation",
+    "12": "I-occupation",
+    "13": "B-policy",
+    "14": "I-policy",
+    "15": "B-preference",
+    "16": "I-preference",
+    "17": "B-state",
+    "18": "I-state",
+    "19": "B-value",
+    "20": "I-value"
+  },
+  "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\fact_extraction_structured_hf"
+}

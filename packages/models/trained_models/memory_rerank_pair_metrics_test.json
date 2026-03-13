@@ -1,0 +1,39 @@
+{
+  "task": "memory_rerank_pair",
+  "overall": {
+    "rows": 13338,
+    "accuracy": 0.7812265707002549,
+    "macro_f1": 0.7573240465024589,
+    "weighted_f1": 0.7812265707002549,
+    "micro_f1": 0.7812265707002549,
+    "labels": [
+      "memory_rerank_pair::not_relevant",
+      "memory_rerank_pair::relevant"
+    ],
+    "confusion_matrix": [
+      [
+        7303,
+        1459
+      ],
+      [
+        1459,
+        3117
+      ]
+    ],
+    "calibration_error": 0.07691697401129798,
+    "mrr@10": 0.8268502331002371,
+    "ndcg@10": 0.8715042320814897,
+    "recall@10": 1.0,
+    "groups_evaluated": 4576
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 13403,
+    "pre_ece": 0.032538542525708335,
+    "post_ece": 0.0046663541792573635,
+    "pre_accuracy": 0.6685816608222039,
+    "post_accuracy": 0.7026785048123555,
+    "accuracy_delta": 0.03409684399015156
+  }
+}

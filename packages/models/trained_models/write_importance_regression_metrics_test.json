@@ -1,0 +1,33 @@
+{
+  "task": "write_importance_regression",
+  "metrics": {
+    "train_mae": 0.005485896088257913,
+    "train_rmse": 0.0075098949207506325,
+    "test_mae": 0.005429461091405082,
+    "test_rmse": 0.007371433424898619,
+    "eval_mae": 0.005520264406097099,
+    "eval_rmse": 0.007403136382663629
+  },
+  "data_profile": {
+    "rows": 8000,
+    "min": 0.08,
+    "max": 0.94,
+    "std": 0.3137339516911582,
+    "p05": 0.08,
+    "p50": 0.52,
+    "p95": 0.94,
+    "mean": 0.5144924999999998,
+    "median": 0.52
+  },
+  "baselines": {
+    "mean_prediction": {
+      "value": 0.5144924999999998,
+      "test_mae": 0.26452571
+    },
+    "median_prediction": {
+      "value": 0.52,
+      "test_mae": 0.26327
+    }
+  },
+  "warnings": []
+}

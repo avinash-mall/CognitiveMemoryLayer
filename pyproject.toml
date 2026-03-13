@@ -83,6 +83,7 @@ modeling = [
     "datasets>=2.20",
     "httpx>=0.27",
     "tqdm>=4.66",
+    "sentence-transformers>=3.0",
     "transformers>=4.45",
     "torch>=2.4",
     "accelerate>=0.34",
@@ -144,6 +145,9 @@ ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", 
 "scripts/*.py" = ["E402"]
 "src/memory/neocortical/fact_store.py" = ["B010"]
 "tests/**/*.py" = ["TC002"]
+"packages/models/scripts/expand_adversarial_fixtures.py" = ["RUF001"]
+"packages/py-cml/src/cml/modeling/memory_type_features.py" = ["RUF001"]
+"packages/py-cml/src/cml/modeling/pair_features.py" = ["RUF001"]
 [tool.ruff.lint.isort]
 known-first-party = ["cml", "src"]
 

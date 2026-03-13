@@ -13,19 +13,25 @@ Configuration:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
 import re
+import shutil
 import sys
 import threading
 import time
 import tomllib
 import warnings
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
+
+import numpy as np
 
 try:
     import pandas as pd
@@ -56,6 +62,11 @@ except ImportError:
     import multilingual_prompts as _multilingual_prompts  # type: ignore[no-redef]
 
 from cml.modeling.config import find_repo_root
+from cml.modeling.memory_type_features import (
+    MEMORY_TYPE_FEATURE_COLUMNS,
+    derive_memory_type_feature_columns,
+)
+from cml.modeling.pair_features import hash_text, pair_embedding_cache_path
 from cml.modeling.types import PrepareConfig
 
 # Some model outputs may trigger parser fallback paths in third-party code that emit
@@ -71,6 +82,8 @@ warnings.filterwarnings(
 REPO_ROOT = find_repo_root(Path(__file__).resolve()) or Path.cwd()
 MODELS_ROOT = REPO_ROOT / "packages" / "models"
 DEFAULT_CONFIG_PATH = MODELS_ROOT / "model_pipeline.toml"
+DEFAULT_PAIR_EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+FEVER_TRAIN_URL = "https://fever.ai/download/fever/train.jsonl"
 
 LOCAL_BOOTSTRAP_SPLITS = ("train", "test", "eval")
 ROUTER_TASKS = (
@@ -156,7 +169,7 @@ PAIR_TASK_LABELS: dict[str, list[str]] = {
 }
 
 NEW_PAIR_TASK_LABELS: dict[str, list[str]] = {
-    "novelty_pair": ["duplicate", "novel", "temporal_change", "contradiction"],
+    "novelty_pair": ["duplicate", "novel", "changed"],
     "schema_match_pair": ["match", "no_match"],
     "retrieval_constraint_relevance_pair": ["relevant", "not_relevant"],
     "reconsolidation_candidate_pair": ["relevant", "not_relevant"],
@@ -171,6 +184,33 @@ NEW_SINGLE_TASK_LABELS: dict[str, list[str]] = {
 ALL_PAIR_TASKS = PAIR_TASKS + tuple(NEW_PAIR_TASK_LABELS.keys())
 ALL_ROUTER_TASKS = ROUTER_TASKS + tuple(NEW_SINGLE_TASK_LABELS.keys())
 TOKEN_TASKS = ("fact_extraction_structured", "pii_span_detection")
+ORDINAL_ROUTER_TASKS = {"salience_bin", "importance_bin", "confidence_bin", "decay_profile"}
+PAIR_RANKING_TASKS = {
+    "retrieval_constraint_relevance_pair",
+    "memory_rerank_pair",
+    "reconsolidation_candidate_pair",
+}
+REBUILT_ROUTER_TASKS = ORDINAL_ROUTER_TASKS | {
+    "consolidation_gist_quality",
+    "forgetting_action_policy",
+}
+REBUILT_PAIR_TASKS = {"schema_match_pair"}
+_TEMPLATE_SOURCE_PREFIXES = ("template:", "template_hardened:")
+_TASK_TEMPLATE_CAPS = {
+    "consolidation_gist_quality": 0.5,
+    "forgetting_action_policy": 0.5,
+    "schema_match_pair": 0.1,
+}
+_TASK_REQUIRED_SOURCE_TARGET_RATIOS = {"schema_match_pair": {"hf:fever": 0.2}}
+_REQUIRED_SOURCE_PREFIXES = {"schema_match_pair": ("hf:fever",)}
+_ADVERSARIAL_FIXTURE_PATHS = {
+    "consolidation_gist_quality": MODELS_ROOT / "adversarial" / "adversarial_gist_quality.jsonl",
+    "forgetting_action_policy": MODELS_ROOT / "adversarial" / "adversarial_forgetting_policy.jsonl",
+    "schema_match_pair": MODELS_ROOT / "adversarial" / "adversarial_schema_match_pair.jsonl",
+}
+_MIN_ADVERSARIAL_ROWS = 500
+_ADVERSARIAL_TRAIN_FRACTION = 0.5
+_ADVERSARIAL_HELDOUT_SUFFIX = "_heldout"
 FACT_SPAN_LABELS = [
     "preference",
     "identity",
@@ -335,6 +375,129 @@ def _enabled_regression_tasks(task_specs_raw: list[dict], *, family: str) -> set
     }
 
 
+def _enabled_embedding_pair_tasks(task_specs_raw: list[dict]) -> tuple[set[str], str | None]:
+    task_names: set[str] = set()
+    model_names: set[str] = set()
+    for spec in task_specs_raw:
+        if not bool(spec.get("enabled", True)):
+            continue
+        if str(spec.get("family", "")).strip() != "pair":
+            continue
+        trainer = str(spec.get("trainer", "")).strip()
+        feature_backend = str(spec.get("feature_backend", "")).strip()
+        if trainer != "embedding_pair" and feature_backend != "embedding_pair":
+            continue
+        task_name = str(spec.get("task_name", "")).strip()
+        if not task_name:
+            continue
+        task_names.add(task_name)
+        model_names.add(
+            str(spec.get("embedding_model_name", "")).strip()
+            or DEFAULT_PAIR_EMBEDDING_MODEL_NAME
+        )
+    if not task_names:
+        return set(), None
+    if len(model_names) > 1:
+        raise ValueError(
+            "Embedding-pair tasks must share one embedding_model_name during prepare."
+        )
+    return task_names, next(iter(model_names))
+
+
+def _normalize_pair_task_label(task: str, label: str) -> str:
+    cleaned_task = str(task).strip()
+    cleaned_label = str(label).strip()
+    if cleaned_task == "novelty_pair" and cleaned_label in {"contradiction", "temporal_change"}:
+        return "changed"
+    return cleaned_label
+
+
+def _download_to_path(url: str, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    if httpx is not None:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=120.0) as response:
+            response.raise_for_status()
+            with open(tmp_path, "wb") as handle:
+                for chunk in response.iter_bytes():
+                    if chunk:
+                        handle.write(chunk)
+    else:  # pragma: no cover - httpx is expected in the modeling environment
+        from urllib.request import urlopen
+
+        with urlopen(url, timeout=120) as response, open(tmp_path, "wb") as handle:
+            shutil.copyfileobj(response, handle)
+    tmp_path.replace(path)
+
+
+def _fever_evidence_text(record: dict[str, Any]) -> str:
+    raw_evidence = record.get("evidence")
+    if not isinstance(raw_evidence, list):
+        return ""
+    snippets: list[str] = []
+    seen: set[str] = set()
+    for evidence_set in raw_evidence:
+        if not isinstance(evidence_set, list):
+            continue
+        for item in evidence_set:
+            if not isinstance(item, (list, tuple)) or len(item) < 4:
+                continue
+            title = str(item[2] or "").replace("_", " ").strip()
+            if not title:
+                continue
+            sentence_id = item[3]
+            try:
+                sentence_index = int(sentence_id)
+            except Exception:
+                sentence_index = None
+            if sentence_index is not None and sentence_index >= 0:
+                snippet = f"{title} sentence {sentence_index}"
+            else:
+                snippet = title
+            if snippet not in seen:
+                seen.add(snippet)
+                snippets.append(snippet)
+            if len(snippets) >= 3:
+                return "; ".join(snippets)
+    return "; ".join(snippets)
+
+
+def _load_fever_rows_from_jsonl(path: Path, *, limit: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with open(path, encoding="utf-8") as handle:
+        for raw in handle:
+            if len(rows) >= limit:
+                break
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                record = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            claim = _clean(record.get("claim", ""), 700)
+            label = str(record.get("label", "")).strip()
+            evidence_text = _clean(_fever_evidence_text(record), 700)
+            if not claim or not label or not evidence_text:
+                continue
+            rows.append(
+                {
+                    "claim": claim,
+                    "label": label,
+                    "evidence_sentence": evidence_text,
+                }
+            )
+    return rows
+
+
+def _load_fever_dataset(cache_dir: Path | None, *, limit: int) -> list[dict[str, Any]]:
+    root = cache_dir or (MODELS_ROOT / "datasets")
+    data_path = root / "fever_raw" / "train.jsonl"
+    if not data_path.exists():
+        _download_to_path(FEVER_TRAIN_URL, data_path)
+    return _load_fever_rows_from_jsonl(data_path, limit=limit)
+
+
 class _NoopProgress:
     def __init__(self, *args, **kwargs) -> None:
         self.total = kwargs.get("total")
@@ -404,6 +567,94 @@ def _clean(text: object, limit: int = 1200) -> str:
 
 def _norm_key(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _template_stem_from_source(source: object) -> str | None:
+    """Extract template stem from source e.g. template:schema_match_pair:5 -> template:schema_match_pair."""
+    s = str(source or "").strip()
+    if not s:
+        return None
+    if s.startswith("template_hardened:"):
+        parts = s.split(":", 2)
+        return f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else s
+    if s.startswith("template:"):
+        parts = s.split(":", 2)
+        return f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else s
+    return None
+
+
+def _shingle_set(text: str, k: int = 3) -> set[int]:
+    """Word k-gram hashes for MinHash-style grouping."""
+    normalized = _norm_key(_clean(text, 2000))
+    if not normalized:
+        return set()
+    words = normalized.split()
+    if len(words) < k:
+        return {hash(normalized)}
+    out: set[int] = set()
+    for i in range(len(words) - k + 1):
+        shingle = " ".join(words[i : i + k])
+        out.add(hash(shingle) & 0x7FFFFFFF)
+    return out
+
+
+def _jaccard(a: set[int], b: set[int]) -> float:
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _near_dup_union_find(
+    parent: dict[int, int],
+    shingles: dict[int, set[int]],
+    jaccard_threshold: float,
+) -> tuple[Callable[[int], int], Callable[[int, int], None]]:
+    def find(x: int) -> int:
+        if x not in parent:
+            parent[x] = x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x: int, y: int) -> None:
+        px, py = find(x), find(y)
+        if px != py and _jaccard(shingles[px], shingles[py]) >= jaccard_threshold:
+            parent[px] = py
+
+    return find, union
+
+
+def _stable_group_id(prefix: str, *parts: object) -> str:
+    payload = "||".join(_norm_key(_clean(part, 400)) for part in parts)
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:20]
+    return f"{prefix}:{digest}"
+
+
+def _is_template_source(source: object) -> bool:
+    return str(source or "").startswith(_TEMPLATE_SOURCE_PREFIXES)
+
+
+def _source_bucket(source: object) -> str:
+    text = str(source or "").strip()
+    if not text:
+        return "unknown"
+    if text.startswith("template_hardened:"):
+        return "template_hardened"
+    if text.startswith("template:"):
+        return "template"
+    if text.startswith("structured:"):
+        return "structured"
+    if text.startswith("llm:"):
+        return "llm"
+    if text.startswith("hf:"):
+        return "hf"
+    if text.startswith("derived:"):
+        return "derived"
+    if text.startswith("prepared:"):
+        return "prepared"
+    return text.split(":", 1)[0]
 
 
 # Surrogate code points (U+D800-U+DFFF) are invalid in UTF-8 and break pandas/pyarrow.
@@ -524,6 +775,7 @@ class _PairTaskStore:
     ) -> bool:
         a = _clean(text_a, 700)
         b = _clean(text_b, 700)
+        label = _normalize_pair_task_label(task, label)
         if not a or not b or not task or not label:
             return False
         key = (task, _norm_key(a), _norm_key(b), label)
@@ -1606,6 +1858,23 @@ class _HFRegistry:
             self._cache[name] = None
             return None
 
+        if name == "fever":
+            print(f"Loading dataset `{name}` from {FEVER_TRAIN_URL}")
+            try:
+                ds = _load_fever_dataset(self.cache_dir, limit=self.limit(name))
+                self.status[name]["loaded"] = True
+                self.status[name]["rows"] = len(ds)
+                self._cache[name] = ds
+                return ds
+            except Exception as exc:
+                msg = str(exc)
+                self.status[name]["error"] = msg
+                if required and self.enforce_requirements:
+                    raise
+                _warn(f"Failed to load optional dataset `{name}`: {msg}")
+                self._cache[name] = None
+                return None
+
         if _hf_load_dataset is None:
             msg = "python package `datasets` is not installed"
             if required and self.enforce_requirements:
@@ -1705,6 +1974,171 @@ def _extract_json_string_fields(
     return out
 
 
+def _match_model_metadata(model_name: str, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not payload or not isinstance(payload, dict):
+        return None
+    items = payload.get("data")
+    if not isinstance(items, list) or not items:
+        return None
+    wanted = str(model_name or "").strip().lower()
+    if not wanted:
+        return next((item for item in items if isinstance(item, dict)), None)
+
+    def _names(item: dict[str, Any]) -> list[str]:
+        names = []
+        for key in ("id", "root", "parent"):
+            value = str(item.get(key, "") or "").strip()
+            if value:
+                names.append(value)
+        return names
+
+    exact = next(
+        (
+            item
+            for item in items
+            if isinstance(item, dict)
+            and any(name.lower() == wanted for name in _names(item))
+        ),
+        None,
+    )
+    if exact is not None:
+        return exact
+
+    partial = next(
+        (
+            item
+            for item in items
+            if isinstance(item, dict)
+            and any(wanted in name.lower() or name.lower() in wanted for name in _names(item))
+        ),
+        None,
+    )
+    if partial is not None:
+        return partial
+    if len(items) == 1 and isinstance(items[0], dict):
+        return items[0]
+    return None
+
+
+def _thinking_disable_policy(
+    *,
+    provider: str,
+    base_url: str,
+    model_name: str,
+    model_metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    model_id = (
+        str((model_metadata or {}).get("id", "") or (model_metadata or {}).get("root", "") or model_name)
+        .strip()
+    )
+    owner = str((model_metadata or {}).get("owned_by", "") or "").strip().lower()
+    lowered = model_id.lower()
+    provider_lower = str(provider or "").strip().lower()
+    host = str(urlparse(base_url).netloc or "").strip().lower()
+
+    policy: dict[str, Any] = {
+        "model_id": model_id or model_name,
+        "owned_by": owner,
+        "chat_template_kwargs": None,
+        "assistant_prefill": None,
+        "reasoning_effort": None,
+        "omit_sampling_controls": False,
+        "warning": "",
+        "reason": "",
+    }
+
+    # vLLM / compatible backends safely ignore unknown chat_template kwargs.
+    if provider_lower in {"vllm", "openai_compatible", "sglang"} or owner == "vllm":
+        policy["chat_template_kwargs"] = {
+            "enable_thinking": False,
+            "thinking": False,
+        }
+
+    # Some reasoning-tuned families still ignore template kwargs.
+    if any(token in lowered for token in ("gpt-oss", "gpt_oss", "gptoss")):
+        policy["assistant_prefill"] = "<think></think>\n"
+
+    is_openai = provider_lower == "openai" or "api.openai.com" in host or owner == "openai"
+    is_gemini_openai = "generativelanguage.googleapis.com" in host or lowered.startswith("gemini-")
+    is_deepseek = "api.deepseek.com" in host or lowered.startswith("deepseek-")
+
+    if is_openai:
+        if lowered.startswith(("gpt-5-pro", "gpt-5.2-pro", "o3-pro")):
+            policy["warning"] = (
+                f"{model_id or model_name} cannot be switched to no-thinking in Chat Completions; "
+                "these higher-effort variants require reasoning or use Responses-only flows."
+            )
+        elif lowered.startswith(("gpt-5.2-codex", "gpt-5.1-codex-max")):
+            policy["warning"] = (
+                f"{model_id or model_name} is a Codex-only reasoning variant; "
+                "Chat Completions cannot force no-thinking for this model."
+            )
+        elif lowered.startswith(("gpt-5.1", "gpt-5.2")):
+            policy["reasoning_effort"] = "none"
+        elif lowered.startswith(("gpt-5", "gpt-5-mini", "gpt-5-nano")):
+            policy["reasoning_effort"] = "minimal"
+            policy["omit_sampling_controls"] = True
+        elif lowered.startswith(("o3", "o4-mini", "o3-mini", "codex-mini-latest")) or lowered.startswith("gpt-oss"):
+            policy["reasoning_effort"] = "low"
+
+    if is_gemini_openai:
+        if lowered.startswith("gemini-2.5") and "pro" not in lowered:
+            policy["reasoning_effort"] = "none"
+        elif lowered.startswith("gemini-2.5-pro") or lowered.startswith("gemini-3"):
+            policy["warning"] = (
+                f"{model_id or model_name} does not support fully disabling thinking; "
+                "Google documents thinking-off only for Gemini 2.5 non-Pro models."
+            )
+
+    if is_deepseek:
+        if lowered.startswith("deepseek-chat"):
+            # Official non-thinking mode according to DeepSeek docs.
+            pass
+        elif lowered.startswith("deepseek-reasoner"):
+            policy["warning"] = (
+                "deepseek-reasoner is the thinking-mode model. "
+                "Use deepseek-chat if you need non-thinking behavior on the official DeepSeek API."
+            )
+
+    reasons: list[str] = []
+    if policy["chat_template_kwargs"] is not None:
+        reasons.append("chat_template_kwargs")
+    if policy["assistant_prefill"]:
+        reasons.append("assistant_prefill")
+    if policy["reasoning_effort"]:
+        reasons.append(f"reasoning_effort={policy['reasoning_effort']}")
+    if policy["omit_sampling_controls"]:
+        reasons.append("omit_sampling_controls")
+    if any(token in lowered for token in ("qwen", "deepseek", "glm", "granite", "holo", "gpt-oss")):
+        reasons.append(f"model_family={model_id or model_name}")
+    policy["reason"] = ", ".join(reasons)
+    return policy
+
+
+def _looks_like_thinking_output(content: str) -> bool:
+    text = str(content or "").strip()
+    if not text:
+        return False
+    lowered = text[:400].lower()
+    if lowered.startswith("<think") or "<think>" in lowered or "</think>" in lowered:
+        return True
+    if text.startswith("{") or text.startswith("```json"):
+        return False
+    markers = (
+        "okay, let's",
+        "let's tackle",
+        "let me think",
+        "i need to",
+        "the user wants me to",
+        "first, i",
+        "first i",
+        "i should",
+        "reasoning:",
+        "thought:",
+    )
+    return any(marker in lowered for marker in markers)
+
+
 class _LLMGenerator:
     def __init__(self, cfg: dict) -> None:
         if httpx is None:
@@ -1751,11 +2185,28 @@ class _LLMGenerator:
             )
 
         self.url = self.base_url.rstrip("/") + "/chat/completions"
+        self.models_url = self.base_url.rstrip("/") + "/models"
         limits = httpx.Limits(
             max_connections=max(64, self.concurrency * 8),
             max_keepalive_connections=max(32, self.concurrency * 4),
         )
         self.client = httpx.Client(timeout=self.timeout_seconds, limits=limits)
+        self.model_metadata = self._fetch_model_metadata()
+        self.thinking_disable = _thinking_disable_policy(
+            provider=self.provider,
+            base_url=self.base_url,
+            model_name=self.model,
+            model_metadata=self.model_metadata,
+        )
+        if self.thinking_disable.get("reason"):
+            _warn(
+                "LLM thinking suppression enabled: "
+                f"model={self.thinking_disable.get('model_id') or self.model} "
+                f"owner={self.thinking_disable.get('owned_by') or 'unknown'} "
+                f"strategy={self.thinking_disable.get('reason')}"
+            )
+        if self.thinking_disable.get("warning"):
+            _warn(str(self.thinking_disable["warning"]))
 
         self._stats_lock = threading.Lock()
         self._started = time.perf_counter()
@@ -1768,6 +2219,34 @@ class _LLMGenerator:
         self._parse_fail_total = 0
         self._parse_recovered_total = 0
         self._finish_reason_counts: dict[str, int] = defaultdict(int)
+
+    def _fetch_model_metadata(self) -> dict[str, Any] | None:
+        if self.provider not in {"vllm", "openai_compatible", "sglang", "openai"}:
+            return None
+        try:
+            resp = self.client.get(self.models_url)
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception as exc:
+            _warn(f"Unable to fetch {self.models_url}: {exc}")
+            return None
+        matched = _match_model_metadata(self.model, payload if isinstance(payload, dict) else None)
+        if matched is not None:
+            return matched
+        return None
+
+    def stats_snapshot(self) -> dict[str, Any]:
+        with self._stats_lock:
+            return {
+                "requests_total": self._requests_total,
+                "requests_failed": self._requests_failed,
+                "retries_total": self._retries_total,
+                "generated_total": self._generated_total,
+                "accepted_total": self._accepted_total,
+                "parse_fail_total": self._parse_fail_total,
+                "parse_recovered_total": self._parse_recovered_total,
+                "finish_reason_counts": dict(self._finish_reason_counts),
+            }
 
     def _record_request(self, *, success: bool, retries: int, finish_reason: str = "") -> None:
         with self._stats_lock:
@@ -1828,21 +2307,50 @@ class _LLMGenerator:
             f"acc/gen={accept_ratio:.2%} parse_recovered={parse_recovered}{finish_reason_text}"
         )
 
-    def _request(self, system_prompt: str, user_prompt: str) -> str:
+    def _request(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        force_prefill_thinking_closed: bool = False,
+    ) -> str:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        assistant_prefill = None
+        if force_prefill_thinking_closed:
+            assistant_prefill = str(
+                self.thinking_disable.get("assistant_prefill") or "<think></think>\n"
+            )
+        elif self.thinking_disable.get("assistant_prefill"):
+            assistant_prefill = str(self.thinking_disable["assistant_prefill"])
+        if assistant_prefill:
+            messages.append({"role": "assistant", "content": assistant_prefill})
+
         payload = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": self.temperature,
-            "top_p": self.top_p,
+            "messages": messages,
             "max_tokens": self.max_tokens,
         }
+        if not bool(self.thinking_disable.get("omit_sampling_controls")):
+            payload["temperature"] = self.temperature
+            payload["top_p"] = self.top_p
+        if self.provider in {"openai", "openai_compatible", "vllm", "sglang"}:
+            payload["response_format"] = {"type": "json_object"}
+        if self.thinking_disable.get("reasoning_effort"):
+            payload["reasoning_effort"] = self.thinking_disable["reasoning_effort"]
+        chat_template_kwargs = self.thinking_disable.get("chat_template_kwargs")
+        if (
+            chat_template_kwargs
+            and isinstance(chat_template_kwargs, dict)
+            and self.provider in {"openai_compatible", "vllm", "sglang"}
+        ):
+            payload["extra_body"] = {"chat_template_kwargs": chat_template_kwargs}
 
         last_err = ""
         for attempt in range(1, self.max_retries + 1):
@@ -1886,7 +2394,8 @@ class _LLMGenerator:
         else:
             system = (
                 "Generate synthetic classification data. "
-                "Return STRICT JSON only, no markdown fences."
+                "Return STRICT JSON only, no markdown fences. "
+                "Do not explain, think aloud, or prepend commentary."
             )
             user = (
                 f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
@@ -1897,6 +2406,10 @@ class _LLMGenerator:
             )
         raw = self._request(system, user)
         payload = _parse_json_content(raw)
+        if payload is None and _looks_like_thinking_output(raw):
+            _warn(f"Detected reasoning output for {task}::{label}; retrying with forced no-thinking.")
+            raw = self._request(system, user, force_prefill_thinking_closed=True)
+            payload = _parse_json_content(raw)
         if not payload:
             recovered = _extract_json_string_fields(
                 content=raw,
@@ -1937,7 +2450,8 @@ class _LLMGenerator:
         else:
             system = (
                 "Generate synthetic text-pair classification data. "
-                "Return STRICT JSON only, no markdown fences."
+                "Return STRICT JSON only, no markdown fences. "
+                "Do not explain, think aloud, or prepend commentary."
             )
             user = (
                 f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
@@ -1948,6 +2462,10 @@ class _LLMGenerator:
             )
         raw = self._request(system, user)
         payload = _parse_json_content(raw)
+        if payload is None and _looks_like_thinking_output(raw):
+            _warn(f"Detected reasoning output for {task}::{label}; retrying with forced no-thinking.")
+            raw = self._request(system, user, force_prefill_thinking_closed=True)
+            payload = _parse_json_content(raw)
         if not payload:
             recovered_a = _extract_json_string_fields(
                 content=raw,
@@ -2306,7 +2824,7 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
                 "novelty_pair",
                 ex.get("premise", ""),
                 ex.get("hypothesis", ""),
-                "contradiction" if is_conflict else "novel",
+                "changed" if is_conflict else "novel",
                 f"hf:{dataset_name}",
             )
 
@@ -2455,13 +2973,13 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
             )
 
 
-def _add_temporal_change_rows(
+def _add_changed_rows(
     rows: _PairTaskStore, *, target_per_task_label: int, rng: random.Random
 ) -> None:
-    while rows.count("novelty_pair", "temporal_change") < target_per_task_label:
-        idx = rows.count("novelty_pair", "temporal_change")
+    while rows.count("novelty_pair", "changed") < target_per_task_label:
+        idx = rows.count("novelty_pair", "changed")
         topic = idx % 5
-        if topic == 0:
+        if topic in {0, 3}:
             old = f"I live in City {idx}."
             new = f"I moved to City {idx + 1} last month."
         elif topic == 1:
@@ -2470,13 +2988,20 @@ def _add_temporal_change_rows(
         elif topic == 2:
             old = f"I wake up at {6 + (idx % 5)} AM every day."
             new = f"I changed my routine and now wake up at {7 + (idx % 5)} AM."
-        elif topic == 3:
+        else:
             old = f"My monthly budget is ${1000 + idx}."
             new = f"My monthly budget increased to ${1200 + idx} this quarter."
-        else:
-            old = f"I drink {1 + (idx % 2)} cups of coffee each morning."
-            new = f"I stopped that habit and now drink tea instead as of week {idx}."
-        rows.add("novelty_pair", old, new, "temporal_change", "template:temporal_change")
+        if idx % 2 == 1:
+            old = f"{old} I also avoid shellfish."
+            new = f"{new} I no longer avoid shellfish."
+        rows.add(
+            "novelty_pair",
+            old,
+            new,
+            "changed",
+            "template:changed",
+            extras={"group_id": f"template:novelty_pair:{idx}"},
+        )
 
 
 def _fill_pair_tasks_without_llm(
@@ -2488,7 +3013,7 @@ def _fill_pair_tasks_without_llm(
 ) -> None:
     if "novelty_pair" in task_labels:
         _fill_template_novelty_rows(rows, target_per_task_label=target_per_task_label)
-        _add_temporal_change_rows(rows, target_per_task_label=target_per_task_label, rng=rng)
+        _add_changed_rows(rows, target_per_task_label=target_per_task_label, rng=rng)
     if "schema_match_pair" in task_labels:
         _fill_template_schema_rows(rows, target_per_task_label=target_per_task_label)
     for task in (
@@ -2558,10 +3083,29 @@ def _add_glue_novelty_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None:
         )
 
 
-def _add_fever_schema_match_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None:
+def _add_fever_schema_match_rows(
+    rows: _PairTaskStore,
+    registry: _HFRegistry,
+    *,
+    target_per_task_label: int | None = None,
+) -> None:
     ds = registry.get("fever")
     if ds is None:
         return
+    fever_target_per_label = None
+    if target_per_task_label is not None:
+        fever_target_per_label = max(
+            1,
+            round(
+                target_per_task_label
+                * float(
+                    _TASK_REQUIRED_SOURCE_TARGET_RATIOS.get("schema_match_pair", {}).get(
+                        "hf:fever", 1.0
+                    )
+                )
+            ),
+        )
+    fever_counts = {"match": 0, "no_match": 0}
     for idx, ex in enumerate(
         _iter_dataset_rows(
             ds, limit=registry.limit("fever"), desc="Schema/reconsolidation rows [fever]"
@@ -2589,14 +3133,26 @@ def _add_fever_schema_match_rows(rows: _PairTaskStore, registry: _HFRegistry) ->
             recon_label = "not_relevant"
         else:
             continue
-        rows.add("schema_match_pair", claim, evidence, schema_label, "hf:fever")
+        if fever_target_per_label is not None and fever_counts[schema_label] >= fever_target_per_label:
+            continue
+        group_id = f"hf:fever:{idx}"
+        added_schema = rows.add(
+            "schema_match_pair",
+            claim,
+            evidence,
+            schema_label,
+            "hf:fever",
+            extras={"group_id": group_id},
+        )
+        if added_schema:
+            fever_counts[schema_label] += 1
         rows.add(
             "reconsolidation_candidate_pair",
             claim,
             evidence,
             recon_label,
             "hf:fever",
-            extras={"group_id": f"hf:fever:{idx}"},
+            extras={"group_id": group_id},
         )
 
 
@@ -2739,6 +3295,13 @@ def _seed_fragment(single_pools: dict[str, list[str]], *, rng: random.Random, id
     return f"{pack['topic'].title()} preference reference {idx}"
 
 
+def _cycle_choice(options: list[str] | tuple[str, ...], idx: int, *, offset: int = 0) -> str:
+    values = list(options)
+    if not values:
+        return ""
+    return values[(idx + offset) % len(values)]
+
+
 def _structured_row_extras(
     *,
     topic: str,
@@ -2750,11 +3313,13 @@ def _structured_row_extras(
     dependency_count: int,
     support_count: int | None = None,
     mixed_topic: bool | None = None,
+    context_tags: list[str] | None = None,
+    group_id: str | None = None,
 ) -> dict[str, Any]:
     extras: dict[str, Any] = {
         "memory_type": memory_type,
         "namespace": topic,
-        "context_tags": [topic],
+        "context_tags": list(context_tags or [topic]),
         "importance": round(max(0.0, min(1.0, importance)), 4),
         "confidence": round(max(0.0, min(1.0, confidence)), 4),
         "access_count": int(max(0, access_count)),
@@ -2765,7 +3330,645 @@ def _structured_row_extras(
         extras["support_count"] = int(max(1, support_count))
     if mixed_topic is not None:
         extras["mixed_topic"] = bool(mixed_topic)
+    if group_id is not None:
+        extras["group_id"] = str(group_id)
     return extras
+
+
+def _count_single_rows_with_source_prefix(
+    rows: _SingleTaskStore,
+    *,
+    task: str,
+    label: str,
+    prefix: str,
+) -> int:
+    return sum(
+        1
+        for row in rows.rows
+        if str(row.get("task", "")) == task
+        and str(row.get("label", "")) == label
+        and str(row.get("source", "")).startswith(prefix)
+    )
+
+
+def _hardening_target(target_per_task_label: int) -> int:
+    return min(max(1, target_per_task_label // 5), 2500, max(1, target_per_task_label // 2))
+
+
+def _router_hardening_shell(idx: int, *, single_pools: dict[str, list[str]], rng: random.Random) -> str:
+    pack = _topic_pack(idx)
+    seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+    shell_idx = idx % 3
+    if shell_idx == 0:
+        return (
+            f"Cluster review {idx}: {pack['gist']}. "
+            f"Support notes mention {seed.lower()} and a follow-up action item."
+        )
+    if shell_idx == 1:
+        return (
+            f"Session draft {idx}: {pack['fact']}. "
+            f"Supporting line references {seed.lower()} for later consolidation."
+        )
+    return (
+        f"Memory brief {idx}: {pack['relevant']}. "
+        f"Additional note records {seed.lower()} in the same working set."
+    )
+
+
+def _inject_hardened_router_rows(
+    *,
+    rows: _SingleTaskStore,
+    task_labels: dict[str, list[str]],
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+) -> None:
+    hard_target = _hardening_target(target_per_task_label)
+
+    if "consolidation_gist_quality" in task_labels:
+        for label in ("accept", "reject"):
+            while (
+                _count_single_rows_with_source_prefix(
+                    rows,
+                    task="consolidation_gist_quality",
+                    label=label,
+                    prefix=f"template_hardened:consolidation_gist_quality:{label}",
+                )
+                < hard_target
+                and rows.count("consolidation_gist_quality", label) < target_per_task_label
+            ):
+                idx = rows.count("consolidation_gist_quality", label)
+                pack = _topic_pack(idx)
+                other = _other_topic_pack(idx)
+                text = _router_hardening_shell(idx, single_pools=single_pools, rng=rng)
+                if label == "accept":
+                    group_id = f"template_hardened:consolidation_gist_quality:{idx}"
+                    extras = _structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type="semantic_fact",
+                        importance=0.66 + (0.03 * (idx % 4)),
+                        confidence=0.78 + (0.03 * (idx % 3)),
+                        access_count=2 + (idx % 3),
+                        age_days=9 + (idx % 24),
+                        dependency_count=1 + (idx % 2),
+                        support_count=4 + (idx % 3),
+                        mixed_topic=False,
+                        context_tags=[pack["topic"]],
+                        group_id=group_id,
+                    )
+                else:
+                    group_id = f"template_hardened:consolidation_gist_quality:{idx}"
+                    extras = _structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type="semantic_fact",
+                        importance=0.38 + (0.03 * (idx % 3)),
+                        confidence=0.46 + (0.04 * (idx % 2)),
+                        access_count=1 + (idx % 2),
+                        age_days=34 + (idx % 60),
+                        dependency_count=idx % 2,
+                        support_count=1 + (idx % 2),
+                        mixed_topic=True,
+                        context_tags=[pack["topic"], other["topic"]],
+                        group_id=group_id,
+                    )
+                rows.add(
+                    "consolidation_gist_quality",
+                    text,
+                    label,
+                    f"template_hardened:consolidation_gist_quality:{label}",
+                    extras=extras,
+                )
+
+    if "forgetting_action_policy" in task_labels:
+        policy_profiles: dict[str, dict[str, Any]] = {
+            "keep": {
+                "importance": 0.86,
+                "confidence": 0.88,
+                "access_count": 7,
+                "age_days": 5,
+                "dependency_count": 2,
+                "support_count": 5,
+                "mixed_topic": False,
+                "memory_type": "constraint",
+            },
+            "decay": {
+                "importance": 0.52,
+                "confidence": 0.73,
+                "access_count": 3,
+                "age_days": 48,
+                "dependency_count": 1,
+                "support_count": 3,
+                "mixed_topic": False,
+                "memory_type": "episodic_event",
+            },
+            "silence": {
+                "importance": 0.28,
+                "confidence": 0.6,
+                "access_count": 1,
+                "age_days": 132,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+                "memory_type": "episodic_event",
+            },
+            "compress": {
+                "importance": 0.49,
+                "confidence": 0.77,
+                "access_count": 2,
+                "age_days": 104,
+                "dependency_count": 4,
+                "support_count": 5,
+                "mixed_topic": False,
+                "memory_type": "semantic_fact",
+            },
+            "delete": {
+                "importance": 0.11,
+                "confidence": 0.39,
+                "access_count": 0,
+                "age_days": 366,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+                "memory_type": "scratch",
+            },
+        }
+        for label in task_labels["forgetting_action_policy"]:
+            profile = policy_profiles.get(label)
+            if profile is None:
+                continue
+            while (
+                _count_single_rows_with_source_prefix(
+                    rows,
+                    task="forgetting_action_policy",
+                    label=label,
+                    prefix=f"template_hardened:forgetting_action_policy:{label}",
+                )
+                < hard_target
+                and rows.count("forgetting_action_policy", label) < target_per_task_label
+            ):
+                idx = rows.count("forgetting_action_policy", label)
+                pack = _topic_pack(idx)
+                other = _other_topic_pack(idx)
+                text = (
+                    f"Retention review {idx}: {pack['fact']}. "
+                    f"Reference note keeps {pack['gist'].lower()} near {other['topic']} follow-up details."
+                )
+                group_id = f"template_hardened:forgetting_action_policy:{idx}"
+                context_tags = [pack["topic"]]
+                if bool(profile["mixed_topic"]):
+                    context_tags.append(other["topic"])
+                rows.add(
+                    "forgetting_action_policy",
+                    text,
+                    label,
+                    f"template_hardened:forgetting_action_policy:{label}",
+                    extras=_structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type=str(profile["memory_type"]),
+                        importance=float(profile["importance"]) + (0.01 * (idx % 2)),
+                        confidence=float(profile["confidence"]) + (0.01 * (idx % 2)),
+                        access_count=int(profile["access_count"]) + (idx % 2),
+                        age_days=int(profile["age_days"]) + (idx % 18),
+                        dependency_count=int(profile["dependency_count"]) + (idx % 2),
+                        support_count=int(profile["support_count"]) + (idx % 2),
+                        mixed_topic=bool(profile["mixed_topic"]),
+                        context_tags=context_tags,
+                        group_id=group_id,
+                    ),
+                )
+
+
+def _fill_structured_router_quality_rows(
+    *,
+    rows: _SingleTaskStore,
+    task_labels: dict[str, list[str]],
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+) -> None:
+    gist_accept_clauses = (
+        "the recap keeps the anchor detail and trims only obvious repetition",
+        "the recap stays close to the original decision boundary",
+        "the recap preserves the main action detail even with a side reference",
+    )
+    gist_reject_clauses = (
+        "the recap keeps the topic but blurs one important boundary",
+        "the recap folds in a nearby thread and softens a concrete detail",
+        "the recap sounds plausible but smooths away one action cue",
+    )
+    gist_boundary_clauses = (
+        "the recap stays readable but leaves one supporting detail open",
+        "the recap keeps most of the thread while a side reference drifts a little",
+        "the recap is concise although one boundary now feels softer",
+    )
+    if "consolidation_gist_quality" in task_labels:
+        for label in ("accept", "reject"):
+            while rows.count("consolidation_gist_quality", label) < target_per_task_label:
+                idx = rows.count("consolidation_gist_quality", label)
+                pack = _topic_pack(idx)
+                other = _other_topic_pack(idx)
+                seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+                boundary = idx % 6 == 0
+                group_id = f"structured:consolidation_gist_quality:{idx}"
+                accept = label == "accept"
+                memory_types = (
+                    ["semantic_fact", "preference", "constraint"]
+                    if accept
+                    else ["semantic_fact", "episodic_event", "preference"]
+                )
+                memory_type = _cycle_choice(memory_types, idx, offset=1 if boundary else 0)
+                importance = (0.56 if accept else 0.49) + (0.03 * (idx % 5))
+                confidence = (0.6 if accept else 0.55) + (0.035 * ((idx + 1) % 4))
+                access_count = 1 + (idx % 4)
+                age_days = (10 if accept else 18) + (idx % (54 if accept else 72))
+                dependency_count = (1 if accept else 0) + (idx % 3)
+                support_count = (2 if accept else 1) + (idx % 3)
+                mixed_topic = bool((idx + (0 if accept else 1)) % (6 if accept else 3) == 0)
+                if boundary:
+                    importance += -0.05 if accept else 0.04
+                    confidence += -0.04 if accept else 0.03
+                    access_count = max(1, access_count + (0 if accept else 1))
+                    support_count = max(1, support_count + (0 if accept else 1))
+                    mixed_topic = True
+                clause_pool = gist_boundary_clauses if boundary else (
+                    gist_accept_clauses if accept else gist_reject_clauses
+                )
+                clause = _cycle_choice(clause_pool, idx, offset=1 if mixed_topic else 0)
+                text = (
+                    f"Cluster digest {idx}: {pack['gist']}. Review notes say {clause}. "
+                    f"One supporting line keeps {seed.lower()} beside {other['topic']} follow-up context."
+                )
+                context_tags = [pack["topic"]]
+                if mixed_topic:
+                    context_tags.append(other["topic"])
+                rows.add(
+                    "consolidation_gist_quality",
+                    text,
+                    label,
+                    f"structured:consolidation_gist_quality:{label}",
+                    extras=_structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type=memory_type,
+                        importance=importance,
+                        confidence=confidence,
+                        access_count=access_count,
+                        age_days=age_days,
+                        dependency_count=dependency_count,
+                        support_count=support_count,
+                        mixed_topic=mixed_topic,
+                        context_tags=context_tags,
+                        group_id=group_id,
+                    ),
+                )
+
+    if "forgetting_action_policy" in task_labels:
+        reuse_high = (
+            "keeps resurfacing in active reviews",
+            "shows up whenever the same plan is revisited",
+            "still shapes live decisions in the working set",
+        )
+        reuse_mid = (
+            "returns in periodic reviews",
+            "still helps in a few follow-up checks",
+            "comes back when the topic cycles around again",
+        )
+        reuse_low = (
+            "rarely changes the next answer",
+            "mostly sits in the background of later notes",
+            "only appears when an old thread gets reopened",
+        )
+        overlap_low = (
+            "has only light overlap with nearby notes",
+            "does not duplicate much of the surrounding context",
+            "keeps a fairly distinct role in the current bundle",
+        )
+        overlap_mid = (
+            "shares some wording with neighboring summaries",
+            "partly overlaps with a nearby recap",
+            "echoes one or two related notes in the same bundle",
+        )
+        overlap_high = (
+            "appears in several near-duplicate summaries",
+            "is repeated across overlapping notes",
+            "keeps resurfacing through multiple paraphrased recaps",
+        )
+        dependency_high = (
+            "still feeds several downstream decisions",
+            "connects to multiple active follow-up notes",
+            "anchors a few dependent reminders",
+        )
+        dependency_mid = (
+            "still touches one or two dependent notes",
+            "connects to a small chain of follow-up items",
+            "keeps a modest link to later reminders",
+        )
+        dependency_low = (
+            "hardly links to any active follow-up",
+            "has almost no downstream dependency left",
+            "does not drive much else in the current graph",
+        )
+        resolution_live = (
+            "the underlying issue is still live",
+            "the original need remains open",
+            "the note still points at an unresolved commitment",
+        )
+        resolution_mixed = (
+            "parts of the issue look settled while some context still matters",
+            "the original need is fading but not fully gone",
+            "the note is partly resolved yet still useful in narrow cases",
+        )
+        resolution_done = (
+            "the original prompt is already resolved",
+            "the temporary issue has already closed out",
+            "the note no longer points at an active decision",
+        )
+        for label in task_labels["forgetting_action_policy"]:
+            while rows.count("forgetting_action_policy", label) < target_per_task_label:
+                idx = rows.count("forgetting_action_policy", label)
+                pack = _topic_pack(idx)
+                other = _other_topic_pack(idx)
+                seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+                group_id = f"structured:forgetting_action_policy:{idx}"
+                boundary = idx % 7 == 0
+                if label == "keep":
+                    memory_type = _cycle_choice(
+                        ["constraint", "preference", "semantic_fact"],
+                        idx,
+                    )
+                    importance = 0.6 + (0.045 * (idx % 4))
+                    confidence = 0.62 + (0.05 * ((idx + 1) % 3))
+                    access_count = 2 + (idx % 4)
+                    age_days = 8 + (idx % 58)
+                    dependency_count = 1 + (idx % 3)
+                    support_count = 2 + (idx % 3)
+                    mixed_topic = idx % 6 == 0
+                    if boundary:
+                        importance -= 0.08
+                        confidence -= 0.05
+                        access_count = max(1, access_count - 1)
+                        age_days += 24
+                        mixed_topic = True
+                    clauses = (
+                        _cycle_choice(reuse_mid if boundary else reuse_high, idx),
+                        _cycle_choice(overlap_mid if boundary else overlap_low, idx),
+                        _cycle_choice(dependency_mid if boundary else dependency_high, idx),
+                        _cycle_choice(resolution_mixed if boundary else resolution_live, idx),
+                    )
+                elif label == "decay":
+                    memory_type = _cycle_choice(
+                        ["episodic_event", "observation", "preference"],
+                        idx,
+                    )
+                    importance = 0.38 + (0.06 * (idx % 4))
+                    confidence = 0.5 + (0.05 * ((idx + 1) % 3))
+                    access_count = 2 + (idx % 3)
+                    age_days = 28 + (idx % 92)
+                    dependency_count = idx % 3
+                    support_count = 1 + (idx % 3)
+                    mixed_topic = idx % 4 == 0
+                    if boundary:
+                        importance += 0.06
+                        confidence += 0.03
+                        age_days = max(8, age_days - 18)
+                    clauses = (
+                        _cycle_choice(reuse_high if boundary else reuse_mid, idx),
+                        _cycle_choice(overlap_mid, idx),
+                        _cycle_choice(dependency_high if boundary else dependency_mid, idx),
+                        _cycle_choice(resolution_live if boundary else resolution_mixed, idx),
+                    )
+                elif label == "silence":
+                    memory_type = _cycle_choice(
+                        ["episodic_event", "observation", "scratch"],
+                        idx,
+                    )
+                    importance = 0.24 + (0.05 * (idx % 4))
+                    confidence = 0.4 + (0.05 * ((idx + 2) % 3))
+                    access_count = idx % 2
+                    age_days = 54 + (idx % 150)
+                    dependency_count = idx % 3
+                    support_count = 1 + (idx % 3)
+                    mixed_topic = True
+                    if boundary:
+                        importance += 0.07
+                        confidence += 0.04
+                        access_count = 1
+                        age_days = max(18, age_days - 20)
+                    clauses = (
+                        _cycle_choice(reuse_mid if boundary else reuse_low, idx),
+                        _cycle_choice(overlap_high if boundary else overlap_mid, idx),
+                        _cycle_choice(dependency_mid if boundary else dependency_low, idx),
+                        _cycle_choice(resolution_mixed, idx),
+                    )
+                elif label == "compress":
+                    memory_type = _cycle_choice(
+                        ["semantic_fact", "constraint", "observation"],
+                        idx,
+                    )
+                    importance = 0.42 + (0.06 * (idx % 4))
+                    confidence = 0.56 + (0.05 * ((idx + 1) % 3))
+                    access_count = 1 + (idx % 3)
+                    age_days = 24 + (idx % 108)
+                    dependency_count = 1 + (idx % 4)
+                    support_count = 3 + (idx % 3)
+                    mixed_topic = idx % 5 == 0
+                    if boundary:
+                        importance += 0.05
+                        access_count += 1
+                        age_days = max(10, age_days - 16)
+                    clauses = (
+                        _cycle_choice(reuse_high if boundary else reuse_mid, idx),
+                        _cycle_choice(overlap_mid if boundary else overlap_high, idx),
+                        _cycle_choice(dependency_mid if boundary else dependency_high, idx),
+                        _cycle_choice(resolution_live if boundary else resolution_mixed, idx),
+                    )
+                else:
+                    memory_type = _cycle_choice(
+                        ["scratch", "observation", "episodic_event"],
+                        idx,
+                    )
+                    importance = 0.08 + (0.04 * (idx % 4))
+                    confidence = 0.2 + (0.05 * ((idx + 1) % 3))
+                    access_count = 0
+                    age_days = 140 + (idx % 280)
+                    dependency_count = idx % 2
+                    support_count = 1 + (idx % 2)
+                    mixed_topic = idx % 2 == 0
+                    if boundary:
+                        importance += 0.06
+                        confidence += 0.05
+                        age_days = max(50, age_days - 48)
+                    clauses = (
+                        _cycle_choice(reuse_mid if boundary else reuse_low, idx),
+                        _cycle_choice(overlap_mid if boundary else overlap_low, idx),
+                        _cycle_choice(dependency_mid if boundary else dependency_low, idx),
+                        _cycle_choice(resolution_mixed if boundary else resolution_done, idx),
+                    )
+                text = (
+                    f"Retention candidate {idx}: {pack['fact']}. "
+                    f"Review notes say the detail {clauses[0]}, {clauses[1]}, {clauses[2]}, "
+                    f"and {clauses[3]}. A nearby {other['topic']} thread still mentions {seed.lower()}."
+                )
+                context_tags = [pack["topic"]]
+                if mixed_topic:
+                    context_tags.append(other["topic"])
+                rows.add(
+                    "forgetting_action_policy",
+                    text,
+                    label,
+                    f"structured:forgetting_action_policy:{label}",
+                    extras=_structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type=memory_type,
+                        importance=importance,
+                        confidence=confidence,
+                        access_count=access_count,
+                        age_days=age_days,
+                        dependency_count=dependency_count,
+                        support_count=support_count,
+                        mixed_topic=mixed_topic,
+                        context_tags=context_tags,
+                        group_id=group_id,
+                    ),
+                )
+
+
+def _fill_structured_router_ordinal_rows(
+    *,
+    rows: _SingleTaskStore,
+    task_labels: dict[str, list[str]],
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+) -> None:
+    task_profiles: dict[str, dict[str, dict[str, Any]]] = {
+        "salience_bin": {
+            "low": {"memory_types": ["scratch", "observation", "episodic_event"], "importance": 0.28, "confidence": 0.48, "access_count": 0, "age_days": 110, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
+            "medium": {"memory_types": ["episodic_event", "semantic_fact", "observation"], "importance": 0.46, "confidence": 0.6, "access_count": 2, "age_days": 42, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
+            "high": {"memory_types": ["constraint", "semantic_fact", "preference"], "importance": 0.62, "confidence": 0.72, "access_count": 3, "age_days": 18, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+        },
+        "importance_bin": {
+            "low": {"memory_types": ["scratch", "observation", "episodic_event"], "importance": 0.22, "confidence": 0.42, "access_count": 0, "age_days": 130, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
+            "medium": {"memory_types": ["semantic_fact", "observation", "preference"], "importance": 0.5, "confidence": 0.58, "access_count": 2, "age_days": 44, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
+            "high": {"memory_types": ["constraint", "preference", "semantic_fact"], "importance": 0.78, "confidence": 0.72, "access_count": 3, "age_days": 18, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+        },
+        "confidence_bin": {
+            "low": {"memory_types": ["observation", "episodic_event", "semantic_fact"], "importance": 0.42, "confidence": 0.26, "access_count": 1, "age_days": 38, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
+            "medium": {"memory_types": ["semantic_fact", "observation", "preference"], "importance": 0.48, "confidence": 0.55, "access_count": 2, "age_days": 28, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
+            "high": {"memory_types": ["knowledge", "constraint", "semantic_fact"], "importance": 0.56, "confidence": 0.78, "access_count": 3, "age_days": 18, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+        },
+        "decay_profile": {
+            "very_fast": {"memory_types": ["scratch", "episodic_event", "observation"], "importance": 0.24, "confidence": 0.38, "access_count": 0, "age_days": 170, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
+            "fast": {"memory_types": ["episodic_event", "observation", "semantic_fact"], "importance": 0.34, "confidence": 0.48, "access_count": 1, "age_days": 95, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
+            "medium": {"memory_types": ["observation", "semantic_fact", "preference"], "importance": 0.46, "confidence": 0.58, "access_count": 2, "age_days": 56, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
+            "slow": {"memory_types": ["semantic_fact", "preference", "constraint"], "importance": 0.58, "confidence": 0.68, "access_count": 3, "age_days": 30, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+            "very_slow": {"memory_types": ["constraint", "semantic_fact", "preference"], "importance": 0.69, "confidence": 0.76, "access_count": 4, "age_days": 14, "dependency_count": 3, "support_count": 4, "mixed_topic": False},
+        },
+    }
+    review_clauses = (
+        "still comes up when the same thread returns",
+        "shares the workspace with one nearby follow-up",
+        "mostly stays in the background until the topic repeats",
+        "keeps a small footprint in current review passes",
+    )
+    support_clauses = (
+        "reviewers still keep one supporting line around",
+        "a nearby summary keeps a reference in circulation",
+        "one follow-up note still echoes the detail",
+        "the working set keeps a compact reminder attached",
+    )
+    for task in sorted(ORDINAL_ROUTER_TASKS & set(task_labels)):
+        profile_map = task_profiles[task]
+        for label in task_labels[task]:
+            base = profile_map[label]
+            while rows.count(task, label) < target_per_task_label:
+                idx = rows.count(task, label)
+                pack = _topic_pack(idx)
+                other = _other_topic_pack(idx)
+                seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+                boundary = idx % 6 == 0
+                group_id = f"structured:{task}:{idx}"
+                importance = float(base["importance"]) + (0.035 * (idx % 3))
+                confidence = float(base["confidence"]) + (0.04 * ((idx + 1) % 3))
+                access_count = int(base["access_count"]) + (idx % 3)
+                age_days = int(base["age_days"]) + (idx % 30)
+                dependency_count = int(base["dependency_count"]) + (idx % 2)
+                support_count = int(base["support_count"]) + (idx % 2)
+                mixed_topic = bool(base["mixed_topic"])
+                memory_type = _cycle_choice(
+                    list(base["memory_types"]),
+                    idx,
+                    offset=1 if boundary else 0,
+                )
+                if boundary:
+                    if label in {"low", "very_fast"}:
+                        importance += 0.08
+                        confidence += 0.05
+                        access_count += 1
+                        age_days = max(6, age_days - 20)
+                    elif label in {"high", "very_slow"}:
+                        importance -= 0.07
+                        confidence -= 0.05
+                        access_count = max(1, access_count - 1)
+                        age_days += 12
+                    else:
+                        importance += 0.02
+                        confidence += 0.01
+                        mixed_topic = True
+                    mixed_topic = True if label not in {"high", "very_slow"} else mixed_topic
+                context_tags = [pack["topic"]]
+                if mixed_topic:
+                    context_tags.append(other["topic"])
+                review_clause = _cycle_choice(
+                    review_clauses,
+                    idx,
+                    offset=(1 if mixed_topic else 0),
+                )
+                support_clause = _cycle_choice(
+                    support_clauses,
+                    idx,
+                    offset=(1 if boundary else 0),
+                )
+                text_variants = [
+                    f"Memory note {idx}: {pack['fact']}. Review notes say it {review_clause}.",
+                    f"Memory note {idx}: {pack['relevant']}. The current thread still mentions {seed.lower()} while {support_clause}.",
+                    f"Memory note {idx}: {pack['gist']}. A nearby {other['topic']} thread stays visible and {support_clause}.",
+                ]
+                if boundary:
+                    text_variants.append(
+                        f"Memory note {idx}: {pack['gist']}. Reviewers note a small overlap with {other['topic']} while {seed.lower()} remains attached."
+                    )
+                rows.add(
+                    task,
+                    text_variants[idx % len(text_variants)],
+                    label,
+                    f"structured:{task}:{label}",
+                    extras=_structured_row_extras(
+                        topic=pack["topic"],
+                        memory_type=memory_type,
+                        importance=importance,
+                        confidence=confidence,
+                        access_count=access_count,
+                        age_days=age_days,
+                        dependency_count=dependency_count,
+                        support_count=support_count,
+                        mixed_topic=mixed_topic,
+                        context_tags=context_tags,
+                        group_id=group_id,
+                    ),
+                )
+
+
+def _apply_router_feature_enrichment(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "text" not in df.columns:
+        return df
+    enriched = df.copy()
+    feature_rows = [
+        derive_memory_type_feature_columns(text) for text in enriched["text"].astype(str).tolist()
+    ]
+    feature_df = pd.DataFrame(feature_rows)
+    for column in MEMORY_TYPE_FEATURE_COLUMNS:
+        enriched[column] = feature_df[column]
+    return enriched
 
 
 def _seed_router_regression_from_existing(
@@ -2814,128 +4017,20 @@ def _fill_router_tasks_without_llm(
     single_pools: dict[str, list[str]],
     rng: random.Random,
 ) -> None:
-    if "consolidation_gist_quality" in task_labels:
-        while rows.count("consolidation_gist_quality", "accept") < target_per_task_label:
-            idx = rows.count("consolidation_gist_quality", "accept")
-            pack = _topic_pack(idx)
-            seed = _seed_fragment(single_pools, rng=rng, idx=idx)
-            text = (
-                f"{pack['gist']} across {3 + (idx % 4)} related conversations; "
-                f"anchor detail {idx}: {seed.lower()}."
-            )
-            rows.add(
-                "consolidation_gist_quality",
-                text,
-                "accept",
-                "template:consolidation_gist_quality:accept",
-                extras=_structured_row_extras(
-                    topic=pack["topic"],
-                    memory_type="semantic_fact",
-                    importance=0.74,
-                    confidence=0.88,
-                    access_count=4 + (idx % 4),
-                    age_days=10 + (idx % 20),
-                    dependency_count=1 + (idx % 3),
-                    support_count=3 + (idx % 4),
-                    mixed_topic=False,
-                ),
-            )
-        while rows.count("consolidation_gist_quality", "reject") < target_per_task_label:
-            idx = rows.count("consolidation_gist_quality", "reject")
-            pack = _topic_pack(idx)
-            text = (
-                f"Various things happened in multiple conversations around {pack['topic']} "
-                f"and some details changed later in note {idx}."
-            )
-            rows.add(
-                "consolidation_gist_quality",
-                text,
-                "reject",
-                "template:consolidation_gist_quality:reject",
-                extras=_structured_row_extras(
-                    topic=pack["topic"],
-                    memory_type="episodic_event",
-                    importance=0.28,
-                    confidence=0.42,
-                    access_count=0,
-                    age_days=45 + (idx % 120),
-                    dependency_count=0,
-                    support_count=1 + (idx % 2),
-                    mixed_topic=True,
-                ),
-            )
-
-    if "forgetting_action_policy" in task_labels:
-        policy_profiles: dict[str, dict[str, Any]] = {
-            "keep": {
-                "memory_type": "constraint",
-                "importance": 0.95,
-                "confidence": 0.94,
-                "access_count": 9,
-                "age_days": 2,
-                "dependency_count": 3,
-                "template": "Critical reminder {idx}: {relevant}; keep this active for all future decisions.",
-            },
-            "decay": {
-                "memory_type": "episodic_event",
-                "importance": 0.48,
-                "confidence": 0.72,
-                "access_count": 2,
-                "age_days": 45,
-                "dependency_count": 1,
-                "template": "Routine note {idx}: {relevant}; it still matters a bit but should fade over time.",
-            },
-            "silence": {
-                "memory_type": "episodic_event",
-                "importance": 0.26,
-                "confidence": 0.58,
-                "access_count": 0,
-                "age_days": 130,
-                "dependency_count": 0,
-                "template": "Low-signal observation {idx}: {relevant}; keep it stored but avoid surfacing it by default.",
-            },
-            "compress": {
-                "memory_type": "semantic_fact",
-                "importance": 0.39,
-                "confidence": 0.81,
-                "access_count": 1,
-                "age_days": 95,
-                "dependency_count": 5,
-                "template": "Redundant cluster note {idx}: {relevant}; preserve the theme but compress the details.",
-            },
-            "delete": {
-                "memory_type": "episodic_event",
-                "importance": 0.08,
-                "confidence": 0.34,
-                "access_count": 0,
-                "age_days": 365,
-                "dependency_count": 0,
-                "template": "Disposable scratch note {idx}: {relevant}; it is stale and no longer useful.",
-            },
-        }
-        for label in task_labels["forgetting_action_policy"]:
-            profile = policy_profiles.get(label)
-            if profile is None:
-                continue
-            while rows.count("forgetting_action_policy", label) < target_per_task_label:
-                idx = rows.count("forgetting_action_policy", label)
-                pack = _topic_pack(idx)
-                text = str(profile["template"]).format(idx=idx, relevant=pack["relevant"].lower())
-                rows.add(
-                    "forgetting_action_policy",
-                    text,
-                    label,
-                    f"template:forgetting_action_policy:{label}",
-                    extras=_structured_row_extras(
-                        topic=pack["topic"],
-                        memory_type=str(profile["memory_type"]),
-                        importance=float(profile["importance"]),
-                        confidence=float(profile["confidence"]),
-                        access_count=int(profile["access_count"]) + (idx % 2),
-                        age_days=int(profile["age_days"]) + (idx % 15),
-                        dependency_count=int(profile["dependency_count"]) + (idx % 2),
-                    ),
-                )
+    _fill_structured_router_quality_rows(
+        rows=rows,
+        task_labels=task_labels,
+        target_per_task_label=target_per_task_label,
+        single_pools=single_pools,
+        rng=rng,
+    )
+    _fill_structured_router_ordinal_rows(
+        rows=rows,
+        task_labels=task_labels,
+        target_per_task_label=target_per_task_label,
+        single_pools=single_pools,
+        rng=rng,
+    )
 
     if "write_importance_regression" in regression_tasks:
         while regression_rows.count("write_importance_regression") < target_per_task_label:
@@ -3036,13 +4131,38 @@ def _add_existing_pair_task_mappings(
                 f"derived:{source}",
                 extras=extras,
             )
-        elif task == "scope_match":
-            mapped = "match" if label == "match" else "no_match"
-            rows.add("schema_match_pair", text_a, text_b, mapped, f"derived:{source}")
-        elif task == "conflict_detection" and label == "conflict":
-            rows.add("novelty_pair", text_a, text_b, "contradiction", f"derived:{source}")
-        elif task == "supersession" and label == "supersedes":
-            rows.add("novelty_pair", text_a, text_b, "temporal_change", f"derived:{source}")
+        elif (task == "conflict_detection" and label == "conflict") or (task == "supersession" and label == "supersedes"):
+            rows.add(
+                "novelty_pair",
+                text_a,
+                text_b,
+                "changed",
+                f"derived:{source}",
+                extras={"group_id": _stable_group_id("derived:novelty_pair", source, text_a, text_b)},
+            )
+
+
+def _derive_schema_from_pair_rows(rows: _PairTaskStore) -> None:
+    for item in list(rows.rows):
+        task = str(item.get("task", "")).strip()
+        if task != "scope_match":
+            continue
+        label = str(item.get("label", "")).strip()
+        mapped = "match" if label == "match" else "no_match"
+        source = str(item.get("source", "derived:scope_match"))
+        text_a = item.get("text_a", "")
+        text_b = item.get("text_b", "")
+        group_id = str(item.get("group_id", "")).strip() or _stable_group_id(
+            "derived:schema_match_pair", source, text_a, text_b
+        )
+        rows.add(
+            "schema_match_pair",
+            text_a,
+            text_b,
+            mapped,
+            f"derived:{source}",
+            extras={"group_id": group_id},
+        )
 
 
 def _fill_template_relevance_task(
@@ -3078,7 +4198,18 @@ def _fill_template_relevance_task(
 
 
 def _fill_template_schema_rows(rows: _PairTaskStore, *, target_per_task_label: int) -> None:
-    while rows.count("schema_match_pair", "match") < target_per_task_label:
+    template_cap = max(1, round(target_per_task_label * _TASK_TEMPLATE_CAPS["schema_match_pair"]))
+    while (
+        rows.count("schema_match_pair", "match") < target_per_task_label
+        and sum(
+            1
+            for row in rows.rows
+            if str(row.get("task", "")) == "schema_match_pair"
+            and str(row.get("label", "")) == "match"
+            and _is_template_source(row.get("source"))
+        )
+        < template_cap
+    ):
         idx = rows.count("schema_match_pair", "match")
         pack = _topic_pack(idx)
         rows.add(
@@ -3087,8 +4218,19 @@ def _fill_template_schema_rows(rows: _PairTaskStore, *, target_per_task_label: i
             f"{pack['fact']} Fact {idx}.",
             "match",
             "template:schema_match_pair:match",
+            extras={"group_id": f"template:schema_match_pair:{idx}"},
         )
-    while rows.count("schema_match_pair", "no_match") < target_per_task_label:
+    while (
+        rows.count("schema_match_pair", "no_match") < target_per_task_label
+        and sum(
+            1
+            for row in rows.rows
+            if str(row.get("task", "")) == "schema_match_pair"
+            and str(row.get("label", "")) == "no_match"
+            and _is_template_source(row.get("source"))
+        )
+        < template_cap
+    ):
         idx = rows.count("schema_match_pair", "no_match")
         pack = _topic_pack(idx)
         other = _other_topic_pack(idx)
@@ -3098,6 +4240,7 @@ def _fill_template_schema_rows(rows: _PairTaskStore, *, target_per_task_label: i
             f"{other['fact']} Fact {idx}.",
             "no_match",
             "template:schema_match_pair:no_match",
+            extras={"group_id": f"template:schema_match_pair:{idx}"},
         )
 
 
@@ -3111,6 +4254,7 @@ def _fill_template_novelty_rows(rows: _PairTaskStore, *, target_per_task_label: 
             f"In profile {idx}, {pack['relevant'].lower()}.",
             "duplicate",
             "template:novelty_pair:duplicate",
+            extras={"group_id": f"template:novelty_pair:{idx}"},
         )
     while rows.count("novelty_pair", "novel") < target_per_task_label:
         idx = rows.count("novelty_pair", "novel")
@@ -3122,16 +4266,27 @@ def _fill_template_novelty_rows(rows: _PairTaskStore, *, target_per_task_label: 
             f"New detail {idx}: {other['relevant'].lower()}.",
             "novel",
             "template:novelty_pair:novel",
+            extras={"group_id": f"template:novelty_pair:{idx}"},
         )
-    while rows.count("novelty_pair", "contradiction") < target_per_task_label:
-        idx = rows.count("novelty_pair", "contradiction")
+    while rows.count("novelty_pair", "changed") < target_per_task_label:
+        idx = rows.count("novelty_pair", "changed")
         pack = _topic_pack(idx)
+        if idx % 2 == 0:
+            text_a = f"{pack['relevant']} in preference record {idx}."
+            text_b = (
+                f"Preference record {idx} now reverses that detail: "
+                f"{pack['irrelevant'].lower()}."
+            )
+        else:
+            text_a = f"{pack['relevant']} in profile {idx}."
+            text_b = f"Updated profile {idx}: {pack['fact'].lower()} after a recent change."
         rows.add(
             "novelty_pair",
-            f"{pack['relevant']} in preference record {idx}.",
-            f"Preference record {idx} says the opposite of this: {pack['irrelevant'].lower()}.",
-            "contradiction",
-            "template:novelty_pair:contradiction",
+            text_a,
+            text_b,
+            "changed",
+            "template:novelty_pair:changed",
+            extras={"group_id": f"template:novelty_pair:{idx}"},
         )
 
 
@@ -3268,8 +4423,7 @@ def _label_guidance(task: str, label: str) -> str:
         "novelty_pair": {
             "duplicate": "Two texts express the same fact with trivial rephrasing.",
             "novel": "Second text adds genuinely new information.",
-            "temporal_change": "Second text updates the first with new temporal context.",
-            "contradiction": "Second text contradicts the first.",
+            "changed": "Second text changes or updates the first, including contradictions.",
         },
         "schema_match_pair": {
             "match": "Gist and existing fact key are semantically compatible.",
@@ -3300,6 +4454,68 @@ def _label_guidance(task: str, label: str) -> str:
         },
     }
     return guidance.get(task, {}).get(label, "")
+
+
+def _finish_reason_delta(before: dict[str, Any], after: dict[str, Any], reason: str) -> int:
+    before_counts = before.get("finish_reason_counts", {})
+    after_counts = after.get("finish_reason_counts", {})
+    before_value = int(before_counts.get(reason, 0)) if isinstance(before_counts, dict) else 0
+    after_value = int(after_counts.get(reason, 0)) if isinstance(after_counts, dict) else 0
+    return max(0, after_value - before_value)
+
+
+def _llm_round_strategy(
+    *,
+    label_batch_size: int,
+    max_batch_size: int,
+    round_generated: int,
+    round_accepted: int,
+    round_errors: int,
+    attempts_without_progress: int,
+    parse_fail_delta: int,
+    finish_length_delta: int,
+    finish_stop_delta: int,
+    use_multilingual: bool,
+) -> tuple[int, bool, bool, str | None]:
+    new_batch_size = max(1, int(label_batch_size))
+    new_use_multilingual = bool(use_multilingual)
+    adjust_reasons: list[str] = []
+
+    if round_generated == 0 and round_errors == 0 and new_batch_size > 1:
+        new_batch_size = max(1, new_batch_size // 2)
+        adjust_reasons.append("no parseable outputs")
+    elif finish_length_delta > max(1, finish_stop_delta) and new_batch_size > 1:
+        new_batch_size = max(1, new_batch_size // 2)
+        adjust_reasons.append(
+            f"truncated outputs (length={finish_length_delta}, stop={finish_stop_delta})"
+        )
+    elif parse_fail_delta > 0 and round_accepted == 0 and new_batch_size > 1:
+        new_batch_size = max(1, new_batch_size // 2)
+        adjust_reasons.append(f"parse failures ({parse_fail_delta})")
+    elif (
+        round_accepted > 0
+        and new_batch_size < max_batch_size
+        and parse_fail_delta == 0
+        and finish_length_delta == 0
+    ):
+        new_batch_size = min(max_batch_size, new_batch_size * 2)
+        if new_batch_size != label_batch_size:
+            adjust_reasons.append("restoring batch size after clean round")
+
+    if new_use_multilingual and round_accepted == 0 and attempts_without_progress >= 3:
+        new_use_multilingual = False
+        if new_batch_size > 4:
+            new_batch_size = 4
+        adjust_reasons.append("disabled multilingual after repeated stalled rounds")
+
+    abort_stalled_label = (
+        attempts_without_progress >= 8
+        and round_accepted == 0
+        and new_batch_size == 1
+        and not new_use_multilingual
+    )
+    reason = "; ".join(adjust_reasons) if adjust_reasons else None
+    return new_batch_size, new_use_multilingual, abort_stalled_label, reason
 
 
 def _fill_single_task_with_llm(
@@ -3336,8 +4552,10 @@ def _fill_single_task_with_llm(
                     attempts = 0
                     rounds = 0
                     label_batch_size = llm.batch_size
+                    label_use_multilingual = use_multilingual
                     while missing > 0 and attempts < max_attempts_per_label:
                         rounds += 1
+                        stats_before = llm.stats_snapshot()
                         jobs = min(
                             llm.concurrency,
                             max(1, (missing + label_batch_size - 1) // label_batch_size),
@@ -3354,7 +4572,7 @@ def _fill_single_task_with_llm(
                             )
                             lang = (
                                 _multilingual_prompts.pick_language(rng)
-                                if use_multilingual
+                                if label_use_multilingual
                                 else None
                             )
 
@@ -3399,6 +4617,9 @@ def _fill_single_task_with_llm(
                                     label,
                                     f"llm:{task}:{label}",
                                     language=lang_code,
+                                    extras={
+                                        "group_id": _stable_group_id("llm", task, label, text),
+                                    },
                                 ):
                                     accepted += 1
                             if accepted > 0:
@@ -3406,22 +4627,36 @@ def _fill_single_task_with_llm(
                                 pbar.update(accepted)
 
                         llm.record_batch_result(generated=round_generated, accepted=round_accepted)
+                        stats_after = llm.stats_snapshot()
                         missing = max(0, target_per_task_label - rows.count(task, label))
                         if round_accepted <= 0:
                             attempts += 1
                         else:
                             attempts = 0
 
-                        if round_generated == 0 and round_errors == 0 and label_batch_size > 1:
-                            new_batch = max(1, label_batch_size // 2)
-                            if new_batch != label_batch_size:
-                                _warn(
-                                    f"LLM reducing batch size for {task}::{label}: "
-                                    f"{label_batch_size} -> {new_batch} (no parseable outputs)."
-                                )
-                            label_batch_size = new_batch
-                        elif round_accepted > 0 and label_batch_size < llm.batch_size:
-                            label_batch_size = min(llm.batch_size, label_batch_size * 2)
+                        (
+                            label_batch_size,
+                            label_use_multilingual,
+                            abort_stalled_label,
+                            adjust_reason,
+                        ) = _llm_round_strategy(
+                            label_batch_size=label_batch_size,
+                            max_batch_size=llm.batch_size,
+                            round_generated=round_generated,
+                            round_accepted=round_accepted,
+                            round_errors=round_errors,
+                            attempts_without_progress=attempts,
+                            parse_fail_delta=int(stats_after["parse_fail_total"]) - int(stats_before["parse_fail_total"]),
+                            finish_length_delta=_finish_reason_delta(stats_before, stats_after, "length"),
+                            finish_stop_delta=_finish_reason_delta(stats_before, stats_after, "stop"),
+                            use_multilingual=label_use_multilingual,
+                        )
+                        if adjust_reason:
+                            _warn(
+                                f"LLM strategy update for {task}::{label}: "
+                                f"batch_size={label_batch_size} multilingual={label_use_multilingual}. "
+                                f"reason={adjust_reason}"
+                            )
 
                         should_log_round = (
                             rounds == 1
@@ -3436,9 +4671,15 @@ def _fill_single_task_with_llm(
                                 f"round={rounds} jobs={jobs} generated={round_generated} "
                                 f"accepted={round_accepted} errors={round_errors} "
                                 f"missing={missing} attempts_without_progress={attempts} "
-                                f"batch_size={label_batch_size}."
+                                f"batch_size={label_batch_size} multilingual={label_use_multilingual}."
                             )
                         llm.maybe_report(context=f"{family}:{task}::{label}")
+                        if abort_stalled_label:
+                            _warn(
+                                f"LLM abandoning stalled label fill for {task}::{label}. "
+                                f"missing={missing}, current={rows.count(task, label)}."
+                            )
+                            break
 
                     llm.maybe_report(context=f"{family}:{task}::{label}", force=True)
                     if missing > 0:
@@ -3489,8 +4730,10 @@ def _fill_pair_task_with_llm(
                     attempts = 0
                     rounds = 0
                     label_batch_size = llm.batch_size
+                    label_use_multilingual = use_multilingual
                     while missing > 0 and attempts < max_attempts_per_label:
                         rounds += 1
+                        stats_before = llm.stats_snapshot()
                         jobs = min(
                             llm.concurrency,
                             max(1, (missing + label_batch_size - 1) // label_batch_size),
@@ -3504,7 +4747,7 @@ def _fill_pair_task_with_llm(
                                 seed_a = f"{seed_a}\n\nLabel guidance: {guidance}"
                             lang = (
                                 _multilingual_prompts.pick_language(rng)
-                                if use_multilingual
+                                if label_use_multilingual
                                 else None
                             )
 
@@ -3552,6 +4795,15 @@ def _fill_pair_task_with_llm(
                                     label,
                                     f"llm:{task}:{label}",
                                     language=lang_code,
+                                    extras={
+                                        "group_id": _stable_group_id(
+                                            "llm",
+                                            task,
+                                            label,
+                                            text_a,
+                                            text_b,
+                                        )
+                                    },
                                 ):
                                     accepted += 1
                             if accepted > 0:
@@ -3559,22 +4811,36 @@ def _fill_pair_task_with_llm(
                                 pbar.update(accepted)
 
                         llm.record_batch_result(generated=round_generated, accepted=round_accepted)
+                        stats_after = llm.stats_snapshot()
                         missing = max(0, target_per_task_label - rows.count(task, label))
                         if round_accepted <= 0:
                             attempts += 1
                         else:
                             attempts = 0
 
-                        if round_generated == 0 and round_errors == 0 and label_batch_size > 1:
-                            new_batch = max(1, label_batch_size // 2)
-                            if new_batch != label_batch_size:
-                                _warn(
-                                    f"LLM reducing batch size for {task}::{label}: "
-                                    f"{label_batch_size} -> {new_batch} (no parseable outputs)."
-                                )
-                            label_batch_size = new_batch
-                        elif round_accepted > 0 and label_batch_size < llm.batch_size:
-                            label_batch_size = min(llm.batch_size, label_batch_size * 2)
+                        (
+                            label_batch_size,
+                            label_use_multilingual,
+                            abort_stalled_label,
+                            adjust_reason,
+                        ) = _llm_round_strategy(
+                            label_batch_size=label_batch_size,
+                            max_batch_size=llm.batch_size,
+                            round_generated=round_generated,
+                            round_accepted=round_accepted,
+                            round_errors=round_errors,
+                            attempts_without_progress=attempts,
+                            parse_fail_delta=int(stats_after["parse_fail_total"]) - int(stats_before["parse_fail_total"]),
+                            finish_length_delta=_finish_reason_delta(stats_before, stats_after, "length"),
+                            finish_stop_delta=_finish_reason_delta(stats_before, stats_after, "stop"),
+                            use_multilingual=label_use_multilingual,
+                        )
+                        if adjust_reason:
+                            _warn(
+                                f"LLM strategy update for {task}::{label}: "
+                                f"batch_size={label_batch_size} multilingual={label_use_multilingual}. "
+                                f"reason={adjust_reason}"
+                            )
 
                         should_log_round = (
                             rounds == 1
@@ -3589,9 +4855,15 @@ def _fill_pair_task_with_llm(
                                 f"round={rounds} jobs={jobs} generated={round_generated} "
                                 f"accepted={round_accepted} errors={round_errors} "
                                 f"missing={missing} attempts_without_progress={attempts} "
-                                f"batch_size={label_batch_size}."
+                                f"batch_size={label_batch_size} multilingual={label_use_multilingual}."
                             )
                         llm.maybe_report(context=f"pair:{task}::{label}")
+                        if abort_stalled_label:
+                            _warn(
+                                f"LLM abandoning stalled label fill for {task}::{label}. "
+                                f"missing={missing}, current={rows.count(task, label)}."
+                            )
+                            break
 
                     llm.maybe_report(context=f"pair:{task}::{label}", force=True)
                     if missing > 0:
@@ -3654,6 +4926,14 @@ def _build_router_rows(
     if "write_importance_regression" in regression_tasks:
         _seed_router_regression_from_existing(regression_rows, existing_df, target=target)
 
+    _inject_hardened_router_rows(
+        rows=rows,
+        task_labels=task_labels,
+        target_per_task_label=target,
+        single_pools=single_pools,
+        rng=rng,
+    )
+
     _fill_router_tasks_without_llm(
         rows=rows,
         regression_rows=regression_rows,
@@ -3664,12 +4944,15 @@ def _build_router_rows(
         rng=rng,
     )
 
-    if llm is not None:
+    llm_task_labels = {
+        task: labels for task, labels in task_labels.items() if task not in ORDINAL_ROUTER_TASKS
+    }
+    if llm is not None and llm_task_labels:
         _fill_single_task_with_llm(
             rows=rows,
             llm=llm,
             family="router",
-            task_labels=task_labels,
+            task_labels=llm_task_labels,
             target_per_task_label=target,
             single_pools=single_pools,
             rng=rng,
@@ -3757,18 +5040,22 @@ def _build_pair_rows(
     _add_existing_pair_rows(rows, registry)
     _add_paws_novelty_rows(rows, registry)
     _add_glue_novelty_rows(rows, registry)
-    _add_fever_schema_match_rows(rows, registry)
+    _add_fever_schema_match_rows(rows, registry, target_per_task_label=target)
+    _derive_schema_from_pair_rows(rows)
     _fill_pair_tasks_without_llm(
         rows,
         task_labels=task_labels,
         target_per_task_label=target,
         rng=rng,
     )
-    if llm is not None:
+    llm_task_labels = {
+        task: labels for task, labels in task_labels.items() if task != "schema_match_pair"
+    }
+    if llm is not None and llm_task_labels:
         _fill_pair_task_with_llm(
             rows=rows,
             llm=llm,
-            task_labels=task_labels,
+            task_labels=llm_task_labels,
             target_per_task_label=target,
             pair_pool=pair_pool,
             single_pools=single_pools,
@@ -3803,42 +5090,680 @@ def _split_counts(n: int, ratios: dict[str, float]) -> tuple[int, int, int]:
     return counts[0], counts[1], counts[2]
 
 
+def _effective_group_ids(df: pd.DataFrame) -> pd.Series:
+    if df.empty:
+        return pd.Series(dtype=object)
+    if "group_id" in df.columns:
+        raw = df["group_id"].fillna("").astype(str).str.strip()
+    else:
+        raw = pd.Series([""] * len(df), index=df.index, dtype=object)
+
+    if "text" in df.columns:
+        fallback = [
+            _stable_group_id(
+                "row",
+                task,
+                label,
+                text,
+            )
+            for task, label, text in zip(
+                df["task"].astype(str),
+                df.get("label", pd.Series([""] * len(df), index=df.index)).astype(str),
+                df["text"].astype(str),
+                strict=False,
+            )
+        ]
+        has_text = True
+    else:
+        fallback = [
+            _stable_group_id(
+                "row",
+                task,
+                label,
+                text_a,
+                text_b,
+            )
+            for task, label, text_a, text_b in zip(
+                df["task"].astype(str),
+                df.get("label", pd.Series([""] * len(df), index=df.index)).astype(str),
+                df["text_a"].astype(str),
+                df["text_b"].astype(str),
+                strict=False,
+            )
+        ]
+        has_text = True
+    fallback_series = pd.Series(fallback, index=df.index, dtype=object)
+    # Prefer existing group_id when present
+    fallback_series = raw.where(raw != "", fallback_series)
+
+    # Template-stem grouping: same template stem -> same group
+    if "source" in df.columns:
+        stems = df["source"].map(_template_stem_from_source)
+        mask = stems.notna() & (stems.astype(str).str.len() > 0)
+        if mask.any():
+            fallback_series = fallback_series.where(~mask, stems)
+
+    # HF rows: group by source_document_id when available
+    if "source_document_id" in df.columns:
+        hf_mask = df["source"].fillna("").astype(str).str.startswith("hf:")
+        doc_ids = df["source_document_id"].fillna("").astype(str)
+        use_doc = hf_mask & (doc_ids != "")
+        if use_doc.any():
+            fallback_series = fallback_series.where(
+                ~use_doc,
+                "hf_doc:" + doc_ids,
+            )
+    elif "source" in df.columns:
+        # Fallback: treat existing group_id as document id for hf: rows (already unique per row)
+        pass
+
+    # Near-duplicate clustering: merge rows with Jaccard > 0.8 on text shingles (positional indices)
+    near_dup_jaccard_threshold = 0.8
+    near_dup_max_group_size = 500  # skip clustering for huge task/label groups
+    if has_text and ("text" in df.columns or "text_a" in df.columns):
+        for (_task, _label), idx_group in df.groupby(["task", "label"], sort=False).indices.items():
+            positions = list(idx_group)
+            if len(positions) > near_dup_max_group_size or len(positions) < 2:
+                continue
+            if "text" in df.columns:
+                shingles = {pos: _shingle_set(str(df.iloc[pos]["text"])) for pos in positions}
+            else:
+                shingles = {
+                    pos: _shingle_set(
+                        str(df.iloc[pos]["text_a"]) + " " + str(df.iloc[pos]["text_b"])
+                    )
+                    for pos in positions
+                }
+            parent: dict[int, int] = {}
+            find, union = _near_dup_union_find(parent, shingles, near_dup_jaccard_threshold)
+            for i in range(len(positions)):
+                for j in range(i + 1, len(positions)):
+                    union(positions[i], positions[j])
+            reps = {pos: find(pos) for pos in positions}
+            for pos in positions:
+                rep = reps[pos]
+                if rep != pos:
+                    fallback_series.iloc[pos] = fallback_series.iloc[rep]
+
+    return fallback_series
+
+
+def _split_integrity_summary(split_frames: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    provided_sets: dict[str, set[str]] = {}
+    rows_without_group_id: dict[str, int] = {}
+    unique_group_ids: dict[str, int] = {}
+    for split_name, frame in split_frames.items():
+        if frame.empty or "group_id" not in frame.columns:
+            provided_sets[split_name] = set()
+            rows_without_group_id[split_name] = len(frame)
+            unique_group_ids[split_name] = 0
+            continue
+        series = frame["group_id"].fillna("").astype(str).str.strip()
+        provided = {value for value in series.tolist() if value}
+        provided_sets[split_name] = provided
+        rows_without_group_id[split_name] = int((series == "").sum())
+        unique_group_ids[split_name] = len(provided)
+
+    overlap_counts: dict[str, int] = {}
+    overlap_samples: dict[str, list[str]] = {}
+    split_names = list(split_frames.keys())
+    ok = True
+    for idx, left in enumerate(split_names):
+        for right in split_names[idx + 1 :]:
+            key = f"{left}_{right}"
+            overlap = sorted(provided_sets[left] & provided_sets[right])
+            overlap_counts[key] = len(overlap)
+            if overlap:
+                ok = False
+                overlap_samples[key] = overlap[:10]
+    return {
+        "ok": ok,
+        "rows_without_group_id": rows_without_group_id,
+        "unique_group_ids": unique_group_ids,
+        "overlap_counts": overlap_counts,
+        "overlap_samples": overlap_samples,
+    }
+
+
+def _source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    if df.empty or not {"task", "source"}.issubset(df.columns):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for task, group in df.groupby("task", sort=False):
+        bucket_counts: dict[str, int] = {}
+        for source, count in group["source"].astype(str).map(_source_bucket).value_counts().items():
+            bucket_counts[str(source)] = int(count)
+        template_rows = int(group["source"].map(_is_template_source).sum())
+        out[str(task)] = {
+            "rows": len(group),
+            "template_rows": template_rows,
+            "non_template_rows": len(group) - template_rows,
+            "template_ratio": round(template_rows / max(1, len(group)), 4),
+            "source_buckets": bucket_counts,
+        }
+    return out
+
+
+def _validate_source_coverage(df: pd.DataFrame, *, split_name: str) -> dict[str, dict[str, Any]]:
+    diagnostics = _source_diagnostics(df)
+    for task, max_template_ratio in _TASK_TEMPLATE_CAPS.items():
+        task_diag = diagnostics.get(task)
+        if task_diag is None:
+            continue
+        if float(task_diag["template_ratio"]) > float(max_template_ratio) + 1e-9:
+            raise ValueError(
+                f"{split_name} split template ratio too high for {task}: "
+                f"{task_diag['template_ratio']:.4f} > {max_template_ratio:.4f}"
+            )
+    if {"task", "source"}.issubset(df.columns):
+        source_series = df["source"].fillna("").astype(str)
+        task_series = df["task"].fillna("").astype(str)
+        for task, prefixes in _REQUIRED_SOURCE_PREFIXES.items():
+            task_mask = task_series == task
+            if not task_mask.any():
+                continue
+            for prefix in prefixes:
+                if not source_series[task_mask].str.startswith(prefix, na=False).any():
+                    raise ValueError(
+                        f"{split_name} split is missing required source prefix for {task}: {prefix}"
+                    )
+    return diagnostics
+
+
+def _count_jsonl_rows(path: Path) -> int:
+    if not path.exists():
+        return 0
+    count = 0
+    with open(path, encoding="utf-8") as handle:
+        for raw in handle:
+            if raw.strip():
+                count += 1
+    return count
+
+
+def _validate_adversarial_fixtures() -> dict[str, dict[str, Any]]:
+    summary: dict[str, dict[str, Any]] = {}
+    for task_name, path in _ADVERSARIAL_FIXTURE_PATHS.items():
+        rows = _count_jsonl_rows(path)
+        summary[task_name] = {"path": str(path), "rows": rows}
+        if rows < _MIN_ADVERSARIAL_ROWS:
+            raise ValueError(
+                f"Adversarial fixture for {task_name} must contain at least "
+                f"{_MIN_ADVERSARIAL_ROWS} rows: {path}"
+            )
+    return summary
+
+
+def _load_adversarial_fixture_rows(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with open(path, encoding="utf-8") as handle:
+        for raw in handle:
+            text = raw.strip()
+            if not text:
+                continue
+            rows.append(json.loads(text))
+    return rows
+
+
+def _strip_adversarial_text_prefix(text: str, *, task_name: str) -> str:
+    """Strip 'Adversarial digest N:' or 'Adversarial retention case N:' so model does not key on prefix."""
+    if task_name == "consolidation_gist_quality":
+        return re.sub(r"^Adversarial digest \d+:\s*", "", text, count=1).strip() or text
+    if task_name == "forgetting_action_policy":
+        return re.sub(r"^Adversarial retention case \d+:\s*", "", text, count=1).strip() or text
+    return text
+
+
+def _inject_adversarial_into_router_df(
+    router_df: pd.DataFrame,
+    *,
+    seed: int,
+    task_names: set[str],
+) -> pd.DataFrame:
+    """Append a fraction of adversarial rows into router_df. Write heldout to JSONL. Return updated df."""
+    out = router_df
+    for task_name in task_names:
+        path = _ADVERSARIAL_FIXTURE_PATHS.get(task_name)
+        if path is None or not path.exists():
+            continue
+        rows = _load_adversarial_fixture_rows(path)
+        if len(rows) < 2:
+            continue
+        rng = random.Random(seed)
+        indices = list(range(len(rows)))
+        rng.shuffle(indices)
+        n_train = max(1, int(len(rows) * _ADVERSARIAL_TRAIN_FRACTION))
+        train_idx = set(indices[:n_train])
+        eval_idx = [i for i in indices[n_train:]]
+        _base_cols = {"text", "task", "label", "source", "language", "group_id"}
+        extra_cols = [k for k in rows[0] if k not in {"text", "label"}]
+        new_records: list[dict[str, Any]] = []
+        for i in train_idx:
+            item = rows[i]
+            text = _strip_adversarial_text_prefix(str(item.get("text", "")), task_name=task_name)
+            source = f"adversarial_train:{task_name}:{i}"
+            group_id = source
+            record: dict[str, Any] = {
+                "text": text,
+                "task": task_name,
+                "label": str(item.get("label", "")).strip(),
+                "source": source,
+                "group_id": group_id,
+            }
+            for col in extra_cols:
+                if col in item and col not in record:
+                    record[col] = item[col]
+            new_records.append(record)
+        if new_records:
+            extra = pd.DataFrame(new_records)
+            if "language" not in extra.columns:
+                extra["language"] = "en"
+            out = pd.concat([out, extra], ignore_index=True)
+            out = out.drop_duplicates(subset=["task", "group_id"], keep="first").reset_index(drop=True)
+        heldout_path = path.parent / f"{path.stem}{_ADVERSARIAL_HELDOUT_SUFFIX}.jsonl"
+        heldout_records = [rows[i] for i in eval_idx]
+        with open(heldout_path, "w", encoding="utf-8") as f:
+            for rec in heldout_records:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return out
+
+
+def _inject_adversarial_into_pair_df(
+    pair_df: pd.DataFrame,
+    *,
+    seed: int,
+    task_names: set[str],
+) -> pd.DataFrame:
+    """Append a fraction of adversarial rows into pair_df. Write heldout to JSONL. Return updated df."""
+    out = pair_df
+    for task_name in task_names:
+        path = _ADVERSARIAL_FIXTURE_PATHS.get(task_name)
+        if path is None or not path.exists():
+            continue
+        rows = _load_adversarial_fixture_rows(path)
+        if len(rows) < 2:
+            continue
+        if "text_a" not in rows[0] or "text_b" not in rows[0]:
+            continue
+        rng = random.Random(seed)
+        indices = list(range(len(rows)))
+        rng.shuffle(indices)
+        n_train = max(1, int(len(rows) * _ADVERSARIAL_TRAIN_FRACTION))
+        train_idx = set(indices[:n_train])
+        eval_idx = [i for i in indices[n_train:]]
+        extra_cols = [k for k in rows[0] if k not in {"text_a", "text_b", "label"}]
+        new_records = []
+        for i in train_idx:
+            item = rows[i]
+            source = f"adversarial_train:{task_name}:{i}"
+            record: dict[str, Any] = {
+                "text_a": str(item.get("text_a", "")),
+                "text_b": str(item.get("text_b", "")),
+                "task": task_name,
+                "label": str(item.get("label", "")).strip(),
+                "source": source,
+                "group_id": source,
+            }
+            for col in extra_cols:
+                if col in item and col not in record:
+                    record[col] = item[col]
+            new_records.append(record)
+        if new_records:
+            extra = pd.DataFrame(new_records)
+            if "language" not in extra.columns:
+                extra["language"] = "en"
+            out = pd.concat([out, extra], ignore_index=True)
+            out = out.drop_duplicates(
+                subset=["task", "text_a", "text_b", "label"], keep="first"
+            ).reset_index(drop=True)
+        heldout_path = path.parent / f"{path.stem}{_ADVERSARIAL_HELDOUT_SUFFIX}.jsonl"
+        heldout_records = [rows[i] for i in eval_idx]
+        with open(heldout_path, "w", encoding="utf-8") as f:
+            for rec in heldout_records:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return out
+
+
 def _split_by_task_label(
     df: pd.DataFrame, seed: int, ratios: dict[str, float]
 ) -> dict[str, pd.DataFrame]:
-    rng = random.Random(seed)
-    train_parts: list[pd.DataFrame] = []
-    test_parts: list[pd.DataFrame] = []
-    eval_parts: list[pd.DataFrame] = []
+    if df.empty:
+        return {"train": df.copy(), "test": df.copy(), "eval": df.copy()}
 
-    for (_task, _label), group in df.groupby(["task", "label"], sort=False):
-        idx = list(group.index)
-        rng.shuffle(idx)
-        n_train, n_test, n_eval = _split_counts(len(idx), ratios)
-        train_parts.append(df.loc[idx[:n_train]])
-        test_parts.append(df.loc[idx[n_train : n_train + n_test]])
-        eval_parts.append(df.loc[idx[n_train + n_test : n_train + n_test + n_eval]])
+    working = df.copy()
+    working["_effective_group_id"] = _effective_group_ids(working)
+    working["_task_label_key"] = (
+        working["task"].astype(str) + "::" + working.get("label", "").astype(str)
+    )
 
-    out = {
-        "train": pd.concat(train_parts, ignore_index=True) if train_parts else df.iloc[0:0].copy(),
-        "test": pd.concat(test_parts, ignore_index=True) if test_parts else df.iloc[0:0].copy(),
-        "eval": pd.concat(eval_parts, ignore_index=True) if eval_parts else df.iloc[0:0].copy(),
+    target_counts: dict[str, dict[str, int]] = {"train": {}, "test": {}, "eval": {}}
+    for key, count in working["_task_label_key"].value_counts().items():
+        n_train, n_test, n_eval = _split_counts(int(count), ratios)
+        target_counts["train"][str(key)] = n_train
+        target_counts["test"][str(key)] = n_test
+        target_counts["eval"][str(key)] = n_eval
+
+    total_train, total_test, total_eval = _split_counts(len(working), ratios)
+    target_rows = {"train": total_train, "test": total_test, "eval": total_eval}
+    current_counts: dict[str, dict[str, int]] = {
+        "train": defaultdict(int),
+        "test": defaultdict(int),
+        "eval": defaultdict(int),
     }
-    for split_name in out:
-        out[split_name] = out[split_name].sample(frac=1, random_state=seed).reset_index(drop=True)
+    current_rows = {"train": 0, "test": 0, "eval": 0}
+    assignments: dict[str, str] = {}
+
+    group_payloads: list[dict[str, Any]] = []
+    for group_id, group in working.groupby("_effective_group_id", sort=False):
+        payload = {
+            str(key): int(value)
+            for key, value in group["_task_label_key"].value_counts().to_dict().items()
+        }
+        task_sources = {
+            (str(task), str(source))
+            for task, source in zip(
+                group["task"].astype(str),
+                group["source"].fillna("").astype(str),
+                strict=False,
+            )
+        }
+        group_payloads.append(
+            {
+                "group_id": str(group_id),
+                "row_indices": list(group.index),
+                "counts": payload,
+                "size": len(group),
+                "task_sources": task_sources,
+            }
+        )
+    group_payloads.sort(key=lambda item: (-int(item["size"]), str(item["group_id"])))
+
+    def _assign_group(payload: dict[str, Any], split_name: str) -> None:
+        group_id = str(payload["group_id"])
+        assignments[group_id] = split_name
+        current_rows[split_name] += int(payload["size"])
+        for key, value in dict(payload["counts"]).items():
+            current_counts[split_name][str(key)] = int(current_counts[split_name].get(str(key), 0)) + int(value)
+
+    preassigned_group_ids: set[str] = set()
+    for task, prefixes in _REQUIRED_SOURCE_PREFIXES.items():
+        for prefix in prefixes:
+            candidate = next(
+                (
+                    payload
+                    for payload in group_payloads
+                    if str(payload["group_id"]) not in preassigned_group_ids
+                    and any(
+                        group_task == task and source.startswith(prefix)
+                        for group_task, source in payload["task_sources"]
+                    )
+                ),
+                None,
+            )
+            if candidate is None:
+                continue
+            _assign_group(candidate, "train")
+            preassigned_group_ids.add(str(candidate["group_id"]))
+
+    required_splits = [name for name, ratio in ratios.items() if ratio > 0]
+    remaining_payloads = [
+        payload for payload in group_payloads if str(payload["group_id"]) not in preassigned_group_ids
+    ]
+    reserved_splits = [
+        name for name in required_splits if current_rows[name] == 0
+    ][: min(len(required_splits), len(remaining_payloads))]
+
+    def _assignment_penalty(split_name: str, counts: dict[str, int], group_size: int) -> tuple[float, float]:
+        penalty = 0.0
+        for key, value in counts.items():
+            current = int(current_counts[split_name].get(key, 0))
+            target = int(target_counts[split_name].get(key, 0))
+            projected = current + int(value)
+            penalty += abs(projected - target) - abs(current - target)
+            if target > 0 and projected > target:
+                penalty += 0.35 * (projected - target)
+        current_total = current_rows[split_name]
+        projected_total = current_total + group_size
+        total_target = int(target_rows[split_name])
+        penalty += 0.15 * (
+            abs(projected_total - total_target) - abs(current_total - total_target)
+        )
+        return penalty, float(projected_total)
+
+    for idx, payload in enumerate(remaining_payloads):
+        group_id = str(payload["group_id"])
+        counts = cast("dict[str, int]", payload["counts"])
+        group_size = int(payload["size"])
+        if idx < len(reserved_splits):
+            split_name = reserved_splits[idx]
+        else:
+            split_name = min(
+                ("train", "test", "eval"),
+                key=lambda name: _assignment_penalty(name, counts, group_size),
+            )
+        _assign_group(payload, split_name)
+
+    out: dict[str, pd.DataFrame] = {}
+    for split_name in ("train", "test", "eval"):
+        selected = [
+            idx
+            for payload in group_payloads
+            if assignments[str(payload["group_id"])] == split_name
+            for idx in list(payload["row_indices"])
+        ]
+        frame = working.loc[selected].drop(columns=["_effective_group_id", "_task_label_key"])
+        out[split_name] = frame.sample(frac=1, random_state=seed).reset_index(drop=True)
     return out
 
 
 def _write_splits(
     df: pd.DataFrame, *, prefix: str, out_dir: Path, seed: int, ratios: dict[str, float]
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict[str, Any], dict[str, dict[str, Any]]]:
     splits = _split_by_task_label(df, seed, ratios)
+    split_integrity = _split_integrity_summary(splits)
+    if not split_integrity["ok"]:
+        raise ValueError(f"{prefix} split integrity failure: {split_integrity['overlap_counts']}")
+    train_source_diagnostics = _validate_source_coverage(splits["train"], split_name=f"{prefix}:train")
     counts: dict[str, int] = {}
     for split_name, split_df in splits.items():
         path = out_dir / f"{prefix}_{split_name}.parquet"
         split_df.to_parquet(path, index=False)
         counts[split_name] = len(split_df)
-    return counts
+    return counts, split_integrity, train_source_diagnostics
+
+
+def _pair_embedding_cache_summary(prepared_dir: Path) -> dict[str, Any] | None:
+    path = pair_embedding_cache_path(prepared_dir)
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_parquet(path)
+    except Exception:
+        return {"path": str(path), "rows": 0}
+    model_name = ""
+    if "embedding_model_name" in df.columns and not df.empty:
+        names = [str(value).strip() for value in df["embedding_model_name"].astype(str).tolist()]
+        model_name = next((name for name in names if name), "")
+    return {
+        "path": str(path),
+        "rows": len(df),
+        "embedding_model_name": model_name or DEFAULT_PAIR_EMBEDDING_MODEL_NAME,
+    }
+
+
+def _write_pair_embedding_cache(
+    *,
+    df: pd.DataFrame,
+    task_names: set[str],
+    model_name: str,
+    out_dir: Path,
+) -> dict[str, Any]:
+    subset = df[df["task"].astype(str).isin(task_names)].copy()
+    if subset.empty:
+        raise ValueError("No pair rows available for configured embedding_pair tasks.")
+
+    ordered_texts: dict[str, None] = {}
+    for text in subset["text_a"].astype(str).tolist():
+        cleaned = text.strip()
+        if cleaned:
+            ordered_texts.setdefault(cleaned, None)
+    for text in subset["text_b"].astype(str).tolist():
+        cleaned = text.strip()
+        if cleaned:
+            ordered_texts.setdefault(cleaned, None)
+    if not ordered_texts:
+        raise ValueError("No text rows available for embedding cache generation.")
+
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError as exc:
+        raise ImportError(
+            "Embedding pair prepare requires sentence-transformers. "
+            'Install with: pip install "cognitive-memory-layer[modeling]"'
+        ) from exc
+
+    encoder = SentenceTransformer(model_name)
+    texts = list(ordered_texts.keys())
+    embeddings = encoder.encode(
+        texts,
+        batch_size=64,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+        normalize_embeddings=True,
+    )
+    payload = pd.DataFrame(
+        [
+            {
+                "text_hash": hash_text(text),
+                "text": text,
+                "embedding": embeddings[idx].astype("float32").tolist(),
+                "embedding_model_name": model_name,
+            }
+            for idx, text in enumerate(texts)
+        ]
+    )
+    cache_path = pair_embedding_cache_path(out_dir)
+    payload.to_parquet(cache_path, index=False)
+    return {
+        "path": str(cache_path),
+        "rows": len(payload),
+        "tasks": sorted(task_names),
+        "embedding_model_name": model_name,
+    }
+
+
+def _load_pair_embedding_vectors(cache_path: Path) -> dict[str, np.ndarray]:
+    if not cache_path.exists():
+        return {}
+    cache_df = pd.read_parquet(cache_path)
+    vectors: dict[str, np.ndarray] = {}
+    for item in cache_df.itertuples(index=False):
+        text = _clean(getattr(item, "text", ""), 700)
+        if not text:
+            continue
+        vector = np.asarray(getattr(item, "embedding", []), dtype=np.float32)
+        if vector.ndim != 1 or vector.size == 0:
+            continue
+        vectors[text] = vector
+    return vectors
+
+
+def _augment_pair_hard_negatives(
+    df: pd.DataFrame,
+    *,
+    cache_path: Path,
+    task_names: set[str],
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    if df.empty or not task_names:
+        return df, {}
+    vectors = _load_pair_embedding_vectors(cache_path)
+    if not vectors:
+        return df, {}
+
+    extra_rows: list[dict[str, Any]] = []
+    added_by_task: dict[str, int] = {}
+    for task_name in sorted(task_names):
+        task_df = df[df["task"].astype(str) == task_name].copy()
+        positive_df = task_df[task_df["label"].astype(str) == "relevant"].copy()
+        candidate_df = task_df[task_df["label"].astype(str) == "not_relevant"].copy()
+        if positive_df.empty or candidate_df.empty:
+            continue
+
+        positive_groups = positive_df.drop_duplicates(subset=["group_id"], keep="first").reset_index(drop=True)
+        candidate_df = candidate_df.drop_duplicates(subset=["text_b", "group_id"], keep="first").reset_index(drop=True)
+        candidate_vectors = [
+            vectors.get(text)
+            for text in candidate_df["text_b"].astype(str).tolist()
+        ]
+        if not candidate_vectors or any(vector is None for vector in candidate_vectors):
+            candidate_rows = [
+                idx for idx, vector in enumerate(candidate_vectors) if vector is not None
+            ]
+            if not candidate_rows:
+                continue
+            candidate_df = candidate_df.iloc[candidate_rows].reset_index(drop=True)
+            candidate_vectors = [candidate_vectors[idx] for idx in candidate_rows]
+        non_none_vectors = [v for v in candidate_vectors if v is not None]
+        candidate_matrix = np.vstack(non_none_vectors).astype(np.float32, copy=False)
+        candidate_groups = candidate_df["group_id"].fillna("").astype(str).to_numpy(dtype=object)
+        candidate_texts = candidate_df["text_b"].astype(str).to_numpy(dtype=object)
+
+        query_rows: list[int] = []
+        query_vectors: list[np.ndarray] = []
+        for idx, row in positive_groups.iterrows():
+            vector = vectors.get(str(row["text_a"]))
+            if vector is None:
+                continue
+            query_rows.append(idx)
+            query_vectors.append(vector)
+        if not query_vectors:
+            continue
+
+        added = 0
+        query_matrix = np.vstack(query_vectors).astype(np.float32, copy=False)
+        batch_size = 256
+        for start in range(0, len(query_rows), batch_size):
+            batch_indices = query_rows[start : start + batch_size]
+            batch_matrix = query_matrix[start : start + batch_size]
+            scores = batch_matrix @ candidate_matrix.T
+            for batch_row, pos_idx in enumerate(batch_indices):
+                row = positive_groups.iloc[pos_idx]
+                group_id = str(row.get("group_id", "")).strip()
+                if group_id:
+                    scores[batch_row, candidate_groups == group_id] = -np.inf
+                scores[batch_row, candidate_texts == str(row.get("text_b", ""))] = -np.inf
+                top_k = 3
+                best_indices = np.argsort(scores[batch_row])[-top_k:][::-1]
+                for best_idx in best_indices:
+                    best_idx = int(best_idx)
+                    best_score = float(scores[batch_row, best_idx])
+                    if not np.isfinite(best_score):
+                        continue
+                    extra_rows.append(
+                        {
+                            "task": task_name,
+                            "label": "not_relevant",
+                            "text_a": str(row.get("text_a", "")),
+                            "text_b": str(candidate_texts[best_idx]),
+                            "source": f"derived_hard_negative:{task_name}",
+                            "language": str(row.get("language", "en") or "en"),
+                            "group_id": group_id or _stable_group_id(
+                                "hard_negative",
+                                task_name,
+                                row.get("text_a", ""),
+                                candidate_texts[best_idx],
+                            ),
+                        }
+                    )
+                    added += 1
+        if added > 0:
+            added_by_task[task_name] = added
+
+    if not extra_rows:
+        return df, {}
+    augmented = pd.concat([df, pd.DataFrame(extra_rows)], ignore_index=True, sort=False)
+    augmented = augmented.drop_duplicates(subset=["task", "label", "text_a", "text_b"], keep="first")
+    return augmented.reset_index(drop=True), added_by_task
 
 
 def _summary(df: pd.DataFrame) -> dict:
@@ -3860,7 +5785,13 @@ def _summary(df: pd.DataFrame) -> dict:
         for (task, label), group in df.groupby(["task", "label"]):
             key = f"{task}::{label}"
             total = len(group)
-            synth = len(group[group["source"].str.startswith("llm:", na=False)])
+            synth = len(
+                group[
+                    group["source"].astype(str).str.startswith(
+                        ("llm:", "template:", "template_hardened:"), na=False
+                    )
+                ]
+            )
             synthetic_ratio[key] = round(synth / max(1, total), 4)
 
     return {
@@ -3870,6 +5801,10 @@ def _summary(df: pd.DataFrame) -> dict:
         "source_top_20": source_top,
         "source_mix_per_task": source_mix,
         "synthetic_ratio_per_label": synthetic_ratio,
+        "source_diagnostics_per_task": _source_diagnostics(df),
+        "group_id_rows": int(df["group_id"].fillna("").astype(str).str.strip().ne("").sum())
+        if "group_id" in df.columns
+        else 0,
     }
 
 
@@ -3921,6 +5856,30 @@ def _existing_split_counts(prepared_dir: Path, family: str) -> dict[str, int]:
         except Exception:
             out[split] = 0
     return out
+
+
+def _existing_split_integrity(prepared_dir: Path, family: str) -> dict[str, Any]:
+    split_frames: dict[str, pd.DataFrame] = {}
+    for split in LOCAL_BOOTSTRAP_SPLITS:
+        path = prepared_dir / f"{family}_{split}.parquet"
+        if not path.exists():
+            split_frames[split] = pd.DataFrame()
+            continue
+        try:
+            split_frames[split] = pd.read_parquet(path)
+        except Exception:
+            split_frames[split] = pd.DataFrame()
+    return _split_integrity_summary(split_frames)
+
+
+def _existing_train_source_diagnostics(prepared_dir: Path, family: str) -> dict[str, dict[str, Any]]:
+    path = prepared_dir / f"{family}_train.parquet"
+    if not path.exists():
+        return {}
+    try:
+        return _source_diagnostics(pd.read_parquet(path))
+    except Exception:
+        return {}
 
 
 def _missing_task_labels(
@@ -4159,13 +6118,27 @@ def main(argv: list[str] | None = None) -> int:
     target_token_examples = int(token_prepare_cfg["target_examples_per_task"])
 
     if args.force_full:
-        print("Force-full mode: ignoring existing prepared splits.")
-        router_existing_df = pd.DataFrame(columns=["text", "task", "label", "source"])
-        extractor_existing_df = pd.DataFrame(columns=["text", "task", "label", "source"])
-        pair_existing_df = pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"])
+        print("Force-full mode: rebuilding outputs while reusing prior prepared rows as seed data.")
+        router_seed_df = _load_existing_family_df(prepared_dir, "router")
+        extractor_seed_df = _load_existing_family_df(prepared_dir, "extractor")
+        pair_seed_df = _load_existing_family_df(prepared_dir, "pair")
+        router_existing_df = (
+            router_seed_df[~router_seed_df["task"].astype(str).isin(REBUILT_ROUTER_TASKS)].copy()
+            if not router_seed_df.empty
+            else pd.DataFrame(columns=["text", "task", "label", "source"])
+        )
+        extractor_existing_df = (
+            extractor_seed_df.copy()
+            if not extractor_seed_df.empty
+            else pd.DataFrame(columns=["text", "task", "label", "source"])
+        )
+        pair_existing_df = (
+            pair_seed_df[~pair_seed_df["task"].astype(str).isin(REBUILT_PAIR_TASKS)].copy()
+            if not pair_seed_df.empty
+            else pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"])
+        )
         token_existing_dfs = {
-            task_name: pd.DataFrame(columns=["text", "task", "spans", "source", "language"])
-            for task_name in TOKEN_TASKS
+            task_name: _load_existing_token_df(prepared_dir, task_name) for task_name in TOKEN_TASKS
         }
     else:
         router_existing_df = _load_existing_family_df(prepared_dir, "router")
@@ -4187,6 +6160,7 @@ def main(argv: list[str] | None = None) -> int:
         base_labels=PAIR_TASK_LABELS,
         extra_labels=NEW_PAIR_TASK_LABELS,
     )
+    embedding_pair_tasks, embedding_pair_model_name = _enabled_embedding_pair_tasks(task_specs_raw)
     router_regression_tasks = _enabled_regression_tasks(task_specs_raw, family="router")
     token_tasks = _enabled_token_tasks(task_specs_raw, family="extractor")
 
@@ -4243,8 +6217,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     total_ratio = sum(ratios.values())
     ratios = {k: v / total_ratio for k, v in ratios.items()}
+    adversarial_fixture_summary = _validate_adversarial_fixtures()
 
     if not (needs_router or needs_extractor or needs_pair or needs_tokens):
+        embedding_cache_summary = _pair_embedding_cache_summary(prepared_dir)
+        if embedding_pair_tasks and (
+            embedding_cache_summary is None or embedding_cache_summary.get("rows", 0) <= 0
+        ):
+            embedding_cache_summary = _write_pair_embedding_cache(
+                df=pair_existing_df,
+                task_names=embedding_pair_tasks,
+                model_name=embedding_pair_model_name or DEFAULT_PAIR_EMBEDDING_MODEL_NAME,
+                out_dir=prepared_dir,
+            )
         manifest = {
             "config_path": str(args.config.resolve()),
             "seed": int(prepare_cfg["seed"]),
@@ -4288,21 +6273,30 @@ def main(argv: list[str] | None = None) -> int:
             "router": {
                 **_summary(router_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "router"),
+                "split_integrity": _existing_split_integrity(prepared_dir, "router"),
+                "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "router"),
                 "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": False,
             },
             "extractor": {
                 **_summary(extractor_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "extractor"),
+                "split_integrity": _existing_split_integrity(prepared_dir, "extractor"),
+                "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "extractor"),
                 "tasks": list(EXTRACTOR_TASKS),
                 "updated": False,
             },
             "pair": {
                 **_summary(pair_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "pair"),
+                "split_integrity": _existing_split_integrity(prepared_dir, "pair"),
+                "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "pair"),
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": False,
             },
+            "pair_embedding_cache": embedding_cache_summary,
+            "pair_hard_negative_augmentation": {},
+            "adversarial_fixtures": adversarial_fixture_summary,
             "token_task_splits": {
                 task_name: _existing_token_split_counts(prepared_dir, task_name)
                 for task_name in sorted(token_tasks)
@@ -4411,6 +6405,14 @@ def main(argv: list[str] | None = None) -> int:
             "fact_extraction_structured multilingual token prep used deterministic templates only; "
             "token-specific LLM fill was unavailable."
         )
+    embedding_cache_summary = _pair_embedding_cache_summary(prepared_dir)
+    router_split_integrity = _existing_split_integrity(prepared_dir, "router")
+    extractor_split_integrity = _existing_split_integrity(prepared_dir, "extractor")
+    pair_split_integrity = _existing_split_integrity(prepared_dir, "pair")
+    router_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "router")
+    extractor_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "extractor")
+    pair_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "pair")
+    pair_hard_negative_augmentation: dict[str, int] = {}
     try:
         if needs_router:
             print("Preparing router dataset (missing-only mode)...")
@@ -4430,7 +6432,19 @@ def main(argv: list[str] | None = None) -> int:
             if router_df.empty:
                 print("Router dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
-            router_splits = _write_splits(
+            router_adversarial_tasks = set(_ADVERSARIAL_FIXTURE_PATHS.keys()) & set(router_task_labels.keys()) - {"schema_match_pair"}
+            if router_adversarial_tasks:
+                router_df = _inject_adversarial_into_router_df(
+                    router_df,
+                    seed=int(prepare_cfg["seed"]),
+                    task_names=router_adversarial_tasks,
+                )
+            router_df = _apply_router_feature_enrichment(router_df)
+            (
+                router_splits,
+                router_split_integrity,
+                router_train_source_diagnostics,
+            ) = _write_splits(
                 router_df,
                 prefix="router",
                 out_dir=prepared_dir,
@@ -4456,7 +6470,11 @@ def main(argv: list[str] | None = None) -> int:
             if extractor_df.empty:
                 print("Extractor dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
-            extractor_splits = _write_splits(
+            (
+                extractor_splits,
+                extractor_split_integrity,
+                extractor_train_source_diagnostics,
+            ) = _write_splits(
                 extractor_df,
                 prefix="extractor",
                 out_dir=prepared_dir,
@@ -4485,8 +6503,32 @@ def main(argv: list[str] | None = None) -> int:
             if pair_df.empty:
                 print("Pair dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
+            pair_adversarial_tasks = set(_ADVERSARIAL_FIXTURE_PATHS.keys()) & set(pair_task_labels.keys()) & {"schema_match_pair"}
+            if pair_adversarial_tasks:
+                pair_df = _inject_adversarial_into_pair_df(
+                    pair_df,
+                    seed=int(prepare_cfg["seed"]),
+                    task_names=pair_adversarial_tasks,
+                )
+            if embedding_pair_tasks:
+                print("Writing pair embedding cache...")
+                embedding_cache_summary = _write_pair_embedding_cache(
+                    df=pair_df,
+                    task_names=embedding_pair_tasks,
+                    model_name=embedding_pair_model_name or DEFAULT_PAIR_EMBEDDING_MODEL_NAME,
+                    out_dir=prepared_dir,
+                )
+                pair_df, pair_hard_negative_augmentation = _augment_pair_hard_negatives(
+                    pair_df,
+                    cache_path=pair_embedding_cache_path(prepared_dir),
+                    task_names=embedding_pair_tasks & PAIR_RANKING_TASKS,
+                )
             print("Writing pair splits...")
-            pair_splits = _write_splits(
+            (
+                pair_splits,
+                pair_split_integrity,
+                pair_train_source_diagnostics,
+            ) = _write_splits(
                 pair_df,
                 prefix="pair",
                 out_dir=prepared_dir,
@@ -4496,6 +6538,18 @@ def main(argv: list[str] | None = None) -> int:
         else:
             pair_df = pair_existing_df
             pair_splits = _existing_split_counts(prepared_dir, "pair")
+
+        if embedding_pair_tasks and (
+            (not needs_pair)
+            and (embedding_cache_summary is None or embedding_cache_summary.get("rows", 0) <= 0)
+        ):
+            print("Writing pair embedding cache...")
+            embedding_cache_summary = _write_pair_embedding_cache(
+                df=pair_df,
+                task_names=embedding_pair_tasks,
+                model_name=embedding_pair_model_name or DEFAULT_PAIR_EMBEDDING_MODEL_NAME,
+                out_dir=prepared_dir,
+            )
 
         token_task_splits: dict[str, dict[str, int]] = {}
         token_task_dfs: dict[str, pd.DataFrame] = {}
@@ -4625,6 +6679,8 @@ def main(argv: list[str] | None = None) -> int:
             "router": {
                 **_summary(router_df),
                 "splits": router_splits,
+                "split_integrity": router_split_integrity,
+                "train_source_diagnostics": router_train_source_diagnostics,
                 "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": needs_router,
                 "missing_before": router_missing
@@ -4636,6 +6692,8 @@ def main(argv: list[str] | None = None) -> int:
             "extractor": {
                 **_summary(extractor_df),
                 "splits": extractor_splits,
+                "split_integrity": extractor_split_integrity,
+                "train_source_diagnostics": extractor_train_source_diagnostics,
                 "tasks": list(EXTRACTOR_TASKS),
                 "updated": needs_extractor,
                 "missing_before": extractor_missing,
@@ -4643,10 +6701,15 @@ def main(argv: list[str] | None = None) -> int:
             "pair": {
                 **_summary(pair_df),
                 "splits": pair_splits,
+                "split_integrity": pair_split_integrity,
+                "train_source_diagnostics": pair_train_source_diagnostics,
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": needs_pair,
                 "missing_before": pair_missing,
             },
+            "pair_embedding_cache": embedding_cache_summary,
+            "pair_hard_negative_augmentation": pair_hard_negative_augmentation,
+            "adversarial_fixtures": adversarial_fixture_summary,
             "token_task_splits": token_task_splits,
             "token_tasks": {
                 task_name: {

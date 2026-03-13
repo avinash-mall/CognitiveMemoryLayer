@@ -29,6 +29,11 @@ class TrainConfig:
     max_iter: int | None = None
     max_features: int | None = None
     predict_batch_size: int | None = None
+    early_stopping: bool | None = None
+    early_stopping_patience: int | None = None
+    early_stopping_metric: str | None = None
+    early_stopping_min_delta: float | None = None
+    calibration_method: str | None = None
     prepared_dir: Path | None = None
     output_dir: Path | None = None
     tasks: str = ""

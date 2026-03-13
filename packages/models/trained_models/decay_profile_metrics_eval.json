@@ -1,0 +1,113 @@
+{
+  "family": "router",
+  "split": "eval",
+  "overall": {
+    "rows": 5000,
+    "accuracy": 0.7772,
+    "macro_f1": 0.7725924089876066,
+    "weighted_f1": 0.7725924089876067,
+    "micro_f1": 0.7772,
+    "labels": [
+      "very_fast",
+      "fast",
+      "medium",
+      "slow",
+      "very_slow"
+    ],
+    "confusion_matrix": [
+      [
+        894,
+        106,
+        0,
+        0,
+        0
+      ],
+      [
+        410,
+        590,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        749,
+        251,
+        0
+      ],
+      [
+        0,
+        0,
+        255,
+        659,
+        86
+      ],
+      [
+        0,
+        0,
+        0,
+        6,
+        994
+      ]
+    ],
+    "calibration_error": 0.043229727560529764,
+    "ordinal_mae": 0.2228,
+    "off_by_two_rate": 0.0
+  },
+  "per_task": {
+    "decay_profile": {
+      "rows": 5000,
+      "accuracy": 0.7772,
+      "macro_f1": 0.7725924089876066,
+      "weighted_f1": 0.7725924089876067,
+      "micro_f1": 0.7772,
+      "labels": [
+        "fast",
+        "medium",
+        "slow",
+        "very_fast",
+        "very_slow"
+      ],
+      "confusion_matrix": [
+        [
+          590,
+          0,
+          0,
+          410,
+          0
+        ],
+        [
+          0,
+          749,
+          251,
+          0,
+          0
+        ],
+        [
+          0,
+          255,
+          659,
+          0,
+          86
+        ],
+        [
+          106,
+          0,
+          0,
+          894,
+          0
+        ],
+        [
+          0,
+          0,
+          6,
+          0,
+          994
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}

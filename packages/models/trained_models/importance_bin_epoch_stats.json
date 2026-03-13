@@ -1,0 +1,53 @@
+{
+  "task": "importance_bin",
+  "epoch_stats": [
+    {
+      "boundary_index": 0,
+      "boundary": "low|>medium"
+    },
+    {
+      "boundary_index": 1,
+      "boundary": "medium|>high"
+    }
+  ],
+  "training_summary": {
+    "actual_epochs": 1,
+    "best_epoch": 1,
+    "early_stopped": false,
+    "boundary_count": 2
+  },
+  "boundaries": [
+    {
+      "boundary": "low|>medium",
+      "index": 0,
+      "positive_rows": 16000,
+      "negative_rows": 8000,
+      "calibration": {
+        "method": "sigmoid",
+        "split": "eval",
+        "rows": 3000,
+        "pre_ece": 0.011546548178458503,
+        "post_ece": 0.0011825359366819388,
+        "pre_accuracy": 1.0,
+        "post_accuracy": 1.0,
+        "accuracy_delta": 0.0
+      }
+    },
+    {
+      "boundary": "medium|>high",
+      "index": 1,
+      "positive_rows": 8000,
+      "negative_rows": 16000,
+      "calibration": {
+        "method": "sigmoid",
+        "split": "eval",
+        "rows": 3000,
+        "pre_ece": 0.060336182130546014,
+        "post_ece": 0.026810591808659235,
+        "pre_accuracy": 0.861,
+        "post_accuracy": 0.864,
+        "accuracy_delta": 0.0030000000000000027
+      }
+    }
+  ]
+}

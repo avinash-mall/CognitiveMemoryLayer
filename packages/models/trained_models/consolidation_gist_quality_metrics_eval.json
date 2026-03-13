@@ -1,0 +1,61 @@
+{
+  "family": "router",
+  "split": "eval",
+  "overall": {
+    "rows": 2000,
+    "accuracy": 1.0,
+    "macro_f1": 1.0,
+    "weighted_f1": 1.0,
+    "micro_f1": 1.0,
+    "labels": [
+      "consolidation_gist_quality::accept",
+      "consolidation_gist_quality::reject"
+    ],
+    "confusion_matrix": [
+      [
+        1000,
+        0
+      ],
+      [
+        0,
+        1000
+      ]
+    ],
+    "calibration_error": 0.0013753538118117525
+  },
+  "per_task": {
+    "consolidation_gist_quality": {
+      "rows": 2000,
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "weighted_f1": 1.0,
+      "micro_f1": 1.0,
+      "labels": [
+        "accept",
+        "reject"
+      ],
+      "confusion_matrix": [
+        [
+          1000,
+          0
+        ],
+        [
+          0,
+          1000
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 2000,
+    "pre_ece": 0.0019958146589783565,
+    "post_ece": 0.0013753538118117525,
+    "pre_accuracy": 1.0,
+    "post_accuracy": 1.0,
+    "accuracy_delta": 0.0
+  }
+}

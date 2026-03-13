@@ -1,0 +1,61 @@
+{
+  "family": "pair",
+  "split": "eval",
+  "overall": {
+    "rows": 10000,
+    "accuracy": 0.7069,
+    "macro_f1": 0.7056137647169389,
+    "weighted_f1": 0.7056137647169389,
+    "micro_f1": 0.7069,
+    "labels": [
+      "schema_match_pair::match",
+      "schema_match_pair::no_match"
+    ],
+    "confusion_matrix": [
+      [
+        3865,
+        1135
+      ],
+      [
+        1796,
+        3204
+      ]
+    ],
+    "calibration_error": 0.0235191412595202
+  },
+  "per_task": {
+    "schema_match_pair": {
+      "rows": 10000,
+      "accuracy": 0.7069,
+      "macro_f1": 0.7056137647169389,
+      "weighted_f1": 0.7056137647169389,
+      "micro_f1": 0.7069,
+      "labels": [
+        "match",
+        "no_match"
+      ],
+      "confusion_matrix": [
+        [
+          3865,
+          1135
+        ],
+        [
+          1796,
+          3204
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 10000,
+    "pre_ece": 0.028525827568176964,
+    "post_ece": 0.0235191412595202,
+    "pre_accuracy": 0.7069,
+    "post_accuracy": 0.7069,
+    "accuracy_delta": 0.0
+  }
+}

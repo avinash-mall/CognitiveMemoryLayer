@@ -23,6 +23,22 @@ class _SimpleModel:
         return ["pair::match"] * len(x)
 
 
+class _WrapperProbaModel:
+    """Pickleable stand-in exposing top-level classes_ and predict_proba."""
+
+    classes_ = [
+        "novelty_pair::duplicate",
+        "novelty_pair::changed",
+        "novelty_pair::novel",
+    ]
+
+    def predict(self, x):
+        return ["novelty_pair::changed"] * len(x)
+
+    def predict_proba(self, x):
+        return [[0.1, 0.8, 0.1] for _ in x]
+
+
 class TestModelPackCapabilityReporting:
     """Tests for available_families, available_tasks, and partial-load logging."""
 
@@ -528,6 +544,28 @@ class TestPerTaskModelLoading:
             assert task_name in _TASK_MODEL_FILE, (
                 f"Task '{task_name}' from model_pipeline.toml has no entry in _TASK_MODEL_FILE"
             )
+
+    def test_wrapper_task_model_predict_proba_is_used_for_scoring(self, tmp_path: Path):
+        from src.utils.modelpack import ModelPackRuntime
+
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+
+        try:
+            import joblib
+        except ImportError:
+            pytest.skip("joblib not installed")
+
+        joblib.dump(
+            {"model": _WrapperProbaModel()},
+            str(models_dir / "novelty_pair_model.joblib"),
+        )
+
+        rt = ModelPackRuntime(models_dir=models_dir)
+        pred = rt.predict_score_pair("novelty_pair", "A", "B")
+
+        assert pred is not None
+        assert pred.score == pytest.approx(0.785, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------

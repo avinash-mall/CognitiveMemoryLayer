@@ -1,0 +1,39 @@
+{
+  "task": "memory_rerank_pair",
+  "overall": {
+    "rows": 13403,
+    "accuracy": 0.7742296500783407,
+    "macro_f1": 0.7490043964588904,
+    "weighted_f1": 0.7742296500783408,
+    "micro_f1": 0.7742296500783407,
+    "labels": [
+      "memory_rerank_pair::not_relevant",
+      "memory_rerank_pair::relevant"
+    ],
+    "confusion_matrix": [
+      [
+        7313,
+        1513
+      ],
+      [
+        1513,
+        3064
+      ]
+    ],
+    "calibration_error": 0.06990397594092292,
+    "mrr@10": 0.8206976913553307,
+    "ndcg@10": 0.8669593631361842,
+    "recall@10": 1.0,
+    "groups_evaluated": 4577
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 13403,
+    "pre_ece": 0.032538542525708335,
+    "post_ece": 0.0046663541792573635,
+    "pre_accuracy": 0.6685816608222039,
+    "post_accuracy": 0.7026785048123555,
+    "accuracy_delta": 0.03409684399015156
+  }
+}
