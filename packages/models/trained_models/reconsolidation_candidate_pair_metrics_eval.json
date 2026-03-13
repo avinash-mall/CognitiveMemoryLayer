@@ -1,0 +1,39 @@
+{
+  "task": "reconsolidation_candidate_pair",
+  "overall": {
+    "rows": 13367,
+    "accuracy": 0.7649435176180145,
+    "macro_f1": 0.7390181232123918,
+    "weighted_f1": 0.7649435176180145,
+    "micro_f1": 0.7649435176180145,
+    "labels": [
+      "reconsolidation_candidate_pair::not_relevant",
+      "reconsolidation_candidate_pair::relevant"
+    ],
+    "confusion_matrix": [
+      [
+        7219,
+        1571
+      ],
+      [
+        1571,
+        3006
+      ]
+    ],
+    "calibration_error": 0.06435792089581666,
+    "mrr@10": 0.8149260796737329,
+    "ndcg@10": 0.8627216624723855,
+    "recall@10": 1.0,
+    "groups_evaluated": 4577
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 13367,
+    "pre_ece": 0.036655922345093225,
+    "post_ece": 0.007777731779794766,
+    "pre_accuracy": 0.6641729632677489,
+    "post_accuracy": 0.696940225929528,
+    "accuracy_delta": 0.032767262661779095
+  }
+}

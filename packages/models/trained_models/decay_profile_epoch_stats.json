@@ -1,0 +1,93 @@
+{
+  "task": "decay_profile",
+  "epoch_stats": [
+    {
+      "boundary_index": 0,
+      "boundary": "very_fast|>fast"
+    },
+    {
+      "boundary_index": 1,
+      "boundary": "fast|>medium"
+    },
+    {
+      "boundary_index": 2,
+      "boundary": "medium|>slow"
+    },
+    {
+      "boundary_index": 3,
+      "boundary": "slow|>very_slow"
+    }
+  ],
+  "training_summary": {
+    "actual_epochs": 1,
+    "best_epoch": 1,
+    "early_stopped": false,
+    "boundary_count": 4
+  },
+  "boundaries": [
+    {
+      "boundary": "very_fast|>fast",
+      "index": 0,
+      "positive_rows": 32000,
+      "negative_rows": 8000,
+      "calibration": {
+        "method": "sigmoid",
+        "split": "eval",
+        "rows": 5000,
+        "pre_ece": 0.0771007444489315,
+        "post_ece": 0.01837793854193163,
+        "pre_accuracy": 0.8968,
+        "post_accuracy": 0.8966,
+        "accuracy_delta": -0.000200000000000089
+      }
+    },
+    {
+      "boundary": "fast|>medium",
+      "index": 1,
+      "positive_rows": 24000,
+      "negative_rows": 16000,
+      "calibration": {
+        "method": "sigmoid",
+        "split": "eval",
+        "rows": 5000,
+        "pre_ece": 0.010735311665777271,
+        "post_ece": 0.0008651454976523754,
+        "pre_accuracy": 1.0,
+        "post_accuracy": 1.0,
+        "accuracy_delta": 0.0
+      }
+    },
+    {
+      "boundary": "medium|>slow",
+      "index": 2,
+      "positive_rows": 16000,
+      "negative_rows": 24000,
+      "calibration": {
+        "method": "sigmoid",
+        "split": "eval",
+        "rows": 5000,
+        "pre_ece": 0.03655847085941353,
+        "post_ece": 0.025725774672664993,
+        "pre_accuracy": 0.8994,
+        "post_accuracy": 0.8992,
+        "accuracy_delta": -0.00019999999999997797
+      }
+    },
+    {
+      "boundary": "slow|>very_slow",
+      "index": 3,
+      "positive_rows": 8000,
+      "negative_rows": 32000,
+      "calibration": {
+        "method": "sigmoid",
+        "split": "eval",
+        "rows": 5000,
+        "pre_ece": 0.023373477334738733,
+        "post_ece": 0.005439941215059142,
+        "pre_accuracy": 0.9828,
+        "post_accuracy": 0.9816,
+        "accuracy_delta": -0.0011999999999999789
+      }
+    }
+  ]
+}

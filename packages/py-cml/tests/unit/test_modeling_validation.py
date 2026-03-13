@@ -167,3 +167,134 @@ def test_validate_manifest_artifacts_reports_missing(tmp_path: Path) -> None:
 
     assert any("family:pair" in err for err in errors)
     assert any("task:novelty_pair" in err for err in errors)
+
+
+def test_preflight_rejects_embedding_pair_without_cache(tmp_path: Path) -> None:
+    prepared_dir = tmp_path / "prepared"
+    _write_minimal_family_splits(prepared_dir)
+
+    result = run_preflight_validation(
+        task_specs_raw=[
+            {
+                "task_name": "memory_rerank_pair",
+                "family": "pair",
+                "input_type": "pair",
+                "objective": "pair_ranking",
+                "enabled": True,
+                "trainer": "embedding_pair",
+                "feature_backend": "embedding_pair",
+            }
+        ],
+        prepared_dir=prepared_dir,
+        strict=True,
+    )
+
+    assert result.ok is False
+    assert any("missing embedding cache" in err.lower() for err in result.errors)
+
+
+def test_preflight_accepts_embedding_pair_with_cache(tmp_path: Path) -> None:
+    prepared_dir = tmp_path / "prepared"
+    _write_minimal_family_splits(prepared_dir)
+    pd.DataFrame(
+        [
+            {
+                "text_a": "query",
+                "text_b": "memory",
+                "task": "memory_rerank_pair",
+                "label": "relevant",
+            }
+        ]
+    ).to_parquet(prepared_dir / "pair_train.parquet", index=False)
+    pd.DataFrame(
+        [
+            {
+                "text_hash": "abc123",
+                "text": "a",
+                "embedding": [0.1, 0.2, 0.3],
+                "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2",
+            }
+        ]
+    ).to_parquet(prepared_dir / "pair_text_embeddings.parquet", index=False)
+
+    result = run_preflight_validation(
+        task_specs_raw=[
+            {
+                "task_name": "memory_rerank_pair",
+                "family": "pair",
+                "input_type": "pair",
+                "objective": "pair_ranking",
+                "enabled": True,
+                "trainer": "embedding_pair",
+                "feature_backend": "embedding_pair",
+            }
+        ],
+        prepared_dir=prepared_dir,
+        strict=True,
+    )
+
+    assert result.ok is True
+    assert result.errors == []
+
+
+def test_preflight_accepts_embedding_pair_classification_with_cache(tmp_path: Path) -> None:
+    """embedding_pair trainer with objective=classification (e.g. schema_match_pair) is accepted when cache exists."""
+    prepared_dir = tmp_path / "prepared"
+    _write_minimal_family_splits(prepared_dir)
+    pd.DataFrame(
+        [
+            {"text_a": "gist A", "text_b": "fact key A", "task": "schema_match_pair", "label": "match"},
+            {"text_a": "gist B", "text_b": "fact key B", "task": "schema_match_pair", "label": "no_match"},
+        ]
+    ).to_parquet(prepared_dir / "pair_train.parquet", index=False)
+    pd.DataFrame(
+        [
+            {"text_hash": "h1", "text": "gist A", "embedding": [0.1] * 64, "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2"},
+            {"text_hash": "h2", "text": "fact key A", "embedding": [0.2] * 64, "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2"},
+        ]
+    ).to_parquet(prepared_dir / "pair_text_embeddings.parquet", index=False)
+
+    result = run_preflight_validation(
+        task_specs_raw=[
+            {
+                "task_name": "schema_match_pair",
+                "family": "pair",
+                "input_type": "pair",
+                "objective": "classification",
+                "labels": ["match", "no_match"],
+                "enabled": True,
+                "trainer": "embedding_pair",
+                "feature_backend": "embedding_pair",
+            }
+        ],
+        prepared_dir=prepared_dir,
+        strict=True,
+    )
+
+    assert result.ok is True
+    assert result.errors == []
+
+
+def test_preflight_rejects_ordinal_threshold_with_mismatched_label_order(tmp_path: Path) -> None:
+    prepared_dir = tmp_path / "prepared"
+    _write_minimal_family_splits(prepared_dir)
+
+    result = run_preflight_validation(
+        task_specs_raw=[
+            {
+                "task_name": "importance_bin",
+                "family": "router",
+                "input_type": "single",
+                "objective": "classification",
+                "enabled": True,
+                "trainer": "ordinal_threshold",
+                "labels": ["low", "medium", "high"],
+                "label_order": ["low", "high"],
+            }
+        ],
+        prepared_dir=prepared_dir,
+        strict=True,
+    )
+
+    assert result.ok is False
+    assert any("label_order" in err for err in result.errors)

@@ -1,0 +1,33 @@
+{
+  "task": "fact_extraction_structured",
+  "overall": {
+    "span_precision": 0.9854965585054081,
+    "span_recall": 0.9913452027695351,
+    "span_f1": 0.9884122287968441,
+    "span_exact_match": 0.992526158445441,
+    "rows": 4014
+  },
+  "labels": {
+    "0": "O",
+    "1": "B-attribute",
+    "2": "I-attribute",
+    "3": "B-causal",
+    "4": "I-causal",
+    "5": "B-goal",
+    "6": "I-goal",
+    "7": "B-identity",
+    "8": "I-identity",
+    "9": "B-location",
+    "10": "I-location",
+    "11": "B-occupation",
+    "12": "I-occupation",
+    "13": "B-policy",
+    "14": "I-policy",
+    "15": "B-preference",
+    "16": "I-preference",
+    "17": "B-state",
+    "18": "I-state",
+    "19": "B-value",
+    "20": "I-value"
+  }
+}

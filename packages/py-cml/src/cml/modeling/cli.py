@@ -66,6 +66,11 @@ def _add_train_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-iter", type=int, default=None)
     parser.add_argument("--max-features", type=int, default=None)
     parser.add_argument("--predict-batch-size", type=int, default=None)
+    parser.add_argument("--early-stopping", type=str, default=None)
+    parser.add_argument("--early-stopping-patience", type=int, default=None)
+    parser.add_argument("--early-stopping-metric", type=str, default=None)
+    parser.add_argument("--early-stopping-min-delta", type=float, default=None)
+    parser.add_argument("--calibration-method", type=str, default=None)
     parser.add_argument("--prepared-dir", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--tasks", type=str, default="")
@@ -147,6 +152,15 @@ def _train_config_from_args(args: argparse.Namespace) -> TrainConfig:
         max_iter=args.max_iter,
         max_features=args.max_features,
         predict_batch_size=args.predict_batch_size,
+        early_stopping=(
+            None
+            if args.early_stopping is None
+            else str(args.early_stopping).strip().lower() in {"1", "true", "yes", "on"}
+        ),
+        early_stopping_patience=args.early_stopping_patience,
+        early_stopping_metric=args.early_stopping_metric,
+        early_stopping_min_delta=args.early_stopping_min_delta,
+        calibration_method=args.calibration_method,
         prepared_dir=args.prepared_dir,
         output_dir=args.output_dir,
         tasks=str(args.tasks),

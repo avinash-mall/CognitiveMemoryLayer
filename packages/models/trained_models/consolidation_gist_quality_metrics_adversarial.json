@@ -1,0 +1,51 @@
+{
+  "family": "router",
+  "split": "adversarial",
+  "overall": {
+    "rows": 120,
+    "accuracy": 0.575,
+    "macro_f1": 0.535483870967742,
+    "weighted_f1": 0.5354838709677419,
+    "micro_f1": 0.575,
+    "labels": [
+      "consolidation_gist_quality::accept",
+      "consolidation_gist_quality::reject"
+    ],
+    "confusion_matrix": [
+      [
+        52,
+        8
+      ],
+      [
+        43,
+        17
+      ]
+    ],
+    "calibration_error": 0.3208671636257329
+  },
+  "per_task": {
+    "consolidation_gist_quality": {
+      "rows": 120,
+      "accuracy": 0.575,
+      "macro_f1": 0.535483870967742,
+      "weighted_f1": 0.5354838709677419,
+      "micro_f1": 0.575,
+      "labels": [
+        "accept",
+        "reject"
+      ],
+      "confusion_matrix": [
+        [
+          52,
+          8
+        ],
+        [
+          43,
+          17
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}

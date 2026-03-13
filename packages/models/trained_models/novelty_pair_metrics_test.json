@@ -1,0 +1,77 @@
+{
+  "family": "pair",
+  "split": "test",
+  "overall": {
+    "rows": 14403,
+    "accuracy": 0.7759494549746581,
+    "macro_f1": 0.7813459973355447,
+    "weighted_f1": 0.7741876270065218,
+    "micro_f1": 0.7759494549746581,
+    "labels": [
+      "novelty_pair::changed",
+      "novelty_pair::duplicate",
+      "novelty_pair::novel"
+    ],
+    "confusion_matrix": [
+      [
+        3189,
+        177,
+        1634
+      ],
+      [
+        117,
+        4256,
+        30
+      ],
+      [
+        1183,
+        86,
+        3731
+      ]
+    ],
+    "calibration_error": 0.014294759243077748
+  },
+  "per_task": {
+    "novelty_pair": {
+      "rows": 14403,
+      "accuracy": 0.7759494549746581,
+      "macro_f1": 0.7813459973355447,
+      "weighted_f1": 0.7741876270065218,
+      "micro_f1": 0.7759494549746581,
+      "labels": [
+        "changed",
+        "duplicate",
+        "novel"
+      ],
+      "confusion_matrix": [
+        [
+          3189,
+          177,
+          1634
+        ],
+        [
+          117,
+          4256,
+          30
+        ],
+        [
+          1183,
+          86,
+          3731
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 14404,
+    "pre_ece": 0.05480151811201022,
+    "post_ece": 0.015333026138653805,
+    "pre_accuracy": 0.7818661482921411,
+    "post_accuracy": 0.7811718966953624,
+    "accuracy_delta": -0.0006942515967787166
+  }
+}

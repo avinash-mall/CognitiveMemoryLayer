@@ -1,0 +1,69 @@
+{
+  "family": "router",
+  "split": "eval",
+  "overall": {
+    "rows": 3000,
+    "accuracy": 0.8586666666666667,
+    "macro_f1": 0.8586427772960298,
+    "weighted_f1": 0.8586427772960297,
+    "micro_f1": 0.8586666666666667,
+    "labels": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "confusion_matrix": [
+      [
+        1000,
+        0,
+        0
+      ],
+      [
+        0,
+        775,
+        225
+      ],
+      [
+        0,
+        199,
+        801
+      ]
+    ],
+    "calibration_error": 0.032813992964838556,
+    "ordinal_mae": 0.14133333333333334,
+    "off_by_two_rate": 0.0
+  },
+  "per_task": {
+    "salience_bin": {
+      "rows": 3000,
+      "accuracy": 0.8586666666666667,
+      "macro_f1": 0.8586427772960298,
+      "weighted_f1": 0.8586427772960297,
+      "micro_f1": 0.8586666666666667,
+      "labels": [
+        "high",
+        "low",
+        "medium"
+      ],
+      "confusion_matrix": [
+        [
+          801,
+          0,
+          199
+        ],
+        [
+          0,
+          1000,
+          0
+        ],
+        [
+          225,
+          0,
+          775
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}

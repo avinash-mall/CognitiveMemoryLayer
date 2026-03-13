@@ -1,0 +1,51 @@
+{
+  "family": "pair",
+  "split": "adversarial",
+  "overall": {
+    "rows": 120,
+    "accuracy": 0.5083333333333333,
+    "macro_f1": 0.4566802240810375,
+    "weighted_f1": 0.45668022408103753,
+    "micro_f1": 0.5083333333333333,
+    "labels": [
+      "schema_match_pair::match",
+      "schema_match_pair::no_match"
+    ],
+    "confusion_matrix": [
+      [
+        12,
+        48
+      ],
+      [
+        11,
+        49
+      ]
+    ],
+    "calibration_error": 0.15902083673835446
+  },
+  "per_task": {
+    "schema_match_pair": {
+      "rows": 120,
+      "accuracy": 0.5083333333333333,
+      "macro_f1": 0.4566802240810375,
+      "weighted_f1": 0.45668022408103753,
+      "micro_f1": 0.5083333333333333,
+      "labels": [
+        "match",
+        "no_match"
+      ],
+      "confusion_matrix": [
+        [
+          12,
+          48
+        ],
+        [
+          11,
+          49
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}

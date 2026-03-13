@@ -75,6 +75,12 @@ alpha = 0.00001
 
 # Prediction batch size for progress/evaluation
 predict_batch_size = 8192
+early_stopping = true
+early_stopping_patience = 3
+early_stopping_metric = "macro_f1"
+early_stopping_min_delta = 0.001
+calibration_method = "sigmoid"
+calibration_split = "eval"
 
 # ============================================================================
 # Task-level training specifications (Phase 0 pipeline extension)
@@ -100,6 +106,9 @@ objective = "pair_ranking"
 labels = []
 artifact_name = "retrieval_constraint_relevance_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
+trainer = "embedding_pair"
+feature_backend = "embedding_pair"
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 [[tasks]]
 task_name = "memory_rerank_pair"
@@ -109,15 +118,21 @@ objective = "pair_ranking"
 labels = []
 artifact_name = "memory_rerank_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
+trainer = "embedding_pair"
+feature_backend = "embedding_pair"
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 [[tasks]]
 task_name = "novelty_pair"
 family = "pair"
 input_type = "pair"
 objective = "classification"
-labels = ["duplicate", "novel", "temporal_change", "contradiction"]
+labels = ["duplicate", "novel", "changed"]
 artifact_name = "novelty_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "embedding_pair"
+feature_backend = "embedding_pair"
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 [[tasks]]
 task_name = "fact_extraction_structured"
@@ -137,6 +152,9 @@ objective = "classification"
 labels = ["match", "no_match"]
 artifact_name = "schema_match_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "embedding_pair"
+feature_backend = "embedding_pair"
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 [[tasks]]
 task_name = "reconsolidation_candidate_pair"
@@ -146,6 +164,9 @@ objective = "pair_ranking"
 labels = []
 artifact_name = "reconsolidation_candidate_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
+trainer = "embedding_pair"
+feature_backend = "embedding_pair"
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 [[tasks]]
 task_name = "write_importance_regression"
@@ -155,6 +176,65 @@ objective = "single_regression"
 labels = []
 artifact_name = "write_importance_regression"
 metrics = ["mae", "rmse"]
+enabled = true
+
+[[tasks]]
+task_name = "memory_type"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["episodic_event", "semantic_fact", "preference", "constraint", "procedure", "hypothesis", "task_state", "conversation", "message", "tool_result", "reasoning_step", "scratch", "knowledge", "observation", "plan"]
+artifact_name = "memory_type"
+metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "hierarchical_text"
+enabled = true
+
+[[tasks]]
+task_name = "salience_bin"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["low", "medium", "high"]
+artifact_name = "salience_bin"
+metrics = ["accuracy", "macro_f1", "weighted_f1", "ordinal_mae", "off_by_two_rate"]
+trainer = "ordinal_threshold"
+label_order = ["low", "medium", "high"]
+enabled = true
+
+[[tasks]]
+task_name = "importance_bin"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["low", "medium", "high"]
+artifact_name = "importance_bin"
+metrics = ["accuracy", "macro_f1", "weighted_f1", "ordinal_mae", "off_by_two_rate"]
+trainer = "ordinal_threshold"
+label_order = ["low", "medium", "high"]
+enabled = true
+
+[[tasks]]
+task_name = "confidence_bin"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["low", "medium", "high"]
+artifact_name = "confidence_bin"
+metrics = ["accuracy", "macro_f1", "weighted_f1", "ordinal_mae", "off_by_two_rate"]
+trainer = "ordinal_threshold"
+label_order = ["low", "medium", "high"]
+enabled = true
+
+[[tasks]]
+task_name = "decay_profile"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["very_fast", "fast", "medium", "slow", "very_slow"]
+artifact_name = "decay_profile"
+metrics = ["accuracy", "macro_f1", "weighted_f1", "ordinal_mae", "off_by_two_rate"]
+trainer = "ordinal_threshold"
+label_order = ["very_fast", "fast", "medium", "slow", "very_slow"]
 enabled = true
 
 [[tasks]]
@@ -189,33 +269,33 @@ metrics = ["accuracy", "macro_f1", "weighted_f1"]
 # Synthetic generation is LLM-only.
 # Provider/model/base URL are loaded from env first.
 #
-# Required env values (user preference):
-#   LLM_EVAL__PROVIDER=ollama
-#   LLM_EVAL__MODEL=gemma3:12b
-#   LLM_EVAL__BASE_URL=http://localhost:11434/v1
+# Recommended env values for the default local vLLM setup:
+#   LLM_EVAL__PROVIDER=vllm
+#   LLM_EVAL__MODEL=Qwen/Qwen3.5-9B
+#   LLM_EVAL__BASE_URL=http://localhost:8000/v1
 provider_env = "LLM_EVAL__PROVIDER"
 model_env = "LLM_EVAL__MODEL"
 base_url_env = "LLM_EVAL__BASE_URL"
-provider = "ollama"
-model = ""
+provider = "vllm"
+model = "Qwen/Qwen3.5-9B"
 base_url = ""
 api_key_env = "OPENAI_API_KEY"
 
-# Higher randomness for diversity.
-temperature = 1.35
-top_p = 0.95
-max_tokens = 1024
-batch_size = 24
+# Conservative defaults for structured JSON generation.
+temperature = 0.3
+top_p = 0.9
+max_tokens = 1536
+batch_size = 4
 
 # Number of concurrent chat-completion requests during synthetic fill.
 # Increase for higher throughput on multi-GPU vLLM backends.
-concurrency = 8
+concurrency = 4
 
 timeout_seconds = 120
 max_retries = 3
 
 # Retry budget per (task,label) while filling missing rows.
-max_attempts_per_label = 80
+max_attempts_per_label = 40
 
 # Telemetry cadence for long synth runs.
 log_stats_every_seconds = 10.0

@@ -85,6 +85,11 @@ _MODEL_FILE = {
 }
 
 _TASK_MODEL_FILE: dict[str, str] = {
+    "memory_type": "memory_type_model.joblib",
+    "salience_bin": "salience_bin_model.joblib",
+    "importance_bin": "importance_bin_model.joblib",
+    "confidence_bin": "confidence_bin_model.joblib",
+    "decay_profile": "decay_profile_model.joblib",
     "retrieval_constraint_relevance_pair": "retrieval_constraint_relevance_pair_model.joblib",
     "memory_rerank_pair": "memory_rerank_pair_model.joblib",
     "novelty_pair": "novelty_pair_model.joblib",
@@ -103,6 +108,51 @@ def _split_composite_label(raw: str) -> tuple[str, str]:
         return "", raw
     task, label = raw.split("::", 1)
     return task.strip(), label.strip()
+
+
+def _safety_override_forgetting_policy(
+    pred: ModelPrediction,
+    metadata: dict[str, Any] | None,
+) -> ModelPrediction | None:
+    """Deterministic guardrails: avoid compress/delete on high-value, recently-accessed memories."""
+    if pred.label not in ("compress", "delete"):
+        return None
+    meta = metadata or {}
+    importance = meta.get("importance")
+    access_count = meta.get("access_count")
+    age_days = meta.get("age_days")
+    dependency_count = meta.get("dependency_count")
+    try:
+        imp = float(importance) if importance is not None else 0.0
+        acc = int(access_count) if access_count is not None else 0
+        age = int(age_days) if age_days is not None else 999
+        dep = int(dependency_count) if dependency_count is not None else 0
+    except (TypeError, ValueError):
+        return None
+    if pred.label == "delete" and dep >= 2:
+        logger.info(
+            "safety_override_forgetting_policy",
+            extra={"original": pred.label, "override": "decay", "reason": "dependency_count>=2"},
+        )
+        return ModelPrediction(task=pred.task, label="decay", confidence=pred.confidence)
+    if imp >= 0.7 and acc >= 5 and age <= 30:
+        logger.info(
+            "safety_override_forgetting_policy",
+            extra={"original": pred.label, "override": "keep", "reason": "high_value_recent"},
+        )
+        return ModelPrediction(task=pred.task, label="keep", confidence=pred.confidence)
+    return None
+
+
+def _safety_override_gist_quality(pred: ModelPrediction) -> ModelPrediction | None:
+    """Downgrade low-confidence accept to reject."""
+    if pred.label != "accept" or pred.confidence >= 0.6:
+        return None
+    logger.info(
+        "safety_override_gist_quality",
+        extra={"original": "accept", "override": "reject", "confidence": pred.confidence},
+    )
+    return ModelPrediction(task=pred.task, label="reject", confidence=pred.confidence)
 
 
 _SINGLE_META_FIELDS = (
@@ -266,18 +316,29 @@ class ModelPackRuntime:
     ) -> ModelPrediction | None:
         if not text.strip():
             return None
+        pred: ModelPrediction | None = None
         task_model = self._get_task_model(task)
         if task_model is not None:
             feature = self._serialize_single_feature(task, text, metadata=metadata)
-            return self._predict_from_model(task_model, task=task, feature=feature)
-        family = _TASK_FAMILY.get(task)
-        if family not in {"router", "extractor"}:
+            pred = self._predict_from_model(task_model, task=task, feature=feature)
+        else:
+            family = _TASK_FAMILY.get(task)
+            if family in {"router", "extractor"}:
+                model = self._get_family_model(family)
+                if model is not None:
+                    feature = self._serialize_single_feature(task, text, metadata=metadata)
+                    pred = self._predict_from_model(model, task=task, feature=feature)
+        if pred is None:
             return None
-        model = self._get_family_model(family)
-        if model is None:
-            return None
-        feature = self._serialize_single_feature(task, text, metadata=metadata)
-        return self._predict_from_model(model, task=task, feature=feature)
+        if task == "forgetting_action_policy":
+            override = _safety_override_forgetting_policy(pred, metadata)
+            if override is not None:
+                pred = override
+        if task == "consolidation_gist_quality":
+            override = _safety_override_gist_quality(pred)
+            if override is not None:
+                pred = override
+        return pred
 
     def predict_pair(self, task: str, text_a: str, text_b: str) -> ModelPrediction | None:
         if not text_a.strip() or not text_b.strip():
@@ -577,8 +638,7 @@ class ModelPackRuntime:
                         continue
                     weighted += {
                         "duplicate": 1.0,
-                        "temporal_change": 0.85,
-                        "contradiction": 0.9,
+                        "changed": 0.85,
                         "novel": 0.05,
                     }.get(pred_label, 0.5) * float(prob)
                 return weighted
@@ -652,11 +712,8 @@ class ModelPackRuntime:
         return probs.get(target)
 
     def _predict_proba(self, model: Any, *, feature: str) -> dict[str, float] | None:
-        classifier = getattr(model, "named_steps", {}).get("classifier")
         classes = self._classes(model)
-        if classifier is None or not classes:
-            return None
-        if not hasattr(model, "predict_proba"):
+        if not classes or not hasattr(model, "predict_proba"):
             return None
 
         try:
@@ -674,8 +731,10 @@ class ModelPackRuntime:
 
     @staticmethod
     def _classes(model: Any) -> list[str]:
-        classifier = getattr(model, "named_steps", {}).get("classifier")
-        classes = getattr(classifier, "classes_", None)
+        classes = getattr(model, "classes_", None)
+        if classes is None:
+            classifier = getattr(model, "named_steps", {}).get("classifier")
+            classes = getattr(classifier, "classes_", None)
         if classes is None:
             return []
         return [str(x) for x in classes]

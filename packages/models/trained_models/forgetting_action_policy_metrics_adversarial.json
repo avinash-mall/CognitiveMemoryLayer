@@ -1,0 +1,111 @@
+{
+  "family": "router",
+  "split": "adversarial",
+  "overall": {
+    "rows": 125,
+    "accuracy": 0.768,
+    "macro_f1": 0.7159420289855072,
+    "weighted_f1": 0.7159420289855073,
+    "micro_f1": 0.768,
+    "labels": [
+      "forgetting_action_policy::compress",
+      "forgetting_action_policy::decay",
+      "forgetting_action_policy::delete",
+      "forgetting_action_policy::keep",
+      "forgetting_action_policy::silence"
+    ],
+    "confusion_matrix": [
+      [
+        25,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        21,
+        0,
+        4,
+        0
+      ],
+      [
+        0,
+        0,
+        25,
+        0,
+        0
+      ],
+      [
+        25,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        25
+      ]
+    ],
+    "calibration_error": 0.17543179556908242
+  },
+  "per_task": {
+    "forgetting_action_policy": {
+      "rows": 125,
+      "accuracy": 0.768,
+      "macro_f1": 0.7159420289855072,
+      "weighted_f1": 0.7159420289855073,
+      "micro_f1": 0.768,
+      "labels": [
+        "compress",
+        "decay",
+        "delete",
+        "keep",
+        "silence"
+      ],
+      "confusion_matrix": [
+        [
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          21,
+          0,
+          4,
+          0
+        ],
+        [
+          0,
+          0,
+          25,
+          0,
+          0
+        ],
+        [
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          25
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
+  }
+}

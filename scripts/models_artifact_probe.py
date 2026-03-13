@@ -109,6 +109,24 @@ def _family_probe(prepared_dir: Path, family: str) -> dict[str, Any]:
     }
 
 
+def _pair_embedding_cache_probe(prepared_dir: Path) -> dict[str, Any]:
+    path = prepared_dir / "pair_text_embeddings.parquet"
+    if not path.exists():
+        return {"exists": False}
+    pd = _require_pandas()
+    df = pd.read_parquet(path)
+    model_name = ""
+    if "embedding_model_name" in df.columns and not df.empty:
+        values = [str(value).strip() for value in df["embedding_model_name"].astype(str).tolist()]
+        model_name = next((value for value in values if value), "")
+    return {
+        "exists": True,
+        "rows": len(df),
+        "columns": list(df.columns),
+        "embedding_model_name": model_name,
+    }
+
+
 def _trained_probe(config_tasks: list[dict[str, Any]], trained_dir: Path) -> dict[str, Any]:
     manifest = _read_manifest(trained_dir / "manifest.json") or {}
     family_models = {
@@ -119,12 +137,24 @@ def _trained_probe(config_tasks: list[dict[str, Any]], trained_dir: Path) -> dic
         task["task_name"]: (trained_dir / f"{task['artifact_name']}_model.joblib").exists()
         for task in config_tasks
     }
+    task_diagnostics = {
+        task["task_name"]: {
+            "epoch_stats": (trained_dir / f"{task['artifact_name']}_epoch_stats.json").exists(),
+            "metrics_test": (trained_dir / f"{task['artifact_name']}_metrics_test.json").exists(),
+            "metrics_eval": (trained_dir / f"{task['artifact_name']}_metrics_eval.json").exists(),
+            "metrics_adversarial": (
+                trained_dir / f"{task['artifact_name']}_metrics_adversarial.json"
+            ).exists(),
+        }
+        for task in config_tasks
+    }
     return {
         "manifest_exists": (trained_dir / "manifest.json").exists(),
         "manifest_family_keys": sorted((manifest.get("families") or {}).keys()),
         "manifest_task_model_keys": sorted((manifest.get("task_models") or {}).keys()),
         "family_models": family_models,
         "task_models": task_models,
+        "task_diagnostics": task_diagnostics,
         "runtime_thresholds": manifest.get("runtime_thresholds"),
     }
 
@@ -133,6 +163,7 @@ def _collect_mismatches(
     *,
     config_tasks: list[dict[str, Any]],
     prepared: dict[str, dict[str, Any]],
+    pair_embedding_cache: dict[str, Any],
     token_prepared: dict[str, dict[str, Any]],
     trained: dict[str, Any],
 ) -> list[str]:
@@ -150,6 +181,8 @@ def _collect_mismatches(
     for raw in enabled_tasks:
         task_name = str(raw.get("task_name", ""))
         objective = str(raw.get("objective", ""))
+        trainer = str(raw.get("trainer", ""))
+        feature_backend = str(raw.get("feature_backend", ""))
         if objective == "token_classification":
             payload = token_prepared.get(task_name, {})
             if not payload.get("exists", False):
@@ -173,6 +206,15 @@ def _collect_mismatches(
             mismatches.append(
                 f"[prepared] configured enabled task missing from train splits: {task_name}"
             )
+        if trainer == "embedding_pair" or feature_backend == "embedding_pair":
+            if not pair_embedding_cache.get("exists", False):
+                msg = "[prepared] pair embedding cache missing for embedding_pair tasks"
+                if msg not in mismatches:
+                    mismatches.append(msg)
+            elif int(pair_embedding_cache.get("rows", 0)) <= 0:
+                msg = "[prepared] pair embedding cache is empty"
+                if msg not in mismatches:
+                    mismatches.append(msg)
 
     family_models = trained.get("family_models", {})
     for family in trained.get("manifest_family_keys", []):
@@ -182,9 +224,21 @@ def _collect_mismatches(
             )
 
     task_models = trained.get("task_models", {})
+    task_diagnostics = trained.get("task_diagnostics", {})
     for task_name in enabled_task_names:
         if task_name and not bool(task_models.get(task_name)):
             mismatches.append(f"[trained] enabled task model missing: {task_name}")
+            continue
+        diagnostics = task_diagnostics.get(task_name, {})
+        for key in ("epoch_stats", "metrics_test", "metrics_eval"):
+            if not bool(diagnostics.get(key)):
+                mismatches.append(f"[trained] task diagnostic missing for {task_name}: {key}")
+        if task_name in {"consolidation_gist_quality", "forgetting_action_policy"} and not bool(
+            diagnostics.get("metrics_adversarial")
+        ):
+            mismatches.append(
+                f"[trained] task diagnostic missing for {task_name}: metrics_adversarial"
+            )
 
     return mismatches
 
@@ -291,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
             family: _family_probe(args.prepared_dir, family)
             for family in ("router", "extractor", "pair")
         }
+        pair_embedding_cache = _pair_embedding_cache_probe(args.prepared_dir)
         token_prepared = {
             task_name: _token_task_probe(args.prepared_dir, task_name)
             for task_name in (
@@ -303,6 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         mismatches = _collect_mismatches(
             config_tasks=config_tasks,
             prepared=prepared,
+            pair_embedding_cache=pair_embedding_cache,
             token_prepared=token_prepared,
             trained=trained,
         )
@@ -314,6 +370,7 @@ def main(argv: list[str] | None = None) -> int:
         "config_path": args.config,
         "configured_task_names": [task["task_name"] for task in config_tasks],
         "prepared": prepared,
+        "pair_embedding_cache": pair_embedding_cache,
         "token_prepared": token_prepared,
         "trained": trained,
         "mismatches": mismatches,

@@ -15,6 +15,11 @@ from cml.token_runtime import HFTokenSpanPredictor
 TOKEN_REQUIRED_COLUMNS = ("text", "task", "spans", "source", "language")
 
 
+def _write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 def token_task_split_path(prepared_dir: Path, task_name: str, split_name: str) -> Path:
     return prepared_dir / f"{task_name}_{split_name}.parquet"
 
@@ -178,18 +183,23 @@ def _build_bio_maps(rows: list[list[dict[str, Any]]]) -> tuple[dict[str, int], d
     return label_to_id, id_to_label
 
 
+_MIN_SPAN_OVERLAP_RATIO = 0.5  # require >= 50% of token span to overlap gold for B-/I-
+
+
 def _assign_token_labels(
     offsets: list[tuple[int, int]],
     spans: list[dict[str, Any]],
     label_to_id: dict[str, int],
 ) -> list[int]:
     labels: list[int] = []
+    token_len = 0
     for start, end in offsets:
         start = int(start)
         end = int(end)
         if end <= start:
             labels.append(-100)
             continue
+        token_len = end - start
         assigned = "O"
         best_overlap = 0
         for span in spans:
@@ -199,6 +209,8 @@ def _assign_token_labels(
                 continue
             overlap = min(end, span_end) - max(start, span_start)
             if overlap <= 0 or overlap < best_overlap:
+                continue
+            if overlap < _MIN_SPAN_OVERLAP_RATIO * token_len:
                 continue
             prefix = "B" if start <= span_start < end or start == span_start else "I"
             assigned = f"{prefix}-{span['label']}"
@@ -392,6 +404,11 @@ def train_token_task(
         num_training_steps=total_steps,
     )
 
+    b_label_ids = [
+        label_to_id[lab] for lab in label_to_id if isinstance(lab, str) and lab.startswith("B-")
+    ]
+    boundary_weight = 2.0
+
     epoch_stats: list[dict[str, Any]] = []
     model.train()
     for epoch in range(1, epochs + 1):
@@ -400,7 +417,24 @@ def train_token_task(
         print(f"[task:{task_name}] epoch {epoch}/{epochs} start (steps={len(train_loader)})")
         for step, batch in enumerate(train_loader, start=1):
             batch = {k: v.to(device) for k, v in batch.items()}
-            loss = model(**batch).loss / gradient_accumulation
+            labels_flat = batch["labels"].view(-1)
+            outputs = model(
+                input_ids=batch["input_ids"],
+                attention_mask=batch["attention_mask"],
+                token_type_ids=batch.get("token_type_ids"),
+            )
+            logits_flat = outputs.logits.view(-1, len(label_to_id))
+            ce_per_token = torch.nn.functional.cross_entropy(
+                logits_flat,
+                labels_flat,
+                reduction="none",
+                ignore_index=-100,
+            )
+            weights = (labels_flat >= 0).float()
+            for lid in b_label_ids:
+                weights[labels_flat == lid] = boundary_weight
+            loss = (ce_per_token * weights).sum() / weights.sum().clamp(min=1e-6)
+            loss = loss / gradient_accumulation
             loss.backward()
             total_loss += float(loss.item()) * gradient_accumulation
             if step % gradient_accumulation == 0 or step == len(train_loader):
@@ -474,9 +508,42 @@ def train_token_task(
         model_path,
     )
 
+    training_summary = {
+        "actual_epochs": len(epoch_stats),
+        "best_epoch": len(epoch_stats),
+        "early_stopped": False,
+    }
+    _write_json(
+        output_dir / f"{task_name}_epoch_stats.json",
+        {
+            "task": task_name,
+            "epoch_stats": epoch_stats,
+            "training_summary": training_summary,
+            "labels": {str(k): v for k, v in id_to_label.items()},
+            "hf_model_dir": str(hf_model_dir),
+        },
+    )
+    _write_json(
+        output_dir / f"{task_name}_metrics_test.json",
+        {
+            "task": task_name,
+            "overall": test_metrics,
+            "labels": {str(k): v for k, v in id_to_label.items()},
+        },
+    )
+    _write_json(
+        output_dir / f"{task_name}_metrics_eval.json",
+        {
+            "task": task_name,
+            "overall": eval_metrics,
+            "labels": {str(k): v for k, v in id_to_label.items()},
+        },
+    )
+
     return {
         "task": task_name,
         "objective": "token_classification",
+        "trainer": "token_classification",
         "model_path": str(model_path),
         "hf_model_dir": str(hf_model_dir),
         "train_rows": len(train_df),
@@ -484,4 +551,7 @@ def train_token_task(
         "eval": eval_metrics,
         "labels": {str(k): v for k, v in id_to_label.items()},
         "epoch_stats": epoch_stats,
+        "actual_epochs": training_summary["actual_epochs"],
+        "best_epoch": training_summary["best_epoch"],
+        "early_stopped": training_summary["early_stopped"],
     }

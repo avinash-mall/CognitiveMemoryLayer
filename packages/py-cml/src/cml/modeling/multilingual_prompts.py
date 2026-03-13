@@ -53,7 +53,8 @@ def system_prompt_single(lang: Language) -> str:
     """System prompt for single-text synthetic classification generation."""
     return (
         f"Generate synthetic classification data in {lang.name}. "
-        "Return STRICT JSON only, no markdown fences."
+        "Return STRICT JSON only, no markdown fences. "
+        "Do not explain, think aloud, or add commentary before or after the JSON."
     )
 
 
@@ -61,7 +62,8 @@ def system_prompt_pair(lang: Language) -> str:
     """System prompt for text-pair synthetic classification generation."""
     return (
         f"Generate synthetic text-pair classification data in {lang.name}. "
-        "Return STRICT JSON only, no markdown fences."
+        "Return STRICT JSON only, no markdown fences. "
+        "Do not explain, think aloud, or add commentary before or after the JSON."
     )
 
 
@@ -77,6 +79,7 @@ def user_prompt_single(
         f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
         f"Seed example from related dataset (do not copy): {seed_text}\n\n"
         'Return exactly: {"samples":[{"text":"..."}]}\n'
+        "Output JSON only. Do not include explanations.\n"
         "Each sample must match target label exactly, be diverse, "
         "and be one concise sentence (8-22 words)."
     )
@@ -102,6 +105,7 @@ def user_prompt_pair(
         f"Task: {task}\nTarget label: {label}\nCount: {n}\n"
         f"Seed pair from related dataset (do not copy): A={seed_a} | B={seed_b}\n\n"
         'Return exactly: {"samples":[{"text_a":"...","text_b":"..."}]}\n'
+        "Output JSON only. Do not include explanations.\n"
         "Every pair must match target label exactly and be diverse. "
         "Each field should be one concise sentence (6-20 words)."
     )

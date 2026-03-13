@@ -1,0 +1,250 @@
+{"text_a": "le remboursement de voyage suit l'itinéraire réservé", "text_b": "le workflow d'ingénierie préfère les outils Python", "label": "no_match", "language": "fr"}
+{"text_a": "週次ステータスまとめは毎週金曜朝に送信されます", "text_b": "健康ルーチンは毎日の水分補給リマインダーを追跡します", "label": "no_match", "language": "ja"}
+{"text_a": "tim keuangan memulai pembekuan anggaran triwulan", "text_b": "tim keuangan memulai pembekuan anggaran triwulan", "label": "match", "language": "id"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "die wöchentliche Statusübersicht wird jeden Freitagmorgen gesendet", "text_b": "die Gesundheitsroutine verfolgt eine tägliche Trinkerinnerung", "label": "no_match", "language": "de"}
+{"text_a": "il team finanza avvia il congelamento trimestrale del budget", "text_b": "il riepilogo settimanale viene inviato ogni venerdì mattina", "label": "no_match", "language": "it"}
+{"text_a": "das Finanzteam startet das vierteljährliche Budgeteinfrieren", "text_b": "das Finanzteam startet das vierteljährliche Budgeteinfrieren", "label": "match", "language": "de"}
+{"text_a": "возмещение за поездку следует забронированному маршруту", "text_b": "возмещение за поездку следует забронированному маршруту", "label": "match", "language": "ru"}
+{"text_a": "o resumo semanal é enviado toda sexta de manhã", "text_b": "a rotina de saúde rastreia um lembrete de hidratação", "label": "no_match", "language": "pt"}
+{"text_a": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "text_b": "der Engineering-Workflow bevorzugt Python-Tools", "label": "no_match", "language": "de"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "每周五上午发送周报", "text_b": "健康习惯追踪每日饮水提醒", "label": "no_match", "language": "zh"}
+{"text_a": "el equipo de finanzas inicia una congelación trimestral", "text_b": "el equipo de finanzas inicia una congelación trimestral", "label": "match", "language": "es"}
+{"text_a": "режим здоровья отслеживает ежедневное напоминание о воде", "text_b": "режим здоровья отслеживает ежедневное напоминание о воде", "label": "match", "language": "ru"}
+{"text_a": "seyahat geri ödemesi rezerve edilen güzergahı takip eder", "text_b": "seyahat geri ödemesi rezerve edilen güzergahı takip eder", "label": "match", "language": "tr"}
+{"text_a": "استرداد السفر يتبع خط سير الرحلة المحجوز", "text_b": "استرداد السفر يتبع خط سير الرحلة المحجوز", "label": "match", "language": "ar"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "il team finanza avvia il congelamento trimestrale del budget", "text_b": "il team finanza avvia il congelamento trimestrale del budget", "label": "match", "language": "it"}
+{"text_a": "工程工作流偏好Python工具", "text_b": "工程工作流偏好Python工具", "label": "match", "language": "zh"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "travel reimbursement follows the booked itinerary", "label": "match", "language": "en"}
+{"text_a": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "text_b": "출장 환급은 예약된 일정을 따릅니다", "label": "no_match", "language": "ko"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the engineering workflow prefers Python tooling", "label": "match", "language": "en"}
+{"text_a": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "text_b": "alur kerja teknik lebih memilih perangkat Python", "label": "no_match", "language": "id"}
+{"text_a": "a rotina de saúde rastreia um lembrete de hidratação", "text_b": "o reembolso de viagem segue o itinerário reservado", "label": "no_match", "language": "pt"}
+{"text_a": "週次ステータスまとめは毎週金曜朝に送信されます", "text_b": "健康ルーチンは毎日の水分補給リマインダーを追跡します", "label": "no_match", "language": "ja"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "finans ekibi üç aylık bütçe dondurmasını başlatır", "text_b": "finans ekibi üç aylık bütçe dondurmasını başlatır", "label": "match", "language": "tr"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the engineering workflow prefers Python tooling", "label": "match", "language": "en"}
+{"text_a": "il riepilogo settimanale viene inviato ogni venerdì mattina", "text_b": "il riepilogo settimanale viene inviato ogni venerdì mattina", "label": "match", "language": "it"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "рабочий процесс инженерии предпочитает инструменты Python", "text_b": "рабочий процесс инженерии предпочитает инструменты Python", "label": "match", "language": "ru"}
+{"text_a": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "text_b": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "label": "match", "language": "id"}
+{"text_a": "der Engineering-Workflow bevorzugt Python-Tools", "text_b": "der Engineering-Workflow bevorzugt Python-Tools", "label": "match", "language": "de"}
+{"text_a": "财务团队启动季度预算冻结", "text_b": "财务团队启动季度预算冻结", "label": "match", "language": "zh"}
+{"text_a": "mühendislik iş akışı Python araçlarını tercih eder", "text_b": "finans ekibi üç aylık bütçe dondurmasını başlatır", "label": "no_match", "language": "tr"}
+{"text_a": "le remboursement de voyage suit l'itinéraire réservé", "text_b": "le workflow d'ingénierie préfère les outils Python", "label": "no_match", "language": "fr"}
+{"text_a": "el equipo de finanzas inicia una congelación trimestral", "text_b": "el equipo de finanzas inicia una congelación trimestral", "label": "match", "language": "es"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "thói quen sức khỏe theo dõi nhắc nhở uống nước hàng ngày", "text_b": "hoàn tiền du lịch theo lịch trình đã đặt", "label": "no_match", "language": "vi"}
+{"text_a": "출장 환급은 예약된 일정을 따릅니다", "text_b": "엔지니어링 워크플로는 파이썬 도구를 선호합니다", "label": "no_match", "language": "ko"}
+{"text_a": "finans ekibi üç aylık bütçe dondurmasını başlatır", "text_b": "finans ekibi üç aylık bütçe dondurmasını başlatır", "label": "match", "language": "tr"}
+{"text_a": "рабочий процесс инженерии предпочитает инструменты Python", "text_b": "рабочий процесс инженерии предпочитает инструменты Python", "label": "match", "language": "ru"}
+{"text_a": "режим здоровья отслеживает ежедневное напоминание о воде", "text_b": "возмещение за поездку следует забронированному маршруту", "label": "no_match", "language": "ru"}
+{"text_a": "режим здоровья отслеживает ежедневное напоминание о воде", "text_b": "режим здоровья отслеживает ежедневное напоминание о воде", "label": "match", "language": "ru"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "इंजीनियरिंग कार्यप्रवाह पायथन टूलिंग को प्राथमिकता देता है", "text_b": "वित्त टीम त्रैमासिक बजट फ्रीज शुरू करती है", "label": "no_match", "language": "hi"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "a rotina de saúde rastreia um lembrete de hidratação", "text_b": "o reembolso de viagem segue o itinerário reservado", "label": "no_match", "language": "pt"}
+{"text_a": "財務チームは四半期予算凍結を開始します", "text_b": "週次ステータスまとめは毎週金曜朝に送信されます", "label": "no_match", "language": "ja"}
+{"text_a": "엔지니어링 워크플로는 파이썬 도구를 선호합니다", "text_b": "엔지니어링 워크플로는 파이썬 도구를 선호합니다", "label": "match", "language": "ko"}
+{"text_a": "le workflow d'ingénierie préfère les outils Python", "text_b": "l'équipe finance lance un gel budgétaire trimestriel", "label": "no_match", "language": "fr"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "seyahat geri ödemesi rezerve edilen güzergahı takip eder", "text_b": "seyahat geri ödemesi rezerve edilen güzergahı takip eder", "label": "match", "language": "tr"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "差旅报销按预订行程执行", "text_b": "差旅报销按预订行程执行", "label": "match", "language": "zh"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "每周五上午发送周报", "text_b": "每周五上午发送周报", "label": "match", "language": "zh"}
+{"text_a": "出張精算は予約された旅程に従います", "text_b": "出張精算は予約された旅程に従います", "label": "match", "language": "ja"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "le workflow d'ingénierie préfère les outils Python", "text_b": "le workflow d'ingénierie préfère les outils Python", "label": "match", "language": "fr"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the finance team starts a quarterly budget freeze", "label": "no_match", "language": "en"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "वित्त टीम त्रैमासिक बजट फ्रीज शुरू करती है", "text_b": "साप्ताहिक स्थिति सारांश हर शुक्रवार सुबह भेजा जाता है", "label": "no_match", "language": "hi"}
+{"text_a": "đội tài chính bắt đầu đóng băng ngân sách quý", "text_b": "bản tóm tắt trạng thái hàng tuần được gửi vào sáng thứ Sáu", "label": "no_match", "language": "vi"}
+{"text_a": "سير العمل الهندسي يفضل أدوات بايثون", "text_b": "سير العمل الهندسي يفضل أدوات بايثون", "label": "match", "language": "ar"}
+{"text_a": "財務チームは四半期予算凍結を開始します", "text_b": "財務チームは四半期予算凍結を開始します", "label": "match", "language": "ja"}
+{"text_a": "đội tài chính bắt đầu đóng băng ngân sách quý", "text_b": "bản tóm tắt trạng thái hàng tuần được gửi vào sáng thứ Sáu", "label": "no_match", "language": "vi"}
+{"text_a": "週次ステータスまとめは毎週金曜朝に送信されます", "text_b": "健康ルーチンは毎日の水分補給リマインダーを追跡します", "label": "no_match", "language": "ja"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "travel reimbursement follows the booked itinerary", "label": "match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "le remboursement de voyage suit l'itinéraire réservé", "text_b": "le remboursement de voyage suit l'itinéraire réservé", "label": "match", "language": "fr"}
+{"text_a": "o fluxo de engenharia prefere ferramentas Python", "text_b": "o fluxo de engenharia prefere ferramentas Python", "label": "match", "language": "pt"}
+{"text_a": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "text_b": "الروتين الصحي يتتبع تذكير الترطيب اليومي", "label": "no_match", "language": "ar"}
+{"text_a": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "text_b": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "label": "match", "language": "hi"}
+{"text_a": "出張精算は予約された旅程に従います", "text_b": "エンジニアリングワークフローはPythonツールを好みます", "label": "no_match", "language": "ja"}
+{"text_a": "sağlık rutini günlük su tüketimi hatırlatmasını takip eder", "text_b": "sağlık rutini günlük su tüketimi hatırlatmasını takip eder", "label": "match", "language": "tr"}
+{"text_a": "재무팀은 분기별 예산 동결을 시작합니다", "text_b": "재무팀은 분기별 예산 동결을 시작합니다", "label": "match", "language": "ko"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "the health routine tracks a daily hydration reminder", "label": "match", "language": "en"}
+{"text_a": "возмещение за поездку следует забронированному маршруту", "text_b": "рабочий процесс инженерии предпочитает инструменты Python", "label": "no_match", "language": "ru"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "rutinitas kesehatan melacak pengingat hidrasi harian", "text_b": "rutinitas kesehatan melacak pengingat hidrasi harian", "label": "match", "language": "id"}
+{"text_a": "seyahat geri ödemesi rezerve edilen güzergahı takip eder", "text_b": "seyahat geri ödemesi rezerve edilen güzergahı takip eder", "label": "match", "language": "tr"}
+{"text_a": "財務チームは四半期予算凍結を開始します", "text_b": "週次ステータスまとめは毎週金曜朝に送信されます", "label": "no_match", "language": "ja"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "text_b": "alur kerja teknik lebih memilih perangkat Python", "label": "no_match", "language": "id"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the finance team starts a quarterly budget freeze", "label": "no_match", "language": "en"}
+{"text_a": "o fluxo de engenharia prefere ferramentas Python", "text_b": "o fluxo de engenharia prefere ferramentas Python", "label": "match", "language": "pt"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "der Engineering-Workflow bevorzugt Python-Tools", "text_b": "das Finanzteam startet das vierteljährliche Budgeteinfrieren", "label": "no_match", "language": "de"}
+{"text_a": "健康ルーチンは毎日の水分補給リマインダーを追跡します", "text_b": "健康ルーチンは毎日の水分補給リマインダーを追跡します", "label": "match", "language": "ja"}
+{"text_a": "재무팀은 분기별 예산 동결을 시작합니다", "text_b": "주간 현황 요약은 매주 금요일 아침에 전송됩니다", "label": "no_match", "language": "ko"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "the health routine tracks a daily hydration reminder", "label": "match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "il team finanza avvia il congelamento trimestrale del budget", "text_b": "il team finanza avvia il congelamento trimestrale del budget", "label": "match", "language": "it"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the engineering workflow prefers Python tooling", "label": "match", "language": "en"}
+{"text_a": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "text_b": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "label": "match", "language": "id"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "travel reimbursement follows the booked itinerary", "label": "match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the finance team starts a quarterly budget freeze", "label": "no_match", "language": "en"}
+{"text_a": "वित्त टीम त्रैमासिक बजट फ्रीज शुरू करती है", "text_b": "वित्त टीम त्रैमासिक बजट फ्रीज शुरू करती है", "label": "match", "language": "hi"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "the health routine tracks a daily hydration reminder", "label": "match", "language": "en"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "tim keuangan memulai pembekuan anggaran triwulan", "text_b": "ringkasan status mingguan dikirim setiap Jumat pagi", "label": "no_match", "language": "id"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "يبدأ فريق المالية تجميد الميزانية الفصلية", "text_b": "يبدأ فريق المالية تجميد الميزانية الفصلية", "label": "match", "language": "ar"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "سير العمل الهندسي يفضل أدوات بايثون", "text_b": "سير العمل الهندسي يفضل أدوات بايثون", "label": "match", "language": "ar"}
+{"text_a": "il riepilogo settimanale viene inviato ogni venerdì mattina", "text_b": "la routine salute monitora un promemoria giornaliero di idratazione", "label": "no_match", "language": "it"}
+{"text_a": "健康习惯追踪每日饮水提醒", "text_b": "差旅报销按预订行程执行", "label": "no_match", "language": "zh"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "tim keuangan memulai pembekuan anggaran triwulan", "text_b": "ringkasan status mingguan dikirim setiap Jumat pagi", "label": "no_match", "language": "id"}
+{"text_a": "mühendislik iş akışı Python araçlarını tercih eder", "text_b": "mühendislik iş akışı Python araçlarını tercih eder", "label": "match", "language": "tr"}
+{"text_a": "il rimborso del viaggio segue l'itinerario prenotato", "text_b": "il flusso di lavoro ingegneristico preferisce gli strumenti Python", "label": "no_match", "language": "it"}
+{"text_a": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "text_b": "alur kerja teknik lebih memilih perangkat Python", "label": "no_match", "language": "id"}
+{"text_a": "еженедельный отчёт отправляется каждую пятницу утром", "text_b": "еженедельный отчёт отправляется каждую пятницу утром", "label": "match", "language": "ru"}
+{"text_a": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "text_b": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "label": "match", "language": "de"}
+{"text_a": "der Engineering-Workflow bevorzugt Python-Tools", "text_b": "das Finanzteam startet das vierteljährliche Budgeteinfrieren", "label": "no_match", "language": "de"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "travel reimbursement follows the booked itinerary", "label": "match", "language": "en"}
+{"text_a": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "text_b": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "label": "match", "language": "hi"}
+{"text_a": "la routine salute monitora un promemoria giornaliero di idratazione", "text_b": "il rimborso del viaggio segue l'itinerario prenotato", "label": "no_match", "language": "it"}
+{"text_a": "엔지니어링 워크플로는 파이썬 도구를 선호합니다", "text_b": "재무팀은 분기별 예산 동결을 시작합니다", "label": "no_match", "language": "ko"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "週次ステータスまとめは毎週金曜朝に送信されます", "text_b": "健康ルーチンは毎日の水分補給リマインダーを追跡します", "label": "no_match", "language": "ja"}
+{"text_a": "el flujo de ingeniería prefiere herramientas Python", "text_b": "el flujo de ingeniería prefiere herramientas Python", "label": "match", "language": "es"}
+{"text_a": "エンジニアリングワークフローはPythonツールを好みます", "text_b": "財務チームは四半期予算凍結を開始します", "label": "no_match", "language": "ja"}
+{"text_a": "sağlık rutini günlük su tüketimi hatırlatmasını takip eder", "text_b": "sağlık rutini günlük su tüketimi hatırlatmasını takip eder", "label": "match", "language": "tr"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "il rimborso del viaggio segue l'itinerario prenotato", "text_b": "il rimborso del viaggio segue l'itinerario prenotato", "label": "match", "language": "it"}
+{"text_a": "рабочий процесс инженерии предпочитает инструменты Python", "text_b": "финансовая команда начинает квартальную заморозку бюджета", "label": "no_match", "language": "ru"}
+{"text_a": "hoàn tiền du lịch theo lịch trình đã đặt", "text_b": "quy trình kỹ thuật ưa thích công cụ Python", "label": "no_match", "language": "vi"}
+{"text_a": "quy trình kỹ thuật ưa thích công cụ Python", "text_b": "quy trình kỹ thuật ưa thích công cụ Python", "label": "match", "language": "vi"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "text_b": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "label": "match", "language": "ko"}
+{"text_a": "健康习惯追踪每日饮水提醒", "text_b": "差旅报销按预订行程执行", "label": "no_match", "language": "zh"}
+{"text_a": "ringkasan status mingguan dikirim setiap Jumat pagi", "text_b": "ringkasan status mingguan dikirim setiap Jumat pagi", "label": "match", "language": "id"}
+{"text_a": "财务团队启动季度预算冻结", "text_b": "每周五上午发送周报", "label": "no_match", "language": "zh"}
+{"text_a": "财务团队启动季度预算冻结", "text_b": "财务团队启动季度预算冻结", "label": "match", "language": "zh"}
+{"text_a": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "text_b": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "label": "match", "language": "hi"}
+{"text_a": "thói quen sức khỏe theo dõi nhắc nhở uống nước hàng ngày", "text_b": "hoàn tiền du lịch theo lịch trình đã đặt", "label": "no_match", "language": "vi"}
+{"text_a": "o fluxo de engenharia prefere ferramentas Python", "text_b": "a equipe financeira inicia congelamento trimestral", "label": "no_match", "language": "pt"}
+{"text_a": "주간 현황 요약은 매주 금요일 아침에 전송됩니다", "text_b": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "label": "no_match", "language": "ko"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "haftalık durum özeti her Cuma sabahı gönderilir", "text_b": "haftalık durum özeti her Cuma sabahı gönderilir", "label": "match", "language": "tr"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "el equipo de finanzas inicia una congelación trimestral", "text_b": "el resumen semanal se envía cada viernes por la mañana", "label": "no_match", "language": "es"}
+{"text_a": "استرداد السفر يتبع خط سير الرحلة المحجوز", "text_b": "استرداد السفر يتبع خط سير الرحلة المحجوز", "label": "match", "language": "ar"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "سير العمل الهندسي يفضل أدوات بايثون", "text_b": "يبدأ فريق المالية تجميد الميزانية الفصلية", "label": "no_match", "language": "ar"}
+{"text_a": "еженедельный отчёт отправляется каждую пятницу утром", "text_b": "режим здоровья отслеживает ежедневное напоминание о воде", "label": "no_match", "language": "ru"}
+{"text_a": "يبدأ فريق المالية تجميد الميزانية الفصلية", "text_b": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "label": "no_match", "language": "ar"}
+{"text_a": "rutinitas kesehatan melacak pengingat hidrasi harian", "text_b": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "label": "no_match", "language": "id"}
+{"text_a": "ringkasan status mingguan dikirim setiap Jumat pagi", "text_b": "ringkasan status mingguan dikirim setiap Jumat pagi", "label": "match", "language": "id"}
+{"text_a": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "text_b": "der Engineering-Workflow bevorzugt Python-Tools", "label": "no_match", "language": "de"}
+{"text_a": "le workflow d'ingénierie préfère les outils Python", "text_b": "le workflow d'ingénierie préfère les outils Python", "label": "match", "language": "fr"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "o fluxo de engenharia prefere ferramentas Python", "text_b": "a equipe financeira inicia congelamento trimestral", "label": "no_match", "language": "pt"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "rutinitas kesehatan melacak pengingat hidrasi harian", "text_b": "rutinitas kesehatan melacak pengingat hidrasi harian", "label": "match", "language": "id"}
+{"text_a": "tim keuangan memulai pembekuan anggaran triwulan", "text_b": "tim keuangan memulai pembekuan anggaran triwulan", "label": "match", "language": "id"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "the health routine tracks a daily hydration reminder", "label": "match", "language": "en"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "text_b": "स्वास्थ्य दिनचर्या दैनिक जल अनुस्मारक ट्रैक करती है", "label": "match", "language": "hi"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "le remboursement de voyage suit l'itinéraire réservé", "text_b": "le workflow d'ingénierie préfère les outils Python", "label": "no_match", "language": "fr"}
+{"text_a": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "text_b": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "label": "match", "language": "de"}
+{"text_a": "la routine salute monitora un promemoria giornaliero di idratazione", "text_b": "la routine salute monitora un promemoria giornaliero di idratazione", "label": "match", "language": "it"}
+{"text_a": "le remboursement de voyage suit l'itinéraire réservé", "text_b": "le workflow d'ingénierie préfère les outils Python", "label": "no_match", "language": "fr"}
+{"text_a": "差旅报销按预订行程执行", "text_b": "工程工作流偏好Python工具", "label": "no_match", "language": "zh"}
+{"text_a": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "text_b": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "label": "match", "language": "ar"}
+{"text_a": "il riepilogo settimanale viene inviato ogni venerdì mattina", "text_b": "la routine salute monitora un promemoria giornaliero di idratazione", "label": "no_match", "language": "it"}
+{"text_a": "वित्त टीम त्रैमासिक बजट फ्रीज शुरू करती है", "text_b": "वित्त टीम त्रैमासिक बजट फ्रीज शुरू करती है", "label": "match", "language": "hi"}
+{"text_a": "il rimborso del viaggio segue l'itinerario prenotato", "text_b": "il rimborso del viaggio segue l'itinerario prenotato", "label": "match", "language": "it"}
+{"text_a": "エンジニアリングワークフローはPythonツールを好みます", "text_b": "エンジニアリングワークフローはPythonツールを好みます", "label": "match", "language": "ja"}
+{"text_a": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "text_b": "die Reisekostenerstattung folgt der gebuchten Reiseroute", "label": "match", "language": "de"}
+{"text_a": "thói quen sức khỏe theo dõi nhắc nhở uống nước hàng ngày", "text_b": "hoàn tiền du lịch theo lịch trình đã đặt", "label": "no_match", "language": "vi"}
+{"text_a": "режим здоровья отслеживает ежедневное напоминание о воде", "text_b": "возмещение за поездку следует забронированному маршруту", "label": "no_match", "language": "ru"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "the engineering workflow prefers Python tooling", "label": "no_match", "language": "en"}
+{"text_a": "режим здоровья отслеживает ежедневное напоминание о воде", "text_b": "возмещение за поездку следует забронированному маршруту", "label": "no_match", "language": "ru"}
+{"text_a": "工程工作流偏好Python工具", "text_b": "工程工作流偏好Python工具", "label": "match", "language": "zh"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "यात्रा प्रतिपूर्ति बुक किए गए यात्रा कार्यक्रम का अनुसरण करती है", "text_b": "इंजीनियरिंग कार्यप्रवाह पायथन टूलिंग को प्राथमिकता देता है", "label": "no_match", "language": "hi"}
+{"text_a": "tim keuangan memulai pembekuan anggaran triwulan", "text_b": "ringkasan status mingguan dikirim setiap Jumat pagi", "label": "no_match", "language": "id"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "la routine salute monitora un promemoria giornaliero di idratazione", "text_b": "il rimborso del viaggio segue l'itinerario prenotato", "label": "no_match", "language": "it"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "el equipo de finanzas inicia una congelación trimestral", "text_b": "el resumen semanal se envía cada viernes por la mañana", "label": "no_match", "language": "es"}
+{"text_a": "يبدأ فريق المالية تجميد الميزانية الفصلية", "text_b": "يبدأ فريق المالية تجميد الميزانية الفصلية", "label": "match", "language": "ar"}
+{"text_a": "el reembolso de viaje sigue el itinerario reservado", "text_b": "el reembolso de viaje sigue el itinerario reservado", "label": "match", "language": "es"}
+{"text_a": "travel reimbursement follows the booked itinerary", "text_b": "travel reimbursement follows the booked itinerary", "label": "match", "language": "en"}
+{"text_a": "इंजीनियरिंग कार्यप्रवाह पायथन टूलिंग को प्राथमिकता देता है", "text_b": "इंजीनियरिंग कार्यप्रवाह पायथन टूलिंग को प्राथमिकता देता है", "label": "match", "language": "hi"}
+{"text_a": "hoàn tiền du lịch theo lịch trình đã đặt", "text_b": "hoàn tiền du lịch theo lịch trình đã đặt", "label": "match", "language": "vi"}
+{"text_a": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "text_b": "pengembalian biaya perjalanan mengikuti rencana perjalanan yang dipesan", "label": "match", "language": "id"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "a equipe financeira inicia congelamento trimestral", "text_b": "a equipe financeira inicia congelamento trimestral", "label": "match", "language": "pt"}
+{"text_a": "finans ekibi üç aylık bütçe dondurmasını başlatır", "text_b": "finans ekibi üç aylık bütçe dondurmasını başlatır", "label": "match", "language": "tr"}
+{"text_a": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "text_b": "출장 환급은 예약된 일정을 따릅니다", "label": "no_match", "language": "ko"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the finance team starts a quarterly budget freeze", "label": "no_match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "рабочий процесс инженерии предпочитает инструменты Python", "text_b": "рабочий процесс инженерии предпочитает инструменты Python", "label": "match", "language": "ru"}
+{"text_a": "thói quen sức khỏe theo dõi nhắc nhở uống nước hàng ngày", "text_b": "thói quen sức khỏe theo dõi nhắc nhở uống nước hàng ngày", "label": "match", "language": "vi"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "出張精算は予約された旅程に従います", "text_b": "エンジニアリングワークフローはPythonツールを好みます", "label": "no_match", "language": "ja"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the engineering workflow prefers Python tooling", "label": "match", "language": "en"}
+{"text_a": "o resumo semanal é enviado toda sexta de manhã", "text_b": "a rotina de saúde rastreia um lembrete de hidratação", "label": "no_match", "language": "pt"}
+{"text_a": "il team finanza avvia il congelamento trimestrale del budget", "text_b": "il riepilogo settimanale viene inviato ogni venerdì mattina", "label": "no_match", "language": "it"}
+{"text_a": "o fluxo de engenharia prefere ferramentas Python", "text_b": "o fluxo de engenharia prefere ferramentas Python", "label": "match", "language": "pt"}
+{"text_a": "il team finanza avvia il congelamento trimestrale del budget", "text_b": "il team finanza avvia il congelamento trimestrale del budget", "label": "match", "language": "it"}
+{"text_a": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "text_b": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "label": "match", "language": "ar"}
+{"text_a": "يبدأ فريق المالية تجميد الميزانية الفصلية", "text_b": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "label": "no_match", "language": "ar"}
+{"text_a": "엔지니어링 워크플로는 파이썬 도구를 선호합니다", "text_b": "엔지니어링 워크플로는 파이썬 도구를 선호합니다", "label": "match", "language": "ko"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "die wöchentliche Statusübersicht wird jeden Freitagmorgen gesendet", "text_b": "die Gesundheitsroutine verfolgt eine tägliche Trinkerinnerung", "label": "no_match", "language": "de"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the finance team starts a quarterly budget freeze", "label": "no_match", "language": "en"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "travel reimbursement follows the booked itinerary", "label": "no_match", "language": "en"}
+{"text_a": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "text_b": "건강 루틴은 매일 수분 섭취 알림을 추적합니다", "label": "match", "language": "ko"}
+{"text_a": "the health routine tracks a daily hydration reminder", "text_b": "the health routine tracks a daily hydration reminder", "label": "match", "language": "en"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the weekly status summary is sent every Friday morning", "label": "no_match", "language": "en"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the health routine tracks a daily hydration reminder", "label": "no_match", "language": "en"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the finance team starts a quarterly budget freeze", "label": "no_match", "language": "en"}
+{"text_a": "o reembolso de viagem segue o itinerário reservado", "text_b": "o fluxo de engenharia prefere ferramentas Python", "label": "no_match", "language": "pt"}
+{"text_a": "the weekly status summary is sent every Friday morning", "text_b": "the weekly status summary is sent every Friday morning", "label": "match", "language": "en"}
+{"text_a": "le résumé hebdomadaire est envoyé chaque vendredi matin", "text_b": "le résumé hebdomadaire est envoyé chaque vendredi matin", "label": "match", "language": "fr"}
+{"text_a": "mühendislik iş akışı Python araçlarını tercih eder", "text_b": "mühendislik iş akışı Python araçlarını tercih eder", "label": "match", "language": "tr"}
+{"text_a": "the finance team starts a quarterly budget freeze", "text_b": "the finance team starts a quarterly budget freeze", "label": "match", "language": "en"}
+{"text_a": "財務チームは四半期予算凍結を開始します", "text_b": "週次ステータスまとめは毎週金曜朝に送信されます", "label": "no_match", "language": "ja"}
+{"text_a": "주간 현황 요약은 매주 금요일 아침에 전송됩니다", "text_b": "주간 현황 요약은 매주 금요일 아침에 전송됩니다", "label": "match", "language": "ko"}
+{"text_a": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "text_b": "يتم إرسال الملخص الأسبوعي كل صباح جمعة", "label": "match", "language": "ar"}
+{"text_a": "il riepilogo settimanale viene inviato ogni venerdì mattina", "text_b": "il riepilogo settimanale viene inviato ogni venerdì mattina", "label": "match", "language": "it"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the engineering workflow prefers Python tooling", "label": "match", "language": "en"}
+{"text_a": "工程工作流偏好Python工具", "text_b": "财务团队启动季度预算冻结", "label": "no_match", "language": "zh"}
+{"text_a": "bản tóm tắt trạng thái hàng tuần được gửi vào sáng thứ Sáu", "text_b": "thói quen sức khỏe theo dõi nhắc nhở uống nước hàng ngày", "label": "no_match", "language": "vi"}
+{"text_a": "đội tài chính bắt đầu đóng băng ngân sách quý", "text_b": "đội tài chính bắt đầu đóng băng ngân sách quý", "label": "match", "language": "vi"}
+{"text_a": "差旅报销按预订行程执行", "text_b": "工程工作流偏好Python工具", "label": "no_match", "language": "zh"}
+{"text_a": "यात्रा प्रतिपूर्ति बुक किए गए यात्रा कार्यक्रम का अनुसरण करती है", "text_b": "यात्रा प्रतिपूर्ति बुक किए गए यात्रा कार्यक्रम का अनुसरण करती है", "label": "match", "language": "hi"}
+{"text_a": "finans ekibi üç aylık bütçe dondurmasını başlatır", "text_b": "haftalık durum özeti her Cuma sabahı gönderilir", "label": "no_match", "language": "tr"}
+{"text_a": "the engineering workflow prefers Python tooling", "text_b": "the engineering workflow prefers Python tooling", "label": "match", "language": "en"}
+{"text_a": "der Engineering-Workflow bevorzugt Python-Tools", "text_b": "das Finanzteam startet das vierteljährliche Budgeteinfrieren", "label": "no_match", "language": "de"}
+{"text_a": "quy trình kỹ thuật ưa thích công cụ Python", "text_b": "đội tài chính bắt đầu đóng băng ngân sách quý", "label": "no_match", "language": "vi"}

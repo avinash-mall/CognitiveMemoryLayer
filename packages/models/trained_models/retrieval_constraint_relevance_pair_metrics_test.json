@@ -1,0 +1,39 @@
+{
+  "task": "retrieval_constraint_relevance_pair",
+  "overall": {
+    "rows": 13414,
+    "accuracy": 0.7815714924705531,
+    "macro_f1": 0.7570449570513216,
+    "weighted_f1": 0.7815714924705531,
+    "micro_f1": 0.7815714924705531,
+    "labels": [
+      "retrieval_constraint_relevance_pair::not_relevant",
+      "retrieval_constraint_relevance_pair::relevant"
+    ],
+    "confusion_matrix": [
+      [
+        7373,
+        1465
+      ],
+      [
+        1465,
+        3111
+      ]
+    ],
+    "calibration_error": 0.07925427276652161,
+    "mrr@10": 0.8263585372960406,
+    "ndcg@10": 0.8711668981444046,
+    "recall@10": 1.0,
+    "groups_evaluated": 4576
+  },
+  "calibration": {
+    "method": "sigmoid",
+    "split": "eval",
+    "rows": 13365,
+    "pre_ece": 0.0335266135384548,
+    "post_ece": 0.0035470193808617126,
+    "pre_accuracy": 0.6655443322109988,
+    "post_accuracy": 0.6992891881780771,
+    "accuracy_delta": 0.03374485596707821
+  }
+}

@@ -51,6 +51,26 @@ def _write_fact_config(path: Path) -> None:
     )
 
 
+def _write_embedding_pair_config(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "[[tasks]]",
+                'task_name = "memory_rerank_pair"',
+                'family = "pair"',
+                'input_type = "pair"',
+                'objective = "pair_ranking"',
+                "enabled = true",
+                'artifact_name = "memory_rerank_pair"',
+                'metrics = ["mrr@10"]',
+                'trainer = "embedding_pair"',
+                'feature_backend = "embedding_pair"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_models_artifact_probe_fail_on_mismatch(tmp_path: Path) -> None:
     config = tmp_path / "model_pipeline.toml"
     prepared = tmp_path / "prepared"
@@ -150,3 +170,50 @@ def test_models_artifact_probe_flags_english_only_fact_token_rows(tmp_path: Path
 
     assert result.returncode == 1
     assert "fact_extraction_structured token split has no non-English rows" in result.stderr
+
+
+def test_models_artifact_probe_flags_missing_pair_embedding_cache(tmp_path: Path) -> None:
+    config = tmp_path / "model_pipeline.toml"
+    prepared = tmp_path / "prepared"
+    trained = tmp_path / "trained"
+    prepared.mkdir(parents=True, exist_ok=True)
+    trained.mkdir(parents=True, exist_ok=True)
+    _write_embedding_pair_config(config)
+
+    pd.DataFrame(
+        [
+            {
+                "text_a": "query",
+                "text_b": "memory",
+                "task": "memory_rerank_pair",
+                "label": "relevant",
+                "source": "unit",
+            }
+        ]
+    ).to_parquet(prepared / "pair_train.parquet", index=False)
+    pd.DataFrame([{"text": "x", "task": "query_intent", "label": "factual"}]).to_parquet(
+        prepared / "router_train.parquet", index=False
+    )
+    pd.DataFrame([{"text": "x", "task": "constraint_type", "label": "policy"}]).to_parquet(
+        prepared / "extractor_train.parquet", index=False
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/models_artifact_probe.py",
+            "--config",
+            str(config),
+            "--prepared-dir",
+            str(prepared),
+            "--trained-dir",
+            str(trained),
+            "--fail-on-mismatch",
+        ],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "pair embedding cache missing" in result.stderr

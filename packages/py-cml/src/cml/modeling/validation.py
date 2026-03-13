@@ -16,6 +16,16 @@ _KNOWN_OBJECTIVES = {
     "single_regression",
     "token_classification",
 }
+_KNOWN_TRAINERS = {
+    "classification",
+    "pair_ranking",
+    "single_regression",
+    "token_classification",
+    "embedding_pair",
+    "ordinal_threshold",
+    "hierarchical_text",
+}
+_KNOWN_FEATURE_BACKENDS = {"tfidf", "embedding_pair"}
 _FAMILIES = {"router", "extractor", "pair"}
 
 
@@ -65,6 +75,22 @@ def _required_columns(*, input_type: str, objective: str) -> list[str]:
     return cols
 
 
+def _resolved_trainer(raw: dict[str, Any]) -> str:
+    trainer = str(raw.get("trainer", "") or "").strip()
+    if trainer:
+        return trainer
+    return str(raw.get("objective", "") or "").strip()
+
+
+def _resolved_feature_backend(raw: dict[str, Any]) -> str:
+    backend = str(raw.get("feature_backend", "") or "").strip()
+    if backend:
+        return backend
+    if _resolved_trainer(raw) == "embedding_pair":
+        return "embedding_pair"
+    return "tfidf"
+
+
 def _load_family_train_df(
     prepared_dir: Path, family: str
 ) -> tuple[pd.DataFrame | None, str | None]:
@@ -109,6 +135,9 @@ def run_preflight_validation(
         input_type = str(raw.get("input_type", "")).strip()
         objective = str(raw.get("objective", "")).strip()
         enabled = bool(raw.get("enabled", True))
+        trainer = _resolved_trainer(raw)
+        feature_backend = _resolved_feature_backend(raw)
+        label_order = [str(x) for x in raw.get("label_order", []) if str(x).strip()]
 
         if (
             family in enabled_tasks_by_family
@@ -151,10 +180,75 @@ def run_preflight_validation(
             task_checks.append(status)
             continue
 
+        if trainer not in _KNOWN_TRAINERS:
+            status.status = "error"
+            status.reason = f"Unknown trainer '{trainer}'"
+            errors.append(f"[task:{task_name}] unknown trainer '{trainer}'")
+            task_checks.append(status)
+            continue
+
+        if feature_backend not in _KNOWN_FEATURE_BACKENDS:
+            status.status = "error"
+            status.reason = f"Unknown feature_backend '{feature_backend}'"
+            errors.append(f"[task:{task_name}] unknown feature_backend '{feature_backend}'")
+            task_checks.append(status)
+            continue
+
         if input_type not in {"single", "pair"}:
             status.status = "error"
             status.reason = f"Invalid input_type '{input_type}'"
             errors.append(f"[task:{task_name}] invalid input_type '{input_type}'")
+            task_checks.append(status)
+            continue
+
+        if trainer == "embedding_pair":
+            cache_path = prepared_dir / "pair_text_embeddings.parquet"
+            if input_type != "pair" or feature_backend != "embedding_pair":
+                status.status = "error"
+                status.reason = "embedding_pair trainer requires pair input_type and embedding_pair backend"
+                errors.append(
+                    f"[task:{task_name}] embedding_pair trainer requires pair input_type and embedding_pair backend"
+                )
+                task_checks.append(status)
+                continue
+            if objective not in ("pair_ranking", "classification"):
+                status.status = "error"
+                status.reason = "embedding_pair trainer requires pair_ranking or classification objective"
+                errors.append(
+                    f"[task:{task_name}] embedding_pair trainer requires objective pair_ranking or classification"
+                )
+                task_checks.append(status)
+                continue
+            if not cache_path.exists():
+                status.status = "error"
+                status.reason = f"Missing embedding cache: {cache_path.name}"
+                errors.append(f"[task:{task_name}] missing embedding cache: {cache_path}")
+                task_checks.append(status)
+                continue
+
+        if trainer == "ordinal_threshold":
+            labels = [str(x) for x in raw.get("labels", []) if str(x).strip()]
+            if objective != "classification" or input_type != "single":
+                status.status = "error"
+                status.reason = "ordinal_threshold requires single-input classification"
+                errors.append(
+                    f"[task:{task_name}] ordinal_threshold requires objective=classification and input_type=single"
+                )
+                task_checks.append(status)
+                continue
+            if not label_order or sorted(label_order) != sorted(labels):
+                status.status = "error"
+                status.reason = "label_order must contain the same labels as labels"
+                errors.append(f"[task:{task_name}] ordinal_threshold requires label_order matching labels")
+                task_checks.append(status)
+                continue
+
+        if trainer == "hierarchical_text" and (objective != "classification" or input_type != "single"):
+            status.status = "error"
+            status.reason = "hierarchical_text requires single-input classification"
+            errors.append(
+                f"[task:{task_name}] hierarchical_text requires objective=classification and input_type=single"
+            )
             task_checks.append(status)
             continue
 
