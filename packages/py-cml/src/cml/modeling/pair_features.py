@@ -25,36 +25,112 @@ _TOKEN_RE = re.compile(
 _NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 _NEGATION_TOKENS = {
     # English
-    "no", "not", "never", "none", "nothing", "neither", "nor",
-    "cannot", "cant", "can't", "dont", "don't", "won't", "without",
+    "no",
+    "not",
+    "never",
+    "none",
+    "nothing",
+    "neither",
+    "nor",
+    "cannot",
+    "cant",
+    "can't",
+    "dont",
+    "don't",
+    "won't",
+    "without",
     # Chinese
-    "不", "没", "没有", "无", "非", "未", "别",
+    "不",
+    "没",
+    "没有",
+    "无",
+    "非",
+    "未",
+    "别",
     # Spanish
-    "nunca", "nada", "ninguno", "ninguna", "ni", "sin", "jamás",
+    "nunca",
+    "nada",
+    "ninguno",
+    "ninguna",
+    "ni",
+    "sin",
+    "jamás",
     # Arabic
-    "لا", "ليس", "لم", "لن", "غير", "بدون", "ما",
+    "لا",
+    "ليس",
+    "لم",
+    "لن",
+    "غير",
+    "بدون",
+    "ما",
     # Hindi
-    "नहीं", "न", "मत", "बिना", "कभी",
+    "नहीं",
+    "न",
+    "मत",
+    "बिना",
+    "कभी",
     # Portuguese
-    "não", "nenhum", "nenhuma", "nem", "sem",
+    "não",
+    "nenhum",
+    "nenhuma",
+    "nem",
+    "sem",
     # French
-    "ne", "pas", "jamais", "rien", "aucun", "aucune", "sans",
+    "ne",
+    "pas",
+    "jamais",
+    "rien",
+    "aucun",
+    "aucune",
+    "sans",
     # Japanese
-    "ない", "ず", "ぬ", "なし",
+    "ない",
+    "ず",
+    "ぬ",
+    "なし",
     # Russian
-    "не", "нет", "никогда", "ничего", "без", "ни",
+    "не",
+    "нет",
+    "никогда",
+    "ничего",
+    "без",
+    "ни",
     # German
-    "nicht", "kein", "keine", "nie", "niemals", "ohne", "weder", "noch",
+    "nicht",
+    "kein",
+    "keine",
+    "nie",
+    "niemals",
+    "ohne",
+    "weder",
+    "noch",
     # Korean
-    "않", "못", "안", "없",
+    "않",
+    "못",
+    "안",
+    "없",
     # Turkish
-    "değil", "yok", "hiç", "asla",
+    "değil",
+    "yok",
+    "hiç",
+    "asla",
     # Indonesian
-    "tidak", "bukan", "tanpa", "tak", "belum",
+    "tidak",
+    "bukan",
+    "tanpa",
+    "tak",
+    "belum",
     # Vietnamese
-    "không", "chưa", "chẳng",
+    "không",
+    "chưa",
+    "chẳng",
     # Italian
-    "non", "mai", "niente", "nessuno", "nessuna", "senza",
+    "non",
+    "mai",
+    "niente",
+    "nessuno",
+    "nessuna",
+    "senza",
 }
 
 
@@ -114,9 +190,9 @@ def build_pair_lexical_features(text_a: str, text_b: str) -> np.ndarray:
     else:
         cnt_b = Counter(tokens_b)
         set_a = set(tokens_a)
-        bm25_like = sum(
-            1.0 / (1.0 + log(1.0 + cnt_b[t])) for t in set_a if t in cnt_b
-        ) / max(1, len(tokens_b))
+        bm25_like = sum(1.0 / (1.0 + log(1.0 + cnt_b[t])) for t in set_a if t in cnt_b) / max(
+            1, len(tokens_b)
+        )
         bm25_like = min(1.0, float(bm25_like))
 
     return np.asarray(

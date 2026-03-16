@@ -275,7 +275,11 @@ def test_train_single_regression_writes_eval_metrics_artifact(tmp_path: Path) ->
 
     train_rows = pd.DataFrame(
         [
-            {"task": "write_importance_regression", "text": f"train row {idx}", "score": float(idx) / 10.0}
+            {
+                "task": "write_importance_regression",
+                "text": f"train row {idx}",
+                "score": float(idx) / 10.0,
+            }
             for idx in range(8)
         ]
     )
@@ -344,7 +348,9 @@ def test_encode_memory_type_features_matches_prepared_columns_and_fallback() -> 
     )
     fallback_df = pd.DataFrame([{"task": "memory_type", "label": "plan", "text": text}])
 
-    assert train_module._encode_memory_type_features(prepared_df, "router") == train_module._encode_memory_type_features(
+    assert train_module._encode_memory_type_features(
+        prepared_df, "router"
+    ) == train_module._encode_memory_type_features(
         fallback_df,
         "router",
     )
@@ -391,7 +397,9 @@ def test_hierarchical_runtime_enriches_memory_type_features() -> None:
         classes_=["memory_type::preference", "memory_type::episodic_event"],
     )
 
-    pred = model.predict(['task=memory_type [text] {"step": "Please review this plan with Alice tomorrow?"}'])
+    pred = model.predict(
+        ['task=memory_type [text] {"step": "Please review this plan with Alice tomorrow?"}']
+    )
 
     assert pred.tolist() == ["memory_type::preference"]
     assert "mt_json_like=true" in stage1.last_features[0]
@@ -435,7 +443,9 @@ def test_embedding_pair_runtime_dense_features_match_train_time(monkeypatch) -> 
     )
     monkeypatch.setattr(model, "_ensure_encoder", lambda: _FakeEncoder(vectors))
 
-    probs = model.predict_proba(["task=memory_rerank_pair [a] query alpha 42 [b] memory beta not 42"])
+    probs = model.predict_proba(
+        ["task=memory_rerank_pair [a] query alpha 42 [b] memory beta not 42"]
+    )
     expected = build_pair_dense_features(
         vectors["query alpha 42"],
         vectors["memory beta not 42"],

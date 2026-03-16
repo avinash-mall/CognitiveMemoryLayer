@@ -243,14 +243,34 @@ def test_preflight_accepts_embedding_pair_classification_with_cache(tmp_path: Pa
     _write_minimal_family_splits(prepared_dir)
     pd.DataFrame(
         [
-            {"text_a": "gist A", "text_b": "fact key A", "task": "schema_match_pair", "label": "match"},
-            {"text_a": "gist B", "text_b": "fact key B", "task": "schema_match_pair", "label": "no_match"},
+            {
+                "text_a": "gist A",
+                "text_b": "fact key A",
+                "task": "schema_match_pair",
+                "label": "match",
+            },
+            {
+                "text_a": "gist B",
+                "text_b": "fact key B",
+                "task": "schema_match_pair",
+                "label": "no_match",
+            },
         ]
     ).to_parquet(prepared_dir / "pair_train.parquet", index=False)
     pd.DataFrame(
         [
-            {"text_hash": "h1", "text": "gist A", "embedding": [0.1] * 64, "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2"},
-            {"text_hash": "h2", "text": "fact key A", "embedding": [0.2] * 64, "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2"},
+            {
+                "text_hash": "h1",
+                "text": "gist A",
+                "embedding": [0.1] * 64,
+                "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2",
+            },
+            {
+                "text_hash": "h2",
+                "text": "fact key A",
+                "embedding": [0.2] * 64,
+                "embedding_model_name": "sentence-transformers/all-MiniLM-L6-v2",
+            },
         ]
     ).to_parquet(prepared_dir / "pair_text_embeddings.parquet", index=False)
 
@@ -280,8 +300,18 @@ def test_preflight_accepts_transformer_pair_without_embedding_cache(tmp_path: Pa
     _write_minimal_family_splits(prepared_dir)
     pd.DataFrame(
         [
-            {"text_a": "gist A", "text_b": "fact key A", "task": "schema_match_pair", "label": "match"},
-            {"text_a": "gist B", "text_b": "fact key B", "task": "schema_match_pair", "label": "no_match"},
+            {
+                "text_a": "gist A",
+                "text_b": "fact key A",
+                "task": "schema_match_pair",
+                "label": "match",
+            },
+            {
+                "text_a": "gist B",
+                "text_b": "fact key B",
+                "task": "schema_match_pair",
+                "label": "no_match",
+            },
         ]
     ).to_parquet(prepared_dir / "pair_train.parquet", index=False)
 

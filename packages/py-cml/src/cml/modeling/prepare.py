@@ -438,15 +438,12 @@ def _enabled_embedding_pair_tasks(task_specs_raw: list[dict]) -> tuple[set[str],
             continue
         task_names.add(task_name)
         model_names.add(
-            str(spec.get("embedding_model_name", "")).strip()
-            or DEFAULT_PAIR_EMBEDDING_MODEL_NAME
+            str(spec.get("embedding_model_name", "")).strip() or DEFAULT_PAIR_EMBEDDING_MODEL_NAME
         )
     if not task_names:
         return set(), None
     if len(model_names) > 1:
-        raise ValueError(
-            "Embedding-pair tasks must share one embedding_model_name during prepare."
-        )
+        raise ValueError("Embedding-pair tasks must share one embedding_model_name during prepare.")
     return task_names, next(iter(model_names))
 
 
@@ -2042,8 +2039,7 @@ def _match_model_metadata(model_name: str, payload: dict[str, Any] | None) -> di
         (
             item
             for item in items
-            if isinstance(item, dict)
-            and any(name.lower() == wanted for name in _names(item))
+            if isinstance(item, dict) and any(name.lower() == wanted for name in _names(item))
         ),
         None,
     )
@@ -2073,10 +2069,9 @@ def _thinking_disable_policy(
     model_name: str,
     model_metadata: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    model_id = (
-        str((model_metadata or {}).get("id", "") or (model_metadata or {}).get("root", "") or model_name)
-        .strip()
-    )
+    model_id = str(
+        (model_metadata or {}).get("id", "") or (model_metadata or {}).get("root", "") or model_name
+    ).strip()
     owner = str((model_metadata or {}).get("owned_by", "") or "").strip().lower()
     lowered = model_id.lower()
     provider_lower = str(provider or "").strip().lower()
@@ -2124,7 +2119,9 @@ def _thinking_disable_policy(
         elif lowered.startswith(("gpt-5", "gpt-5-mini", "gpt-5-nano")):
             policy["reasoning_effort"] = "minimal"
             policy["omit_sampling_controls"] = True
-        elif lowered.startswith(("o3", "o4-mini", "o3-mini", "codex-mini-latest")) or lowered.startswith("gpt-oss"):
+        elif lowered.startswith(
+            ("o3", "o4-mini", "o3-mini", "codex-mini-latest")
+        ) or lowered.startswith("gpt-oss"):
             policy["reasoning_effort"] = "low"
 
     if is_gemini_openai:
@@ -2199,9 +2196,7 @@ class _LLMGenerator:
         model_from_env = os.getenv(model_env, "").strip()
         base_url_from_env = os.getenv(base_url_env, "").strip()
 
-        self.provider = (
-            provider_from_env or str(cfg.get("provider", "")).strip()
-        ).strip().lower()
+        self.provider = (provider_from_env or str(cfg.get("provider", "")).strip()).strip().lower()
         self.model = (model_from_env or str(cfg.get("model", "")).strip()).strip()
         self.base_url = (base_url_from_env or str(cfg.get("base_url", "")).strip()).strip()
         self.api_key = os.getenv(api_key_env, "").strip()
@@ -2455,7 +2450,9 @@ class _LLMGenerator:
         raw = self._request(system, user)
         payload = _parse_json_content(raw)
         if payload is None and _looks_like_thinking_output(raw):
-            _warn(f"Detected reasoning output for {task}::{label}; retrying with forced no-thinking.")
+            _warn(
+                f"Detected reasoning output for {task}::{label}; retrying with forced no-thinking."
+            )
             raw = self._request(system, user, force_prefill_thinking_closed=True)
             payload = _parse_json_content(raw)
         if not payload:
@@ -2511,7 +2508,9 @@ class _LLMGenerator:
         raw = self._request(system, user)
         payload = _parse_json_content(raw)
         if payload is None and _looks_like_thinking_output(raw):
-            _warn(f"Detected reasoning output for {task}::{label}; retrying with forced no-thinking.")
+            _warn(
+                f"Detected reasoning output for {task}::{label}; retrying with forced no-thinking."
+            )
             raw = self._request(system, user, force_prefill_thinking_closed=True)
             payload = _parse_json_content(raw)
         if not payload:
@@ -3037,7 +3036,9 @@ def _add_changed_rows(
             old = f"I wake up at {6 + (idx % 5)} AM every day."
             new = f"I changed my routine and now wake up at {7 + (idx % 5)} AM."
         elif topic == 4:
-            old = f"My backup contact is person {idx} and the policy expires in {30 + idx % 10} days."
+            old = (
+                f"My backup contact is person {idx} and the policy expires in {30 + idx % 10} days."
+            )
             new = f"My backup contact is now person {idx + 1} and the policy renews in {45 + idx % 10} days."
         else:
             old = f"My monthly budget is ${1000 + idx}."
@@ -3187,7 +3188,10 @@ def _add_fever_schema_match_rows(
             recon_label = "not_relevant"
         else:
             continue
-        if fever_target_per_label is not None and fever_counts[schema_label] >= fever_target_per_label:
+        if (
+            fever_target_per_label is not None
+            and fever_counts[schema_label] >= fever_target_per_label
+        ):
             continue
         group_id = f"hf:fever:{idx}"
         added_schema = rows.add(
@@ -3426,7 +3430,9 @@ def _max_single_source_rows(
     return max(1, int(target_per_task_label * float(ratio)))
 
 
-def _router_hardening_shell(idx: int, *, single_pools: dict[str, list[str]], rng: random.Random) -> str:
+def _router_hardening_shell(
+    idx: int, *, single_pools: dict[str, list[str]], rng: random.Random
+) -> str:
     pack = _topic_pack(idx)
     seed = _seed_fragment(single_pools, rng=rng, idx=idx)
     shell_idx = idx % 3
@@ -3677,8 +3683,10 @@ def _fill_structured_router_quality_rows(
                     access_count = max(1, access_count + (0 if accept else 1))
                     support_count = max(1, support_count + (0 if accept else 1))
                     mixed_topic = True
-                clause_pool = gist_boundary_clauses if boundary else (
-                    gist_accept_clauses if accept else gist_reject_clauses
+                clause_pool = (
+                    gist_boundary_clauses
+                    if boundary
+                    else (gist_accept_clauses if accept else gist_reject_clauses)
                 )
                 clause = _cycle_choice(clause_pool, idx, offset=1 if mixed_topic else 0)
                 text = (
@@ -3948,26 +3956,152 @@ def _fill_structured_router_ordinal_rows(
 ) -> None:
     task_profiles: dict[str, dict[str, dict[str, Any]]] = {
         "salience_bin": {
-            "low": {"memory_types": ["scratch", "observation", "episodic_event"], "importance": 0.28, "confidence": 0.48, "access_count": 0, "age_days": 110, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
-            "medium": {"memory_types": ["episodic_event", "semantic_fact", "observation"], "importance": 0.46, "confidence": 0.6, "access_count": 2, "age_days": 42, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
-            "high": {"memory_types": ["constraint", "semantic_fact", "preference"], "importance": 0.62, "confidence": 0.72, "access_count": 3, "age_days": 18, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+            "low": {
+                "memory_types": ["scratch", "observation", "episodic_event"],
+                "importance": 0.28,
+                "confidence": 0.48,
+                "access_count": 0,
+                "age_days": 110,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+            },
+            "medium": {
+                "memory_types": ["episodic_event", "semantic_fact", "observation"],
+                "importance": 0.46,
+                "confidence": 0.6,
+                "access_count": 2,
+                "age_days": 42,
+                "dependency_count": 1,
+                "support_count": 2,
+                "mixed_topic": False,
+            },
+            "high": {
+                "memory_types": ["constraint", "semantic_fact", "preference"],
+                "importance": 0.62,
+                "confidence": 0.72,
+                "access_count": 3,
+                "age_days": 18,
+                "dependency_count": 2,
+                "support_count": 3,
+                "mixed_topic": False,
+            },
         },
         "importance_bin": {
-            "low": {"memory_types": ["scratch", "observation", "episodic_event"], "importance": 0.22, "confidence": 0.42, "access_count": 0, "age_days": 130, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
-            "medium": {"memory_types": ["semantic_fact", "observation", "preference"], "importance": 0.5, "confidence": 0.58, "access_count": 2, "age_days": 44, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
-            "high": {"memory_types": ["constraint", "preference", "semantic_fact"], "importance": 0.78, "confidence": 0.72, "access_count": 3, "age_days": 18, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+            "low": {
+                "memory_types": ["scratch", "observation", "episodic_event"],
+                "importance": 0.22,
+                "confidence": 0.42,
+                "access_count": 0,
+                "age_days": 130,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+            },
+            "medium": {
+                "memory_types": ["semantic_fact", "observation", "preference"],
+                "importance": 0.5,
+                "confidence": 0.58,
+                "access_count": 2,
+                "age_days": 44,
+                "dependency_count": 1,
+                "support_count": 2,
+                "mixed_topic": False,
+            },
+            "high": {
+                "memory_types": ["constraint", "preference", "semantic_fact"],
+                "importance": 0.78,
+                "confidence": 0.72,
+                "access_count": 3,
+                "age_days": 18,
+                "dependency_count": 2,
+                "support_count": 3,
+                "mixed_topic": False,
+            },
         },
         "confidence_bin": {
-            "low": {"memory_types": ["observation", "episodic_event", "semantic_fact"], "importance": 0.42, "confidence": 0.26, "access_count": 1, "age_days": 38, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
-            "medium": {"memory_types": ["semantic_fact", "observation", "preference"], "importance": 0.48, "confidence": 0.55, "access_count": 2, "age_days": 28, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
-            "high": {"memory_types": ["knowledge", "constraint", "semantic_fact"], "importance": 0.56, "confidence": 0.78, "access_count": 3, "age_days": 18, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
+            "low": {
+                "memory_types": ["observation", "episodic_event", "semantic_fact"],
+                "importance": 0.42,
+                "confidence": 0.26,
+                "access_count": 1,
+                "age_days": 38,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+            },
+            "medium": {
+                "memory_types": ["semantic_fact", "observation", "preference"],
+                "importance": 0.48,
+                "confidence": 0.55,
+                "access_count": 2,
+                "age_days": 28,
+                "dependency_count": 1,
+                "support_count": 2,
+                "mixed_topic": False,
+            },
+            "high": {
+                "memory_types": ["knowledge", "constraint", "semantic_fact"],
+                "importance": 0.56,
+                "confidence": 0.78,
+                "access_count": 3,
+                "age_days": 18,
+                "dependency_count": 2,
+                "support_count": 3,
+                "mixed_topic": False,
+            },
         },
         "decay_profile": {
-            "very_fast": {"memory_types": ["scratch", "episodic_event", "observation"], "importance": 0.24, "confidence": 0.38, "access_count": 0, "age_days": 170, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
-            "fast": {"memory_types": ["episodic_event", "observation", "semantic_fact"], "importance": 0.34, "confidence": 0.48, "access_count": 1, "age_days": 95, "dependency_count": 0, "support_count": 1, "mixed_topic": True},
-            "medium": {"memory_types": ["observation", "semantic_fact", "preference"], "importance": 0.46, "confidence": 0.58, "access_count": 2, "age_days": 56, "dependency_count": 1, "support_count": 2, "mixed_topic": False},
-            "slow": {"memory_types": ["semantic_fact", "preference", "constraint"], "importance": 0.58, "confidence": 0.68, "access_count": 3, "age_days": 30, "dependency_count": 2, "support_count": 3, "mixed_topic": False},
-            "very_slow": {"memory_types": ["constraint", "semantic_fact", "preference"], "importance": 0.69, "confidence": 0.76, "access_count": 4, "age_days": 14, "dependency_count": 3, "support_count": 4, "mixed_topic": False},
+            "very_fast": {
+                "memory_types": ["scratch", "episodic_event", "observation"],
+                "importance": 0.24,
+                "confidence": 0.38,
+                "access_count": 0,
+                "age_days": 170,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+            },
+            "fast": {
+                "memory_types": ["episodic_event", "observation", "semantic_fact"],
+                "importance": 0.34,
+                "confidence": 0.48,
+                "access_count": 1,
+                "age_days": 95,
+                "dependency_count": 0,
+                "support_count": 1,
+                "mixed_topic": True,
+            },
+            "medium": {
+                "memory_types": ["observation", "semantic_fact", "preference"],
+                "importance": 0.46,
+                "confidence": 0.58,
+                "access_count": 2,
+                "age_days": 56,
+                "dependency_count": 1,
+                "support_count": 2,
+                "mixed_topic": False,
+            },
+            "slow": {
+                "memory_types": ["semantic_fact", "preference", "constraint"],
+                "importance": 0.58,
+                "confidence": 0.68,
+                "access_count": 3,
+                "age_days": 30,
+                "dependency_count": 2,
+                "support_count": 3,
+                "mixed_topic": False,
+            },
+            "very_slow": {
+                "memory_types": ["constraint", "semantic_fact", "preference"],
+                "importance": 0.69,
+                "confidence": 0.76,
+                "access_count": 4,
+                "age_days": 14,
+                "dependency_count": 3,
+                "support_count": 4,
+                "mixed_topic": False,
+            },
         },
     }
     review_clauses = (
@@ -4076,21 +4210,126 @@ def _fill_structured_memory_type_rows(
     if "memory_type" not in task_labels:
         return
     profiles: dict[str, dict[str, Any]] = {
-        "episodic_event": {"importance": 0.46, "confidence": 0.74, "age_days": 24, "access_count": 2, "dependency_count": 0, "support_count": 2},
-        "semantic_fact": {"importance": 0.64, "confidence": 0.86, "age_days": 12, "access_count": 4, "dependency_count": 2, "support_count": 3},
-        "preference": {"importance": 0.62, "confidence": 0.83, "age_days": 18, "access_count": 3, "dependency_count": 1, "support_count": 2},
-        "constraint": {"importance": 0.92, "confidence": 0.93, "age_days": 8, "access_count": 5, "dependency_count": 3, "support_count": 4},
-        "procedure": {"importance": 0.71, "confidence": 0.82, "age_days": 20, "access_count": 3, "dependency_count": 2, "support_count": 3},
-        "hypothesis": {"importance": 0.38, "confidence": 0.43, "age_days": 16, "access_count": 1, "dependency_count": 0, "support_count": 1},
-        "task_state": {"importance": 0.66, "confidence": 0.78, "age_days": 7, "access_count": 4, "dependency_count": 2, "support_count": 3},
-        "conversation": {"importance": 0.21, "confidence": 0.52, "age_days": 2, "access_count": 1, "dependency_count": 0, "support_count": 1},
-        "message": {"importance": 0.34, "confidence": 0.71, "age_days": 4, "access_count": 2, "dependency_count": 0, "support_count": 1},
-        "tool_result": {"importance": 0.48, "confidence": 0.9, "age_days": 3, "access_count": 2, "dependency_count": 1, "support_count": 2},
-        "reasoning_step": {"importance": 0.42, "confidence": 0.57, "age_days": 5, "access_count": 1, "dependency_count": 1, "support_count": 1},
-        "scratch": {"importance": 0.16, "confidence": 0.44, "age_days": 1, "access_count": 0, "dependency_count": 0, "support_count": 1},
-        "knowledge": {"importance": 0.73, "confidence": 0.88, "age_days": 25, "access_count": 3, "dependency_count": 2, "support_count": 3},
-        "observation": {"importance": 0.36, "confidence": 0.69, "age_days": 9, "access_count": 2, "dependency_count": 0, "support_count": 1},
-        "plan": {"importance": 0.79, "confidence": 0.8, "age_days": 6, "access_count": 3, "dependency_count": 2, "support_count": 3},
+        "episodic_event": {
+            "importance": 0.46,
+            "confidence": 0.74,
+            "age_days": 24,
+            "access_count": 2,
+            "dependency_count": 0,
+            "support_count": 2,
+        },
+        "semantic_fact": {
+            "importance": 0.64,
+            "confidence": 0.86,
+            "age_days": 12,
+            "access_count": 4,
+            "dependency_count": 2,
+            "support_count": 3,
+        },
+        "preference": {
+            "importance": 0.62,
+            "confidence": 0.83,
+            "age_days": 18,
+            "access_count": 3,
+            "dependency_count": 1,
+            "support_count": 2,
+        },
+        "constraint": {
+            "importance": 0.92,
+            "confidence": 0.93,
+            "age_days": 8,
+            "access_count": 5,
+            "dependency_count": 3,
+            "support_count": 4,
+        },
+        "procedure": {
+            "importance": 0.71,
+            "confidence": 0.82,
+            "age_days": 20,
+            "access_count": 3,
+            "dependency_count": 2,
+            "support_count": 3,
+        },
+        "hypothesis": {
+            "importance": 0.38,
+            "confidence": 0.43,
+            "age_days": 16,
+            "access_count": 1,
+            "dependency_count": 0,
+            "support_count": 1,
+        },
+        "task_state": {
+            "importance": 0.66,
+            "confidence": 0.78,
+            "age_days": 7,
+            "access_count": 4,
+            "dependency_count": 2,
+            "support_count": 3,
+        },
+        "conversation": {
+            "importance": 0.21,
+            "confidence": 0.52,
+            "age_days": 2,
+            "access_count": 1,
+            "dependency_count": 0,
+            "support_count": 1,
+        },
+        "message": {
+            "importance": 0.34,
+            "confidence": 0.71,
+            "age_days": 4,
+            "access_count": 2,
+            "dependency_count": 0,
+            "support_count": 1,
+        },
+        "tool_result": {
+            "importance": 0.48,
+            "confidence": 0.9,
+            "age_days": 3,
+            "access_count": 2,
+            "dependency_count": 1,
+            "support_count": 2,
+        },
+        "reasoning_step": {
+            "importance": 0.42,
+            "confidence": 0.57,
+            "age_days": 5,
+            "access_count": 1,
+            "dependency_count": 1,
+            "support_count": 1,
+        },
+        "scratch": {
+            "importance": 0.16,
+            "confidence": 0.44,
+            "age_days": 1,
+            "access_count": 0,
+            "dependency_count": 0,
+            "support_count": 1,
+        },
+        "knowledge": {
+            "importance": 0.73,
+            "confidence": 0.88,
+            "age_days": 25,
+            "access_count": 3,
+            "dependency_count": 2,
+            "support_count": 3,
+        },
+        "observation": {
+            "importance": 0.36,
+            "confidence": 0.69,
+            "age_days": 9,
+            "access_count": 2,
+            "dependency_count": 0,
+            "support_count": 1,
+        },
+        "plan": {
+            "importance": 0.79,
+            "confidence": 0.8,
+            "age_days": 6,
+            "access_count": 3,
+            "dependency_count": 2,
+            "support_count": 3,
+        },
     }
     for label in task_labels["memory_type"]:
         profile = profiles.get(label, profiles["semantic_fact"])
@@ -4146,10 +4385,13 @@ def _fill_structured_memory_type_rows(
                     confidence=float(profile["confidence"]) - (0.02 * (idx % 2)),
                     access_count=int(profile["access_count"]) + (idx % 2),
                     age_days=int(profile["age_days"]) + (idx % 11),
-                    dependency_count=int(profile["dependency_count"]) + (1 if label in {"constraint", "plan"} and idx % 4 == 0 else 0),
+                    dependency_count=int(profile["dependency_count"])
+                    + (1 if label in {"constraint", "plan"} and idx % 4 == 0 else 0),
                     support_count=int(profile["support_count"]),
                     mixed_topic=label in {"conversation", "hypothesis", "scratch"},
-                    context_tags=[pack["topic"], other["topic"]] if label in {"conversation", "hypothesis"} else [pack["topic"]],
+                    context_tags=[pack["topic"], other["topic"]]
+                    if label in {"conversation", "hypothesis"}
+                    else [pack["topic"]],
                     group_id=group_id,
                 ),
             )
@@ -4468,14 +4710,18 @@ def _add_existing_pair_task_mappings(
                 f"derived:{source}",
                 extras=extras,
             )
-        elif (task == "conflict_detection" and label == "conflict") or (task == "supersession" and label == "supersedes"):
+        elif (task == "conflict_detection" and label == "conflict") or (
+            task == "supersession" and label == "supersedes"
+        ):
             rows.add(
                 "novelty_pair",
                 text_a,
                 text_b,
                 "changed",
                 f"derived:{source}",
-                extras={"group_id": _stable_group_id("derived:novelty_pair", source, text_a, text_b)},
+                extras={
+                    "group_id": _stable_group_id("derived:novelty_pair", source, text_a, text_b)
+                },
             )
 
 
@@ -4631,8 +4877,7 @@ def _fill_template_novelty_rows(rows: _PairTaskStore, *, target_per_task_label: 
         if idx % 2 == 0:
             text_a = f"{pack['relevant']} in preference record {idx}."
             text_b = (
-                f"Preference record {idx} now reverses that detail: "
-                f"{pack['irrelevant'].lower()}."
+                f"Preference record {idx} now reverses that detail: {pack['irrelevant'].lower()}."
             )
         else:
             text_a = f"{pack['relevant']} in profile {idx}."
@@ -5003,9 +5248,14 @@ def _fill_single_task_with_llm(
                             round_accepted=round_accepted,
                             round_errors=round_errors,
                             attempts_without_progress=attempts,
-                            parse_fail_delta=int(stats_after["parse_fail_total"]) - int(stats_before["parse_fail_total"]),
-                            finish_length_delta=_finish_reason_delta(stats_before, stats_after, "length"),
-                            finish_stop_delta=_finish_reason_delta(stats_before, stats_after, "stop"),
+                            parse_fail_delta=int(stats_after["parse_fail_total"])
+                            - int(stats_before["parse_fail_total"]),
+                            finish_length_delta=_finish_reason_delta(
+                                stats_before, stats_after, "length"
+                            ),
+                            finish_stop_delta=_finish_reason_delta(
+                                stats_before, stats_after, "stop"
+                            ),
                             use_multilingual=label_use_multilingual,
                         )
                         if adjust_reason:
@@ -5187,9 +5437,14 @@ def _fill_pair_task_with_llm(
                             round_accepted=round_accepted,
                             round_errors=round_errors,
                             attempts_without_progress=attempts,
-                            parse_fail_delta=int(stats_after["parse_fail_total"]) - int(stats_before["parse_fail_total"]),
-                            finish_length_delta=_finish_reason_delta(stats_before, stats_after, "length"),
-                            finish_stop_delta=_finish_reason_delta(stats_before, stats_after, "stop"),
+                            parse_fail_delta=int(stats_after["parse_fail_total"])
+                            - int(stats_before["parse_fail_total"]),
+                            finish_length_delta=_finish_reason_delta(
+                                stats_before, stats_after, "length"
+                            ),
+                            finish_stop_delta=_finish_reason_delta(
+                                stats_before, stats_after, "stop"
+                            ),
                             use_multilingual=label_use_multilingual,
                         )
                         if adjust_reason:
@@ -5620,7 +5875,11 @@ def _label_source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
         total = len(group)
         bucket_counts = {
             str(bucket): int(count)
-            for bucket, count in group["source"].astype(str).map(_source_bucket).value_counts().items()
+            for bucket, count in group["source"]
+            .astype(str)
+            .map(_source_bucket)
+            .value_counts()
+            .items()
         }
         out[f"{task}::{label}"] = {
             "rows": total,
@@ -5633,7 +5892,9 @@ def _label_source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
     return out
 
 
-def _validate_split_label_coverage(split_frames: dict[str, pd.DataFrame]) -> dict[str, dict[str, Any]]:
+def _validate_split_label_coverage(
+    split_frames: dict[str, pd.DataFrame],
+) -> dict[str, dict[str, Any]]:
     combined = pd.concat(list(split_frames.values()), ignore_index=True, sort=False)
     if combined.empty or "task" not in combined.columns or "label" not in combined.columns:
         return {}
@@ -5650,12 +5911,12 @@ def _validate_split_label_coverage(split_frames: dict[str, pd.DataFrame]) -> dic
             labeled[labeled["task"].astype(str) == task]["label"].astype(str).unique().tolist()
         )
         if len(expected_labels) < 2:
-            raise ValueError(f"Prepared split is degenerate for {task}: expected at least 2 labels.")
+            raise ValueError(
+                f"Prepared split is degenerate for {task}: expected at least 2 labels."
+            )
         task_summary: dict[str, Any] = {"expected_labels": expected_labels, "splits": {}}
         for split_name, frame in split_frames.items():
-            split_task = frame[
-                frame.get("task", pd.Series(dtype=str)).astype(str) == task
-            ].copy()
+            split_task = frame[frame.get("task", pd.Series(dtype=str)).astype(str) == task].copy()
             counts = {
                 str(label): int(count)
                 for label, count in split_task.get("label", pd.Series(dtype=str))
@@ -5717,14 +5978,18 @@ def _validate_source_coverage(df: pd.DataFrame, *, split_name: str) -> dict[str,
             if total < _MIN_SOURCE_RULE_ROWS:
                 continue
             ratios = cast("dict[str, float]", payload.get("source_ratios", {}))
-            for bucket, max_ratio in cast("dict[str, float]", rules.get("max_bucket_ratios", {})).items():
+            for bucket, max_ratio in cast(
+                "dict[str, float]", rules.get("max_bucket_ratios", {})
+            ).items():
                 actual = float(ratios.get(bucket, 0.0))
                 if actual > float(max_ratio) + 1e-9:
                     raise ValueError(
                         f"{split_name} split source ratio too high for {key} bucket={bucket}: "
                         f"{actual:.4f} > {float(max_ratio):.4f}"
                     )
-            for bucket, min_ratio in cast("dict[str, float]", rules.get("min_bucket_ratios", {})).items():
+            for bucket, min_ratio in cast(
+                "dict[str, float]", rules.get("min_bucket_ratios", {})
+            ).items():
                 actual = float(ratios.get(bucket, 0.0))
                 if actual + 1e-9 < float(min_ratio):
                     raise ValueError(
@@ -5853,7 +6118,9 @@ def _split_by_task_label(
         assignments[group_id] = split_name
         current_rows[split_name] += int(payload["size"])
         for key, value in dict(payload["counts"]).items():
-            current_counts[split_name][str(key)] = int(current_counts[split_name].get(str(key), 0)) + int(value)
+            current_counts[split_name][str(key)] = int(
+                current_counts[split_name].get(str(key), 0)
+            ) + int(value)
         for (task, label, bucket), cnt in dict(payload.get("bucket_counts", {})).items():
             current_bucket_counts[split_name][(task, label, bucket)] += cnt
             current_tl_totals[split_name][(task, label)] += cnt
@@ -5880,11 +6147,13 @@ def _split_by_task_label(
 
     required_splits = [name for name, ratio in ratios.items() if ratio > 0]
     remaining_payloads = [
-        payload for payload in group_payloads if str(payload["group_id"]) not in preassigned_group_ids
+        payload
+        for payload in group_payloads
+        if str(payload["group_id"]) not in preassigned_group_ids
     ]
-    reserved_splits = [
-        name for name in required_splits if current_rows[name] == 0
-    ][: min(len(required_splits), len(remaining_payloads))]
+    reserved_splits = [name for name in required_splits if current_rows[name] == 0][
+        : min(len(required_splits), len(remaining_payloads))
+    ]
 
     def _assignment_penalty(
         split_name: str,
@@ -5903,9 +6172,7 @@ def _split_by_task_label(
         current_total = current_rows[split_name]
         projected_total = current_total + group_size
         total_target = int(target_rows[split_name])
-        penalty += 0.15 * (
-            abs(projected_total - total_target) - abs(current_total - total_target)
-        )
+        penalty += 0.15 * (abs(projected_total - total_target) - abs(current_total - total_target))
         for (task, label, bucket), cnt in bucket_counts.items():
             rules = _LABEL_SOURCE_BALANCE_RULES.get(task, {})
             max_ratios = cast("dict[str, float]", rules.get("max_bucket_ratios", {}))
@@ -5964,7 +6231,9 @@ def _write_splits(
     if not split_integrity["ok"]:
         raise ValueError(f"{prefix} split integrity failure: {split_integrity['overlap_counts']}")
     _validate_split_label_coverage(splits)
-    train_source_diagnostics = _validate_source_coverage(splits["train"], split_name=f"{prefix}:train")
+    train_source_diagnostics = _validate_source_coverage(
+        splits["train"], split_name=f"{prefix}:train"
+    )
     counts: dict[str, int] = {}
     for split_name, split_df in splits.items():
         path = out_dir / f"{prefix}_{split_name}.parquet"
@@ -6090,11 +6359,14 @@ def _augment_pair_hard_negatives(
         if positive_df.empty or candidate_df.empty:
             continue
 
-        positive_groups = positive_df.drop_duplicates(subset=["group_id"], keep="first").reset_index(drop=True)
-        candidate_df = candidate_df.drop_duplicates(subset=["text_b", "group_id"], keep="first").reset_index(drop=True)
+        positive_groups = positive_df.drop_duplicates(
+            subset=["group_id"], keep="first"
+        ).reset_index(drop=True)
+        candidate_df = candidate_df.drop_duplicates(
+            subset=["text_b", "group_id"], keep="first"
+        ).reset_index(drop=True)
         candidate_vectors = [
-            vectors.get(text)
-            for text in candidate_df["text_b"].astype(str).tolist()
+            vectors.get(text) for text in candidate_df["text_b"].astype(str).tolist()
         ]
         if not candidate_vectors or any(vector is None for vector in candidate_vectors):
             candidate_rows = [
@@ -6148,7 +6420,8 @@ def _augment_pair_hard_negatives(
                             "text_b": str(candidate_texts[best_idx]),
                             "source": f"derived_hard_negative:{task_name}",
                             "language": str(row.get("language", "en") or "en"),
-                            "group_id": group_id or _stable_group_id(
+                            "group_id": group_id
+                            or _stable_group_id(
                                 "hard_negative",
                                 task_name,
                                 row.get("text_a", ""),
@@ -6163,7 +6436,9 @@ def _augment_pair_hard_negatives(
     if not extra_rows:
         return df, {}
     augmented = pd.concat([df, pd.DataFrame(extra_rows)], ignore_index=True, sort=False)
-    augmented = augmented.drop_duplicates(subset=["task", "label", "text_a", "text_b"], keep="first")
+    augmented = augmented.drop_duplicates(
+        subset=["task", "label", "text_a", "text_b"], keep="first"
+    )
     trimmed_parts: list[pd.DataFrame] = []
     for task_name, task_df in augmented.groupby("task", sort=False):
         rule = _DERIVED_NEGATIVE_RULES.get(str(task_name))
@@ -6222,9 +6497,9 @@ def _summary(df: pd.DataFrame) -> dict:
             total = len(group)
             synth = len(
                 group[
-                    group["source"].astype(str).str.startswith(
-                        ("llm:", "template:", "template_hardened:"), na=False
-                    )
+                    group["source"]
+                    .astype(str)
+                    .str.startswith(("llm:", "template:", "template_hardened:"), na=False)
                 ]
             )
             synthetic_ratio[key] = round(synth / max(1, total), 4)
@@ -6350,7 +6625,9 @@ def _existing_label_coverage(prepared_dir: Path, family: str) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-def _existing_train_source_diagnostics(prepared_dir: Path, family: str) -> dict[str, dict[str, Any]]:
+def _existing_train_source_diagnostics(
+    prepared_dir: Path, family: str
+) -> dict[str, dict[str, Any]]:
     path = prepared_dir / f"{family}_train.parquet"
     if not path.exists():
         return {}
@@ -6596,7 +6873,9 @@ def main(argv: list[str] | None = None) -> int:
     target_token_examples = int(token_prepare_cfg["target_examples_per_task"])
 
     if args.force_full:
-        print("Force-full mode: rebuilding outputs from scratch without reusing prior prepared rows.")
+        print(
+            "Force-full mode: rebuilding outputs from scratch without reusing prior prepared rows."
+        )
     router_existing_df, extractor_existing_df, pair_existing_df, token_existing_dfs = (
         _load_existing_prepared_inputs(prepared_dir, force_full=bool(args.force_full))
     )
@@ -6727,7 +7006,9 @@ def main(argv: list[str] | None = None) -> int:
                 "split_hashes": _existing_split_hashes(prepared_dir, "router"),
                 "split_integrity": _existing_split_integrity(prepared_dir, "router"),
                 "label_coverage": _existing_label_coverage(prepared_dir, "router"),
-                "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "router"),
+                "train_source_diagnostics": _existing_train_source_diagnostics(
+                    prepared_dir, "router"
+                ),
                 "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": False,
             },
@@ -6737,7 +7018,9 @@ def main(argv: list[str] | None = None) -> int:
                 "split_hashes": _existing_split_hashes(prepared_dir, "extractor"),
                 "split_integrity": _existing_split_integrity(prepared_dir, "extractor"),
                 "label_coverage": _existing_label_coverage(prepared_dir, "extractor"),
-                "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "extractor"),
+                "train_source_diagnostics": _existing_train_source_diagnostics(
+                    prepared_dir, "extractor"
+                ),
                 "tasks": list(EXTRACTOR_TASKS),
                 "updated": False,
             },
@@ -6747,7 +7030,9 @@ def main(argv: list[str] | None = None) -> int:
                 "split_hashes": _existing_split_hashes(prepared_dir, "pair"),
                 "split_integrity": _existing_split_integrity(prepared_dir, "pair"),
                 "label_coverage": _existing_label_coverage(prepared_dir, "pair"),
-                "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "pair"),
+                "train_source_diagnostics": _existing_train_source_diagnostics(
+                    prepared_dir, "pair"
+                ),
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": False,
             },
@@ -6866,7 +7151,9 @@ def main(argv: list[str] | None = None) -> int:
     extractor_split_integrity = _existing_split_integrity(prepared_dir, "extractor")
     pair_split_integrity = _existing_split_integrity(prepared_dir, "pair")
     router_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "router")
-    extractor_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "extractor")
+    extractor_train_source_diagnostics = _existing_train_source_diagnostics(
+        prepared_dir, "extractor"
+    )
     pair_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "pair")
     pair_hard_negative_augmentation: dict[str, int] = {}
     try:
