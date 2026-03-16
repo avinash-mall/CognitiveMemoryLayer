@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,14 @@ def _task_name_from_feature(feature: str) -> str:
         return ""
     tail = text.removeprefix("task=")
     return tail.split(" ", 1)[0].strip()
+
+
+def _single_text_from_feature(feature: str) -> str:
+    text = str(feature or "")
+    marker = " [text] "
+    if marker not in text:
+        return text.strip()
+    return text.split(marker, 1)[1].strip()
 
 
 def build_task_conditional_calibration_features(task_probs: np.ndarray) -> np.ndarray:
@@ -150,6 +159,193 @@ class EmbeddingPairClassifier:
             indices = probs.argmax(axis=1)
         return np.asarray([self.classes_[idx] for idx in indices], dtype=object)
 
+
+@dataclass
+class TransformerTextClassifier:
+    """Lazy Hugging Face sequence-classification wrapper for single-text tasks."""
+
+    task_name: str
+    model_dir: str
+    classes_: list[str]
+    max_seq_length: int = 256
+    batch_size: int = 8
+    temperature: float = 1.0
+
+    _tokenizer: Any = field(default=None, init=False, repr=False)
+    _model: Any = field(default=None, init=False, repr=False)
+    _device: Any = field(default=None, init=False, repr=False)
+
+    def _ensure_loaded(self) -> None:
+        if self._tokenizer is not None and self._model is not None:
+            return
+        try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        except Exception as exc:  # pragma: no cover - depends on optional deps
+            raise ImportError(
+                "Transformer text runtime requires transformers and torch. "
+                'Install with: pip install "cognitive-memory-layer[modeling]"'
+            ) from exc
+        model_path = Path(self.model_dir)
+        if not model_path.exists():
+            raise FileNotFoundError(f"Transformer model directory not found: {model_path}")
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._tokenizer = AutoTokenizer.from_pretrained(str(model_path), use_fast=True)
+        self._model = AutoModelForSequenceClassification.from_pretrained(str(model_path))
+        self._model.to(self._device)
+        self._model.eval()
+
+    def _logits(self, features: list[str]) -> np.ndarray:
+        self._ensure_loaded()
+        import torch
+
+        assert self._tokenizer is not None
+        assert self._model is not None
+        assert self._device is not None
+
+        rows: list[np.ndarray] = []
+        texts = [_single_text_from_feature(feature) for feature in features]
+        batch_size = max(1, int(self.batch_size))
+        for start in range(0, len(texts), batch_size):
+            encoded = self._tokenizer(
+                texts[start : start + batch_size],
+                truncation=True,
+                max_length=max(32, int(self.max_seq_length)),
+                padding=True,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self._device) for key, value in encoded.items()}
+            with torch.no_grad():
+                logits = self._model(**encoded).logits
+            rows.append(np.asarray(logits.detach().cpu(), dtype=np.float64))
+        if not rows:
+            return np.zeros((0, max(1, len(self.classes_))), dtype=np.float64)
+        logits = np.vstack(rows)
+        return logits / max(1e-6, float(self.temperature))
+
+    def predict_proba(self, features: list[str]) -> np.ndarray:
+        logits = self._logits(features)
+        if logits.ndim == 1:
+            logits = logits[:, None]
+        if logits.shape[1] == 1 and len(self.classes_) == 2:
+            pos = 1.0 / (1.0 + np.exp(-logits[:, 0]))
+            return np.column_stack([1.0 - pos, pos])
+        shifted = logits - logits.max(axis=1, keepdims=True)
+        exp = np.exp(shifted)
+        return exp / np.maximum(exp.sum(axis=1, keepdims=True), 1e-12)
+
+    def predict(self, features: list[str]) -> np.ndarray:
+        probs = self.predict_proba(features)
+        indices = probs.argmax(axis=1)
+        return np.asarray([self.classes_[idx] for idx in indices], dtype=object)
+
+
+@dataclass
+class TransformerPairClassifier:
+    """Lazy Hugging Face cross-encoder wrapper for pair tasks."""
+
+    task_name: str
+    model_dir: str
+    classes_: list[str]
+    max_seq_length: int = 256
+    batch_size: int = 8
+    temperature: float = 1.0
+
+    _tokenizer: Any = field(default=None, init=False, repr=False)
+    _model: Any = field(default=None, init=False, repr=False)
+    _device: Any = field(default=None, init=False, repr=False)
+
+    def _ensure_loaded(self) -> None:
+        if self._tokenizer is not None and self._model is not None:
+            return
+        try:
+            import torch
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        except Exception as exc:  # pragma: no cover - depends on optional deps
+            raise ImportError(
+                "Transformer pair runtime requires transformers and torch. "
+                'Install with: pip install "cognitive-memory-layer[modeling]"'
+            ) from exc
+        model_path = Path(self.model_dir)
+        if not model_path.exists():
+            raise FileNotFoundError(f"Transformer model directory not found: {model_path}")
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._tokenizer = AutoTokenizer.from_pretrained(str(model_path), use_fast=True)
+        self._model = AutoModelForSequenceClassification.from_pretrained(str(model_path))
+        self._model.to(self._device)
+        self._model.eval()
+
+    def _logits(self, features: list[str]) -> np.ndarray:
+        self._ensure_loaded()
+        import torch
+
+        assert self._tokenizer is not None
+        assert self._model is not None
+        assert self._device is not None
+
+        parsed = [parse_serialized_pair_feature(str(feature)) for feature in features]
+        left = [text_a for _, text_a, _ in parsed]
+        right = [text_b for _, _, text_b in parsed]
+        rows: list[np.ndarray] = []
+        batch_size = max(1, int(self.batch_size))
+        for start in range(0, len(left), batch_size):
+            encoded = self._tokenizer(
+                left[start : start + batch_size],
+                right[start : start + batch_size],
+                truncation=True,
+                max_length=max(32, int(self.max_seq_length)),
+                padding=True,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(self._device) for key, value in encoded.items()}
+            with torch.no_grad():
+                logits = self._model(**encoded).logits
+            rows.append(np.asarray(logits.detach().cpu(), dtype=np.float64))
+        if not rows:
+            return np.zeros((0, max(1, len(self.classes_))), dtype=np.float64)
+        logits = np.vstack(rows)
+        return logits / max(1e-6, float(self.temperature))
+
+    def predict_proba(self, features: list[str]) -> np.ndarray:
+        logits = self._logits(features)
+        if logits.ndim == 1:
+            logits = logits[:, None]
+        if logits.shape[1] == 1 and len(self.classes_) == 2:
+            pos = 1.0 / (1.0 + np.exp(-logits[:, 0]))
+            return np.column_stack([1.0 - pos, pos])
+        shifted = logits - logits.max(axis=1, keepdims=True)
+        exp = np.exp(shifted)
+        return exp / np.maximum(exp.sum(axis=1, keepdims=True), 1e-12)
+
+    def predict(self, features: list[str]) -> np.ndarray:
+        probs = self.predict_proba(features)
+        relevant_label = f"{self.task_name}::relevant"
+        not_relevant_label = f"{self.task_name}::not_relevant"
+        if (
+            self.task_name in _PAIR_GROUP_TOP1_TASKS
+            and relevant_label in self.classes_
+            and not_relevant_label in self.classes_
+        ):
+            pos_idx = self.classes_.index(relevant_label)
+            neg_idx = self.classes_.index(not_relevant_label)
+            indices = np.full(len(features), neg_idx, dtype=int)
+            groups: dict[tuple[str, str], list[int]] = {}
+            for row_idx, feature in enumerate(features):
+                task_name, text_a, _ = parse_serialized_pair_feature(str(feature))
+                key = ((task_name or self.task_name).strip(), text_a.strip())
+                groups.setdefault(key, []).append(row_idx)
+            for rows in groups.values():
+                if len(rows) <= 1:
+                    row_idx = rows[0]
+                    indices[row_idx] = int(probs[row_idx].argmax())
+                    continue
+                best_idx = max(rows, key=lambda row_idx: float(probs[row_idx, pos_idx]))
+                indices[best_idx] = pos_idx
+        else:
+            indices = probs.argmax(axis=1)
+        return np.asarray([self.classes_[idx] for idx in indices], dtype=object)
+
+
 @dataclass
 class CumulativeOrdinalClassifier:
     """Ordinal classifier assembled from calibrated cumulative binary boundaries."""
@@ -159,17 +355,26 @@ class CumulativeOrdinalClassifier:
     boundary_models: list[Any]
     label_order: list[str]
     classes_: list[str]
+    boundary_calibrators: list[Any] = field(default_factory=list)
 
     def _boundary_probs(self, features: list[str]) -> np.ndarray:
         if not self.boundary_models:
             raise ValueError("At least one boundary model is required.")
         matrix = self.vectorizer.transform(features)
         columns: list[np.ndarray] = []
-        for model in self.boundary_models:
+        for idx, model in enumerate(self.boundary_models):
             probs = np.asarray(model.predict_proba(matrix), dtype=np.float64)
             if probs.ndim != 2 or probs.shape[1] < 2:
                 raise ValueError("Boundary model must expose binary predict_proba outputs.")
-            columns.append(probs[:, 1])
+            calibrated = probs[:, 1]
+            if idx < len(self.boundary_calibrators):
+                calibrator = self.boundary_calibrators[idx]
+                if calibrator is not None:
+                    if hasattr(calibrator, "transform"):
+                        calibrated = np.asarray(calibrator.transform(calibrated), dtype=np.float64)
+                    else:
+                        calibrated = np.asarray(calibrator.predict(calibrated), dtype=np.float64)
+            columns.append(calibrated)
         raw = np.column_stack(columns)
         # Enforce monotonic cumulative probabilities: P(y > k) must decrease as k grows.
         return np.minimum.accumulate(raw, axis=1)

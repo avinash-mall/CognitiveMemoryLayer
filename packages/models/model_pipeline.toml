@@ -82,6 +82,21 @@ early_stopping_min_delta = 0.001
 calibration_method = "sigmoid"
 calibration_split = "eval"
 
+[train.transformer]
+model_name_or_path = "microsoft/deberta-v3-base"
+tokenizer_name = ""
+num_train_epochs = 2
+per_device_train_batch_size = 8
+per_device_eval_batch_size = 16
+max_seq_length = 256
+learning_rate = 0.00002
+warmup_ratio = 0.1
+weight_decay = 0.01
+gradient_accumulation_steps = 1
+score_margin = 0.15
+focal_gamma = 1.5
+temperature_grid = [0.7, 0.85, 1.0, 1.15, 1.3, 1.5, 2.0]
+
 # ============================================================================
 # Task-level training specifications (Phase 0 pipeline extension)
 # ============================================================================
@@ -106,9 +121,8 @@ objective = "pair_ranking"
 labels = []
 artifact_name = "retrieval_constraint_relevance_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
-trainer = "embedding_pair"
-feature_backend = "embedding_pair"
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+trainer = "transformer_pair"
+backbone_model_name = "BAAI/bge-reranker-base"
 
 [[tasks]]
 task_name = "memory_rerank_pair"
@@ -118,9 +132,8 @@ objective = "pair_ranking"
 labels = []
 artifact_name = "memory_rerank_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
-trainer = "embedding_pair"
-feature_backend = "embedding_pair"
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+trainer = "transformer_pair"
+backbone_model_name = "BAAI/bge-reranker-base"
 
 [[tasks]]
 task_name = "novelty_pair"
@@ -130,9 +143,8 @@ objective = "classification"
 labels = ["duplicate", "novel", "changed"]
 artifact_name = "novelty_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
-trainer = "embedding_pair"
-feature_backend = "embedding_pair"
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+trainer = "transformer_pair"
+backbone_model_name = "BAAI/bge-reranker-base"
 
 [[tasks]]
 task_name = "fact_extraction_structured"
@@ -152,9 +164,8 @@ objective = "classification"
 labels = ["match", "no_match"]
 artifact_name = "schema_match_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
-trainer = "embedding_pair"
-feature_backend = "embedding_pair"
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+trainer = "transformer_pair"
+backbone_model_name = "BAAI/bge-reranker-base"
 
 [[tasks]]
 task_name = "reconsolidation_candidate_pair"
@@ -164,9 +175,8 @@ objective = "pair_ranking"
 labels = []
 artifact_name = "reconsolidation_candidate_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
-trainer = "embedding_pair"
-feature_backend = "embedding_pair"
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+trainer = "transformer_pair"
+backbone_model_name = "BAAI/bge-reranker-base"
 
 [[tasks]]
 task_name = "write_importance_regression"
@@ -186,7 +196,8 @@ objective = "classification"
 labels = ["episodic_event", "semantic_fact", "preference", "constraint", "procedure", "hypothesis", "task_state", "conversation", "message", "tool_result", "reasoning_step", "scratch", "knowledge", "observation", "plan"]
 artifact_name = "memory_type"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
-trainer = "hierarchical_text"
+trainer = "hierarchical_transformer"
+backbone_model_name = "microsoft/deberta-v3-base"
 enabled = true
 
 [[tasks]]
@@ -255,6 +266,8 @@ objective = "classification"
 labels = ["accept", "reject"]
 artifact_name = "consolidation_gist_quality"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "transformer_text"
+backbone_model_name = "microsoft/deberta-v3-base"
 
 [[tasks]]
 task_name = "forgetting_action_policy"
@@ -264,6 +277,8 @@ objective = "classification"
 labels = ["keep", "decay", "silence", "compress", "delete"]
 artifact_name = "forgetting_action_policy"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "transformer_text"
+backbone_model_name = "microsoft/deberta-v3-base"
 
 [synthetic_llm]
 # Synthetic generation is LLM-only.

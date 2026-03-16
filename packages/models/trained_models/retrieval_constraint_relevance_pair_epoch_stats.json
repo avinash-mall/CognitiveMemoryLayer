@@ -2,23 +2,27 @@
   "task": "retrieval_constraint_relevance_pair",
   "epoch_stats": [
     {
-      "epoch": 1
+      "epoch": 1,
+      "train_loss": 0.5926327600225806
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.49261420377120374
     }
   ],
   "training_summary": {
-    "actual_epochs": 1,
-    "best_epoch": 1,
+    "actual_epochs": 2,
+    "best_epoch": 2,
     "early_stopped": false,
-    "feature_backend": "embedding_pair"
+    "backbone_model_name": "BAAI/bge-reranker-base",
+    "tokenizer_name": "BAAI/bge-reranker-base",
+    "score_margin": 0.15
   },
   "calibration": {
-    "method": "sigmoid",
-    "split": "eval",
-    "rows": 13365,
-    "pre_ece": 0.0335266135384548,
-    "post_ece": 0.0035470193808617126,
-    "pre_accuracy": 0.6655443322109988,
-    "post_accuracy": 0.6992891881780771,
-    "accuracy_delta": 0.03374485596707821
-  }
+    "method": "temperature_grid_search",
+    "rows": 10000,
+    "temperature": 1.5,
+    "loss": 0.5522792445241245
+  },
+  "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\retrieval_constraint_relevance_pair_hf"
 }

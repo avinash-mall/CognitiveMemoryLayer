@@ -43,8 +43,8 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 | `write_importance_regression` | `single_regression` | Regression model with baseline/data-profile diagnostics. |
 | `fact_extraction_structured` | `token_classification` | Token/span extraction artifact. |
 | `pii_span_detection` | `token_classification` | Token/span redaction artifact. |
-| `consolidation_gist_quality` | `classification` | Includes hardened synthetic rows and adversarial evaluation output. |
-| `forgetting_action_policy` | `classification` | Includes hardened synthetic rows and adversarial evaluation output. |
+| `consolidation_gist_quality` | `classification` | Includes hardened synthetic rows and calibrated confidence outputs. |
+| `forgetting_action_policy` | `classification` | Includes hardened synthetic rows and calibrated confidence outputs. |
 
 ### Dataset Strategy by Model
 
@@ -56,7 +56,7 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 
 **`fact_extraction_structured`** - DocRED/Re-TACRED give relation extraction supervision. Mandatory synthesis maps extracted relations into CML fact schema (`key = user:{category}:{predicate}`, `category in FactCategory`, stable predicate normalization). Replaces `_PREDICATE_KEYWORDS` mapping and dependency-based relation extraction with fixed `confidence=0.65`.
 
-**`schema_match_pair`** - STS-B provides semantic similarity signal and FEVER/NLI provides support-vs-refute behavior. Preparation enforces FEVER-derived train coverage, caps template rows, and evaluates against a held-out adversarial suite.
+**`schema_match_pair`** - STS-B provides semantic similarity signal and FEVER/NLI provides support-vs-refute behavior. Preparation enforces FEVER-derived train coverage and caps template rows.
 
 **`reconsolidation_candidate_pair`** - MS MARCO covers retrieval candidate ranking. FEVER/NLI/ANLI improve conflict candidate prioritization. Preparation mines nearest hard negatives from different `group_id` buckets, and training uses the same dense+lexical feature path as the other ranking tasks.
 
@@ -64,9 +64,9 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 
 **`pii_span_detection`** - PII-Masking-200k as primary span supervision. Synthesis for secrets patterns not fully covered by generic PII datasets (`api_key=`, tokens, credentials).
 
-**`consolidation_gist_quality`** - SummEval/FRANK/TRUE provide consistency/factuality quality supervision. Synthesize CML-specific labels (accept/reject, fallback-needed) using consolidation replay + reviewer labels. Preparation injects hardened shared-shell rows, caps template usage, and validates a held-out adversarial suite.
+**`consolidation_gist_quality`** - SummEval/FRANK/TRUE provide consistency/factuality quality supervision. Synthesize CML-specific labels (accept/reject, fallback-needed) using consolidation replay + reviewer labels. Preparation injects hardened shared-shell rows and caps template usage.
 
-**`forgetting_action_policy`** - Fully internal replay and simulation. Labels: `keep`, `decay`, `silence`, `compress`, `delete`. Inputs include text + metadata features (`importance`, `access_count`, `age`, `type`, `dependency_count`). Preparation injects near-boundary hardened examples, caps template usage, and validates a held-out adversarial suite.
+**`forgetting_action_policy`** - Fully internal replay and simulation. Labels: `keep`, `decay`, `silence`, `compress`, `delete`. Inputs include text + metadata features (`importance`, `access_count`, `age`, `type`, `dependency_count`). Preparation injects near-boundary hardened examples and caps template usage.
 
 ## Runtime Wiring
 
@@ -374,7 +374,6 @@ Per-task artifacts:
 - `<task>_epoch_stats.json`
 - `<task>_metrics_test.json`
 - `<task>_metrics_eval.json`
-- `<task>_metrics_adversarial.json` for adversarially-audited tasks
 - `<task>_thresholds.json` (when `--export-thresholds` is set)
 
 Pair embedding tasks also require:
@@ -383,8 +382,6 @@ Pair embedding tasks also require:
 - runtime lazy-loading of the configured sentence-transformer checkpoint
 - runtime pair feature reconstruction from raw texts using the same lexical+dense feature builder as training
 - post-hoc calibration of the dense sklearn classifier when `train.calibration_method` is enabled
-
-Adversarial evaluation fixtures for the hardened router tasks live in `packages/models/adversarial/`.
 
 `memory_type` training and runtime now share the same derived-feature path. Training prefers the prepared router enrichment columns when present and falls back to text-derived heuristics; runtime applies the same token derivation from the serialized feature text before scoring the hierarchical classifier.
 
@@ -397,7 +394,7 @@ Manifest (`manifest.json`):
 - `configured_tasks[*].trainer`, `feature_backend`, `label_order`, `embedding_model_name`
 - `families` map with artifact paths, metrics summary, labels.
 - `families[*].calibration.tasks` with task-conditional family calibration summaries when enabled.
-- `task_models` map with objective type, artifact path, train rows, test/eval metrics, and additive fields such as `actual_epochs`, `best_epoch`, `early_stopped`, `calibration`, `adversarial_metrics`, and regression `data_profile`.
+- `task_models` map with objective type, artifact path, train rows, test/eval metrics, and additive fields such as `actual_epochs`, `best_epoch`, `early_stopped`, `calibration`, and regression `data_profile`.
 - `task_training_status` with per-task status (`trained`, `disabled`, `filtered_out`, `failed`, `skipped`) and reason.
 - `preflight_validation` with objective/data/coverage checks run before task training.
 - `build_metadata` with Python/dependency versions and git state.

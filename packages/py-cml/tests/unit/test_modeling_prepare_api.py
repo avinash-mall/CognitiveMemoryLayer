@@ -75,6 +75,120 @@ def test_enabled_embedding_pair_tasks_extracts_shared_model_name() -> None:
     assert model_name == "sentence-transformers/all-MiniLM-L6-v2"
 
 
+def test_force_full_inputs_do_not_load_existing_prepared_rows(monkeypatch, tmp_path: Path) -> None:
+    def _fail_family(*args, **kwargs):
+        raise AssertionError("force_full should not load existing family frames")
+
+    def _fail_token(*args, **kwargs):
+        raise AssertionError("force_full should not load existing token frames")
+
+    monkeypatch.setattr(prepare_module, "_load_existing_family_df", _fail_family)
+    monkeypatch.setattr(prepare_module, "_load_existing_token_df", _fail_token)
+
+    router_df, extractor_df, pair_df, token_dfs = prepare_module._load_existing_prepared_inputs(
+        tmp_path,
+        force_full=True,
+    )
+
+    assert router_df.empty
+    assert extractor_df.empty
+    assert pair_df.empty
+    assert set(token_dfs) == set(prepare_module.TOKEN_TASKS)
+    assert all(df.empty for df in token_dfs.values())
+
+
+def test_prepare_main_manifest_omits_adversarial_fields(monkeypatch, tmp_path: Path) -> None:
+    config_path = tmp_path / "model_pipeline.toml"
+    config_path.write_text("", encoding="utf-8")
+    prepared_dir = tmp_path / "prepared"
+    bootstrap_dir = tmp_path / "bootstrap"
+    cache_dir = tmp_path / "cache"
+
+    monkeypatch.setattr(prepare_module, "_load_dotenv", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        prepare_module,
+        "_load_config",
+        lambda _path: {
+            "paths": {
+                "prepared_dir": str(prepared_dir),
+                "bootstrap_prepared_dir": str(bootstrap_dir),
+                "datasets_cache_dir": str(cache_dir),
+            },
+            "prepare": {},
+            "synthetic_llm": {},
+            "multilingual": {},
+            "datasets": [],
+            "tasks": [],
+        },
+    )
+    monkeypatch.setattr(
+        prepare_module,
+        "_load_existing_prepared_inputs",
+        lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}),
+    )
+    monkeypatch.setattr(prepare_module, "_missing_task_labels", lambda *_args, **_kwargs: ({}, 0))
+    monkeypatch.setattr(prepare_module, "_missing_regression_tasks", lambda *_args, **_kwargs: ({}, 0))
+    monkeypatch.setattr(prepare_module, "_missing_token_tasks", lambda *_args, **_kwargs: ({}, 0))
+    monkeypatch.setattr(prepare_module, "_pair_embedding_cache_summary", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(prepare_module, "_existing_split_counts", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(prepare_module, "_existing_split_hashes", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(prepare_module, "_existing_split_integrity", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(prepare_module, "_existing_label_coverage", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        prepare_module,
+        "_existing_train_source_diagnostics",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(prepare_module, "_existing_token_split_counts", lambda *_args, **_kwargs: {})
+
+    rc = prepare_module.main(["--config", str(config_path)])
+
+    assert rc == 0
+    manifest = json.loads((prepared_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert "adversarial_fixtures" not in manifest
+    assert "locked_adversarial_eval_tasks" not in manifest
+
+
+def test_llm_generator_prefers_env_over_config(monkeypatch) -> None:
+    class _FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class _FakeHttpx:
+        Limits = staticmethod(lambda **kwargs: kwargs)
+        Client = _FakeClient
+
+    monkeypatch.setattr(prepare_module, "httpx", _FakeHttpx)
+    monkeypatch.setattr(
+        prepare_module._LLMGenerator,
+        "_fetch_model_metadata",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        prepare_module,
+        "_thinking_disable_policy",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setenv("LLM_EVAL__PROVIDER", "openai_compatible")
+    monkeypatch.setenv("LLM_EVAL__MODEL", "Qwen/Qwen3.5-27B")
+    monkeypatch.setenv("LLM_EVAL__BASE_URL", "http://localhost:8001/v1")
+
+    llm = prepare_module._LLMGenerator(
+        {
+            "provider": "vllm",
+            "model": "Qwen/Qwen3.5-9B",
+            "base_url": "http://localhost:8000/v1",
+        }
+    )
+
+    assert llm.provider == "openai_compatible"
+    assert llm.model == "Qwen/Qwen3.5-27B"
+    assert llm.base_url == "http://localhost:8001/v1"
+
+
 def test_inject_hardened_router_rows_generates_reserved_rows() -> None:
     rows = prepare_module._SingleTaskStore(max_per_task_label=12)
 
@@ -234,6 +348,197 @@ def test_router_structured_fill_keeps_group_ids_and_non_template_majority() -> N
     assert any(str(source).startswith("structured:forgetting_action_policy") for source in df["source"])
 
 
+def test_router_quality_structured_fill_respects_source_caps_when_llm_available() -> None:
+    rows = prepare_module._SingleTaskStore(max_per_task_label=20)
+    prepare_module._inject_hardened_router_rows(
+        rows=rows,
+        task_labels={
+            "consolidation_gist_quality": ["accept", "reject"],
+            "forgetting_action_policy": ["keep", "decay", "silence", "compress", "delete"],
+        },
+        target_per_task_label=20,
+        single_pools={"router": ["Remember the weekly planning update for Alice."]},
+        rng=random.Random(7),
+    )
+
+    prepare_module._fill_router_tasks_without_llm(
+        rows=rows,
+        regression_rows=prepare_module._RegressionTaskStore(max_per_task=20),
+        task_labels={
+            "consolidation_gist_quality": ["accept", "reject"],
+            "forgetting_action_policy": ["keep", "decay", "silence", "compress", "delete"],
+        },
+        regression_tasks=set(),
+        target_per_task_label=20,
+        single_pools={"router": ["Remember the weekly planning update for Alice."]},
+        rng=random.Random(7),
+        llm_available=True,
+    )
+
+    def _count(task: str, label: str, prefix: str) -> int:
+        return sum(
+            1
+            for row in rows.rows
+            if str(row["task"]) == task
+            and str(row["label"]) == label
+            and str(row["source"]).startswith(prefix)
+        )
+
+    assert _count("consolidation_gist_quality", "accept", "structured:") == 7
+    assert _count("consolidation_gist_quality", "reject", "structured:") == 7
+    assert _count("forgetting_action_policy", "keep", "structured:") == 7
+    assert rows.count("consolidation_gist_quality", "accept") == 11
+    assert rows.count("forgetting_action_policy", "keep") == 11
+
+
+def test_router_quality_source_validation_passes_after_llm_top_up() -> None:
+    rows = prepare_module._SingleTaskStore(max_per_task_label=20)
+    task_labels = {
+        "consolidation_gist_quality": ["accept", "reject"],
+        "forgetting_action_policy": ["keep", "decay", "silence", "compress", "delete"],
+    }
+    prepare_module._inject_hardened_router_rows(
+        rows=rows,
+        task_labels=task_labels,
+        target_per_task_label=20,
+        single_pools={"router": ["Remember the weekly planning update for Alice."]},
+        rng=random.Random(7),
+    )
+    prepare_module._fill_router_tasks_without_llm(
+        rows=rows,
+        regression_rows=prepare_module._RegressionTaskStore(max_per_task=20),
+        task_labels=task_labels,
+        regression_tasks=set(),
+        target_per_task_label=20,
+        single_pools={"router": ["Remember the weekly planning update for Alice."]},
+        rng=random.Random(7),
+        llm_available=True,
+    )
+
+    for task, labels in task_labels.items():
+        for label in labels:
+            while rows.count(task, label) < 20:
+                idx = rows.count(task, label)
+                rows.add(
+                    task,
+                    f"LLM {task} {label} {idx}",
+                    label,
+                    f"llm:{task}:{label}",
+                    extras={"group_id": f"llm:{task}:{label}:{idx}"},
+                )
+
+    diagnostics = prepare_module._validate_source_coverage(
+        pd.DataFrame(rows.rows),
+        split_name="router:train",
+    )
+
+    assert diagnostics["consolidation_gist_quality"]["template_ratio"] <= 0.35
+    assert diagnostics["forgetting_action_policy"]["template_ratio"] <= 0.35
+
+
+def test_fill_structured_memory_type_rows_backfills_missing_labels() -> None:
+    rows = prepare_module._SingleTaskStore(max_per_task_label=3)
+
+    prepare_module._fill_structured_memory_type_rows(
+        rows=rows,
+        task_labels={"memory_type": ["plan", "knowledge", "reasoning_step", "message", "observation"]},
+        target_per_task_label=3,
+        single_pools={"router": ["Review the release checklist tomorrow."]},
+        rng=random.Random(5),
+    )
+
+    for label in ("plan", "knowledge", "reasoning_step", "message", "observation"):
+        assert rows.count("memory_type", label) == 3
+    assert all(str(row["source"]).startswith("structured:memory_type:") for row in rows.rows)
+
+
+def test_fill_structured_memory_type_rows_scales_past_topic_cycle() -> None:
+    rows = prepare_module._SingleTaskStore(max_per_task_label=12)
+
+    prepare_module._fill_structured_memory_type_rows(
+        rows=rows,
+        task_labels={"memory_type": ["episodic_event"]},
+        target_per_task_label=12,
+        single_pools={"router": ["Review the release checklist tomorrow."]},
+        rng=random.Random(5),
+    )
+
+    assert rows.count("memory_type", "episodic_event") == 12
+    assert len({str(row["text"]) for row in rows.rows}) == 12
+
+
+def test_fill_structured_extractor_rows_scales_constraint_type_past_topic_cycle() -> None:
+    rows = prepare_module._SingleTaskStore(max_per_task_label=12)
+
+    prepare_module._fill_structured_extractor_rows(
+        rows=rows,
+        target_per_task_label=12,
+        single_pools={"router": ["Review the release checklist tomorrow."]},
+        rng=random.Random(5),
+    )
+
+    constraint_rows = [
+        row
+        for row in rows.rows
+        if str(row["task"]) == "constraint_type" and str(row["label"]) == "policy"
+    ]
+
+    assert len(constraint_rows) == 12
+    assert len({str(row["text"]) for row in constraint_rows}) == 12
+
+
+def test_regression_backfill_advances_past_seeded_duplicate() -> None:
+    regression_rows = prepare_module._RegressionTaskStore(max_per_task=4)
+    pack = prepare_module._topic_pack(1)
+    added = regression_rows.add(
+        "write_importance_regression",
+        f"Stable preference 1: {pack['relevant']} for future recommendations.",
+        0.76,
+        "prepared:existing",
+        extras=prepare_module._structured_row_extras(
+            topic=pack["topic"],
+            memory_type="preference",
+            importance=0.78,
+            confidence=0.92,
+            access_count=5,
+            age_days=7,
+            dependency_count=1,
+        ),
+    )
+    assert added is True
+
+    prepare_module._fill_router_tasks_without_llm(
+        rows=prepare_module._SingleTaskStore(max_per_task_label=4),
+        regression_rows=regression_rows,
+        task_labels={},
+        regression_tasks={"write_importance_regression"},
+        target_per_task_label=2,
+        single_pools={"router": ["Review the release checklist tomorrow."]},
+        rng=random.Random(5),
+    )
+
+    assert regression_rows.count("write_importance_regression") == 2
+    texts = {str(row["text"]) for row in regression_rows.rows}
+    assert f"Stable preference 1: {pack['relevant']} for future recommendations." in texts
+    assert any(text.startswith("Useful fact 2:") for text in texts)
+
+
+def test_validate_split_label_coverage_rejects_single_label_slice() -> None:
+    split_frames = {
+        "train": pd.DataFrame(
+            [
+                {"task": "confidence_bin", "label": "low", "text": "a"},
+                {"task": "confidence_bin", "label": "low", "text": "b"},
+            ]
+        ),
+        "test": pd.DataFrame([{"task": "confidence_bin", "label": "low", "text": "c"}]),
+        "eval": pd.DataFrame([{"task": "confidence_bin", "label": "low", "text": "d"}]),
+    }
+
+    with pytest.raises(ValueError, match="expected at least 2 labels"):
+        prepare_module._validate_split_label_coverage(split_frames)
+
+
 def test_schema_template_fill_is_capped_and_assigns_group_ids() -> None:
     rows = prepare_module._PairTaskStore(max_per_task_label=20)
 
@@ -363,32 +668,18 @@ def test_augment_pair_hard_negatives_uses_cached_embeddings(tmp_path: Path) -> N
         ]
     )
 
-    augmented, summary = prepare_module._augment_pair_hard_negatives(
+    augmented, _summary = prepare_module._augment_pair_hard_negatives(
         df,
         cache_path=cache_path,
         task_names={"memory_rerank_pair"},
     )
 
     mined = augmented[augmented["source"].astype(str) == "derived_hard_negative:memory_rerank_pair"]
-    assert summary["memory_rerank_pair"] >= 2
+    task_rows = augmented[augmented["task"].astype(str) == "memory_rerank_pair"]
+    ratio = len(mined) / max(1, len(task_rows))
+    assert ratio <= 0.6
     assert len(mined) >= 2
     assert set(mined["group_id"].astype(str)) == {"g-alpha", "g-beta"}
-
-
-def test_validate_adversarial_fixtures_requires_minimum_rows(monkeypatch, tmp_path: Path) -> None:
-    fixture = tmp_path / "small.jsonl"
-    fixture.write_text(
-        "\n".join(json.dumps({"text": f"row {idx}", "label": "accept"}) for idx in range(499)),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        prepare_module,
-        "_ADVERSARIAL_FIXTURE_PATHS",
-        {"consolidation_gist_quality": fixture},
-    )
-
-    with pytest.raises(ValueError, match="at least 500 rows"):
-        prepare_module._validate_adversarial_fixtures()
 
 
 def test_apply_router_feature_enrichment_adds_memory_type_columns() -> None:
@@ -413,6 +704,40 @@ def test_apply_router_feature_enrichment_adds_memory_type_columns() -> None:
     assert row["has_json_like_shape"] is True
     assert row["temporal_marker_count"] >= 1
     assert row["named_entity_like_count"] >= 1
+
+
+def test_apply_router_feature_enrichment_defaults_non_memory_type_rows() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "task": "query_domain",
+                "label": "work",
+                "source": "test",
+                "text": "Please review the release schedule tomorrow.",
+            }
+        ]
+    )
+
+    enriched = prepare_module._apply_router_feature_enrichment(df)
+
+    for column in MEMORY_TYPE_FEATURE_COLUMNS:
+        assert column in enriched.columns
+
+    row = enriched.iloc[0].to_dict()
+    assert row["text_length_chars"] == 0
+    assert row["question_mark_count"] == 0
+    assert row["has_plan_structure"] is False
+
+
+def test_should_precompute_router_features_skips_large_memory_type_sets() -> None:
+    df = pd.DataFrame(
+        [
+            {"task": "memory_type", "text": f"Plan row {idx}", "label": "plan", "source": "test"}
+            for idx in range(prepare_module._MAX_PRECOMPUTED_ROUTER_FEATURE_ROWS + 1)
+        ]
+    )
+
+    assert prepare_module._should_precompute_router_features(df) is False
 
 
 def test_memory_type_feature_tokens_match_text_and_row_derivation() -> None:
@@ -662,29 +987,3 @@ def test_pair_lexical_features_negation_detection_multilingual() -> None:
 
     feats_ru = build_pair_lexical_features("не готово", "готово")
     assert feats_ru[4] == 1.0  # не is negation
-
-
-def test_adversarial_fixture_language_column_propagated(monkeypatch, tmp_path: Path) -> None:
-    fixture = tmp_path / "adversarial_gist_quality.jsonl"
-    rows = []
-    for i in range(500):
-        lang = "zh" if i % 2 == 0 else "en"
-        rows.append(json.dumps({"text": f"text {i}", "label": "accept", "language": lang}))
-    fixture.write_text("\n".join(rows), encoding="utf-8")
-    monkeypatch.setattr(
-        prepare_module,
-        "_ADVERSARIAL_FIXTURE_PATHS",
-        {"consolidation_gist_quality": fixture},
-    )
-    router_df = pd.DataFrame([
-        {"text": "existing text", "task": "consolidation_gist_quality", "label": "accept",
-         "source": "test:0", "group_id": "test:0", "language": "en"},
-    ])
-    result = prepare_module._inject_adversarial_into_router_df(
-        router_df, seed=42, task_names={"consolidation_gist_quality"},
-    )
-    injected = result[result["source"].str.startswith("adversarial_train:", na=False)]
-    assert not injected.empty
-    lang_values = set(injected["language"].dropna().unique())
-    assert "zh" in lang_values or "en" in lang_values
-    assert len(lang_values) >= 1

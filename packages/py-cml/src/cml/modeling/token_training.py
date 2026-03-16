@@ -504,6 +504,8 @@ def train_token_task(
             "task_spec": dict(spec_payload),
             "labels": {str(k): v for k, v in id_to_label.items()},
             "hf_model_dir": str(hf_model_dir),
+            "artifact_scope": "task",
+            "model_kind": "token_classification",
         },
         model_path,
     )

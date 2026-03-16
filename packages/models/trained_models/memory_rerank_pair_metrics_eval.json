@@ -1,39 +1,88 @@
 {
-  "task": "memory_rerank_pair",
+  "family": "pair",
+  "split": "eval",
   "overall": {
-    "rows": 13403,
-    "accuracy": 0.7742296500783407,
-    "macro_f1": 0.7490043964588904,
-    "weighted_f1": 0.7742296500783408,
-    "micro_f1": 0.7742296500783407,
+    "rows": 10000,
+    "accuracy": 0.7126,
+    "macro_f1": 0.7114981421644803,
+    "weighted_f1": 0.7114981421644803,
+    "micro_f1": 0.7126,
     "labels": [
       "memory_rerank_pair::not_relevant",
       "memory_rerank_pair::relevant"
     ],
     "confusion_matrix": [
       [
-        7313,
-        1513
+        3254,
+        1746
       ],
       [
-        1513,
-        3064
+        1128,
+        3872
       ]
     ],
-    "calibration_error": 0.06990397594092292,
-    "mrr@10": 0.8206976913553307,
-    "ndcg@10": 0.8669593631361842,
+    "calibration_error": 0.006998742025858722,
+    "classification_report": {
+      "memory_rerank_pair::not_relevant": {
+        "precision": 0.7425832952989503,
+        "recall": 0.6508,
+        "f1-score": 0.6936687273502451,
+        "support": 5000.0
+      },
+      "memory_rerank_pair::relevant": {
+        "precision": 0.6892132431470274,
+        "recall": 0.7744,
+        "f1-score": 0.7293275569787154,
+        "support": 5000.0
+      },
+      "accuracy": 0.7126,
+      "macro avg": {
+        "precision": 0.7158982692229888,
+        "recall": 0.7126,
+        "f1-score": 0.7114981421644803,
+        "support": 10000.0
+      },
+      "weighted avg": {
+        "precision": 0.7158982692229888,
+        "recall": 0.7126,
+        "f1-score": 0.7114981421644803,
+        "support": 10000.0
+      }
+    },
+    "mrr@10": 0.9089,
+    "ndcg@10": 0.9327554011007165,
     "recall@10": 1.0,
-    "groups_evaluated": 4577
+    "groups_evaluated": 5000
+  },
+  "per_task": {
+    "memory_rerank_pair": {
+      "rows": 10000,
+      "accuracy": 0.7126,
+      "macro_f1": 0.7114981421644803,
+      "weighted_f1": 0.7114981421644803,
+      "micro_f1": 0.7126,
+      "labels": [
+        "not_relevant",
+        "relevant"
+      ],
+      "confusion_matrix": [
+        [
+          3254,
+          1746
+        ],
+        [
+          1128,
+          3872
+        ]
+      ],
+      "wrong_task_predictions": 0,
+      "wrong_task_rate": 0.0
+    }
   },
   "calibration": {
-    "method": "sigmoid",
-    "split": "eval",
-    "rows": 13403,
-    "pre_ece": 0.032538542525708335,
-    "post_ece": 0.0046663541792573635,
-    "pre_accuracy": 0.6685816608222039,
-    "post_accuracy": 0.7026785048123555,
-    "accuracy_delta": 0.03409684399015156
+    "method": "temperature_grid_search",
+    "rows": 10000,
+    "temperature": 1.5,
+    "loss": 0.5502544644810149
   }
 }
