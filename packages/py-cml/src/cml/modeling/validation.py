@@ -208,7 +208,9 @@ def run_preflight_validation(
             cache_path = prepared_dir / "pair_text_embeddings.parquet"
             if input_type != "pair" or feature_backend != "embedding_pair":
                 status.status = "error"
-                status.reason = "embedding_pair trainer requires pair input_type and embedding_pair backend"
+                status.reason = (
+                    "embedding_pair trainer requires pair input_type and embedding_pair backend"
+                )
                 errors.append(
                     f"[task:{task_name}] embedding_pair trainer requires pair input_type and embedding_pair backend"
                 )
@@ -216,7 +218,9 @@ def run_preflight_validation(
                 continue
             if objective not in ("pair_ranking", "classification"):
                 status.status = "error"
-                status.reason = "embedding_pair trainer requires pair_ranking or classification objective"
+                status.reason = (
+                    "embedding_pair trainer requires pair_ranking or classification objective"
+                )
                 errors.append(
                     f"[task:{task_name}] embedding_pair trainer requires objective pair_ranking or classification"
                 )
@@ -239,7 +243,9 @@ def run_preflight_validation(
                 task_checks.append(status)
                 continue
 
-        if trainer == "transformer_text" and (objective != "classification" or input_type != "single"):
+        if trainer == "transformer_text" and (
+            objective != "classification" or input_type != "single"
+        ):
             status.status = "error"
             status.reason = "transformer_text requires single-input classification"
             errors.append(
@@ -261,11 +267,15 @@ def run_preflight_validation(
             if not label_order or sorted(label_order) != sorted(labels):
                 status.status = "error"
                 status.reason = "label_order must contain the same labels as labels"
-                errors.append(f"[task:{task_name}] ordinal_threshold requires label_order matching labels")
+                errors.append(
+                    f"[task:{task_name}] ordinal_threshold requires label_order matching labels"
+                )
                 task_checks.append(status)
                 continue
 
-        if trainer == "hierarchical_text" and (objective != "classification" or input_type != "single"):
+        if trainer == "hierarchical_text" and (
+            objective != "classification" or input_type != "single"
+        ):
             status.status = "error"
             status.reason = "hierarchical_text requires single-input classification"
             errors.append(

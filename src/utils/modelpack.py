@@ -376,7 +376,9 @@ class ModelPackRuntime:
             if override is not None:
                 pred = override
             elif pred.label == "compress":
-                gist_pred = self.predict_single("consolidation_gist_quality", text, metadata=metadata)
+                gist_pred = self.predict_single(
+                    "consolidation_gist_quality", text, metadata=metadata
+                )
                 if gist_pred is None or gist_pred.label != "accept" or gist_pred.confidence < 0.80:
                     pred = ModelPrediction(task=pred.task, label="keep", confidence=pred.confidence)
         if task == "consolidation_gist_quality":

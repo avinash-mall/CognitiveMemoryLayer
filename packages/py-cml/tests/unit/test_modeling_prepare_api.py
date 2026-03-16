@@ -127,9 +127,13 @@ def test_prepare_main_manifest_omits_adversarial_fields(monkeypatch, tmp_path: P
         lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}),
     )
     monkeypatch.setattr(prepare_module, "_missing_task_labels", lambda *_args, **_kwargs: ({}, 0))
-    monkeypatch.setattr(prepare_module, "_missing_regression_tasks", lambda *_args, **_kwargs: ({}, 0))
+    monkeypatch.setattr(
+        prepare_module, "_missing_regression_tasks", lambda *_args, **_kwargs: ({}, 0)
+    )
     monkeypatch.setattr(prepare_module, "_missing_token_tasks", lambda *_args, **_kwargs: ({}, 0))
-    monkeypatch.setattr(prepare_module, "_pair_embedding_cache_summary", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        prepare_module, "_pair_embedding_cache_summary", lambda *_args, **_kwargs: {}
+    )
     monkeypatch.setattr(prepare_module, "_existing_split_counts", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(prepare_module, "_existing_split_hashes", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(prepare_module, "_existing_split_integrity", lambda *_args, **_kwargs: {})
@@ -139,7 +143,9 @@ def test_prepare_main_manifest_omits_adversarial_fields(monkeypatch, tmp_path: P
         "_existing_train_source_diagnostics",
         lambda *_args, **_kwargs: {},
     )
-    monkeypatch.setattr(prepare_module, "_existing_token_split_counts", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        prepare_module, "_existing_token_split_counts", lambda *_args, **_kwargs: {}
+    )
 
     rc = prepare_module.main(["--config", str(config_path)])
 
@@ -344,8 +350,12 @@ def test_router_structured_fill_keeps_group_ids_and_non_template_majority() -> N
     assert df["group_id"].astype(str).str.len().gt(0).all()
     assert diagnostics["consolidation_gist_quality"]["template_ratio"] <= 0.5
     assert diagnostics["forgetting_action_policy"]["template_ratio"] <= 0.5
-    assert any(str(source).startswith("structured:consolidation_gist_quality") for source in df["source"])
-    assert any(str(source).startswith("structured:forgetting_action_policy") for source in df["source"])
+    assert any(
+        str(source).startswith("structured:consolidation_gist_quality") for source in df["source"]
+    )
+    assert any(
+        str(source).startswith("structured:forgetting_action_policy") for source in df["source"]
+    )
 
 
 def test_router_quality_structured_fill_respects_source_caps_when_llm_available() -> None:
@@ -441,7 +451,9 @@ def test_fill_structured_memory_type_rows_backfills_missing_labels() -> None:
 
     prepare_module._fill_structured_memory_type_rows(
         rows=rows,
-        task_labels={"memory_type": ["plan", "knowledge", "reasoning_step", "message", "observation"]},
+        task_labels={
+            "memory_type": ["plan", "knowledge", "reasoning_step", "message", "observation"]
+        },
         target_per_task_label=3,
         single_pools={"router": ["Review the release checklist tomorrow."]},
         rng=random.Random(5),
@@ -744,7 +756,9 @@ def test_memory_type_feature_tokens_match_text_and_row_derivation() -> None:
     text = '{"step": "Please review this plan with Alice tomorrow?"}'
     row = {"text": text, **derive_memory_type_feature_columns(text)}
 
-    assert derive_memory_type_feature_tokens_from_row(row) == derive_memory_type_feature_tokens_from_text(text)
+    assert derive_memory_type_feature_tokens_from_row(
+        row
+    ) == derive_memory_type_feature_tokens_from_text(text)
 
 
 def test_llm_round_strategy_reduces_batch_for_truncation() -> None:
@@ -957,7 +971,9 @@ def test_semantic_hint_tokens_detect_multilingual_keywords() -> None:
     assert "hint=analytical" in tokens_zh
     assert "hint=first_person" in tokens_zh
 
-    tokens_fr = derive_memory_type_feature_tokens_from_text("je pense qu'il faut planifier la semaine")
+    tokens_fr = derive_memory_type_feature_tokens_from_text(
+        "je pense qu'il faut planifier la semaine"
+    )
     assert "hint=analytical" in tokens_fr
     assert "hint=planning" in tokens_fr
     assert "hint=time_anchored" in tokens_fr

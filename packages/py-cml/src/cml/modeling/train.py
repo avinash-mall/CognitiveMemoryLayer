@@ -335,7 +335,9 @@ def _family_split_hashes(prepared_dir: Path, family: str) -> dict[str, dict[str,
     return hashes
 
 
-def _task_dataset_hashes(prepared_dir: Path, family: str, task_name: str) -> dict[str, dict[str, Any]]:
+def _task_dataset_hashes(
+    prepared_dir: Path, family: str, task_name: str
+) -> dict[str, dict[str, Any]]:
     hashes = _family_split_hashes(prepared_dir, family)
     if task_name in {"pii_span_detection", "fact_extraction_structured"}:
         hashes = {}
@@ -659,10 +661,7 @@ def _balanced_class_weight_map(targets: list[str]) -> dict[str, float]:
         classes=np.asarray(observed_classes, dtype=object),
         y=np.asarray(targets, dtype=object),
     )
-    return {
-        label: float(weight)
-        for label, weight in zip(observed_classes, weights, strict=False)
-    }
+    return {label: float(weight) for label, weight in zip(observed_classes, weights, strict=False)}
 
 
 def _build_sgd_regressor(train_cfg: dict) -> SGDRegressor:
@@ -752,7 +751,9 @@ def _train_classifier_with_monitoring(
     metric_name = str(train_cfg.get("early_stopping_metric", "macro_f1") or "macro_f1").strip()
     patience = max(1, int(train_cfg.get("early_stopping_patience", 3)))
     min_delta = max(0.0, float(train_cfg.get("early_stopping_min_delta", 0.0)))
-    use_early_stopping = bool(train_cfg.get("early_stopping", False)) and x_valid is not None and bool(valid_y)
+    use_early_stopping = (
+        bool(train_cfg.get("early_stopping", False)) and x_valid is not None and bool(valid_y)
+    )
 
     epoch_stats: list[dict[str, Any]] = []
     best_value: float | None = None
@@ -767,9 +768,7 @@ def _train_classifier_with_monitoring(
     try:
         for epoch in range(1, epochs + 1):
             if epoch == 1:
-                classifier.partial_fit(
-                    x_train, train_y, classes=classes, sample_weight=sw
-                )
+                classifier.partial_fit(x_train, train_y, classes=classes, sample_weight=sw)
             else:
                 classifier.partial_fit(x_train, train_y, sample_weight=sw)
 
@@ -841,7 +840,9 @@ def _train_classifier_with_monitoring(
     return model, epoch_stats, summary
 
 
-def _regression_metrics_for_matrix(regressor: SGDRegressor, matrix: Any, targets: Any) -> dict[str, float]:
+def _regression_metrics_for_matrix(
+    regressor: SGDRegressor, matrix: Any, targets: Any
+) -> dict[str, float]:
     import numpy as np
 
     pred = np.asarray(regressor.predict(matrix), dtype=float)
@@ -870,7 +871,9 @@ def _train_regressor_with_monitoring(
         metric_name = "mae"
     patience = max(1, int(train_cfg.get("early_stopping_patience", 3)))
     min_delta = max(0.0, float(train_cfg.get("early_stopping_min_delta", 0.0)))
-    use_early_stopping = bool(train_cfg.get("early_stopping", False)) and x_valid is not None and len(valid_y) > 0
+    use_early_stopping = (
+        bool(train_cfg.get("early_stopping", False)) and x_valid is not None and len(valid_y) > 0
+    )
 
     epoch_stats: list[dict[str, Any]] = []
     best_value: float | None = None
@@ -938,9 +941,7 @@ def _train_regressor_with_monitoring(
     return model, epoch_stats, summary
 
 
-def _predict_batched(
-    model: Any, features: list[str], *, batch_size: int, desc: str
-) -> list[str]:
+def _predict_batched(model: Any, features: list[str], *, batch_size: int, desc: str) -> list[str]:
     pbar = _progress(total=len(features), desc=desc, unit="row")
     pred: list[str] = []
     try:
@@ -1348,7 +1349,13 @@ def _family_invalid_task_slices(
             continue
         if family == "extractor":
             subset = train_df[train_df["task"].astype(str) == task]
-            buckets = subset["source"].fillna("").astype(str).map(lambda value: value.split(":", 1)[0]).tolist()
+            buckets = (
+                subset["source"]
+                .fillna("")
+                .astype(str)
+                .map(lambda value: value.split(":", 1)[0])
+                .tolist()
+            )
             if buckets and all(bucket == "llm" for bucket in buckets):
                 invalid[task] = "train split is fully llm-synthetic"
                 continue
@@ -1451,9 +1458,7 @@ def _temperature_scale_summary(
             flat = scaled.reshape(-1)
             probs = 1.0 / (1.0 + np.exp(-flat))
             probs = np.clip(probs, 1e-6, 1.0 - 1e-6)
-            loss = float(
-                -np.mean(labels * np.log(probs) + (1.0 - labels) * np.log(1.0 - probs))
-            )
+            loss = float(-np.mean(labels * np.log(probs) + (1.0 - labels) * np.log(1.0 - probs)))
         else:
             shifted = scaled - scaled.max(axis=1, keepdims=True)
             probs = np.exp(shifted)
@@ -1570,7 +1575,9 @@ def _train_transformer_sequence_classifier(
         weight_decay=float(cfg["weight_decay"]),
     )
     grad_accum = max(1, int(cfg["gradient_accumulation_steps"]))
-    total_steps = max(1, math.ceil(len(train_loader) / grad_accum) * max(1, int(cfg["num_train_epochs"])))
+    total_steps = max(
+        1, math.ceil(len(train_loader) / grad_accum) * max(1, int(cfg["num_train_epochs"]))
+    )
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
         num_warmup_steps=int(total_steps * float(cfg["warmup_ratio"])),
@@ -1589,7 +1596,9 @@ def _train_transformer_sequence_classifier(
         epoch_loss = 0.0
         for step, (batch_ids,) in enumerate(train_loader, start=1):
             batch_features = [features[int(idx)] for idx in batch_ids]
-            labels = torch.tensor([train_ids[int(idx)] for idx in batch_ids], dtype=torch.long, device=device)
+            labels = torch.tensor(
+                [train_ids[int(idx)] for idx in batch_ids], dtype=torch.long, device=device
+            )
             left, right = _sequence_inputs_from_features(batch_features, input_type=input_type)
             encoded = tokenizer(
                 left,
@@ -1613,7 +1622,9 @@ def _train_transformer_sequence_classifier(
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
-        epoch_stats.append({"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))})
+        epoch_stats.append(
+            {"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))}
+        )
 
     model.eval()
     eval_logits = (
@@ -1681,7 +1692,9 @@ def _train_transformer_pair_ranker(
     backbone_model_name: str,
     tokenizer_name: str,
     train_cfg: dict[str, Any],
-) -> tuple[TransformerPairClassifier, str, list[dict[str, Any]], dict[str, Any], dict[str, Any] | None]:
+) -> tuple[
+    TransformerPairClassifier, str, list[dict[str, Any]], dict[str, Any], dict[str, Any] | None
+]:
     try:
         import torch
         from torch.nn import functional as torch_f
@@ -1705,9 +1718,15 @@ def _train_transformer_pair_ranker(
     model.to(device)
     model.train()
 
-    train_binary = np.asarray([1 if label.endswith("::relevant") else 0 for label in targets], dtype=np.float32)
-    eval_binary = np.asarray([1 if label.endswith("::relevant") else 0 for label in eval_targets], dtype=np.float32)
-    pos_weight_value = float(max(1.0, (len(train_binary) - train_binary.sum()) / max(1.0, train_binary.sum())))
+    train_binary = np.asarray(
+        [1 if label.endswith("::relevant") else 0 for label in targets], dtype=np.float32
+    )
+    eval_binary = np.asarray(
+        [1 if label.endswith("::relevant") else 0 for label in eval_targets], dtype=np.float32
+    )
+    pos_weight_value = float(
+        max(1.0, (len(train_binary) - train_binary.sum()) / max(1.0, train_binary.sum()))
+    )
     pos_weight = torch.tensor([pos_weight_value], dtype=torch.float32, device=device)
 
     index_dataset = TensorDataset(torch.arange(len(features)))
@@ -1722,7 +1741,9 @@ def _train_transformer_pair_ranker(
         weight_decay=float(cfg["weight_decay"]),
     )
     grad_accum = max(1, int(cfg["gradient_accumulation_steps"]))
-    total_steps = max(1, math.ceil(len(train_loader) / grad_accum) * max(1, int(cfg["num_train_epochs"])))
+    total_steps = max(
+        1, math.ceil(len(train_loader) / grad_accum) * max(1, int(cfg["num_train_epochs"]))
+    )
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
         num_warmup_steps=int(total_steps * float(cfg["warmup_ratio"])),
@@ -1735,7 +1756,9 @@ def _train_transformer_pair_ranker(
         epoch_loss = 0.0
         for step, (batch_ids,) in enumerate(train_loader, start=1):
             batch_features = [features[int(idx)] for idx in batch_ids]
-            labels = torch.tensor(train_binary[[int(idx) for idx in batch_ids]], dtype=torch.float32, device=device)
+            labels = torch.tensor(
+                train_binary[[int(idx) for idx in batch_ids]], dtype=torch.float32, device=device
+            )
             batch_groups = [group_keys[int(idx)] for idx in batch_ids]
             left, right = _sequence_inputs_from_features(batch_features, input_type="pair")
             encoded = tokenizer(
@@ -1763,7 +1786,9 @@ def _train_transformer_pair_ranker(
                     continue
                 diffs = logits[pos_idx].unsqueeze(1) - logits[neg_idx].unsqueeze(0)
                 pair_losses.append(torch_f.softplus(-diffs).mean())
-            pair_loss = torch.stack(pair_losses).mean() if pair_losses else torch.tensor(0.0, device=device)
+            pair_loss = (
+                torch.stack(pair_losses).mean() if pair_losses else torch.tensor(0.0, device=device)
+            )
             loss = (bce + 0.5 * pair_loss) / grad_accum
             loss.backward()
             epoch_loss += float(loss.item()) * grad_accum
@@ -1771,7 +1796,9 @@ def _train_transformer_pair_ranker(
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
-        epoch_stats.append({"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))})
+        epoch_stats.append(
+            {"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))}
+        )
 
     model.eval()
     eval_logits = (
@@ -1904,7 +1931,9 @@ def _train_one_family(
     invalid_slices = _family_invalid_task_slices(train_df, test_df, eval_df, family=family)
     if invalid_slices:
         if bool(train_cfg.get("release_mode")):
-            raise RuntimeError(f"[family:{family}] invalid task slices for release: {invalid_slices}")
+            raise RuntimeError(
+                f"[family:{family}] invalid task slices for release: {invalid_slices}"
+            )
         valid_tasks = sorted(set(train_df["task"].astype(str)) - set(invalid_slices))
         train_df = train_df[train_df["task"].astype(str).isin(valid_tasks)].reset_index(drop=True)
         test_df = test_df[test_df["task"].astype(str).isin(valid_tasks)].reset_index(drop=True)
@@ -2044,7 +2073,9 @@ def _load_task_splits(
     )
 
 
-def _load_regression_task_split(prepared_dir: Path, family: str, split_name: str, task_name: str) -> pd.DataFrame:
+def _load_regression_task_split(
+    prepared_dir: Path, family: str, split_name: str, task_name: str
+) -> pd.DataFrame:
     path = prepared_dir / f"{family}_{split_name}.parquet"
     if not path.exists():
         return pd.DataFrame()
@@ -2454,7 +2485,10 @@ def _train_single_regression(
         )
         if data_profile["std"] < 0.1:
             warnings.append("low_target_variance")
-        if test_metrics.get("test_mae") is not None and baselines["mean_prediction"]["test_mae"] - float(test_metrics["test_mae"]) < 0.01:
+        if (
+            test_metrics.get("test_mae") is not None
+            and baselines["mean_prediction"]["test_mae"] - float(test_metrics["test_mae"]) < 0.01
+        ):
             warnings.append("weak_improvement_over_mean_baseline")
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2526,22 +2560,28 @@ def _train_transformer_text_task(
     eval_x = _encode_features(eval_df, family)
     eval_y = _encode_targets(eval_df)
     classes = [_composite_label(spec.task_name, label) for label in spec.labels]
-    backbone = spec.backbone_model_name.strip() or str(_transformer_cfg(train_cfg)["model_name_or_path"])
-    runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = _train_transformer_sequence_classifier(
-        features=train_x,
-        targets=train_y,
-        eval_features=eval_x,
-        eval_targets=eval_y,
-        input_type="single",
-        classes=classes,
-        task_name=spec.task_name,
-        output_dir=output_dir,
-        artifact_stem=spec.artifact_name,
-        backbone_model_name=backbone,
-        tokenizer_name=spec.tokenizer_name.strip(),
-        train_cfg=train_cfg,
-        runtime_kind="text",
-        focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"]) if spec.task_name in {"consolidation_gist_quality", "forgetting_action_policy"} else 0.0,
+    backbone = spec.backbone_model_name.strip() or str(
+        _transformer_cfg(train_cfg)["model_name_or_path"]
+    )
+    runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = (
+        _train_transformer_sequence_classifier(
+            features=train_x,
+            targets=train_y,
+            eval_features=eval_x,
+            eval_targets=eval_y,
+            input_type="single",
+            classes=classes,
+            task_name=spec.task_name,
+            output_dir=output_dir,
+            artifact_stem=spec.artifact_name,
+            backbone_model_name=backbone,
+            tokenizer_name=spec.tokenizer_name.strip(),
+            train_cfg=train_cfg,
+            runtime_kind="text",
+            focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"])
+            if spec.task_name in {"consolidation_gist_quality", "forgetting_action_policy"}
+            else 0.0,
+        )
     )
 
     batch_size = max(1, int(_transformer_cfg(train_cfg)["per_device_eval_batch_size"]))
@@ -2612,7 +2652,9 @@ def _train_transformer_pair_task(
 
     train_x = _encode_features(train_df, family)
     eval_x = _encode_features(eval_df, family)
-    backbone = spec.backbone_model_name.strip() or str(_transformer_cfg(train_cfg)["model_name_or_path"])
+    backbone = spec.backbone_model_name.strip() or str(
+        _transformer_cfg(train_cfg)["model_name_or_path"]
+    )
     if spec.objective == "pair_ranking":
         train_y = _encode_targets(train_df)
         eval_y = _encode_targets(eval_df)
@@ -2621,38 +2663,44 @@ def _train_transformer_pair_task(
             if "group_id" in train_df.columns
             else train_df["text_a"].astype(str).tolist()
         )
-        runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = _train_transformer_pair_ranker(
-            features=train_x,
-            targets=train_y,
-            eval_features=eval_x,
-            eval_targets=eval_y,
-            group_keys=group_keys,
-            task_name=spec.task_name,
-            output_dir=output_dir,
-            artifact_stem=spec.artifact_name,
-            backbone_model_name=backbone,
-            tokenizer_name=spec.tokenizer_name.strip(),
-            train_cfg=train_cfg,
+        runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = (
+            _train_transformer_pair_ranker(
+                features=train_x,
+                targets=train_y,
+                eval_features=eval_x,
+                eval_targets=eval_y,
+                group_keys=group_keys,
+                task_name=spec.task_name,
+                output_dir=output_dir,
+                artifact_stem=spec.artifact_name,
+                backbone_model_name=backbone,
+                tokenizer_name=spec.tokenizer_name.strip(),
+                train_cfg=train_cfg,
+            )
         )
     else:
         train_y = _encode_targets(train_df)
         eval_y = _encode_targets(eval_df)
         classes = [_composite_label(spec.task_name, label) for label in spec.labels]
-        runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = _train_transformer_sequence_classifier(
-            features=train_x,
-            targets=train_y,
-            eval_features=eval_x,
-            eval_targets=eval_y,
-            input_type="pair",
-            classes=classes,
-            task_name=spec.task_name,
-            output_dir=output_dir,
-            artifact_stem=spec.artifact_name,
-            backbone_model_name=backbone,
-            tokenizer_name=spec.tokenizer_name.strip(),
-            train_cfg=train_cfg,
-            runtime_kind="pair",
-            focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"]) if spec.task_name == "novelty_pair" else 0.0,
+        runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = (
+            _train_transformer_sequence_classifier(
+                features=train_x,
+                targets=train_y,
+                eval_features=eval_x,
+                eval_targets=eval_y,
+                input_type="pair",
+                classes=classes,
+                task_name=spec.task_name,
+                output_dir=output_dir,
+                artifact_stem=spec.artifact_name,
+                backbone_model_name=backbone,
+                tokenizer_name=spec.tokenizer_name.strip(),
+                train_cfg=train_cfg,
+                runtime_kind="pair",
+                focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"])
+                if spec.task_name == "novelty_pair"
+                else 0.0,
+            )
         )
 
     batch_size = max(1, int(_transformer_cfg(train_cfg)["per_device_eval_batch_size"]))
@@ -2680,7 +2728,10 @@ def _train_transformer_pair_task(
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / f"{spec.artifact_name}_model.joblib"
     payload_labels = (
-        [_composite_label(spec.task_name, "not_relevant"), _composite_label(spec.task_name, "relevant")]
+        [
+            _composite_label(spec.task_name, "not_relevant"),
+            _composite_label(spec.task_name, "relevant"),
+        ]
         if spec.objective == "pair_ranking"
         else [_composite_label(spec.task_name, label) for label in spec.labels]
     )
@@ -2740,28 +2791,34 @@ def _train_hierarchical_transformer(
         print(f"[task:{spec.task_name}] no training rows after filtering; skipping.")
         return {}
 
-    backbone = spec.backbone_model_name.strip() or str(_transformer_cfg(train_cfg)["model_name_or_path"])
+    backbone = spec.backbone_model_name.strip() or str(
+        _transformer_cfg(train_cfg)["model_name_or_path"]
+    )
     batch_size = max(1, int(_transformer_cfg(train_cfg)["per_device_eval_batch_size"]))
     train_x = _encode_memory_type_features(train_df, family)
     eval_x = _encode_memory_type_features(eval_df, family)
 
     macro_labels = sorted(_MEMORY_TYPE_MACRO_GROUPS.keys())
     macro_targets = [_memory_type_macro(label) for label in train_df["label"].astype(str).tolist()]
-    macro_eval_targets = [_memory_type_macro(label) for label in eval_df["label"].astype(str).tolist()]
-    stage1_model, stage1_dir, stage1_epochs, stage1_summary, stage1_calibration = _train_transformer_sequence_classifier(
-        features=train_x,
-        targets=macro_targets,
-        eval_features=eval_x,
-        eval_targets=macro_eval_targets,
-        input_type="single",
-        classes=macro_labels,
-        task_name=f"{spec.task_name}:macro",
-        output_dir=output_dir,
-        artifact_stem=f"{spec.artifact_name}_macro",
-        backbone_model_name=backbone,
-        tokenizer_name=spec.tokenizer_name.strip(),
-        train_cfg=train_cfg,
-        runtime_kind="text",
+    macro_eval_targets = [
+        _memory_type_macro(label) for label in eval_df["label"].astype(str).tolist()
+    ]
+    stage1_model, stage1_dir, stage1_epochs, stage1_summary, stage1_calibration = (
+        _train_transformer_sequence_classifier(
+            features=train_x,
+            targets=macro_targets,
+            eval_features=eval_x,
+            eval_targets=macro_eval_targets,
+            input_type="single",
+            classes=macro_labels,
+            task_name=f"{spec.task_name}:macro",
+            output_dir=output_dir,
+            artifact_stem=f"{spec.artifact_name}_macro",
+            backbone_model_name=backbone,
+            tokenizer_name=spec.tokenizer_name.strip(),
+            train_cfg=train_cfg,
+            runtime_kind="text",
+        )
     )
 
     stage2_models: dict[str, Any] = {}
@@ -2775,21 +2832,25 @@ def _train_hierarchical_transformer(
         sub_eval = eval_df[eval_df["label"].astype(str).isin(labels)].reset_index(drop=True)
         sub_train_x = _encode_memory_type_features(sub_train, family)
         sub_eval_x = _encode_memory_type_features(sub_eval, family)
-        model, model_dir, epoch_stats, summary, calibration = _train_transformer_sequence_classifier(
-            features=sub_train_x,
-            targets=sub_train["label"].astype(str).tolist(),
-            eval_features=sub_eval_x,
-            eval_targets=sub_eval["label"].astype(str).tolist(),
-            input_type="single",
-            classes=list(labels),
-            task_name=f"{spec.task_name}:{macro_name}",
-            output_dir=output_dir,
-            artifact_stem=f"{spec.artifact_name}_{macro_name}",
-            backbone_model_name=backbone,
-            tokenizer_name=spec.tokenizer_name.strip(),
-            train_cfg=train_cfg,
-            runtime_kind="text",
-            focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"]) if any(label in {"plan", "knowledge", "reasoning_step"} for label in labels) else 0.0,
+        model, model_dir, epoch_stats, summary, calibration = (
+            _train_transformer_sequence_classifier(
+                features=sub_train_x,
+                targets=sub_train["label"].astype(str).tolist(),
+                eval_features=sub_eval_x,
+                eval_targets=sub_eval["label"].astype(str).tolist(),
+                input_type="single",
+                classes=list(labels),
+                task_name=f"{spec.task_name}:{macro_name}",
+                output_dir=output_dir,
+                artifact_stem=f"{spec.artifact_name}_{macro_name}",
+                backbone_model_name=backbone,
+                tokenizer_name=spec.tokenizer_name.strip(),
+                train_cfg=train_cfg,
+                runtime_kind="text",
+                focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"])
+                if any(label in {"plan", "knowledge", "reasoning_step"} for label in labels)
+                else 0.0,
+            )
         )
         stage2_models[macro_name] = model
         stage2_stats[macro_name] = {"epoch_stats": epoch_stats, "training_summary": summary}
@@ -3127,7 +3188,15 @@ def _train_ordinal_threshold(
         runtime_model, eval_df, family=family, split_name="eval", predict_batch_size=batch_size
     )
     if not test_df.empty:
-        pred_raw = [label.split("::", 1)[1] for label in _predict_batched(runtime_model, _encode_features(test_df, family), batch_size=batch_size, desc=f"Predict task:{spec.task_name}:test")]
+        pred_raw = [
+            label.split("::", 1)[1]
+            for label in _predict_batched(
+                runtime_model,
+                _encode_features(test_df, family),
+                batch_size=batch_size,
+                desc=f"Predict task:{spec.task_name}:test",
+            )
+        ]
         metrics_test["overall"].update(
             _ordinal_metric_block(
                 true_labels=test_df["label"].astype(str).tolist(),
@@ -3136,7 +3205,15 @@ def _train_ordinal_threshold(
             )
         )
     if not eval_df.empty:
-        pred_raw = [label.split("::", 1)[1] for label in _predict_batched(runtime_model, _encode_features(eval_df, family), batch_size=batch_size, desc=f"Predict task:{spec.task_name}:eval")]
+        pred_raw = [
+            label.split("::", 1)[1]
+            for label in _predict_batched(
+                runtime_model,
+                _encode_features(eval_df, family),
+                batch_size=batch_size,
+                desc=f"Predict task:{spec.task_name}:eval",
+            )
+        ]
         metrics_eval["overall"].update(
             _ordinal_metric_block(
                 true_labels=eval_df["label"].astype(str).tolist(),
@@ -3145,7 +3222,9 @@ def _train_ordinal_threshold(
             )
         )
 
-    epoch_stats = [{"boundary_index": item["index"], "boundary": item["boundary"]} for item in boundary_stats]
+    epoch_stats = [
+        {"boundary_index": item["index"], "boundary": item["boundary"]} for item in boundary_stats
+    ]
     training_summary = {
         "actual_epochs": 1,
         "best_epoch": 1,
@@ -3297,7 +3376,11 @@ def _train_hierarchical_text(
         output_dir / f"{spec.artifact_name}_epoch_stats.json",
         {
             "task": spec.task_name,
-            "stage1": {"epoch_stats": stage1_epochs, "training_summary": stage1_summary, "calibration": stage1_calibration},
+            "stage1": {
+                "epoch_stats": stage1_epochs,
+                "training_summary": stage1_summary,
+                "calibration": stage1_calibration,
+            },
             "stage2": stage2_stats,
             "stage2_calibration": stage2_calibration,
         },
@@ -3739,8 +3822,10 @@ def main(argv: list[str] | None = None) -> int:
         else None
     )
     build_metadata = _build_metadata()
-    if bool(train_cfg.get("release_mode")) and bool(build_metadata.get("dirty")) and not bool(
-        train_cfg.get("allow_dirty")
+    if (
+        bool(train_cfg.get("release_mode"))
+        and bool(build_metadata.get("dirty"))
+        and not bool(train_cfg.get("allow_dirty"))
     ):
         print(
             "Release mode requires a clean git worktree. Re-run with --allow-dirty only for local non-release experiments.",
