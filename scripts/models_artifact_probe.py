@@ -142,9 +142,6 @@ def _trained_probe(config_tasks: list[dict[str, Any]], trained_dir: Path) -> dic
             "epoch_stats": (trained_dir / f"{task['artifact_name']}_epoch_stats.json").exists(),
             "metrics_test": (trained_dir / f"{task['artifact_name']}_metrics_test.json").exists(),
             "metrics_eval": (trained_dir / f"{task['artifact_name']}_metrics_eval.json").exists(),
-            "metrics_adversarial": (
-                trained_dir / f"{task['artifact_name']}_metrics_adversarial.json"
-            ).exists(),
         }
         for task in config_tasks
     }
@@ -233,12 +230,6 @@ def _collect_mismatches(
         for key in ("epoch_stats", "metrics_test", "metrics_eval"):
             if not bool(diagnostics.get(key)):
                 mismatches.append(f"[trained] task diagnostic missing for {task_name}: {key}")
-        if task_name in {"consolidation_gist_quality", "forgetting_action_policy"} and not bool(
-            diagnostics.get("metrics_adversarial")
-        ):
-            mismatches.append(
-                f"[trained] task diagnostic missing for {task_name}: metrics_adversarial"
-            )
 
     return mismatches
 

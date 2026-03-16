@@ -2,23 +2,27 @@
   "task": "memory_rerank_pair",
   "epoch_stats": [
     {
-      "epoch": 1
+      "epoch": 1,
+      "train_loss": 0.5924911258477717
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.49444664839059116
     }
   ],
   "training_summary": {
-    "actual_epochs": 1,
-    "best_epoch": 1,
+    "actual_epochs": 2,
+    "best_epoch": 2,
     "early_stopped": false,
-    "feature_backend": "embedding_pair"
+    "backbone_model_name": "BAAI/bge-reranker-base",
+    "tokenizer_name": "BAAI/bge-reranker-base",
+    "score_margin": 0.15
   },
   "calibration": {
-    "method": "sigmoid",
-    "split": "eval",
-    "rows": 13403,
-    "pre_ece": 0.032538542525708335,
-    "post_ece": 0.0046663541792573635,
-    "pre_accuracy": 0.6685816608222039,
-    "post_accuracy": 0.7026785048123555,
-    "accuracy_delta": 0.03409684399015156
-  }
+    "method": "temperature_grid_search",
+    "rows": 10000,
+    "temperature": 1.5,
+    "loss": 0.5502544644810149
+  },
+  "hf_model_dir": "E:\\CognitiveMemoryLayer\\packages\\models\\trained_models\\memory_rerank_pair_hf"
 }

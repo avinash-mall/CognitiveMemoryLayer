@@ -275,6 +275,59 @@ def test_preflight_accepts_embedding_pair_classification_with_cache(tmp_path: Pa
     assert result.errors == []
 
 
+def test_preflight_accepts_transformer_pair_without_embedding_cache(tmp_path: Path) -> None:
+    prepared_dir = tmp_path / "prepared"
+    _write_minimal_family_splits(prepared_dir)
+    pd.DataFrame(
+        [
+            {"text_a": "gist A", "text_b": "fact key A", "task": "schema_match_pair", "label": "match"},
+            {"text_a": "gist B", "text_b": "fact key B", "task": "schema_match_pair", "label": "no_match"},
+        ]
+    ).to_parquet(prepared_dir / "pair_train.parquet", index=False)
+
+    result = run_preflight_validation(
+        task_specs_raw=[
+            {
+                "task_name": "schema_match_pair",
+                "family": "pair",
+                "input_type": "pair",
+                "objective": "classification",
+                "labels": ["match", "no_match"],
+                "enabled": True,
+                "trainer": "transformer_pair",
+            }
+        ],
+        prepared_dir=prepared_dir,
+        strict=True,
+    )
+
+    assert result.ok is True
+    assert result.errors == []
+
+
+def test_preflight_rejects_transformer_text_with_pair_input(tmp_path: Path) -> None:
+    prepared_dir = tmp_path / "prepared"
+    _write_minimal_family_splits(prepared_dir)
+
+    result = run_preflight_validation(
+        task_specs_raw=[
+            {
+                "task_name": "consolidation_gist_quality",
+                "family": "router",
+                "input_type": "pair",
+                "objective": "classification",
+                "enabled": True,
+                "trainer": "transformer_text",
+            }
+        ],
+        prepared_dir=prepared_dir,
+        strict=True,
+    )
+
+    assert result.ok is False
+    assert any("transformer_text" in err for err in result.errors)
+
+
 def test_preflight_rejects_ordinal_threshold_with_mismatched_label_order(tmp_path: Path) -> None:
     prepared_dir = tmp_path / "prepared"
     _write_minimal_family_splits(prepared_dir)

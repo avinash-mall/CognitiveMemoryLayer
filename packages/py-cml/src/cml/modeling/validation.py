@@ -22,8 +22,11 @@ _KNOWN_TRAINERS = {
     "single_regression",
     "token_classification",
     "embedding_pair",
+    "transformer_text",
+    "transformer_pair",
     "ordinal_threshold",
     "hierarchical_text",
+    "hierarchical_transformer",
 }
 _KNOWN_FEATURE_BACKENDS = {"tfidf", "embedding_pair"}
 _FAMILIES = {"router", "extractor", "pair"}
@@ -226,6 +229,25 @@ def run_preflight_validation(
                 task_checks.append(status)
                 continue
 
+        if trainer == "transformer_pair":
+            if input_type != "pair" or objective not in {"classification", "pair_ranking"}:
+                status.status = "error"
+                status.reason = "transformer_pair requires pair classification or pair_ranking"
+                errors.append(
+                    f"[task:{task_name}] transformer_pair requires pair input_type and classification/pair_ranking objective"
+                )
+                task_checks.append(status)
+                continue
+
+        if trainer == "transformer_text" and (objective != "classification" or input_type != "single"):
+            status.status = "error"
+            status.reason = "transformer_text requires single-input classification"
+            errors.append(
+                f"[task:{task_name}] transformer_text requires objective=classification and input_type=single"
+            )
+            task_checks.append(status)
+            continue
+
         if trainer == "ordinal_threshold":
             labels = [str(x) for x in raw.get("labels", []) if str(x).strip()]
             if objective != "classification" or input_type != "single":
@@ -248,6 +270,17 @@ def run_preflight_validation(
             status.reason = "hierarchical_text requires single-input classification"
             errors.append(
                 f"[task:{task_name}] hierarchical_text requires objective=classification and input_type=single"
+            )
+            task_checks.append(status)
+            continue
+
+        if trainer == "hierarchical_transformer" and (
+            objective != "classification" or input_type != "single"
+        ):
+            status.status = "error"
+            status.reason = "hierarchical_transformer requires single-input classification"
+            errors.append(
+                f"[task:{task_name}] hierarchical_transformer requires objective=classification and input_type=single"
             )
             task_checks.append(status)
             continue

@@ -22,6 +22,8 @@ from cml.modeling.runtime_models import (
     EmbeddingPairClassifier,
     HierarchicalTextClassifier,
     TaskConditionalCalibratedClassifier,
+    TransformerPairClassifier,
+    TransformerTextClassifier,
 )
 from cml.modeling.train import TaskSpec
 from cml.modeling.types import TrainConfig
@@ -97,6 +99,27 @@ def test_train_models_forwards_early_stopping_and_calibration(monkeypatch, tmp_p
     assert "--early-stopping-min-delta" in captured["argv"]
     assert "--calibration-method" in captured["argv"]
     assert "--calibration-split" in captured["argv"]
+
+
+def test_train_models_forwards_release_and_allow_dirty(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def _fake_main(argv=None):
+        captured["argv"] = list(argv or [])
+        return 0
+
+    monkeypatch.setattr(train_module, "main", _fake_main)
+    cfg = TrainConfig(
+        config_path=tmp_path / "model_pipeline.toml",
+        release=True,
+        allow_dirty=True,
+    )
+
+    rc = train_module.train_models(cfg)
+
+    assert rc == 0
+    assert "--release" in captured["argv"]
+    assert "--allow-dirty" in captured["argv"]
 
 
 def test_train_task_dispatches_on_trainer(monkeypatch, tmp_path: Path) -> None:
@@ -221,6 +244,27 @@ def test_write_task_metrics_includes_top_level_calibration_block(tmp_path: Path)
 
     payload = json.loads((tmp_path / "demo_task_metrics_test.json").read_text(encoding="utf-8"))
     assert payload["calibration"] == calibration
+
+
+def test_write_task_metrics_does_not_emit_adversarial_artifact(tmp_path: Path) -> None:
+    train_module._write_task_metrics(
+        tmp_path,
+        "demo_task",
+        metrics_test={"task": "demo_task", "overall": {"accuracy": 0.8}},
+        metrics_eval={"task": "demo_task", "overall": {"accuracy": 0.78}},
+    )
+
+    assert not (tmp_path / "demo_task_metrics_adversarial.json").exists()
+
+
+def test_release_gate_results_do_not_require_adversarial_metrics() -> None:
+    result = train_module._release_gate_results(
+        "schema_match_pair",
+        {"test": {"accuracy": 0.81}},
+    )
+
+    assert result["passed"] is True
+    assert {check["section"] for check in result["checks"]} == {"test"}
 
 
 def test_train_single_regression_writes_eval_metrics_artifact(tmp_path: Path) -> None:
@@ -602,3 +646,54 @@ def test_task_conditional_calibration_keeps_probability_mass_within_task() -> No
     assert np.allclose(probs.sum(axis=1), 1.0)
     assert probs[0, 2] == pytest.approx(0.0)
     assert probs[1, 0] == pytest.approx(0.0)
+
+
+def test_transformer_text_runtime_predicts_from_logits(monkeypatch) -> None:
+    np = pytest.importorskip("numpy")
+    model = TransformerTextClassifier(
+        task_name="consolidation_gist_quality",
+        model_dir="unused",
+        classes_=["consolidation_gist_quality::reject", "consolidation_gist_quality::accept"],
+    )
+    monkeypatch.setattr(
+        model,
+        "_logits",
+        lambda _features: np.asarray([[0.1, 1.4], [1.2, 0.3]], dtype=float),
+    )
+
+    probs = model.predict_proba(["row-1", "row-2"])
+    preds = model.predict(["row-1", "row-2"])
+
+    assert np.allclose(probs.sum(axis=1), 1.0)
+    assert preds.tolist() == [
+        "consolidation_gist_quality::accept",
+        "consolidation_gist_quality::reject",
+    ]
+
+
+def test_transformer_pair_runtime_uses_group_top1(monkeypatch) -> None:
+    np = pytest.importorskip("numpy")
+    model = TransformerPairClassifier(
+        task_name="memory_rerank_pair",
+        model_dir="unused",
+        classes_=["memory_rerank_pair::not_relevant", "memory_rerank_pair::relevant"],
+    )
+    monkeypatch.setattr(
+        model,
+        "_logits",
+        lambda _features: np.asarray([[0.2], [-0.1], [0.8]], dtype=float),
+    )
+
+    preds = model.predict(
+        [
+            "task=memory_rerank_pair [a] query alpha [b] memory best",
+            "task=memory_rerank_pair [a] query alpha [b] memory other",
+            "task=memory_rerank_pair [a] query beta [b] memory solo",
+        ]
+    )
+
+    assert preds.tolist() == [
+        "memory_rerank_pair::relevant",
+        "memory_rerank_pair::not_relevant",
+        "memory_rerank_pair::relevant",
+    ]

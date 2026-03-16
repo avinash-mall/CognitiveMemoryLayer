@@ -50,4 +50,6 @@ class TrainConfig:
     token_gradient_accumulation_steps: int | None = None
     calibration_split: str | None = None
     export_thresholds: bool = False
+    release: bool = False
+    allow_dirty: bool = False
     strict: bool = True

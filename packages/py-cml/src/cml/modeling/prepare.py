@@ -191,26 +191,72 @@ PAIR_RANKING_TASKS = {
     "reconsolidation_candidate_pair",
 }
 REBUILT_ROUTER_TASKS = ORDINAL_ROUTER_TASKS | {
+    "memory_type",
     "consolidation_gist_quality",
     "forgetting_action_policy",
 }
-REBUILT_PAIR_TASKS = {"schema_match_pair"}
+REBUILT_PAIR_TASKS = {
+    "schema_match_pair",
+    "novelty_pair",
+    "retrieval_constraint_relevance_pair",
+    "memory_rerank_pair",
+    "reconsolidation_candidate_pair",
+}
 _TEMPLATE_SOURCE_PREFIXES = ("template:", "template_hardened:")
 _TASK_TEMPLATE_CAPS = {
-    "consolidation_gist_quality": 0.5,
-    "forgetting_action_policy": 0.5,
+    "consolidation_gist_quality": 0.35,
+    "forgetting_action_policy": 0.35,
     "schema_match_pair": 0.1,
 }
-_TASK_REQUIRED_SOURCE_TARGET_RATIOS = {"schema_match_pair": {"hf:fever": 0.2}}
+_TASK_REQUIRED_SOURCE_TARGET_RATIOS = {"schema_match_pair": {"hf:fever": 0.3}}
 _REQUIRED_SOURCE_PREFIXES = {"schema_match_pair": ("hf:fever",)}
-_ADVERSARIAL_FIXTURE_PATHS = {
-    "consolidation_gist_quality": MODELS_ROOT / "adversarial" / "adversarial_gist_quality.jsonl",
-    "forgetting_action_policy": MODELS_ROOT / "adversarial" / "adversarial_forgetting_policy.jsonl",
-    "schema_match_pair": MODELS_ROOT / "adversarial" / "adversarial_schema_match_pair.jsonl",
+_MIN_SPLIT_ROWS_PER_LABEL = {"train": 200, "test": 50, "eval": 50}
+_MIN_SOURCE_RULE_ROWS = 200
+_LABEL_SOURCE_BALANCE_RULES: dict[str, dict[str, Any]] = {
+    "consolidation_gist_quality": {
+        "max_bucket_ratios": {
+            "structured": 0.35,
+            "template_hardened": 0.35,
+        },
+    },
+    "forgetting_action_policy": {
+        "max_bucket_ratios": {
+            "structured": 0.35,
+            "template_hardened": 0.35,
+        },
+    },
+    "schema_match_pair": {
+        "max_bucket_ratios": {
+            "template": 0.35,
+            "template_hardened": 0.35,
+            "derived": 0.60,
+        },
+        "min_bucket_ratios": {
+            "hf": 0.30,
+        },
+    },
 }
-_MIN_ADVERSARIAL_ROWS = 500
-_ADVERSARIAL_TRAIN_FRACTION = 0.5
-_ADVERSARIAL_HELDOUT_SUFFIX = "_heldout"
+_DERIVED_NEGATIVE_RULES: dict[str, dict[str, Any]] = {
+    "retrieval_constraint_relevance_pair": {
+        "label": "not_relevant",
+        "bucket": "derived_hard_negative",
+        "max_ratio": 0.60,
+        "max_per_positive": 3,
+    },
+    "memory_rerank_pair": {
+        "label": "not_relevant",
+        "bucket": "derived_hard_negative",
+        "max_ratio": 0.60,
+        "max_per_positive": 3,
+    },
+    "reconsolidation_candidate_pair": {
+        "label": "not_relevant",
+        "bucket": "derived_hard_negative",
+        "max_ratio": 0.60,
+        "max_per_positive": 3,
+    },
+}
+_MAX_PRECOMPUTED_ROUTER_FEATURE_ROWS = 50000
 FACT_SPAN_LABELS = [
     "preference",
     "identity",
@@ -2149,13 +2195,15 @@ class _LLMGenerator:
         base_url_env = str(cfg.get("base_url_env", "LLM_EVAL__BASE_URL"))
         api_key_env = str(cfg.get("api_key_env", "OPENAI_API_KEY"))
 
+        provider_from_env = os.getenv(provider_env, "").strip()
+        model_from_env = os.getenv(model_env, "").strip()
+        base_url_from_env = os.getenv(base_url_env, "").strip()
+
         self.provider = (
-            (str(cfg.get("provider", "")).strip() or os.getenv(provider_env, "")).strip().lower()
-        )
-        self.model = (str(cfg.get("model", "")).strip() or os.getenv(model_env, "")).strip()
-        self.base_url = (
-            str(cfg.get("base_url", "")).strip() or os.getenv(base_url_env, "")
-        ).strip()
+            provider_from_env or str(cfg.get("provider", "")).strip()
+        ).strip().lower()
+        self.model = (model_from_env or str(cfg.get("model", "")).strip()).strip()
+        self.base_url = (base_url_from_env or str(cfg.get("base_url", "")).strip()).strip()
         self.api_key = os.getenv(api_key_env, "").strip()
 
         self.temperature = float(cfg.get("temperature", 1.3))
@@ -2978,7 +3026,7 @@ def _add_changed_rows(
 ) -> None:
     while rows.count("novelty_pair", "changed") < target_per_task_label:
         idx = rows.count("novelty_pair", "changed")
-        topic = idx % 5
+        topic = idx % 6
         if topic in {0, 3}:
             old = f"I live in City {idx}."
             new = f"I moved to City {idx + 1} last month."
@@ -2988,12 +3036,18 @@ def _add_changed_rows(
         elif topic == 2:
             old = f"I wake up at {6 + (idx % 5)} AM every day."
             new = f"I changed my routine and now wake up at {7 + (idx % 5)} AM."
+        elif topic == 4:
+            old = f"My backup contact is person {idx} and the policy expires in {30 + idx % 10} days."
+            new = f"My backup contact is now person {idx + 1} and the policy renews in {45 + idx % 10} days."
         else:
             old = f"My monthly budget is ${1000 + idx}."
             new = f"My monthly budget increased to ${1200 + idx} this quarter."
         if idx % 2 == 1:
             old = f"{old} I also avoid shellfish."
             new = f"{new} I no longer avoid shellfish."
+        elif idx % 5 == 0:
+            old = f"{old} The previous record said the item was optional."
+            new = f"{new} The updated record says the item is now required."
         rows.add(
             "novelty_pair",
             old,
@@ -3355,6 +3409,23 @@ def _hardening_target(target_per_task_label: int) -> int:
     return min(max(1, target_per_task_label // 5), 2500, max(1, target_per_task_label // 2))
 
 
+def _max_single_source_rows(
+    task_name: str,
+    bucket: str,
+    *,
+    target_per_task_label: int,
+    llm_available: bool,
+) -> int:
+    if not llm_available:
+        return target_per_task_label
+    rules = _LABEL_SOURCE_BALANCE_RULES.get(task_name, {})
+    max_ratios = cast("dict[str, float]", rules.get("max_bucket_ratios", {}))
+    ratio = max_ratios.get(bucket)
+    if ratio is None:
+        return target_per_task_label
+    return max(1, int(target_per_task_label * float(ratio)))
+
+
 def _router_hardening_shell(idx: int, *, single_pools: dict[str, list[str]], rng: random.Random) -> str:
     pack = _topic_pack(idx)
     seed = _seed_fragment(single_pools, rng=rng, idx=idx)
@@ -3545,6 +3616,7 @@ def _fill_structured_router_quality_rows(
     target_per_task_label: int,
     single_pools: dict[str, list[str]],
     rng: random.Random,
+    llm_available: bool = False,
 ) -> None:
     gist_accept_clauses = (
         "the recap keeps the anchor detail and trims only obvious repetition",
@@ -3563,7 +3635,22 @@ def _fill_structured_router_quality_rows(
     )
     if "consolidation_gist_quality" in task_labels:
         for label in ("accept", "reject"):
-            while rows.count("consolidation_gist_quality", label) < target_per_task_label:
+            structured_cap = _max_single_source_rows(
+                "consolidation_gist_quality",
+                "structured",
+                target_per_task_label=target_per_task_label,
+                llm_available=llm_available,
+            )
+            structured_count = _count_single_rows_with_source_prefix(
+                rows,
+                task="consolidation_gist_quality",
+                label=label,
+                prefix=f"structured:consolidation_gist_quality:{label}",
+            )
+            while (
+                rows.count("consolidation_gist_quality", label) < target_per_task_label
+                and structured_count < structured_cap
+            ):
                 idx = rows.count("consolidation_gist_quality", label)
                 pack = _topic_pack(idx)
                 other = _other_topic_pack(idx)
@@ -3601,7 +3688,7 @@ def _fill_structured_router_quality_rows(
                 context_tags = [pack["topic"]]
                 if mixed_topic:
                     context_tags.append(other["topic"])
-                rows.add(
+                added = rows.add(
                     "consolidation_gist_quality",
                     text,
                     label,
@@ -3620,6 +3707,8 @@ def _fill_structured_router_quality_rows(
                         group_id=group_id,
                     ),
                 )
+                if added:
+                    structured_count += 1
 
     if "forgetting_action_policy" in task_labels:
         reuse_high = (
@@ -3683,7 +3772,22 @@ def _fill_structured_router_quality_rows(
             "the note no longer points at an active decision",
         )
         for label in task_labels["forgetting_action_policy"]:
-            while rows.count("forgetting_action_policy", label) < target_per_task_label:
+            structured_cap = _max_single_source_rows(
+                "forgetting_action_policy",
+                "structured",
+                target_per_task_label=target_per_task_label,
+                llm_available=llm_available,
+            )
+            structured_count = _count_single_rows_with_source_prefix(
+                rows,
+                task="forgetting_action_policy",
+                label=label,
+                prefix=f"structured:forgetting_action_policy:{label}",
+            )
+            while (
+                rows.count("forgetting_action_policy", label) < target_per_task_label
+                and structured_count < structured_cap
+            ):
                 idx = rows.count("forgetting_action_policy", label)
                 pack = _topic_pack(idx)
                 other = _other_topic_pack(idx)
@@ -3811,7 +3915,7 @@ def _fill_structured_router_quality_rows(
                 context_tags = [pack["topic"]]
                 if mixed_topic:
                     context_tags.append(other["topic"])
-                rows.add(
+                added = rows.add(
                     "forgetting_action_policy",
                     text,
                     label,
@@ -3830,6 +3934,8 @@ def _fill_structured_router_quality_rows(
                         group_id=group_id,
                     ),
                 )
+                if added:
+                    structured_count += 1
 
 
 def _fill_structured_router_ordinal_rows(
@@ -3958,17 +4064,210 @@ def _fill_structured_router_ordinal_rows(
                 )
 
 
+def _fill_structured_memory_type_rows(
+    *,
+    rows: _SingleTaskStore,
+    task_labels: dict[str, list[str]],
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+    emit_progress: bool = False,
+) -> None:
+    if "memory_type" not in task_labels:
+        return
+    profiles: dict[str, dict[str, Any]] = {
+        "episodic_event": {"importance": 0.46, "confidence": 0.74, "age_days": 24, "access_count": 2, "dependency_count": 0, "support_count": 2},
+        "semantic_fact": {"importance": 0.64, "confidence": 0.86, "age_days": 12, "access_count": 4, "dependency_count": 2, "support_count": 3},
+        "preference": {"importance": 0.62, "confidence": 0.83, "age_days": 18, "access_count": 3, "dependency_count": 1, "support_count": 2},
+        "constraint": {"importance": 0.92, "confidence": 0.93, "age_days": 8, "access_count": 5, "dependency_count": 3, "support_count": 4},
+        "procedure": {"importance": 0.71, "confidence": 0.82, "age_days": 20, "access_count": 3, "dependency_count": 2, "support_count": 3},
+        "hypothesis": {"importance": 0.38, "confidence": 0.43, "age_days": 16, "access_count": 1, "dependency_count": 0, "support_count": 1},
+        "task_state": {"importance": 0.66, "confidence": 0.78, "age_days": 7, "access_count": 4, "dependency_count": 2, "support_count": 3},
+        "conversation": {"importance": 0.21, "confidence": 0.52, "age_days": 2, "access_count": 1, "dependency_count": 0, "support_count": 1},
+        "message": {"importance": 0.34, "confidence": 0.71, "age_days": 4, "access_count": 2, "dependency_count": 0, "support_count": 1},
+        "tool_result": {"importance": 0.48, "confidence": 0.9, "age_days": 3, "access_count": 2, "dependency_count": 1, "support_count": 2},
+        "reasoning_step": {"importance": 0.42, "confidence": 0.57, "age_days": 5, "access_count": 1, "dependency_count": 1, "support_count": 1},
+        "scratch": {"importance": 0.16, "confidence": 0.44, "age_days": 1, "access_count": 0, "dependency_count": 0, "support_count": 1},
+        "knowledge": {"importance": 0.73, "confidence": 0.88, "age_days": 25, "access_count": 3, "dependency_count": 2, "support_count": 3},
+        "observation": {"importance": 0.36, "confidence": 0.69, "age_days": 9, "access_count": 2, "dependency_count": 0, "support_count": 1},
+        "plan": {"importance": 0.79, "confidence": 0.8, "age_days": 6, "access_count": 3, "dependency_count": 2, "support_count": 3},
+    }
+    for label in task_labels["memory_type"]:
+        profile = profiles.get(label, profiles["semantic_fact"])
+        label_start = rows.count("memory_type", label)
+        while rows.count("memory_type", label) < target_per_task_label:
+            idx = rows.count("memory_type", label)
+            pack = _topic_pack(idx)
+            other = _other_topic_pack(idx)
+            seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+            group_id = f"structured:memory_type:{label}:{idx}"
+            if label == "episodic_event":
+                text = (
+                    f"Episodic event {idx}: yesterday during the {pack['topic']} review, "
+                    f"{pack['fact'].lower()} and we noted {seed.lower()} before wrapping up."
+                )
+            elif label == "semantic_fact":
+                text = f"Reference fact {idx}: {pack['fact']} This remains true across the current {pack['topic']} workflow."
+            elif label == "preference":
+                text = f"Stable preference {idx}: {pack['relevant']} The user consistently chooses this in {pack['topic']} decisions."
+            elif label == "constraint":
+                text = f"Hard rule {idx}: never ignore {pack['fact'].lower()} even when {seed.lower()} changes."
+            elif label == "procedure":
+                text = f"Procedure {idx}: first review {pack['topic']}, then confirm {pack['fact'].lower()}, and finally record the result."
+            elif label == "hypothesis":
+                text = f"Hypothesis {idx}: {pack['gist']} might explain why the nearby {other['topic']} thread drifted."
+            elif label == "task_state":
+                text = f"Task status {idx}: {pack['topic']} work is in progress and {pack['relevant'].lower()} is the next tracked checkpoint."
+            elif label == "conversation":
+                text = f"Conversation snippet {idx}: we briefly mentioned {pack['topic']} and moved on without storing a durable action."
+            elif label == "message":
+                text = f"Message {idx}: please share the {pack['topic']} update because {pack['relevant'].lower()}."
+            elif label == "tool_result":
+                text = f"Tool output {idx}: the latest check reported {pack['fact'].lower()} for the {pack['topic']} workspace."
+            elif label == "reasoning_step":
+                text = f"Reasoning step {idx}: because {pack['fact'].lower()}, the next inference is to compare it with {other['fact'].lower()}."
+            elif label == "scratch":
+                text = f"Scratch note {idx}: maybe revisit {pack['topic']} after checking {seed.lower()}."
+            elif label == "knowledge":
+                text = f"Knowledge note {idx}: {pack['fact']} This is durable domain knowledge for {pack['topic']} decisions."
+            elif label == "observation":
+                text = f"Observation {idx}: the current {pack['topic']} session shows {pack['gist'].lower()}."
+            else:
+                text = f"Plan {idx}: tomorrow start with the {pack['topic']} workstream, then follow up on {pack['relevant'].lower()}."
+            rows.add(
+                "memory_type",
+                text,
+                label,
+                f"structured:memory_type:{label}",
+                extras=_structured_row_extras(
+                    topic=pack["topic"],
+                    memory_type=label,
+                    importance=float(profile["importance"]) + (0.01 * (idx % 3)),
+                    confidence=float(profile["confidence"]) - (0.02 * (idx % 2)),
+                    access_count=int(profile["access_count"]) + (idx % 2),
+                    age_days=int(profile["age_days"]) + (idx % 11),
+                    dependency_count=int(profile["dependency_count"]) + (1 if label in {"constraint", "plan"} and idx % 4 == 0 else 0),
+                    support_count=int(profile["support_count"]),
+                    mixed_topic=label in {"conversation", "hypothesis", "scratch"},
+                    context_tags=[pack["topic"], other["topic"]] if label in {"conversation", "hypothesis"} else [pack["topic"]],
+                    group_id=group_id,
+                ),
+            )
+        if emit_progress and rows.count("memory_type", label) > label_start:
+            print(
+                "Router fill [memory_type]: "
+                f"{label} -> {rows.count('memory_type', label)}/{target_per_task_label}"
+            )
+
+
+def _fill_structured_extractor_rows(
+    *,
+    rows: _SingleTaskStore,
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+) -> None:
+    fact_profiles = {
+        "preference": "I prefer vegetarian meals during work trips.",
+        "identity": "My name is Jordan Lee.",
+        "location": "I live in Dubai Marina.",
+        "occupation": "I work as a data engineer.",
+        "other_fact": "The service window opens at 9 AM every weekday.",
+        "none": "We chatted for a minute and then changed the subject.",
+    }
+    scope_profiles = {
+        "general": "Please keep things simple and practical.",
+        "food": "Avoid shellfish and prioritize vegetarian dinner options.",
+        "travel": "Book aisle seats and morning flights when possible.",
+        "finance": "Keep monthly spend under the team travel budget.",
+        "health": "Remember the physical therapy exercises after lunch.",
+        "work": "Escalate blocker updates before the weekly planning review.",
+        "tech": "Use Python scripts instead of manual spreadsheet edits.",
+        "social": "Text family before the weekend gathering starts.",
+        "none": "This line does not define any clear domain-specific scope.",
+    }
+    stability_profiles = {
+        "stable": "Always follow the documented approval policy before production access.",
+        "semi_stable": "This quarter the team prefers Tuesday release windows.",
+        "volatile": "For today's outage, pause nonessential sync jobs until the queue drains.",
+    }
+    constraint_profiles = {
+        "policy": "Never share customer secrets in public channels.",
+        "goal": "Try to finish the migration before the Thursday review.",
+        "value": "Prefer transparent explanations over vague status updates.",
+        "causal": "If the dependency graph changes, rerun the validation pass.",
+        "state": "Only deploy after the staging checks are green.",
+        "preference": "I prefer short summaries instead of long narrative notes.",
+        "constraint_other": "Keep this in mind when deciding how much detail to retain.",
+        "none": "We exchanged greetings and did not discuss any durable rule.",
+    }
+    generators: dict[str, dict[str, str]] = {
+        "constraint_type": constraint_profiles,
+        "constraint_scope": scope_profiles,
+        "constraint_stability": stability_profiles,
+        "fact_type": fact_profiles,
+    }
+    for task, profiles in generators.items():
+        for label in EXTRACTOR_TASK_LABELS.get(task, []):
+            while rows.count(task, label) < target_per_task_label:
+                idx = rows.count(task, label)
+                pack = _topic_pack(idx)
+                seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+                base = profiles.get(label, profiles[next(iter(profiles))])
+                if task == "constraint_type":
+                    text = (
+                        f"Constraint note {idx}: {base} "
+                        f"Current context: {pack['topic']} and {seed.lower()}."
+                    )
+                elif task == "constraint_scope":
+                    text = f"Scope note {idx}: {base} Supporting detail: {pack['relevant']}."
+                elif task == "constraint_stability":
+                    text = f"Retention hint {idx}: {base} This started near the {pack['topic']} review."
+                else:
+                    text = f"Fact note {idx}: {base} Extra context: {pack['fact']}."
+                rows.add(
+                    task,
+                    text,
+                    label,
+                    f"structured:{task}:{label}",
+                    extras={"group_id": f"structured:{task}:{label}:{idx}"},
+                )
+
+
 def _apply_router_feature_enrichment(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "text" not in df.columns:
         return df
     enriched = df.copy()
-    feature_rows = [
-        derive_memory_type_feature_columns(text) for text in enriched["text"].astype(str).tolist()
-    ]
+    target_mask: pd.Series | None = None
+    if "task" in enriched.columns:
+        target_mask = enriched["task"].astype(str) == "memory_type"
+        if not bool(target_mask.any()):
+            defaults = derive_memory_type_feature_columns("")
+            for column in MEMORY_TYPE_FEATURE_COLUMNS:
+                enriched[column] = defaults[column]
+            return enriched
+        for column, default_value in derive_memory_type_feature_columns("").items():
+            enriched[column] = default_value
+        texts = enriched.loc[target_mask, "text"].astype(str).tolist()
+    else:
+        texts = enriched["text"].astype(str).tolist()
+    feature_rows = [derive_memory_type_feature_columns(text) for text in texts]
     feature_df = pd.DataFrame(feature_rows)
     for column in MEMORY_TYPE_FEATURE_COLUMNS:
-        enriched[column] = feature_df[column]
+        if target_mask is None:
+            enriched[column] = feature_df[column]
+        else:
+            enriched.loc[target_mask, column] = feature_df[column].to_numpy()
     return enriched
+
+
+def _should_precompute_router_features(df: pd.DataFrame) -> bool:
+    if df.empty or "text" not in df.columns:
+        return False
+    if "task" not in df.columns:
+        return len(df) <= _MAX_PRECOMPUTED_ROUTER_FEATURE_ROWS
+    memory_type_rows = int((df["task"].astype(str) == "memory_type").sum())
+    return 0 < memory_type_rows <= _MAX_PRECOMPUTED_ROUTER_FEATURE_ROWS
 
 
 def _seed_router_regression_from_existing(
@@ -4016,14 +4315,31 @@ def _fill_router_tasks_without_llm(
     target_per_task_label: int,
     single_pools: dict[str, list[str]],
     rng: random.Random,
+    emit_progress: bool = False,
+    llm_available: bool = False,
 ) -> None:
+    if emit_progress:
+        print("Router fill [structured]: quality backfill...")
     _fill_structured_router_quality_rows(
         rows=rows,
         task_labels=task_labels,
         target_per_task_label=target_per_task_label,
         single_pools=single_pools,
         rng=rng,
+        llm_available=llm_available,
     )
+    if emit_progress:
+        print("Router fill [structured]: memory_type backfill...")
+    _fill_structured_memory_type_rows(
+        rows=rows,
+        task_labels=task_labels,
+        target_per_task_label=target_per_task_label,
+        single_pools=single_pools,
+        rng=rng,
+        emit_progress=emit_progress,
+    )
+    if emit_progress:
+        print("Router fill [structured]: ordinal backfill...")
     _fill_structured_router_ordinal_rows(
         rows=rows,
         task_labels=task_labels,
@@ -4031,10 +4347,15 @@ def _fill_router_tasks_without_llm(
         single_pools=single_pools,
         rng=rng,
     )
+    if emit_progress and "write_importance_regression" in regression_tasks:
+        print("Router fill [structured]: regression backfill...")
 
     if "write_importance_regression" in regression_tasks:
+        regression_idx = regression_rows.count("write_importance_regression")
+        stalled_attempts = 0
+        max_stalled_attempts = max(512, target_per_task_label // 2)
         while regression_rows.count("write_importance_regression") < target_per_task_label:
-            idx = regression_rows.count("write_importance_regression")
+            idx = regression_idx
             pack = _topic_pack(idx)
             band = idx % 5
             if band == 0:
@@ -4077,7 +4398,7 @@ def _fill_router_tasks_without_llm(
                 access_count = 0
                 age_days = 180
                 dependency_count = 0
-            regression_rows.add(
+            added = regression_rows.add(
                 "write_importance_regression",
                 text,
                 score,
@@ -4091,6 +4412,22 @@ def _fill_router_tasks_without_llm(
                     age_days=age_days,
                     dependency_count=dependency_count,
                 ),
+            )
+            regression_idx += 1
+            if added:
+                stalled_attempts = 0
+            else:
+                stalled_attempts += 1
+                if stalled_attempts >= max_stalled_attempts:
+                    raise RuntimeError(
+                        "Regression backfill stalled for write_importance_regression "
+                        f"after {stalled_attempts} duplicate attempts at count="
+                        f"{regression_rows.count('write_importance_regression')}."
+                    )
+        if emit_progress:
+            print(
+                "Router fill [structured]: regression complete -> "
+                f"{regression_rows.count('write_importance_regression')}/{target_per_task_label}"
             )
 
 
@@ -4142,13 +4479,32 @@ def _add_existing_pair_task_mappings(
             )
 
 
-def _derive_schema_from_pair_rows(rows: _PairTaskStore) -> None:
+def _derive_schema_from_pair_rows(rows: _PairTaskStore, *, target_per_task_label: int) -> None:
+    rules = _LABEL_SOURCE_BALANCE_RULES.get("schema_match_pair", {})
+    max_ratios = cast("dict[str, float]", rules.get("max_bucket_ratios", {}))
+    derived_ratio = max_ratios.get("derived")
+    derived_cap = (
+        max(1, int(target_per_task_label * float(derived_ratio)))
+        if derived_ratio is not None
+        else target_per_task_label
+    )
+    derived_counts: dict[str, int] = {"match": 0, "no_match": 0}
+    for item in rows.rows:
+        if (
+            str(item.get("task", "")) == "schema_match_pair"
+            and _source_bucket(item.get("source", "")) == "derived"
+        ):
+            lbl = str(item.get("label", ""))
+            if lbl in derived_counts:
+                derived_counts[lbl] += 1
     for item in list(rows.rows):
         task = str(item.get("task", "")).strip()
         if task != "scope_match":
             continue
         label = str(item.get("label", "")).strip()
         mapped = "match" if label == "match" else "no_match"
+        if derived_counts.get(mapped, 0) >= derived_cap:
+            continue
         source = str(item.get("source", "derived:scope_match"))
         text_a = item.get("text_a", "")
         text_b = item.get("text_b", "")
@@ -4163,6 +4519,7 @@ def _derive_schema_from_pair_rows(rows: _PairTaskStore) -> None:
             f"derived:{source}",
             extras={"group_id": group_id},
         )
+        derived_counts[mapped] += 1
 
 
 def _fill_template_relevance_task(
@@ -4942,6 +5299,8 @@ def _build_router_rows(
         target_per_task_label=target,
         single_pools=single_pools,
         rng=rng,
+        emit_progress=True,
+        llm_available=llm is not None,
     )
 
     llm_task_labels = {
@@ -4994,7 +5353,16 @@ def _build_extractor_rows(
     if missing_pii:
         _add_existing_extractor_pii_rows(rows, registry)
 
+    print("Extractor fill [structured]: task backfill...")
+    _fill_structured_extractor_rows(
+        rows=rows,
+        target_per_task_label=target,
+        single_pools=single_pools,
+        rng=rng,
+    )
+
     if llm is not None:
+        print("Extractor fill [llm]: filling remaining labels...")
         _fill_single_task_with_llm(
             rows=rows,
             llm=llm,
@@ -5041,7 +5409,7 @@ def _build_pair_rows(
     _add_paws_novelty_rows(rows, registry)
     _add_glue_novelty_rows(rows, registry)
     _add_fever_schema_match_rows(rows, registry, target_per_task_label=target)
-    _derive_schema_from_pair_rows(rows)
+    _derive_schema_from_pair_rows(rows, target_per_task_label=target)
     _fill_pair_tasks_without_llm(
         rows,
         task_labels=task_labels,
@@ -5244,8 +5612,79 @@ def _source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _label_source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    if df.empty or not {"task", "label", "source"}.issubset(df.columns):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for (task, label), group in df.groupby(["task", "label"], sort=False):
+        total = len(group)
+        bucket_counts = {
+            str(bucket): int(count)
+            for bucket, count in group["source"].astype(str).map(_source_bucket).value_counts().items()
+        }
+        out[f"{task}::{label}"] = {
+            "rows": total,
+            "source_buckets": bucket_counts,
+            "source_ratios": {
+                bucket: round(int(count) / max(1, total), 4)
+                for bucket, count in bucket_counts.items()
+            },
+        }
+    return out
+
+
+def _validate_split_label_coverage(split_frames: dict[str, pd.DataFrame]) -> dict[str, dict[str, Any]]:
+    combined = pd.concat(list(split_frames.values()), ignore_index=True, sort=False)
+    if combined.empty or "task" not in combined.columns or "label" not in combined.columns:
+        return {}
+
+    nonempty = combined["label"].fillna("").astype(str).str.strip().ne("")
+    labeled = combined[nonempty].copy()
+    if labeled.empty:
+        return {}
+
+    summary: dict[str, dict[str, Any]] = {}
+    tasks = sorted(labeled["task"].astype(str).unique().tolist())
+    for task in tasks:
+        expected_labels = sorted(
+            labeled[labeled["task"].astype(str) == task]["label"].astype(str).unique().tolist()
+        )
+        if len(expected_labels) < 2:
+            raise ValueError(f"Prepared split is degenerate for {task}: expected at least 2 labels.")
+        task_summary: dict[str, Any] = {"expected_labels": expected_labels, "splits": {}}
+        for split_name, frame in split_frames.items():
+            split_task = frame[
+                frame.get("task", pd.Series(dtype=str)).astype(str) == task
+            ].copy()
+            counts = {
+                str(label): int(count)
+                for label, count in split_task.get("label", pd.Series(dtype=str))
+                .astype(str)
+                .value_counts()
+                .items()
+            }
+            missing = [label for label in expected_labels if counts.get(label, 0) <= 0]
+            if missing:
+                raise ValueError(f"{task} is missing labels in {split_name}: {missing}")
+            min_rows = int(_MIN_SPLIT_ROWS_PER_LABEL.get(split_name, 0))
+            underfilled = {
+                label: counts.get(label, 0)
+                for label in expected_labels
+                if counts.get(label, 0) < min_rows
+            }
+            if underfilled:
+                raise ValueError(
+                    f"{task} has underfilled labels in {split_name}: {underfilled} "
+                    f"(minimum={min_rows})"
+                )
+            task_summary["splits"][split_name] = counts
+        summary[task] = task_summary
+    return summary
+
+
 def _validate_source_coverage(df: pd.DataFrame, *, split_name: str) -> dict[str, dict[str, Any]]:
     diagnostics = _source_diagnostics(df)
+    label_diagnostics = _label_source_diagnostics(df)
     for task, max_template_ratio in _TASK_TEMPLATE_CAPS.items():
         task_diag = diagnostics.get(task)
         if task_diag is None:
@@ -5267,161 +5706,70 @@ def _validate_source_coverage(df: pd.DataFrame, *, split_name: str) -> dict[str,
                     raise ValueError(
                         f"{split_name} split is missing required source prefix for {task}: {prefix}"
                     )
+    for task, rules in _LABEL_SOURCE_BALANCE_RULES.items():
+        relevant = {
+            key: payload
+            for key, payload in label_diagnostics.items()
+            if key.startswith(f"{task}::")
+        }
+        for key, payload in relevant.items():
+            total = int(payload.get("rows", 0))
+            if total < _MIN_SOURCE_RULE_ROWS:
+                continue
+            ratios = cast("dict[str, float]", payload.get("source_ratios", {}))
+            for bucket, max_ratio in cast("dict[str, float]", rules.get("max_bucket_ratios", {})).items():
+                actual = float(ratios.get(bucket, 0.0))
+                if actual > float(max_ratio) + 1e-9:
+                    raise ValueError(
+                        f"{split_name} split source ratio too high for {key} bucket={bucket}: "
+                        f"{actual:.4f} > {float(max_ratio):.4f}"
+                    )
+            for bucket, min_ratio in cast("dict[str, float]", rules.get("min_bucket_ratios", {})).items():
+                actual = float(ratios.get(bucket, 0.0))
+                if actual + 1e-9 < float(min_ratio):
+                    raise ValueError(
+                        f"{split_name} split source ratio too low for {key} bucket={bucket}: "
+                        f"{actual:.4f} < {float(min_ratio):.4f}"
+                    )
+    for task, rules in _DERIVED_NEGATIVE_RULES.items():
+        key = f"{task}::{rules['label']}"
+        cand = label_diagnostics.get(key)
+        if cand is None or int(cand.get("rows", 0)) < _MIN_SOURCE_RULE_ROWS:
+            continue
+        payload = cand
+        ratios = cast("dict[str, float]", payload.get("source_ratios", {}))
+        bucket = str(rules["bucket"])
+        actual = float(ratios.get(bucket, 0.0))
+        max_ratio = float(rules["max_ratio"])
+        if actual > max_ratio + 1e-9:
+            raise ValueError(
+                f"{split_name} split source ratio too high for {key} bucket={bucket}: "
+                f"{actual:.4f} > {max_ratio:.4f}"
+            )
     return diagnostics
 
 
-def _count_jsonl_rows(path: Path) -> int:
-    if not path.exists():
-        return 0
-    count = 0
-    with open(path, encoding="utf-8") as handle:
-        for raw in handle:
-            if raw.strip():
-                count += 1
-    return count
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def _validate_adversarial_fixtures() -> dict[str, dict[str, Any]]:
-    summary: dict[str, dict[str, Any]] = {}
-    for task_name, path in _ADVERSARIAL_FIXTURE_PATHS.items():
-        rows = _count_jsonl_rows(path)
-        summary[task_name] = {"path": str(path), "rows": rows}
-        if rows < _MIN_ADVERSARIAL_ROWS:
-            raise ValueError(
-                f"Adversarial fixture for {task_name} must contain at least "
-                f"{_MIN_ADVERSARIAL_ROWS} rows: {path}"
-            )
-    return summary
-
-
-def _load_adversarial_fixture_rows(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    with open(path, encoding="utf-8") as handle:
-        for raw in handle:
-            text = raw.strip()
-            if not text:
-                continue
-            rows.append(json.loads(text))
-    return rows
-
-
-def _strip_adversarial_text_prefix(text: str, *, task_name: str) -> str:
-    """Strip 'Adversarial digest N:' or 'Adversarial retention case N:' so model does not key on prefix."""
-    if task_name == "consolidation_gist_quality":
-        return re.sub(r"^Adversarial digest \d+:\s*", "", text, count=1).strip() or text
-    if task_name == "forgetting_action_policy":
-        return re.sub(r"^Adversarial retention case \d+:\s*", "", text, count=1).strip() or text
-    return text
-
-
-def _inject_adversarial_into_router_df(
-    router_df: pd.DataFrame,
-    *,
-    seed: int,
-    task_names: set[str],
-) -> pd.DataFrame:
-    """Append a fraction of adversarial rows into router_df. Write heldout to JSONL. Return updated df."""
-    out = router_df
-    for task_name in task_names:
-        path = _ADVERSARIAL_FIXTURE_PATHS.get(task_name)
-        if path is None or not path.exists():
+def _split_file_hashes(out_dir: Path, prefix: str) -> dict[str, dict[str, Any]]:
+    hashes: dict[str, dict[str, Any]] = {}
+    for split_name in LOCAL_BOOTSTRAP_SPLITS:
+        path = out_dir / f"{prefix}_{split_name}.parquet"
+        if not path.exists():
+            hashes[split_name] = {"path": str(path), "sha256": None}
             continue
-        rows = _load_adversarial_fixture_rows(path)
-        if len(rows) < 2:
-            continue
-        rng = random.Random(seed)
-        indices = list(range(len(rows)))
-        rng.shuffle(indices)
-        n_train = max(1, int(len(rows) * _ADVERSARIAL_TRAIN_FRACTION))
-        train_idx = set(indices[:n_train])
-        eval_idx = [i for i in indices[n_train:]]
-        _base_cols = {"text", "task", "label", "source", "language", "group_id"}
-        extra_cols = [k for k in rows[0] if k not in {"text", "label"}]
-        new_records: list[dict[str, Any]] = []
-        for i in train_idx:
-            item = rows[i]
-            text = _strip_adversarial_text_prefix(str(item.get("text", "")), task_name=task_name)
-            source = f"adversarial_train:{task_name}:{i}"
-            group_id = source
-            record: dict[str, Any] = {
-                "text": text,
-                "task": task_name,
-                "label": str(item.get("label", "")).strip(),
-                "source": source,
-                "group_id": group_id,
-            }
-            for col in extra_cols:
-                if col in item and col not in record:
-                    record[col] = item[col]
-            new_records.append(record)
-        if new_records:
-            extra = pd.DataFrame(new_records)
-            if "language" not in extra.columns:
-                extra["language"] = "en"
-            out = pd.concat([out, extra], ignore_index=True)
-            out = out.drop_duplicates(subset=["task", "group_id"], keep="first").reset_index(drop=True)
-        heldout_path = path.parent / f"{path.stem}{_ADVERSARIAL_HELDOUT_SUFFIX}.jsonl"
-        heldout_records = [rows[i] for i in eval_idx]
-        with open(heldout_path, "w", encoding="utf-8") as f:
-            for rec in heldout_records:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return out
-
-
-def _inject_adversarial_into_pair_df(
-    pair_df: pd.DataFrame,
-    *,
-    seed: int,
-    task_names: set[str],
-) -> pd.DataFrame:
-    """Append a fraction of adversarial rows into pair_df. Write heldout to JSONL. Return updated df."""
-    out = pair_df
-    for task_name in task_names:
-        path = _ADVERSARIAL_FIXTURE_PATHS.get(task_name)
-        if path is None or not path.exists():
-            continue
-        rows = _load_adversarial_fixture_rows(path)
-        if len(rows) < 2:
-            continue
-        if "text_a" not in rows[0] or "text_b" not in rows[0]:
-            continue
-        rng = random.Random(seed)
-        indices = list(range(len(rows)))
-        rng.shuffle(indices)
-        n_train = max(1, int(len(rows) * _ADVERSARIAL_TRAIN_FRACTION))
-        train_idx = set(indices[:n_train])
-        eval_idx = [i for i in indices[n_train:]]
-        extra_cols = [k for k in rows[0] if k not in {"text_a", "text_b", "label"}]
-        new_records = []
-        for i in train_idx:
-            item = rows[i]
-            source = f"adversarial_train:{task_name}:{i}"
-            record: dict[str, Any] = {
-                "text_a": str(item.get("text_a", "")),
-                "text_b": str(item.get("text_b", "")),
-                "task": task_name,
-                "label": str(item.get("label", "")).strip(),
-                "source": source,
-                "group_id": source,
-            }
-            for col in extra_cols:
-                if col in item and col not in record:
-                    record[col] = item[col]
-            new_records.append(record)
-        if new_records:
-            extra = pd.DataFrame(new_records)
-            if "language" not in extra.columns:
-                extra["language"] = "en"
-            out = pd.concat([out, extra], ignore_index=True)
-            out = out.drop_duplicates(
-                subset=["task", "text_a", "text_b", "label"], keep="first"
-            ).reset_index(drop=True)
-        heldout_path = path.parent / f"{path.stem}{_ADVERSARIAL_HELDOUT_SUFFIX}.jsonl"
-        heldout_records = [rows[i] for i in eval_idx]
-        with open(heldout_path, "w", encoding="utf-8") as f:
-            for rec in heldout_records:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return out
+        hashes[split_name] = {
+            "path": str(path),
+            "sha256": _sha256_path(path),
+            "bytes": path.stat().st_size,
+        }
+    return hashes
 
 
 def _split_by_task_label(
@@ -5468,15 +5816,37 @@ def _split_by_task_label(
             )
         }
         group_payloads.append(
-            {
-                "group_id": str(group_id),
-                "row_indices": list(group.index),
-                "counts": payload,
-                "size": len(group),
-                "task_sources": task_sources,
-            }
+            cast(
+                "dict[str, Any]",
+                {
+                    "group_id": str(group_id),
+                    "row_indices": list(group.index),
+                    "counts": payload,
+                    "size": len(group),
+                    "task_sources": task_sources,
+                },
+            )
         )
     group_payloads.sort(key=lambda item: (-int(item["size"]), str(item["group_id"])))
+
+    source_bucket_col = working["source"].fillna("").astype(str).map(_source_bucket)
+    for payload in group_payloads:
+        indices = payload["row_indices"]
+        subset = working.loc[indices]
+        tl_bucket: dict[tuple[str, str, str], int] = {}
+        for (task, label), grp in subset.groupby(
+            [subset["task"].astype(str), subset["label"].astype(str)], sort=False
+        ):
+            for bucket, cnt in source_bucket_col.loc[grp.index].value_counts().items():
+                tl_bucket[(str(task), str(label), str(bucket))] = int(cnt)
+        cast("dict[str, Any]", payload)["bucket_counts"] = tl_bucket
+
+    current_bucket_counts: dict[str, dict[tuple[str, str, str], int]] = {
+        s: defaultdict(int) for s in ("train", "test", "eval")
+    }
+    current_tl_totals: dict[str, dict[tuple[str, str], int]] = {
+        s: defaultdict(int) for s in ("train", "test", "eval")
+    }
 
     def _assign_group(payload: dict[str, Any], split_name: str) -> None:
         group_id = str(payload["group_id"])
@@ -5484,6 +5854,9 @@ def _split_by_task_label(
         current_rows[split_name] += int(payload["size"])
         for key, value in dict(payload["counts"]).items():
             current_counts[split_name][str(key)] = int(current_counts[split_name].get(str(key), 0)) + int(value)
+        for (task, label, bucket), cnt in dict(payload.get("bucket_counts", {})).items():
+            current_bucket_counts[split_name][(task, label, bucket)] += cnt
+            current_tl_totals[split_name][(task, label)] += cnt
 
     preassigned_group_ids: set[str] = set()
     for task, prefixes in _REQUIRED_SOURCE_PREFIXES.items():
@@ -5513,7 +5886,12 @@ def _split_by_task_label(
         name for name in required_splits if current_rows[name] == 0
     ][: min(len(required_splits), len(remaining_payloads))]
 
-    def _assignment_penalty(split_name: str, counts: dict[str, int], group_size: int) -> tuple[float, float]:
+    def _assignment_penalty(
+        split_name: str,
+        counts: dict[str, int],
+        group_size: int,
+        bucket_counts: dict[tuple[str, str, str], int],
+    ) -> tuple[float, float]:
         penalty = 0.0
         for key, value in counts.items():
             current = int(current_counts[split_name].get(key, 0))
@@ -5528,6 +5906,23 @@ def _split_by_task_label(
         penalty += 0.15 * (
             abs(projected_total - total_target) - abs(current_total - total_target)
         )
+        for (task, label, bucket), cnt in bucket_counts.items():
+            rules = _LABEL_SOURCE_BALANCE_RULES.get(task, {})
+            max_ratios = cast("dict[str, float]", rules.get("max_bucket_ratios", {}))
+            max_ratio = max_ratios.get(bucket)
+            if max_ratio is None:
+                continue
+            current_b = current_bucket_counts[split_name].get((task, label, bucket), 0)
+            current_tl = current_tl_totals[split_name].get((task, label), 0)
+            group_tl = sum(
+                v for (t, lbl, _), v in bucket_counts.items() if (t, lbl) == (task, label)
+            )
+            projected_b = current_b + cnt
+            projected_tl = current_tl + group_tl
+            if projected_tl > 0:
+                projected_ratio = projected_b / projected_tl
+                if projected_ratio > float(max_ratio) + 1e-9:
+                    penalty += 10.0 * (projected_ratio - float(max_ratio)) * projected_tl
         return penalty, float(projected_total)
 
     for idx, payload in enumerate(remaining_payloads):
@@ -5539,7 +5934,12 @@ def _split_by_task_label(
         else:
             split_name = min(
                 ("train", "test", "eval"),
-                key=lambda name: _assignment_penalty(name, counts, group_size),
+                key=lambda name: _assignment_penalty(
+                    name,
+                    counts,
+                    group_size,
+                    cast("dict[tuple[str, str, str], int]", payload.get("bucket_counts", {})),
+                ),
             )
         _assign_group(payload, split_name)
 
@@ -5563,6 +5963,7 @@ def _write_splits(
     split_integrity = _split_integrity_summary(splits)
     if not split_integrity["ok"]:
         raise ValueError(f"{prefix} split integrity failure: {split_integrity['overlap_counts']}")
+    _validate_split_label_coverage(splits)
     train_source_diagnostics = _validate_source_coverage(splits["train"], split_name=f"{prefix}:train")
     counts: dict[str, int] = {}
     for split_name, split_df in splits.items():
@@ -5763,7 +6164,41 @@ def _augment_pair_hard_negatives(
         return df, {}
     augmented = pd.concat([df, pd.DataFrame(extra_rows)], ignore_index=True, sort=False)
     augmented = augmented.drop_duplicates(subset=["task", "label", "text_a", "text_b"], keep="first")
-    return augmented.reset_index(drop=True), added_by_task
+    trimmed_parts: list[pd.DataFrame] = []
+    for task_name, task_df in augmented.groupby("task", sort=False):
+        rule = _DERIVED_NEGATIVE_RULES.get(str(task_name))
+        if rule is None:
+            trimmed_parts.append(task_df)
+            continue
+        task_df = task_df.reset_index(drop=True)
+        label = str(rule["label"])
+        bucket = str(rule["bucket"])
+        ratio = float(rule["max_ratio"])
+        mask = (task_df["label"].astype(str) == label) & (
+            task_df["source"].astype(str).map(_source_bucket) == bucket
+        )
+        derived_df = task_df[mask]
+        base_df = task_df[~mask]
+        if derived_df.empty:
+            trimmed_parts.append(task_df)
+            continue
+        max_allowed = int((ratio / max(1e-9, 1.0 - ratio)) * len(base_df))
+        if max_allowed <= 0:
+            trimmed_parts.append(base_df)
+            added_by_task[str(task_name)] = 0
+            continue
+        if len(derived_df) > max_allowed:
+            derived_df = derived_df.sample(n=max_allowed, random_state=42).reset_index(drop=True)
+        task_trimmed = pd.concat([base_df, derived_df], ignore_index=True, sort=False)
+        trimmed_parts.append(task_trimmed)
+        added_by_task[str(task_name)] = int(
+            (
+                (task_trimmed["label"].astype(str) == label)
+                & (task_trimmed["source"].astype(str).map(_source_bucket) == bucket)
+            ).sum()
+        )
+    trimmed = pd.concat(trimmed_parts, ignore_index=True, sort=False)
+    return trimmed.reset_index(drop=True), added_by_task
 
 
 def _summary(df: pd.DataFrame) -> dict:
@@ -5802,6 +6237,7 @@ def _summary(df: pd.DataFrame) -> dict:
         "source_mix_per_task": source_mix,
         "synthetic_ratio_per_label": synthetic_ratio,
         "source_diagnostics_per_task": _source_diagnostics(df),
+        "label_source_diagnostics": _label_source_diagnostics(df),
         "group_id_rows": int(df["group_id"].fillna("").astype(str).str.strip().ne("").sum())
         if "group_id" in df.columns
         else 0,
@@ -5844,6 +6280,27 @@ def _load_existing_family_df(prepared_dir: Path, family: str) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True, sort=False)
 
 
+def _load_existing_prepared_inputs(
+    prepared_dir: Path, *, force_full: bool
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
+    if force_full:
+        return (
+            pd.DataFrame(columns=["text", "task", "label", "source"]),
+            pd.DataFrame(columns=["text", "task", "label", "source"]),
+            pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"]),
+            {
+                task_name: pd.DataFrame(columns=["text", "task", "spans", "source", "language"])
+                for task_name in TOKEN_TASKS
+            },
+        )
+    return (
+        _load_existing_family_df(prepared_dir, "router"),
+        _load_existing_family_df(prepared_dir, "extractor"),
+        _load_existing_family_df(prepared_dir, "pair"),
+        {task_name: _load_existing_token_df(prepared_dir, task_name) for task_name in TOKEN_TASKS},
+    )
+
+
 def _existing_split_counts(prepared_dir: Path, family: str) -> dict[str, int]:
     out: dict[str, int] = {}
     for split in LOCAL_BOOTSTRAP_SPLITS:
@@ -5858,6 +6315,10 @@ def _existing_split_counts(prepared_dir: Path, family: str) -> dict[str, int]:
     return out
 
 
+def _existing_split_hashes(prepared_dir: Path, family: str) -> dict[str, dict[str, Any]]:
+    return _split_file_hashes(prepared_dir, family)
+
+
 def _existing_split_integrity(prepared_dir: Path, family: str) -> dict[str, Any]:
     split_frames: dict[str, pd.DataFrame] = {}
     for split in LOCAL_BOOTSTRAP_SPLITS:
@@ -5870,6 +6331,23 @@ def _existing_split_integrity(prepared_dir: Path, family: str) -> dict[str, Any]
         except Exception:
             split_frames[split] = pd.DataFrame()
     return _split_integrity_summary(split_frames)
+
+
+def _existing_label_coverage(prepared_dir: Path, family: str) -> dict[str, Any]:
+    split_frames: dict[str, pd.DataFrame] = {}
+    for split in LOCAL_BOOTSTRAP_SPLITS:
+        path = prepared_dir / f"{family}_{split}.parquet"
+        if not path.exists():
+            split_frames[split] = pd.DataFrame()
+            continue
+        try:
+            split_frames[split] = pd.read_parquet(path)
+        except Exception:
+            split_frames[split] = pd.DataFrame()
+    try:
+        return {"ok": True, "details": _validate_split_label_coverage(split_frames)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def _existing_train_source_diagnostics(prepared_dir: Path, family: str) -> dict[str, dict[str, Any]]:
@@ -6118,35 +6596,10 @@ def main(argv: list[str] | None = None) -> int:
     target_token_examples = int(token_prepare_cfg["target_examples_per_task"])
 
     if args.force_full:
-        print("Force-full mode: rebuilding outputs while reusing prior prepared rows as seed data.")
-        router_seed_df = _load_existing_family_df(prepared_dir, "router")
-        extractor_seed_df = _load_existing_family_df(prepared_dir, "extractor")
-        pair_seed_df = _load_existing_family_df(prepared_dir, "pair")
-        router_existing_df = (
-            router_seed_df[~router_seed_df["task"].astype(str).isin(REBUILT_ROUTER_TASKS)].copy()
-            if not router_seed_df.empty
-            else pd.DataFrame(columns=["text", "task", "label", "source"])
-        )
-        extractor_existing_df = (
-            extractor_seed_df.copy()
-            if not extractor_seed_df.empty
-            else pd.DataFrame(columns=["text", "task", "label", "source"])
-        )
-        pair_existing_df = (
-            pair_seed_df[~pair_seed_df["task"].astype(str).isin(REBUILT_PAIR_TASKS)].copy()
-            if not pair_seed_df.empty
-            else pd.DataFrame(columns=["text_a", "text_b", "task", "label", "source"])
-        )
-        token_existing_dfs = {
-            task_name: _load_existing_token_df(prepared_dir, task_name) for task_name in TOKEN_TASKS
-        }
-    else:
-        router_existing_df = _load_existing_family_df(prepared_dir, "router")
-        extractor_existing_df = _load_existing_family_df(prepared_dir, "extractor")
-        pair_existing_df = _load_existing_family_df(prepared_dir, "pair")
-        token_existing_dfs = {
-            task_name: _load_existing_token_df(prepared_dir, task_name) for task_name in TOKEN_TASKS
-        }
+        print("Force-full mode: rebuilding outputs from scratch without reusing prior prepared rows.")
+    router_existing_df, extractor_existing_df, pair_existing_df, token_existing_dfs = (
+        _load_existing_prepared_inputs(prepared_dir, force_full=bool(args.force_full))
+    )
 
     router_task_labels = _enabled_task_label_map(
         task_specs_raw,
@@ -6217,8 +6670,6 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     total_ratio = sum(ratios.values())
     ratios = {k: v / total_ratio for k, v in ratios.items()}
-    adversarial_fixture_summary = _validate_adversarial_fixtures()
-
     if not (needs_router or needs_extractor or needs_pair or needs_tokens):
         embedding_cache_summary = _pair_embedding_cache_summary(prepared_dir)
         if embedding_pair_tasks and (
@@ -6273,7 +6724,9 @@ def main(argv: list[str] | None = None) -> int:
             "router": {
                 **_summary(router_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "router"),
+                "split_hashes": _existing_split_hashes(prepared_dir, "router"),
                 "split_integrity": _existing_split_integrity(prepared_dir, "router"),
+                "label_coverage": _existing_label_coverage(prepared_dir, "router"),
                 "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "router"),
                 "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": False,
@@ -6281,7 +6734,9 @@ def main(argv: list[str] | None = None) -> int:
             "extractor": {
                 **_summary(extractor_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "extractor"),
+                "split_hashes": _existing_split_hashes(prepared_dir, "extractor"),
                 "split_integrity": _existing_split_integrity(prepared_dir, "extractor"),
+                "label_coverage": _existing_label_coverage(prepared_dir, "extractor"),
                 "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "extractor"),
                 "tasks": list(EXTRACTOR_TASKS),
                 "updated": False,
@@ -6289,14 +6744,15 @@ def main(argv: list[str] | None = None) -> int:
             "pair": {
                 **_summary(pair_existing_df),
                 "splits": _existing_split_counts(prepared_dir, "pair"),
+                "split_hashes": _existing_split_hashes(prepared_dir, "pair"),
                 "split_integrity": _existing_split_integrity(prepared_dir, "pair"),
+                "label_coverage": _existing_label_coverage(prepared_dir, "pair"),
                 "train_source_diagnostics": _existing_train_source_diagnostics(prepared_dir, "pair"),
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": False,
             },
             "pair_embedding_cache": embedding_cache_summary,
             "pair_hard_negative_augmentation": {},
-            "adversarial_fixtures": adversarial_fixture_summary,
             "token_task_splits": {
                 task_name: _existing_token_split_counts(prepared_dir, task_name)
                 for task_name in sorted(token_tasks)
@@ -6432,14 +6888,22 @@ def main(argv: list[str] | None = None) -> int:
             if router_df.empty:
                 print("Router dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
-            router_adversarial_tasks = set(_ADVERSARIAL_FIXTURE_PATHS.keys()) & set(router_task_labels.keys()) - {"schema_match_pair"}
-            if router_adversarial_tasks:
-                router_df = _inject_adversarial_into_router_df(
-                    router_df,
-                    seed=int(prepare_cfg["seed"]),
-                    task_names=router_adversarial_tasks,
+            memory_type_rows = (
+                int((router_df["task"].astype(str) == "memory_type").sum())
+                if "task" in router_df.columns
+                else len(router_df)
+            )
+            if _should_precompute_router_features(router_df):
+                print(
+                    "Router feature enrichment [prepare]: "
+                    f"precomputing memory_type features for {memory_type_rows} rows..."
                 )
-            router_df = _apply_router_feature_enrichment(router_df)
+                router_df = _apply_router_feature_enrichment(router_df)
+            elif memory_type_rows > 0:
+                print(
+                    "Router feature enrichment [prepare]: "
+                    "skipped for large dataset; training/runtime will derive memory_type features on demand."
+                )
             (
                 router_splits,
                 router_split_integrity,
@@ -6503,13 +6967,6 @@ def main(argv: list[str] | None = None) -> int:
             if pair_df.empty:
                 print("Pair dataset is empty; cannot continue.", file=sys.stderr)
                 return 1
-            pair_adversarial_tasks = set(_ADVERSARIAL_FIXTURE_PATHS.keys()) & set(pair_task_labels.keys()) & {"schema_match_pair"}
-            if pair_adversarial_tasks:
-                pair_df = _inject_adversarial_into_pair_df(
-                    pair_df,
-                    seed=int(prepare_cfg["seed"]),
-                    task_names=pair_adversarial_tasks,
-                )
             if embedding_pair_tasks:
                 print("Writing pair embedding cache...")
                 embedding_cache_summary = _write_pair_embedding_cache(
@@ -6679,7 +7136,9 @@ def main(argv: list[str] | None = None) -> int:
             "router": {
                 **_summary(router_df),
                 "splits": router_splits,
+                "split_hashes": _split_file_hashes(prepared_dir, "router"),
                 "split_integrity": router_split_integrity,
+                "label_coverage": _existing_label_coverage(prepared_dir, "router"),
                 "train_source_diagnostics": router_train_source_diagnostics,
                 "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": needs_router,
@@ -6692,7 +7151,9 @@ def main(argv: list[str] | None = None) -> int:
             "extractor": {
                 **_summary(extractor_df),
                 "splits": extractor_splits,
+                "split_hashes": _split_file_hashes(prepared_dir, "extractor"),
                 "split_integrity": extractor_split_integrity,
+                "label_coverage": _existing_label_coverage(prepared_dir, "extractor"),
                 "train_source_diagnostics": extractor_train_source_diagnostics,
                 "tasks": list(EXTRACTOR_TASKS),
                 "updated": needs_extractor,
@@ -6701,7 +7162,9 @@ def main(argv: list[str] | None = None) -> int:
             "pair": {
                 **_summary(pair_df),
                 "splits": pair_splits,
+                "split_hashes": _split_file_hashes(prepared_dir, "pair"),
                 "split_integrity": pair_split_integrity,
+                "label_coverage": _existing_label_coverage(prepared_dir, "pair"),
                 "train_source_diagnostics": pair_train_source_diagnostics,
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": needs_pair,
@@ -6709,7 +7172,6 @@ def main(argv: list[str] | None = None) -> int:
             },
             "pair_embedding_cache": embedding_cache_summary,
             "pair_hard_negative_augmentation": pair_hard_negative_augmentation,
-            "adversarial_fixtures": adversarial_fixture_summary,
             "token_task_splits": token_task_splits,
             "token_tasks": {
                 task_name: {

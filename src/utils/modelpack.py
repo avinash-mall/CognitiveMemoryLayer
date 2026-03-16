@@ -114,28 +114,36 @@ def _safety_override_forgetting_policy(
     pred: ModelPrediction,
     metadata: dict[str, Any] | None,
 ) -> ModelPrediction | None:
-    """Deterministic guardrails: avoid compress/delete on high-value, recently-accessed memories."""
+    """Deterministic guardrails for high-risk forgetting actions."""
     if pred.label not in ("compress", "delete"):
         return None
     meta = metadata or {}
     importance = meta.get("importance")
+    salience = meta.get("salience")
     access_count = meta.get("access_count")
     age_days = meta.get("age_days")
     dependency_count = meta.get("dependency_count")
     try:
         imp = float(importance) if importance is not None else 0.0
+        sal = float(salience) if salience is not None else 0.0
         acc = int(access_count) if access_count is not None else 0
         age = int(age_days) if age_days is not None else 999
         dep = int(dependency_count) if dependency_count is not None else 0
     except (TypeError, ValueError):
         return None
-    if pred.label == "delete" and dep >= 2:
+    if pred.confidence < 0.80:
         logger.info(
             "safety_override_forgetting_policy",
-            extra={"original": pred.label, "override": "decay", "reason": "dependency_count>=2"},
+            extra={"original": pred.label, "override": "keep", "reason": "low_confidence"},
         )
-        return ModelPrediction(task=pred.task, label="decay", confidence=pred.confidence)
-    if imp >= 0.7 and acc >= 5 and age <= 30:
+        return ModelPrediction(task=pred.task, label="keep", confidence=pred.confidence)
+    if dep > 0 or imp >= 0.7 or sal >= 0.7:
+        logger.info(
+            "safety_override_forgetting_policy",
+            extra={"original": pred.label, "override": "keep", "reason": "protected_memory"},
+        )
+        return ModelPrediction(task=pred.task, label="keep", confidence=pred.confidence)
+    if acc >= 5 and age <= 30:
         logger.info(
             "safety_override_forgetting_policy",
             extra={"original": pred.label, "override": "keep", "reason": "high_value_recent"},
@@ -144,13 +152,37 @@ def _safety_override_forgetting_policy(
     return None
 
 
-def _safety_override_gist_quality(pred: ModelPrediction) -> ModelPrediction | None:
-    """Downgrade low-confidence accept to reject."""
-    if pred.label != "accept" or pred.confidence >= 0.6:
+def _safety_override_gist_quality(
+    pred: ModelPrediction,
+    probs: dict[str, float] | None,
+) -> ModelPrediction | None:
+    """Downgrade low-confidence or low-margin accept to reject."""
+    if pred.label != "accept":
+        return None
+    accept_key = f"{pred.task}::accept"
+    accept_prob = float(probs.get(accept_key, pred.confidence)) if probs else pred.confidence
+    other_max = 0.0
+    if probs:
+        other_max = max(
+            (
+                float(value)
+                for key, value in probs.items()
+                if str(key) != accept_key and key.startswith(f"{pred.task}::")
+            ),
+            default=0.0,
+        )
+    margin = accept_prob - other_max
+    if accept_prob >= 0.80 and margin >= 0.15:
         return None
     logger.info(
         "safety_override_gist_quality",
-        extra={"original": "accept", "override": "reject", "confidence": pred.confidence},
+        extra={
+            "original": "accept",
+            "override": "reject",
+            "confidence": pred.confidence,
+            "accept_probability": accept_prob,
+            "margin": margin,
+        },
     )
     return ModelPrediction(task=pred.task, label="reject", confidence=pred.confidence)
 
@@ -317,9 +349,12 @@ class ModelPackRuntime:
         if not text.strip():
             return None
         pred: ModelPrediction | None = None
+        source_model: Any | None = None
+        feature: str | None = None
         task_model = self._get_task_model(task)
         if task_model is not None:
             feature = self._serialize_single_feature(task, text, metadata=metadata)
+            source_model = task_model
             pred = self._predict_from_model(task_model, task=task, feature=feature)
         else:
             family = _TASK_FAMILY.get(task)
@@ -327,15 +362,25 @@ class ModelPackRuntime:
                 model = self._get_family_model(family)
                 if model is not None:
                     feature = self._serialize_single_feature(task, text, metadata=metadata)
+                    source_model = model
                     pred = self._predict_from_model(model, task=task, feature=feature)
         if pred is None:
             return None
+        probs = (
+            self._predict_proba(source_model, feature=feature)
+            if source_model is not None and feature is not None
+            else None
+        )
         if task == "forgetting_action_policy":
             override = _safety_override_forgetting_policy(pred, metadata)
             if override is not None:
                 pred = override
+            elif pred.label == "compress":
+                gist_pred = self.predict_single("consolidation_gist_quality", text, metadata=metadata)
+                if gist_pred is None or gist_pred.label != "accept" or gist_pred.confidence < 0.80:
+                    pred = ModelPrediction(task=pred.task, label="keep", confidence=pred.confidence)
         if task == "consolidation_gist_quality":
-            override = _safety_override_gist_quality(pred)
+            override = _safety_override_gist_quality(pred, probs)
             if override is not None:
                 pred = override
         return pred

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import importlib.metadata
 import json
 import logging
@@ -56,6 +57,7 @@ try:
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.ensemble import HistGradientBoostingClassifier
     from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.isotonic import IsotonicRegression
     from sklearn.linear_model import LogisticRegression, SGDClassifier, SGDRegressor
     from sklearn.metrics import (
         accuracy_score,
@@ -80,12 +82,15 @@ from cml.modeling.pair_features import (
     build_pair_dense_features,
     hash_text,
     pair_embedding_cache_path,
+    parse_serialized_pair_feature,
 )
 from cml.modeling.runtime_models import (
     CumulativeOrdinalClassifier,
     EmbeddingPairClassifier,
     HierarchicalTextClassifier,
     TaskConditionalCalibratedClassifier,
+    TransformerPairClassifier,
+    TransformerTextClassifier,
     build_task_conditional_calibration_features,
 )
 from cml.modeling.token_training import train_token_task
@@ -106,11 +111,6 @@ _TRAINER_DEFAULTS = {
     "pair_ranking": "pair_ranking",
     "single_regression": "single_regression",
     "token_classification": "token_classification",
-}
-_ADVERSARIAL_FIXTURES = {
-    "consolidation_gist_quality": MODELS_ROOT / "adversarial" / "adversarial_gist_quality.jsonl",
-    "forgetting_action_policy": MODELS_ROOT / "adversarial" / "adversarial_forgetting_policy.jsonl",
-    "schema_match_pair": MODELS_ROOT / "adversarial" / "adversarial_schema_match_pair.jsonl",
 }
 _MEMORY_TYPE_MACRO_GROUPS = {
     "factual": ["semantic_fact", "knowledge", "observation"],
@@ -167,6 +167,27 @@ _TASK_METADATA_EXCLUDE_COLUMNS: dict[str, set[str]] = {
     "consolidation_gist_quality": {"memory_type", "importance", "confidence"},
     "forgetting_action_policy": {"memory_type", "importance", "confidence"},
 }
+_MIN_FAMILY_LABEL_ROWS = {"train": 200, "test": 50, "eval": 50}
+_RELEASE_GATES: dict[str, dict[str, Any]] = {
+    "schema_match_pair": {
+        "test": {"accuracy": 0.80},
+    },
+    "memory_type": {
+        "test": {"macro_f1": 0.86, "plan_f1": 0.75},
+    },
+    "novelty_pair": {
+        "test": {"changed_f1": 0.78},
+    },
+    "confidence_bin": {
+        "test": {"macro_f1": 0.85},
+    },
+    "decay_profile": {
+        "test": {"macro_f1": 0.81},
+    },
+    "pii_span_detection": {
+        "test": {"span_exact_match": 0.88, "span_f1": 0.93},
+    },
+}
 
 
 @dataclass
@@ -183,6 +204,8 @@ class TaskSpec:
     feature_backend: str = field(default="")
     label_order: list[str] = field(default_factory=list)
     embedding_model_name: str = field(default="")
+    backbone_model_name: str = field(default="")
+    tokenizer_name: str = field(default="")
 
 
 def _resolved_trainer(spec: TaskSpec) -> str:
@@ -288,6 +311,60 @@ def _build_metadata() -> dict:
         },
         **_git_build_metadata(),
     }
+
+
+def _file_sha256(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _family_split_hashes(prepared_dir: Path, family: str) -> dict[str, dict[str, Any]]:
+    hashes: dict[str, dict[str, Any]] = {}
+    for split_name in ("train", "test", "eval"):
+        path = prepared_dir / f"{family}_{split_name}.parquet"
+        hashes[split_name] = {
+            "path": str(path),
+            "sha256": _file_sha256(path),
+            "bytes": path.stat().st_size if path.exists() else 0,
+        }
+    return hashes
+
+
+def _task_dataset_hashes(prepared_dir: Path, family: str, task_name: str) -> dict[str, dict[str, Any]]:
+    hashes = _family_split_hashes(prepared_dir, family)
+    if task_name in {"pii_span_detection", "fact_extraction_structured"}:
+        hashes = {}
+        for split_name in ("train", "test", "eval"):
+            path = prepared_dir / f"{task_name}_{split_name}.parquet"
+            hashes[split_name] = {
+                "path": str(path),
+                "sha256": _file_sha256(path),
+                "bytes": path.stat().st_size if path.exists() else 0,
+            }
+    return hashes
+
+
+def _transformer_cfg(train_cfg: dict[str, Any]) -> dict[str, Any]:
+    cfg = dict(train_cfg.get("transformer", {}))
+    cfg.setdefault("model_name_or_path", "microsoft/deberta-v3-base")
+    cfg.setdefault("tokenizer_name", "")
+    cfg.setdefault("num_train_epochs", 2)
+    cfg.setdefault("per_device_train_batch_size", 8)
+    cfg.setdefault("per_device_eval_batch_size", 16)
+    cfg.setdefault("max_seq_length", 256)
+    cfg.setdefault("learning_rate", 2e-5)
+    cfg.setdefault("warmup_ratio", 0.1)
+    cfg.setdefault("weight_decay", 0.01)
+    cfg.setdefault("gradient_accumulation_steps", 1)
+    cfg.setdefault("score_margin", 0.15)
+    cfg.setdefault("focal_gamma", 1.5)
+    cfg.setdefault("temperature_grid", [0.7, 0.85, 1.0, 1.15, 1.3, 1.5, 2.0])
+    return cfg
 
 
 def _task_label_counts(df: pd.DataFrame) -> dict[str, dict[str, int]]:
@@ -517,6 +594,14 @@ def _encode_targets(df: pd.DataFrame) -> list[str]:
     return [
         _composite_label(task, label) for task, label in zip(df["task"], df["label"], strict=False)
     ]
+
+
+def _single_text_payload(feature: str) -> str:
+    text = str(feature or "")
+    marker = " [text] "
+    if marker not in text:
+        return text.strip()
+    return text.split(marker, 1)[1].strip()
 
 
 def _build_vectorizer(train_cfg: dict) -> TfidfVectorizer:
@@ -1229,6 +1314,508 @@ def _with_calibration_payload(
     return payload
 
 
+def _family_invalid_task_slices(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    eval_df: pd.DataFrame,
+    *,
+    family: str,
+) -> dict[str, str]:
+    invalid: dict[str, str] = {}
+    tasks = sorted(
+        set(train_df.get("task", pd.Series(dtype=str)).astype(str).tolist())
+        | set(test_df.get("task", pd.Series(dtype=str)).astype(str).tolist())
+        | set(eval_df.get("task", pd.Series(dtype=str)).astype(str).tolist())
+    )
+    for task in tasks:
+        split_counts: dict[str, dict[str, int]] = {}
+        for split_name, frame in (("train", train_df), ("test", test_df), ("eval", eval_df)):
+            subset = frame[frame["task"].astype(str) == task]
+            counts = {
+                str(label): int(count)
+                for label, count in subset["label"].astype(str).value_counts().items()
+            }
+            if len(counts) < 2:
+                invalid[task] = f"{split_name} has fewer than 2 labels"
+                break
+            minimum = int(_MIN_FAMILY_LABEL_ROWS[split_name])
+            underfilled = {label: count for label, count in counts.items() if int(count) < minimum}
+            if underfilled:
+                invalid[task] = f"{split_name} underfilled labels: {underfilled}"
+                break
+            split_counts[split_name] = counts
+        if task in invalid:
+            continue
+        if family == "extractor":
+            subset = train_df[train_df["task"].astype(str) == task]
+            buckets = subset["source"].fillna("").astype(str).map(lambda value: value.split(":", 1)[0]).tolist()
+            if buckets and all(bucket == "llm" for bucket in buckets):
+                invalid[task] = "train split is fully llm-synthetic"
+                continue
+    return invalid
+
+
+def _release_gate_results(task_name: str, summary: dict[str, Any]) -> dict[str, Any]:
+    gates = _RELEASE_GATES.get(task_name, {})
+    if not gates:
+        return {"passed": True, "checks": []}
+
+    checks: list[dict[str, Any]] = []
+
+    def _lookup(section_name: str, metric_name: str) -> float | None:
+        section = summary.get(section_name)
+        if not isinstance(section, dict):
+            return None
+        if metric_name in section:
+            try:
+                return float(section[metric_name])
+            except Exception:
+                return None
+        report = section.get("classification_report")
+        if isinstance(report, dict):
+            label, _, metric = metric_name.partition("_")
+            label_payload = report.get(label)
+            if not isinstance(label_payload, dict):
+                label_payload = next(
+                    (
+                        payload
+                        for key, payload in report.items()
+                        if isinstance(payload, dict) and str(key).endswith(f"::{label}")
+                    ),
+                    None,
+                )
+            if isinstance(label_payload, dict) and metric in label_payload:
+                try:
+                    return float(label_payload[metric])
+                except Exception:
+                    return None
+        return None
+
+    passed = True
+    for section_name, section_gates in gates.items():
+        for metric_name, threshold in section_gates.items():
+            actual = _lookup(section_name, metric_name)
+            if actual is None:
+                passed = False
+                checks.append(
+                    {
+                        "section": section_name,
+                        "metric": metric_name,
+                        "threshold": threshold,
+                        "actual": None,
+                        "passed": False,
+                    }
+                )
+                continue
+            ok = float(actual) >= float(threshold)
+            checks.append(
+                {
+                    "section": section_name,
+                    "metric": metric_name,
+                    "threshold": float(threshold),
+                    "actual": float(actual),
+                    "passed": ok,
+                }
+            )
+            passed = passed and ok
+    return {"passed": passed, "checks": checks}
+
+
+def _sequence_inputs_from_features(
+    features: list[str],
+    *,
+    input_type: str,
+) -> tuple[list[str], list[str] | None]:
+    if input_type == "pair":
+        parsed = [parse_serialized_pair_feature(str(feature)) for feature in features]
+        return [text_a for _, text_a, _ in parsed], [text_b for _, _, text_b in parsed]
+    return [_single_text_payload(str(feature)) for feature in features], None
+
+
+def _temperature_scale_summary(
+    logits: np.ndarray,
+    labels: np.ndarray,
+    *,
+    temperature_grid: list[float],
+) -> tuple[float, dict[str, Any] | None]:
+    if logits.size == 0 or labels.size == 0:
+        return 1.0, None
+    candidates = [max(0.05, float(value)) for value in temperature_grid if float(value) > 0]
+    if not candidates:
+        candidates = [1.0]
+    best_temp = 1.0
+    best_loss: float | None = None
+    for temp in candidates:
+        scaled = logits / temp
+        if scaled.ndim == 1 or scaled.shape[1] == 1:
+            flat = scaled.reshape(-1)
+            probs = 1.0 / (1.0 + np.exp(-flat))
+            probs = np.clip(probs, 1e-6, 1.0 - 1e-6)
+            loss = float(
+                -np.mean(labels * np.log(probs) + (1.0 - labels) * np.log(1.0 - probs))
+            )
+        else:
+            shifted = scaled - scaled.max(axis=1, keepdims=True)
+            probs = np.exp(shifted)
+            probs = probs / np.maximum(probs.sum(axis=1, keepdims=True), 1e-12)
+            probs = np.clip(probs, 1e-6, 1.0)
+            loss = float(-np.mean(np.log(probs[np.arange(len(labels)), labels.astype(int)])))
+        if best_loss is None or loss < best_loss:
+            best_loss = loss
+            best_temp = temp
+    return best_temp, {
+        "method": "temperature_grid_search",
+        "rows": int(labels.size),
+        "temperature": float(best_temp),
+        "loss": float(best_loss or 0.0),
+    }
+
+
+def _transformer_logits(
+    *,
+    model: Any,
+    tokenizer: Any,
+    features: list[str],
+    input_type: str,
+    max_seq_length: int,
+    batch_size: int,
+    device: Any,
+) -> np.ndarray:
+    try:
+        import torch
+    except Exception as exc:  # pragma: no cover - depends on optional deps
+        raise ImportError(
+            "Transformer training requires torch. "
+            'Install with: pip install "cognitive-memory-layer[modeling]"'
+        ) from exc
+    left, right = _sequence_inputs_from_features(features, input_type=input_type)
+    outputs: list[np.ndarray] = []
+    for start in range(0, len(left), max(1, int(batch_size))):
+        batch_left = left[start : start + max(1, int(batch_size))]
+        batch_right = None if right is None else right[start : start + max(1, int(batch_size))]
+        encoded = tokenizer(
+            batch_left,
+            batch_right,
+            truncation=True,
+            max_length=max(32, int(max_seq_length)),
+            padding=True,
+            return_tensors="pt",
+        )
+        encoded = {key: value.to(device) for key, value in encoded.items()}
+        with torch.no_grad():
+            logits = model(**encoded).logits
+        outputs.append(np.asarray(logits.detach().cpu(), dtype=np.float64))
+    if not outputs:
+        return np.zeros((0, 1), dtype=np.float64)
+    return np.vstack(outputs)
+
+
+def _train_transformer_sequence_classifier(
+    *,
+    features: list[str],
+    targets: list[str],
+    eval_features: list[str],
+    eval_targets: list[str],
+    input_type: str,
+    classes: list[str],
+    task_name: str,
+    output_dir: Path,
+    artifact_stem: str,
+    backbone_model_name: str,
+    tokenizer_name: str,
+    train_cfg: dict[str, Any],
+    runtime_kind: str,
+    focal_gamma: float = 0.0,
+) -> tuple[Any, str, list[dict[str, Any]], dict[str, Any], dict[str, Any] | None]:
+    try:
+        import torch
+        from torch.nn import functional as torch_f
+        from torch.utils.data import DataLoader, TensorDataset
+        from transformers import (
+            AutoModelForSequenceClassification,
+            AutoTokenizer,
+            get_linear_schedule_with_warmup,
+        )
+    except Exception as exc:  # pragma: no cover - depends on optional deps
+        raise ImportError(
+            "Transformer training requires torch and transformers. "
+            'Install with: pip install "cognitive-memory-layer[modeling]"'
+        ) from exc
+
+    cfg = _transformer_cfg(train_cfg)
+    label_to_id = {label: idx for idx, label in enumerate(classes)}
+    train_ids = [label_to_id[label] for label in targets]
+    eval_ids = [label_to_id[label] for label in eval_targets]
+    tokenizer_ref = tokenizer_name.strip() or backbone_model_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_ref, use_fast=True)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        backbone_model_name,
+        num_labels=len(classes),
+        id2label={idx: label for label, idx in label_to_id.items()},
+        label2id=label_to_id,
+    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.train()
+
+    index_dataset = TensorDataset(torch.arange(len(features)))
+    train_loader: DataLoader[Any] = DataLoader(
+        index_dataset,
+        batch_size=max(1, int(cfg["per_device_train_batch_size"])),
+        shuffle=True,
+    )
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(cfg["learning_rate"]),
+        weight_decay=float(cfg["weight_decay"]),
+    )
+    grad_accum = max(1, int(cfg["gradient_accumulation_steps"]))
+    total_steps = max(1, math.ceil(len(train_loader) / grad_accum) * max(1, int(cfg["num_train_epochs"])))
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=int(total_steps * float(cfg["warmup_ratio"])),
+        num_training_steps=total_steps,
+    )
+
+    class_weights = _balanced_class_weight_map(targets)
+    weight_tensor = torch.tensor(
+        [class_weights.get(label, 1.0) for label in classes],
+        dtype=torch.float32,
+        device=device,
+    )
+    epoch_stats: list[dict[str, Any]] = []
+    for epoch in range(1, max(1, int(cfg["num_train_epochs"])) + 1):
+        optimizer.zero_grad(set_to_none=True)
+        epoch_loss = 0.0
+        for step, (batch_ids,) in enumerate(train_loader, start=1):
+            batch_features = [features[int(idx)] for idx in batch_ids]
+            labels = torch.tensor([train_ids[int(idx)] for idx in batch_ids], dtype=torch.long, device=device)
+            left, right = _sequence_inputs_from_features(batch_features, input_type=input_type)
+            encoded = tokenizer(
+                left,
+                right,
+                truncation=True,
+                max_length=max(32, int(cfg["max_seq_length"])),
+                padding=True,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(device) for key, value in encoded.items()}
+            logits = model(**encoded).logits
+            losses = torch_f.cross_entropy(logits, labels, weight=weight_tensor, reduction="none")
+            if focal_gamma > 0:
+                probs = torch.softmax(logits, dim=-1)
+                pt = probs.gather(1, labels.unsqueeze(1)).squeeze(1)
+                losses = losses * torch.pow(1.0 - pt, float(focal_gamma))
+            loss = losses.mean() / grad_accum
+            loss.backward()
+            epoch_loss += float(loss.item()) * grad_accum
+            if step % grad_accum == 0 or step == len(train_loader):
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+        epoch_stats.append({"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))})
+
+    model.eval()
+    eval_logits = (
+        _transformer_logits(
+            model=model,
+            tokenizer=tokenizer,
+            features=eval_features,
+            input_type=input_type,
+            max_seq_length=int(cfg["max_seq_length"]),
+            batch_size=int(cfg["per_device_eval_batch_size"]),
+            device=device,
+        )
+        if eval_features and eval_targets
+        else np.zeros((0, len(classes)), dtype=np.float64)
+    )
+    temperature, calibration_summary = _temperature_scale_summary(
+        eval_logits,
+        np.asarray(eval_ids, dtype=np.int64),
+        temperature_grid=[float(x) for x in cfg.get("temperature_grid", [1.0])],
+    )
+
+    model_dir = output_dir / f"{artifact_stem}_hf"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(str(model_dir))
+    tokenizer.save_pretrained(str(model_dir))
+    runtime_model = (
+        TransformerPairClassifier(
+            task_name=task_name,
+            model_dir=str(model_dir),
+            classes_=classes,
+            max_seq_length=int(cfg["max_seq_length"]),
+            batch_size=int(cfg["per_device_eval_batch_size"]),
+            temperature=float(temperature),
+        )
+        if runtime_kind == "pair"
+        else TransformerTextClassifier(
+            task_name=task_name,
+            model_dir=str(model_dir),
+            classes_=classes,
+            max_seq_length=int(cfg["max_seq_length"]),
+            batch_size=int(cfg["per_device_eval_batch_size"]),
+            temperature=float(temperature),
+        )
+    )
+    training_summary = {
+        "actual_epochs": len(epoch_stats),
+        "best_epoch": len(epoch_stats),
+        "early_stopped": False,
+        "backbone_model_name": backbone_model_name,
+        "tokenizer_name": tokenizer_ref,
+    }
+    return runtime_model, str(model_dir), epoch_stats, training_summary, calibration_summary
+
+
+def _train_transformer_pair_ranker(
+    *,
+    features: list[str],
+    targets: list[str],
+    eval_features: list[str],
+    eval_targets: list[str],
+    group_keys: list[str],
+    task_name: str,
+    output_dir: Path,
+    artifact_stem: str,
+    backbone_model_name: str,
+    tokenizer_name: str,
+    train_cfg: dict[str, Any],
+) -> tuple[TransformerPairClassifier, str, list[dict[str, Any]], dict[str, Any], dict[str, Any] | None]:
+    try:
+        import torch
+        from torch.nn import functional as torch_f
+        from torch.utils.data import DataLoader, TensorDataset
+        from transformers import (
+            AutoModelForSequenceClassification,
+            AutoTokenizer,
+            get_linear_schedule_with_warmup,
+        )
+    except Exception as exc:  # pragma: no cover - depends on optional deps
+        raise ImportError(
+            "Transformer pair training requires torch and transformers. "
+            'Install with: pip install "cognitive-memory-layer[modeling]"'
+        ) from exc
+
+    cfg = _transformer_cfg(train_cfg)
+    tokenizer_ref = tokenizer_name.strip() or backbone_model_name
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_ref, use_fast=True)
+    model = AutoModelForSequenceClassification.from_pretrained(backbone_model_name, num_labels=1)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.train()
+
+    train_binary = np.asarray([1 if label.endswith("::relevant") else 0 for label in targets], dtype=np.float32)
+    eval_binary = np.asarray([1 if label.endswith("::relevant") else 0 for label in eval_targets], dtype=np.float32)
+    pos_weight_value = float(max(1.0, (len(train_binary) - train_binary.sum()) / max(1.0, train_binary.sum())))
+    pos_weight = torch.tensor([pos_weight_value], dtype=torch.float32, device=device)
+
+    index_dataset = TensorDataset(torch.arange(len(features)))
+    train_loader: DataLoader[Any] = DataLoader(
+        index_dataset,
+        batch_size=max(1, int(cfg["per_device_train_batch_size"])),
+        shuffle=True,
+    )
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(cfg["learning_rate"]),
+        weight_decay=float(cfg["weight_decay"]),
+    )
+    grad_accum = max(1, int(cfg["gradient_accumulation_steps"]))
+    total_steps = max(1, math.ceil(len(train_loader) / grad_accum) * max(1, int(cfg["num_train_epochs"])))
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=int(total_steps * float(cfg["warmup_ratio"])),
+        num_training_steps=total_steps,
+    )
+
+    epoch_stats: list[dict[str, Any]] = []
+    for epoch in range(1, max(1, int(cfg["num_train_epochs"])) + 1):
+        optimizer.zero_grad(set_to_none=True)
+        epoch_loss = 0.0
+        for step, (batch_ids,) in enumerate(train_loader, start=1):
+            batch_features = [features[int(idx)] for idx in batch_ids]
+            labels = torch.tensor(train_binary[[int(idx) for idx in batch_ids]], dtype=torch.float32, device=device)
+            batch_groups = [group_keys[int(idx)] for idx in batch_ids]
+            left, right = _sequence_inputs_from_features(batch_features, input_type="pair")
+            encoded = tokenizer(
+                left,
+                right,
+                truncation=True,
+                max_length=max(32, int(cfg["max_seq_length"])),
+                padding=True,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(device) for key, value in encoded.items()}
+            logits = model(**encoded).logits.view(-1)
+            bce = torch_f.binary_cross_entropy_with_logits(
+                logits,
+                labels,
+                pos_weight=pos_weight,
+                reduction="mean",
+            )
+            pair_losses: list[torch.Tensor] = []
+            for group_id in sorted(set(batch_groups)):
+                group_indices = [idx for idx, value in enumerate(batch_groups) if value == group_id]
+                pos_idx = [idx for idx in group_indices if labels[idx] > 0.5]
+                neg_idx = [idx for idx in group_indices if labels[idx] <= 0.5]
+                if not pos_idx or not neg_idx:
+                    continue
+                diffs = logits[pos_idx].unsqueeze(1) - logits[neg_idx].unsqueeze(0)
+                pair_losses.append(torch_f.softplus(-diffs).mean())
+            pair_loss = torch.stack(pair_losses).mean() if pair_losses else torch.tensor(0.0, device=device)
+            loss = (bce + 0.5 * pair_loss) / grad_accum
+            loss.backward()
+            epoch_loss += float(loss.item()) * grad_accum
+            if step % grad_accum == 0 or step == len(train_loader):
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+        epoch_stats.append({"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))})
+
+    model.eval()
+    eval_logits = (
+        _transformer_logits(
+            model=model,
+            tokenizer=tokenizer,
+            features=eval_features,
+            input_type="pair",
+            max_seq_length=int(cfg["max_seq_length"]),
+            batch_size=int(cfg["per_device_eval_batch_size"]),
+            device=device,
+        )
+        if eval_features and eval_targets
+        else np.zeros((0, 1), dtype=np.float64)
+    )
+    temperature, calibration_summary = _temperature_scale_summary(
+        eval_logits,
+        eval_binary.astype(np.int64),
+        temperature_grid=[float(x) for x in cfg.get("temperature_grid", [1.0])],
+    )
+
+    model_dir = output_dir / f"{artifact_stem}_hf"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(str(model_dir))
+    tokenizer.save_pretrained(str(model_dir))
+    runtime_model = TransformerPairClassifier(
+        task_name=task_name,
+        model_dir=str(model_dir),
+        classes_=[f"{task_name}::not_relevant", f"{task_name}::relevant"],
+        max_seq_length=int(cfg["max_seq_length"]),
+        batch_size=int(cfg["per_device_eval_batch_size"]),
+        temperature=float(temperature),
+    )
+    training_summary = {
+        "actual_epochs": len(epoch_stats),
+        "best_epoch": len(epoch_stats),
+        "early_stopped": False,
+        "backbone_model_name": backbone_model_name,
+        "tokenizer_name": tokenizer_ref,
+        "score_margin": float(cfg["score_margin"]),
+    }
+    return runtime_model, str(model_dir), epoch_stats, training_summary, calibration_summary
+
+
 def _evaluate(
     model: Any, df: pd.DataFrame, *, family: str, split_name: str, predict_batch_size: int
 ) -> tuple[dict, dict]:
@@ -1295,7 +1882,7 @@ def _evaluate(
     metrics = {
         "family": family,
         "split": split_name,
-        "overall": overall_metrics,
+        "overall": {**overall_metrics, "classification_report": overall_report},
         "per_task": per_task_metrics,
     }
     reports = {
@@ -1314,6 +1901,16 @@ def _train_one_family(
     train_df = _load_split(prepared_dir, family, "train")
     test_df = _load_split(prepared_dir, family, "test")
     eval_df = _load_split(prepared_dir, family, "eval")
+    invalid_slices = _family_invalid_task_slices(train_df, test_df, eval_df, family=family)
+    if invalid_slices:
+        if bool(train_cfg.get("release_mode")):
+            raise RuntimeError(f"[family:{family}] invalid task slices for release: {invalid_slices}")
+        valid_tasks = sorted(set(train_df["task"].astype(str)) - set(invalid_slices))
+        train_df = train_df[train_df["task"].astype(str).isin(valid_tasks)].reset_index(drop=True)
+        test_df = test_df[test_df["task"].astype(str).isin(valid_tasks)].reset_index(drop=True)
+        eval_df = eval_df[eval_df["task"].astype(str).isin(valid_tasks)].reset_index(drop=True)
+        if train_df.empty:
+            raise RuntimeError(f"[family:{family}] no valid task slices remain after filtering.")
 
     task_counts = train_df.groupby("task").size().to_dict()
     print(f"[{family}] task rows (train): {task_counts}")
@@ -1383,6 +1980,10 @@ def _train_one_family(
         "training_summary": training_summary,
         "calibration": calibration_summary,
         "epoch_stats": epoch_stats,
+        "skipped_invalid_tasks": invalid_slices,
+        "artifact_scope": "family",
+        "evaluation_suite": "standard",
+        "dataset_hashes": _family_split_hashes(prepared_dir, family),
     }
     metrics_test = _with_calibration_payload(metrics_test, calibration_summary) or metrics_test
     metrics_eval = _with_calibration_payload(metrics_eval, calibration_summary) or metrics_eval
@@ -1395,6 +1996,8 @@ def _train_one_family(
             "metadata": metadata,
             "label_to_id": label_to_id,
             "id_to_label": id_to_label,
+            "artifact_scope": "family",
+            "model_kind": "family_classifier",
         },
         model_path,
     )
@@ -1421,6 +2024,10 @@ def _train_one_family(
         "best_epoch": training_summary["best_epoch"],
         "early_stopped": training_summary["early_stopped"],
         "calibration": calibration_summary,
+        "artifact_scope": "family",
+        "evaluation_suite": "standard",
+        "skipped_invalid_tasks": invalid_slices,
+        "dataset_hashes": metadata["dataset_hashes"],
     }
 
 
@@ -1458,7 +2065,6 @@ def _write_task_metrics(
     *,
     metrics_test: dict[str, Any] | None = None,
     metrics_eval: dict[str, Any] | None = None,
-    adversarial_metrics: dict[str, Any] | None = None,
     calibration: dict[str, Any] | None = None,
 ) -> None:
     metrics_test = _with_calibration_payload(metrics_test, calibration)
@@ -1467,48 +2073,6 @@ def _write_task_metrics(
         _write_json(output_dir / f"{artifact_name}_metrics_test.json", metrics_test)
     if metrics_eval is not None:
         _write_json(output_dir / f"{artifact_name}_metrics_eval.json", metrics_eval)
-    if adversarial_metrics is not None:
-        _write_json(output_dir / f"{artifact_name}_metrics_adversarial.json", adversarial_metrics)
-
-
-def _load_adversarial_fixture(path: Path, *, task_name: str) -> pd.DataFrame:
-    if not path.exists():
-        return pd.DataFrame()
-    rows: list[dict[str, Any]] = []
-    with open(path, encoding="utf-8") as handle:
-        for raw in handle:
-            text = raw.strip()
-            if not text:
-                continue
-            item = json.loads(text)
-            row = {"task": task_name, **item}
-            rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def _evaluate_adversarial_task(
-    *,
-    spec: TaskSpec,
-    model: Any,
-    family: str,
-    predict_batch_size: int,
-) -> dict[str, Any] | None:
-    fixture_path = _ADVERSARIAL_FIXTURES.get(spec.task_name)
-    if fixture_path is None:
-        return None
-    heldout_path = fixture_path.parent / f"{fixture_path.stem}_heldout{fixture_path.suffix}"
-    path_to_load = heldout_path if heldout_path.exists() else fixture_path
-    df = _load_adversarial_fixture(path_to_load, task_name=spec.task_name)
-    if df.empty:
-        return None
-    metrics, _ = _evaluate(
-        model,
-        df,
-        family=family,
-        split_name="adversarial",
-        predict_batch_size=predict_batch_size,
-    )
-    return metrics
 
 
 def _ordinal_metric_block(
@@ -1662,18 +2226,18 @@ def _train_classification_task(
     metrics_eval, _ = _evaluate(
         model, eval_df, family=family, split_name="eval", predict_batch_size=batch_size
     )
-    adversarial_metrics = _evaluate_adversarial_task(
-        spec=spec,
-        model=model,
-        family=family,
-        predict_batch_size=batch_size,
-    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / f"{spec.artifact_name}_model.joblib"
     all_labels = sorted(set(train_y))
     joblib.dump(
-        {"model": model, "labels": all_labels, "task_spec": spec.__dict__},
+        {
+            "model": model,
+            "labels": all_labels,
+            "task_spec": spec.__dict__,
+            "artifact_scope": "task",
+            "model_kind": "classification",
+        },
         model_path,
     )
     _write_json(
@@ -1690,7 +2254,6 @@ def _train_classification_task(
         spec.artifact_name,
         metrics_test=metrics_test,
         metrics_eval=metrics_eval,
-        adversarial_metrics=adversarial_metrics,
         calibration=calibration_summary,
     )
 
@@ -1706,7 +2269,6 @@ def _train_classification_task(
         "best_epoch": training_summary["best_epoch"],
         "early_stopped": training_summary["early_stopped"],
         "calibration": calibration_summary,
-        "adversarial_metrics": adversarial_metrics.get("overall") if adversarial_metrics else None,
     }
 
 
@@ -1897,7 +2459,15 @@ def _train_single_regression(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / f"{spec.artifact_name}_model.joblib"
-    joblib.dump({"model": model, "task_spec": spec.__dict__}, model_path)
+    joblib.dump(
+        {
+            "model": model,
+            "task_spec": spec.__dict__,
+            "artifact_scope": "task",
+            "model_kind": "single_regression",
+        },
+        model_path,
+    )
     _write_json(
         output_dir / f"{spec.artifact_name}_epoch_stats.json",
         {"task": spec.task_name, "epoch_stats": epoch_stats, "training_summary": training_summary},
@@ -1938,6 +2508,358 @@ def _train_single_regression(
         "data_profile": data_profile,
         "baselines": baselines,
         "warnings": warnings,
+    }
+
+
+def _train_transformer_text_task(
+    spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict
+) -> dict:
+    print(f"[task:{spec.task_name}] transformer_text training")
+    family = spec.family
+    train_df, test_df, eval_df = _load_task_splits(prepared_dir, family, spec.task_name)
+    if train_df.empty:
+        print(f"[task:{spec.task_name}] no training rows after filtering; skipping.")
+        return {}
+
+    train_x = _encode_features(train_df, family)
+    train_y = _encode_targets(train_df)
+    eval_x = _encode_features(eval_df, family)
+    eval_y = _encode_targets(eval_df)
+    classes = [_composite_label(spec.task_name, label) for label in spec.labels]
+    backbone = spec.backbone_model_name.strip() or str(_transformer_cfg(train_cfg)["model_name_or_path"])
+    runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = _train_transformer_sequence_classifier(
+        features=train_x,
+        targets=train_y,
+        eval_features=eval_x,
+        eval_targets=eval_y,
+        input_type="single",
+        classes=classes,
+        task_name=spec.task_name,
+        output_dir=output_dir,
+        artifact_stem=spec.artifact_name,
+        backbone_model_name=backbone,
+        tokenizer_name=spec.tokenizer_name.strip(),
+        train_cfg=train_cfg,
+        runtime_kind="text",
+        focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"]) if spec.task_name in {"consolidation_gist_quality", "forgetting_action_policy"} else 0.0,
+    )
+
+    batch_size = max(1, int(_transformer_cfg(train_cfg)["per_device_eval_batch_size"]))
+    metrics_test, _ = _evaluate(
+        runtime_model, test_df, family=family, split_name="test", predict_batch_size=batch_size
+    )
+    metrics_eval, _ = _evaluate(
+        runtime_model, eval_df, family=family, split_name="eval", predict_batch_size=batch_size
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_path = output_dir / f"{spec.artifact_name}_model.joblib"
+    joblib.dump(
+        {
+            "model": runtime_model,
+            "labels": classes,
+            "task_spec": spec.__dict__,
+            "hf_model_dir": hf_model_dir,
+            "model_kind": "transformer_text",
+        },
+        model_path,
+    )
+    _write_json(
+        output_dir / f"{spec.artifact_name}_epoch_stats.json",
+        {
+            "task": spec.task_name,
+            "epoch_stats": epoch_stats,
+            "training_summary": training_summary,
+            "calibration": calibration_summary,
+            "hf_model_dir": hf_model_dir,
+        },
+    )
+    _write_task_metrics(
+        output_dir,
+        spec.artifact_name,
+        metrics_test=metrics_test,
+        metrics_eval=metrics_eval,
+        calibration=calibration_summary,
+    )
+    return {
+        "task": spec.task_name,
+        "objective": spec.objective,
+        "trainer": _resolved_trainer(spec),
+        "model_kind": "transformer_text",
+        "model_path": str(model_path),
+        "hf_model_dir": hf_model_dir,
+        "train_rows": len(train_df),
+        "test": metrics_test["overall"],
+        "eval": metrics_eval["overall"],
+        "actual_epochs": training_summary["actual_epochs"],
+        "best_epoch": training_summary["best_epoch"],
+        "early_stopped": training_summary["early_stopped"],
+        "backbone_model_name": backbone,
+        "tokenizer_name": spec.tokenizer_name.strip() or backbone,
+        "calibration": calibration_summary,
+    }
+
+
+def _train_transformer_pair_task(
+    spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict
+) -> dict:
+    print(f"[task:{spec.task_name}] transformer_pair training")
+    family = spec.family
+    train_df, test_df, eval_df = _load_task_splits(prepared_dir, family, spec.task_name)
+    if train_df.empty:
+        print(f"[task:{spec.task_name}] no training rows after filtering; skipping.")
+        return {}
+
+    train_x = _encode_features(train_df, family)
+    eval_x = _encode_features(eval_df, family)
+    backbone = spec.backbone_model_name.strip() or str(_transformer_cfg(train_cfg)["model_name_or_path"])
+    if spec.objective == "pair_ranking":
+        train_y = _encode_targets(train_df)
+        eval_y = _encode_targets(eval_df)
+        group_keys = (
+            train_df["group_id"].fillna(train_df["text_a"]).astype(str).tolist()
+            if "group_id" in train_df.columns
+            else train_df["text_a"].astype(str).tolist()
+        )
+        runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = _train_transformer_pair_ranker(
+            features=train_x,
+            targets=train_y,
+            eval_features=eval_x,
+            eval_targets=eval_y,
+            group_keys=group_keys,
+            task_name=spec.task_name,
+            output_dir=output_dir,
+            artifact_stem=spec.artifact_name,
+            backbone_model_name=backbone,
+            tokenizer_name=spec.tokenizer_name.strip(),
+            train_cfg=train_cfg,
+        )
+    else:
+        train_y = _encode_targets(train_df)
+        eval_y = _encode_targets(eval_df)
+        classes = [_composite_label(spec.task_name, label) for label in spec.labels]
+        runtime_model, hf_model_dir, epoch_stats, training_summary, calibration_summary = _train_transformer_sequence_classifier(
+            features=train_x,
+            targets=train_y,
+            eval_features=eval_x,
+            eval_targets=eval_y,
+            input_type="pair",
+            classes=classes,
+            task_name=spec.task_name,
+            output_dir=output_dir,
+            artifact_stem=spec.artifact_name,
+            backbone_model_name=backbone,
+            tokenizer_name=spec.tokenizer_name.strip(),
+            train_cfg=train_cfg,
+            runtime_kind="pair",
+            focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"]) if spec.task_name == "novelty_pair" else 0.0,
+        )
+
+    batch_size = max(1, int(_transformer_cfg(train_cfg)["per_device_eval_batch_size"]))
+    metrics_test, _ = _evaluate(
+        runtime_model, test_df, family=family, split_name="test", predict_batch_size=batch_size
+    )
+    metrics_eval, _ = _evaluate(
+        runtime_model, eval_df, family=family, split_name="eval", predict_batch_size=batch_size
+    )
+    if spec.objective == "pair_ranking":
+        for frame, metrics in ((test_df, metrics_test), (eval_df, metrics_eval)):
+            split_x = _encode_features(frame, family)
+            ranking = _ranking_metrics_from_groups(
+                frame,
+                _positive_class_scores(
+                    runtime_model,
+                    split_x,
+                    positive_class=_composite_label(spec.task_name, "relevant"),
+                ),
+                positive_label="relevant",
+            )
+            if ranking is not None:
+                metrics["overall"].update(ranking)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_path = output_dir / f"{spec.artifact_name}_model.joblib"
+    payload_labels = (
+        [_composite_label(spec.task_name, "not_relevant"), _composite_label(spec.task_name, "relevant")]
+        if spec.objective == "pair_ranking"
+        else [_composite_label(spec.task_name, label) for label in spec.labels]
+    )
+    joblib.dump(
+        {
+            "model": runtime_model,
+            "labels": payload_labels,
+            "task_spec": spec.__dict__,
+            "hf_model_dir": hf_model_dir,
+            "model_kind": "transformer_pair",
+        },
+        model_path,
+    )
+    _write_json(
+        output_dir / f"{spec.artifact_name}_epoch_stats.json",
+        {
+            "task": spec.task_name,
+            "epoch_stats": epoch_stats,
+            "training_summary": training_summary,
+            "calibration": calibration_summary,
+            "hf_model_dir": hf_model_dir,
+        },
+    )
+    _write_task_metrics(
+        output_dir,
+        spec.artifact_name,
+        metrics_test=metrics_test,
+        metrics_eval=metrics_eval,
+        calibration=calibration_summary,
+    )
+    return {
+        "task": spec.task_name,
+        "objective": spec.objective,
+        "trainer": _resolved_trainer(spec),
+        "model_kind": "transformer_pair",
+        "model_path": str(model_path),
+        "hf_model_dir": hf_model_dir,
+        "train_rows": len(train_df),
+        "test": metrics_test["overall"],
+        "eval": metrics_eval["overall"],
+        "actual_epochs": training_summary["actual_epochs"],
+        "best_epoch": training_summary["best_epoch"],
+        "early_stopped": training_summary["early_stopped"],
+        "backbone_model_name": backbone,
+        "tokenizer_name": spec.tokenizer_name.strip() or backbone,
+        "calibration": calibration_summary,
+    }
+
+
+def _train_hierarchical_transformer(
+    spec: TaskSpec, *, prepared_dir: Path, output_dir: Path, train_cfg: dict
+) -> dict:
+    print(f"[task:{spec.task_name}] hierarchical_transformer training")
+    family = spec.family
+    train_df, test_df, eval_df = _load_task_splits(prepared_dir, family, spec.task_name)
+    if train_df.empty:
+        print(f"[task:{spec.task_name}] no training rows after filtering; skipping.")
+        return {}
+
+    backbone = spec.backbone_model_name.strip() or str(_transformer_cfg(train_cfg)["model_name_or_path"])
+    batch_size = max(1, int(_transformer_cfg(train_cfg)["per_device_eval_batch_size"]))
+    train_x = _encode_memory_type_features(train_df, family)
+    eval_x = _encode_memory_type_features(eval_df, family)
+
+    macro_labels = sorted(_MEMORY_TYPE_MACRO_GROUPS.keys())
+    macro_targets = [_memory_type_macro(label) for label in train_df["label"].astype(str).tolist()]
+    macro_eval_targets = [_memory_type_macro(label) for label in eval_df["label"].astype(str).tolist()]
+    stage1_model, stage1_dir, stage1_epochs, stage1_summary, stage1_calibration = _train_transformer_sequence_classifier(
+        features=train_x,
+        targets=macro_targets,
+        eval_features=eval_x,
+        eval_targets=macro_eval_targets,
+        input_type="single",
+        classes=macro_labels,
+        task_name=f"{spec.task_name}:macro",
+        output_dir=output_dir,
+        artifact_stem=f"{spec.artifact_name}_macro",
+        backbone_model_name=backbone,
+        tokenizer_name=spec.tokenizer_name.strip(),
+        train_cfg=train_cfg,
+        runtime_kind="text",
+    )
+
+    stage2_models: dict[str, Any] = {}
+    stage2_stats: dict[str, Any] = {}
+    stage2_calibration: dict[str, Any] = {}
+    stage2_dirs: dict[str, str] = {}
+    for macro_name, labels in _MEMORY_TYPE_MACRO_GROUPS.items():
+        sub_train = train_df[train_df["label"].astype(str).isin(labels)].reset_index(drop=True)
+        if sub_train.empty:
+            continue
+        sub_eval = eval_df[eval_df["label"].astype(str).isin(labels)].reset_index(drop=True)
+        sub_train_x = _encode_memory_type_features(sub_train, family)
+        sub_eval_x = _encode_memory_type_features(sub_eval, family)
+        model, model_dir, epoch_stats, summary, calibration = _train_transformer_sequence_classifier(
+            features=sub_train_x,
+            targets=sub_train["label"].astype(str).tolist(),
+            eval_features=sub_eval_x,
+            eval_targets=sub_eval["label"].astype(str).tolist(),
+            input_type="single",
+            classes=list(labels),
+            task_name=f"{spec.task_name}:{macro_name}",
+            output_dir=output_dir,
+            artifact_stem=f"{spec.artifact_name}_{macro_name}",
+            backbone_model_name=backbone,
+            tokenizer_name=spec.tokenizer_name.strip(),
+            train_cfg=train_cfg,
+            runtime_kind="text",
+            focal_gamma=float(_transformer_cfg(train_cfg)["focal_gamma"]) if any(label in {"plan", "knowledge", "reasoning_step"} for label in labels) else 0.0,
+        )
+        stage2_models[macro_name] = model
+        stage2_stats[macro_name] = {"epoch_stats": epoch_stats, "training_summary": summary}
+        stage2_calibration[macro_name] = calibration
+        stage2_dirs[macro_name] = model_dir
+
+    runtime_model = HierarchicalTextClassifier(
+        task_name=spec.task_name,
+        stage1_model=stage1_model,
+        stage2_models=stage2_models,
+        macro_to_labels=_MEMORY_TYPE_MACRO_GROUPS,
+        classes_=[_composite_label(spec.task_name, label) for label in spec.labels],
+    )
+    metrics_test, _ = _evaluate(
+        runtime_model, test_df, family=family, split_name="test", predict_batch_size=batch_size
+    )
+    metrics_eval, _ = _evaluate(
+        runtime_model, eval_df, family=family, split_name="eval", predict_batch_size=batch_size
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_path = output_dir / f"{spec.artifact_name}_model.joblib"
+    joblib.dump(
+        {
+            "model": runtime_model,
+            "task_spec": spec.__dict__,
+            "hf_model_dir": stage1_dir,
+            "model_kind": "hierarchical_transformer",
+            "stage_model_dirs": stage2_dirs,
+        },
+        model_path,
+    )
+    _write_json(
+        output_dir / f"{spec.artifact_name}_epoch_stats.json",
+        {
+            "task": spec.task_name,
+            "stage1": {
+                "epoch_stats": stage1_epochs,
+                "training_summary": stage1_summary,
+                "calibration": stage1_calibration,
+                "hf_model_dir": stage1_dir,
+            },
+            "stage2": stage2_stats,
+            "stage2_calibration": stage2_calibration,
+            "stage_model_dirs": stage2_dirs,
+        },
+    )
+    _write_task_metrics(
+        output_dir,
+        spec.artifact_name,
+        metrics_test=metrics_test,
+        metrics_eval=metrics_eval,
+        calibration={"stage1": stage1_calibration, "stage2": stage2_calibration},
+    )
+    return {
+        "task": spec.task_name,
+        "objective": spec.objective,
+        "trainer": _resolved_trainer(spec),
+        "model_kind": "hierarchical_transformer",
+        "model_path": str(model_path),
+        "hf_model_dir": stage1_dir,
+        "train_rows": len(train_df),
+        "test": metrics_test["overall"],
+        "eval": metrics_eval["overall"],
+        "actual_epochs": stage1_summary["actual_epochs"],
+        "best_epoch": stage1_summary["best_epoch"],
+        "early_stopped": stage1_summary["early_stopped"],
+        "backbone_model_name": backbone,
+        "tokenizer_name": spec.tokenizer_name.strip() or backbone,
+        "calibration": {"stage1": stage1_calibration, "stage2": stage2_calibration},
     }
 
 
@@ -2069,6 +2991,8 @@ def _train_embedding_pair(
             "labels": classes,
             "task_spec": spec.__dict__,
             "embedding_model_name": model_name,
+            "artifact_scope": "task",
+            "model_kind": "embedding_pair",
         },
         model_path,
     )
@@ -2131,8 +3055,9 @@ def _train_ordinal_threshold(
     x_eval = vectorizer.transform(eval_x) if eval_x else None
 
     boundary_models: list[Any] = []
+    boundary_calibrators: list[Any] = []
     boundary_stats: list[dict[str, Any]] = []
-    boundary_weight_factor = 1.5  # upweight rows within 1 class of the boundary
+    boundary_weight_factor = 2.25 if spec.task_name in {"confidence_bin", "decay_profile"} else 1.5
     for boundary_idx, left_label in enumerate(label_order[:-1]):
         boundary_train_y = (train_y > boundary_idx).astype(int)
         classifier = LogisticRegression(
@@ -2151,6 +3076,8 @@ def _train_ordinal_threshold(
         classifier.fit(x_train, boundary_train_y, sample_weight=sample_weight)
 
         calibration_summary = None
+        isotonic_summary = None
+        isotonic = None
         if x_eval is not None and len(eval_y_idx) > 0:
             eval_arr = np.asarray(eval_y_idx, dtype=np.intp)
             boundary_eval_y = (eval_arr > boundary_idx).astype(int)
@@ -2161,7 +3088,17 @@ def _train_ordinal_threshold(
                     calibration_y=boundary_eval_y.tolist(),
                     train_cfg=train_cfg,
                 )
+                raw_probs = np.asarray(classifier.predict_proba(x_eval), dtype=np.float64)[:, 1]
+                isotonic = IsotonicRegression(out_of_bounds="clip")
+                isotonic.fit(raw_probs, boundary_eval_y)
+                calibrated_probs = np.asarray(isotonic.transform(raw_probs), dtype=np.float64)
+                isotonic_summary = {
+                    "rows": len(boundary_eval_y),
+                    "pre_mean": float(raw_probs.mean()),
+                    "post_mean": float(calibrated_probs.mean()),
+                }
         boundary_models.append(classifier)
+        boundary_calibrators.append(isotonic)
         boundary_stats.append(
             {
                 "boundary": f"{left_label}|>{label_order[boundary_idx + 1]}",
@@ -2169,6 +3106,7 @@ def _train_ordinal_threshold(
                 "positive_rows": int(boundary_train_y.sum()),
                 "negative_rows": int(len(boundary_train_y) - boundary_train_y.sum()),
                 "calibration": calibration_summary,
+                "isotonic": isotonic_summary,
             }
         )
 
@@ -2178,6 +3116,7 @@ def _train_ordinal_threshold(
         boundary_models=boundary_models,
         label_order=label_order,
         classes_=[_composite_label(spec.task_name, label) for label in label_order],
+        boundary_calibrators=boundary_calibrators,
     )
 
     batch_size = max(64, int(train_cfg["predict_batch_size"]))
@@ -2215,7 +3154,15 @@ def _train_ordinal_threshold(
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / f"{spec.artifact_name}_model.joblib"
-    joblib.dump({"model": runtime_model, "task_spec": spec.__dict__}, model_path)
+    joblib.dump(
+        {
+            "model": runtime_model,
+            "task_spec": spec.__dict__,
+            "artifact_scope": "task",
+            "model_kind": "ordinal_threshold",
+        },
+        model_path,
+    )
     _write_json(
         output_dir / f"{spec.artifact_name}_epoch_stats.json",
         {
@@ -2337,7 +3284,15 @@ def _train_hierarchical_text(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = output_dir / f"{spec.artifact_name}_model.joblib"
-    joblib.dump({"model": runtime_model, "task_spec": spec.__dict__}, model_path)
+    joblib.dump(
+        {
+            "model": runtime_model,
+            "task_spec": spec.__dict__,
+            "artifact_scope": "task",
+            "model_kind": "hierarchical_text",
+        },
+        model_path,
+    )
     _write_json(
         output_dir / f"{spec.artifact_name}_epoch_stats.json",
         {
@@ -2399,8 +3354,11 @@ def _train_task(
         "single_regression": _train_single_regression,
         "token_classification": _train_token_classification,
         "embedding_pair": _train_embedding_pair,
+        "transformer_text": _train_transformer_text_task,
+        "transformer_pair": _train_transformer_pair_task,
         "ordinal_threshold": _train_ordinal_threshold,
         "hierarchical_text": _train_hierarchical_text,
+        "hierarchical_transformer": _train_hierarchical_transformer,
     }
     trainer_name = _resolved_trainer(spec)
     trainer = trainers.get(trainer_name)
@@ -2426,6 +3384,21 @@ def _train_task(
                 raise RuntimeError(msg)
             _logger.warning(msg)
             return {}
+        summary.setdefault("artifact_scope", "task")
+        summary.setdefault("evaluation_suite", "standard")
+        summary.setdefault("model_kind", _resolved_trainer(spec))
+        summary["dataset_hashes"] = _task_dataset_hashes(prepared_dir, spec.family, spec.task_name)
+        summary["release_gates"] = _release_gate_results(
+            spec.task_name,
+            {
+                "test": cast("dict[str, Any]", summary.get("test", {})),
+                "eval": cast("dict[str, Any]", summary.get("eval", {})),
+            },
+        )
+        if bool(train_cfg.get("release_mode")) and not bool(summary["release_gates"]["passed"]):
+            raise RuntimeError(
+                f"[task:{spec.task_name}] release gates failed: {summary['release_gates']}"
+            )
         return summary
     except NotImplementedError as exc:
         _logger.warning("task_skipped", extra={"task": spec.task_name, "reason": str(exc)})
@@ -2573,6 +3546,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Export per-task decision thresholds to <task>_thresholds.json.",
     )
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help="Enable release-mode gating, including clean-worktree enforcement.",
+    )
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow training from a dirty git tree for non-release local runs.",
+    )
     strict_group = parser.add_mutually_exclusive_group()
     strict_group.add_argument(
         "--strict",
@@ -2612,6 +3595,8 @@ def main(argv: list[str] | None = None) -> int:
     train_cfg.setdefault("early_stopping_min_delta", 0.0)
     train_cfg.setdefault("calibration_method", "")
     train_cfg.setdefault("calibration_split", "eval")
+    train_cfg.setdefault("allow_dirty", False)
+    train_cfg.setdefault("release_mode", False)
     token_cfg = dict(train_cfg.get("token", {}))
     token_cfg.setdefault("model_name_or_path", "distilbert-base-multilingual-cased")
     token_cfg.setdefault("num_train_epochs", 3)
@@ -2623,6 +3608,7 @@ def main(argv: list[str] | None = None) -> int:
     token_cfg.setdefault("warmup_ratio", 0.1)
     token_cfg.setdefault("weight_decay", 0.01)
     token_cfg.setdefault("gradient_accumulation_steps", 1)
+    transformer_cfg = _transformer_cfg(train_cfg)
     train_cfg["strict"] = strict_mode
 
     if args.seed is not None:
@@ -2671,6 +3657,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.token_gradient_accumulation_steps is not None:
         token_cfg["gradient_accumulation_steps"] = int(args.token_gradient_accumulation_steps)
     train_cfg["token"] = token_cfg
+    train_cfg["transformer"] = transformer_cfg
+    if args.release:
+        train_cfg["release_mode"] = True
+    if args.allow_dirty:
+        train_cfg["allow_dirty"] = True
 
     if args.prepared_dir is not None:
         prepared_dir = args.prepared_dir.resolve()
@@ -2735,6 +3726,8 @@ def main(argv: list[str] | None = None) -> int:
             "feature_backend": str(t.get("feature_backend", "")),
             "label_order": list(t.get("label_order", [])),
             "embedding_model_name": str(t.get("embedding_model_name", "")),
+            "backbone_model_name": str(t.get("backbone_model_name", "")),
+            "tokenizer_name": str(t.get("tokenizer_name", "")),
         }
         for t in task_specs_raw
     ]
@@ -2745,6 +3738,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.objective_types
         else None
     )
+    build_metadata = _build_metadata()
+    if bool(train_cfg.get("release_mode")) and bool(build_metadata.get("dirty")) and not bool(
+        train_cfg.get("allow_dirty")
+    ):
+        print(
+            "Release mode requires a clean git worktree. Re-run with --allow-dirty only for local non-release experiments.",
+            file=sys.stderr,
+        )
+        return 1
 
     existing_manifest: dict[str, Any] = {}
     manifest_path = output_dir / "manifest.json"
@@ -2768,12 +3770,12 @@ def main(argv: list[str] | None = None) -> int:
         if str(t.get("task_name", ""))
     }
     manifest = {
-        "manifest_schema_version": 2,
+        "manifest_schema_version": 3,
         "config_path": str(args.config.resolve()),
         "trained_at_utc": datetime.now(UTC).isoformat(),
         "paths": {"prepared_dir": str(prepared_dir), "trained_models_dir": str(output_dir)},
         "train_settings": train_cfg,
-        "build_metadata": _build_metadata(),
+        "build_metadata": build_metadata,
         "configured_tasks": configured_tasks,
         "preflight_validation": preflight.as_dict(),
         "families": families_summary,
@@ -2894,6 +3896,13 @@ def main(argv: list[str] | None = None) -> int:
             pbar_tasks.close()
 
     manifest["task_models"] = task_summaries
+    manifest["release_mode"] = bool(train_cfg.get("release_mode"))
+    manifest["allow_dirty"] = bool(train_cfg.get("allow_dirty"))
+    manifest["release_gates"] = {
+        task_name: summary.get("release_gates")
+        for task_name, summary in task_summaries.items()
+        if isinstance(summary, dict) and summary.get("release_gates") is not None
+    }
 
     if args.export_thresholds:
         for task_name, summary in task_summaries.items():
@@ -3015,6 +4024,10 @@ def train_models(config: TrainConfig) -> int:
         argv.extend(["--calibration-split", config.calibration_split])
     if config.export_thresholds:
         argv.append("--export-thresholds")
+    if config.release:
+        argv.append("--release")
+    if config.allow_dirty:
+        argv.append("--allow-dirty")
     if config.strict:
         argv.append("--strict")
     else:
