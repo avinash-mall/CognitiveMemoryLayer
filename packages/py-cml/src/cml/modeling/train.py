@@ -76,6 +76,11 @@ except ImportError as exc:
         'pip install "cognitive-memory-layer[modeling]"'
     ) from exc
 
+try:
+    from sklearn.frozen import FrozenEstimator
+except ImportError:  # pragma: no cover - older scikit-learn
+    FrozenEstimator = None
+
 from cml.modeling.config import find_repo_root
 from cml.modeling.memory_type_features import derive_memory_type_feature_tokens_from_row
 from cml.modeling.pair_features import (
@@ -1117,7 +1122,7 @@ def _maybe_calibrate_classifier(
     pre_ece = _calibration_error(calibration_y, pre_pred, pre_probs)
     pre_acc = float(accuracy_score(calibration_y, pre_pred))
 
-    calibrated = CalibratedClassifierCV(model, method=method, cv="prefit")
+    calibrated = _build_prefit_calibrated_classifier(model, method=method)
     calibrated.fit(calibration_x, calibration_y)
 
     post_pred = _predict_batched(
@@ -1156,7 +1161,7 @@ def _maybe_calibrate_matrix_classifier(
     pre_ece = _calibration_error(calibration_y, pre_pred, pre_probs)
     pre_acc = float(accuracy_score(calibration_y, pre_pred))
 
-    calibrated = CalibratedClassifierCV(model, method=method, cv="prefit")
+    calibrated = _build_prefit_calibrated_classifier(model, method=method)
     calibrated.fit(calibration_x, calibration_y)
 
     post_pred = calibrated.predict(calibration_x).tolist()
@@ -1175,6 +1180,12 @@ def _maybe_calibrate_matrix_classifier(
         "accuracy_delta": float(post_acc - pre_acc),
     }
     return calibrated, summary
+
+
+def _build_prefit_calibrated_classifier(model: Any, *, method: str) -> Any:
+    if FrozenEstimator is not None:
+        return CalibratedClassifierCV(FrozenEstimator(model), method=method)
+    return CalibratedClassifierCV(model, method=method, cv="prefit")
 
 
 def _task_label_indices(classes: list[str]) -> dict[str, list[int]]:
