@@ -155,6 +155,85 @@ def test_prepare_main_manifest_omits_adversarial_fields(monkeypatch, tmp_path: P
     assert "locked_adversarial_eval_tasks" not in manifest
 
 
+def test_prepare_main_requires_llm_when_updates_are_needed(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "model_pipeline.toml"
+    config_path.write_text("", encoding="utf-8")
+    prepared_dir = tmp_path / "prepared"
+    bootstrap_dir = tmp_path / "bootstrap"
+    cache_dir = tmp_path / "cache"
+
+    monkeypatch.setattr(prepare_module, "_load_dotenv", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        prepare_module,
+        "_load_config",
+        lambda _path: {
+            "paths": {
+                "prepared_dir": str(prepared_dir),
+                "bootstrap_prepared_dir": str(bootstrap_dir),
+                "datasets_cache_dir": str(cache_dir),
+            },
+            "prepare": {},
+            "synthetic_llm": {},
+            "multilingual": {},
+            "datasets": [],
+            "tasks": [{"task_name": "query_intent", "family": "router", "enabled": True}],
+        },
+    )
+    monkeypatch.setattr(
+        prepare_module,
+        "_load_existing_prepared_inputs",
+        lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}),
+    )
+    monkeypatch.setattr(
+        prepare_module,
+        "_missing_task_labels",
+        lambda *_args, **_kwargs: ({"query_intent": {"factual": 10000}}, 10000),
+    )
+    monkeypatch.setattr(
+        prepare_module, "_missing_regression_tasks", lambda *_args, **_kwargs: ({}, 0)
+    )
+    monkeypatch.setattr(prepare_module, "_missing_token_tasks", lambda *_args, **_kwargs: ({}, 0))
+    monkeypatch.setattr(prepare_module, "_enabled_task_label_map", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        prepare_module, "_enabled_regression_tasks", lambda *_args, **_kwargs: set()
+    )
+    monkeypatch.setattr(prepare_module, "_enabled_token_tasks", lambda *_args, **_kwargs: set())
+    monkeypatch.setattr(
+        prepare_module, "_enabled_embedding_pair_tasks", lambda *_args, **_kwargs: (set(), "")
+    )
+    monkeypatch.setattr(
+        prepare_module, "_pair_embedding_cache_summary", lambda *_args, **_kwargs: {}
+    )
+    monkeypatch.setattr(prepare_module, "_load_local_bootstrap_rows", lambda **_kwargs: [])
+    monkeypatch.setattr(prepare_module, "_scan_local_raw_seed_texts", lambda **_kwargs: ([], []))
+    monkeypatch.setattr(
+        prepare_module,
+        "_collect_seed_pools",
+        lambda **_kwargs: ({"router": [], "extractor": [], "pair": []}, []),
+    )
+
+    class _FakeRegistry:
+        def __init__(self, *args, **kwargs) -> None:
+            self.status = {}
+
+        def ensure_required(self) -> None:
+            return None
+
+    monkeypatch.setattr(prepare_module, "_HFRegistry", _FakeRegistry)
+    monkeypatch.setattr(
+        prepare_module,
+        "_LLMGenerator",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("LLM base URL missing")),
+    )
+
+    rc = prepare_module.main(["--config", str(config_path)])
+
+    assert rc == 1
+    assert "Synthetic LLM is required for prepare" in capsys.readouterr().err
+
+
 def test_llm_generator_prefers_env_over_config(monkeypatch) -> None:
     class _FakeClient:
         def __init__(self, *args, **kwargs) -> None:
@@ -382,7 +461,6 @@ def test_router_quality_structured_fill_respects_source_caps_when_llm_available(
         target_per_task_label=20,
         single_pools={"router": ["Remember the weekly planning update for Alice."]},
         rng=random.Random(7),
-        llm_available=True,
     )
 
     def _count(task: str, label: str, prefix: str) -> int:
@@ -422,7 +500,6 @@ def test_router_quality_source_validation_passes_after_llm_top_up() -> None:
         target_per_task_label=20,
         single_pools={"router": ["Remember the weekly planning update for Alice."]},
         rng=random.Random(7),
-        llm_available=True,
     )
 
     for task, labels in task_labels.items():
@@ -477,6 +554,37 @@ def test_fill_structured_memory_type_rows_scales_past_topic_cycle() -> None:
 
     assert rows.count("memory_type", "episodic_event") == 12
     assert len({str(row["text"]) for row in rows.rows}) == 12
+
+
+def test_fill_router_tasks_without_llm_backfills_query_domain_labels() -> None:
+    rows = prepare_module._SingleTaskStore(max_per_task_label=3)
+
+    prepare_module._fill_router_tasks_without_llm(
+        rows=rows,
+        regression_rows=prepare_module._RegressionTaskStore(max_per_task=3),
+        task_labels={
+            "query_domain": [
+                "general",
+                "food",
+                "travel",
+                "finance",
+                "health",
+                "work",
+                "tech",
+                "social",
+            ]
+        },
+        regression_tasks=set(),
+        target_per_task_label=3,
+        single_pools={"router": ["Remember the weekly planning update for Alice."]},
+        rng=random.Random(7),
+    )
+
+    for label in ("general", "food", "travel", "finance", "health", "work", "tech", "social"):
+        assert rows.count("query_domain", label) == 3
+
+    domain_rows = [row for row in rows.rows if str(row["task"]) == "query_domain"]
+    assert all(str(row["source"]).startswith("structured:query_domain:") for row in domain_rows)
 
 
 def test_fill_structured_extractor_rows_scales_constraint_type_past_topic_cycle() -> None:

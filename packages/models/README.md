@@ -170,7 +170,7 @@ flowchart LR
 2. Merge with existing local prepared data when available
 3. Stable `group_id` assignment for public, synthetic, template, and hardened rows
 4. Router hardening, structured ordinal synthesis, and schema source-balancing passes
-5. Missing-only balancing plus LLM synthetic backfill where deficits remain
+5. Missing-only balancing plus structured/LLM synthetic backfill where deficits remain
 6. Hard-negative mining and `pair_text_embeddings.parquet` generation for `embedding_pair` tasks
 7. Group-aware split output (`train`, `test`, `eval`) with split-integrity and source-coverage validation
 
@@ -233,6 +233,8 @@ Current behavior:
 2. Per-label generation uses adaptive batch sizing when outputs are repeatedly unparseable.
 3. Best-effort recovery extracts `text` / `text_a` / `text_b` from partial JSON responses.
 4. Periodic LLM telemetry is printed with request, parse, and acceptance stats.
+
+Prepare now requires a working synthetic LLM configuration for dataset synthesis. If `LLM_EVAL__BASE_URL`/model settings are missing or unreachable, the prepare command fails instead of falling back to non-LLM synthetic completion.
 
 Expected env settings (OpenAI-compatible endpoint example, including vLLM):
 
