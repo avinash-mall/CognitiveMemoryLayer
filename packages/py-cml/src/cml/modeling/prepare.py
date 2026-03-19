@@ -3418,10 +3418,7 @@ def _max_single_source_rows(
     bucket: str,
     *,
     target_per_task_label: int,
-    llm_available: bool,
 ) -> int:
-    if not llm_available:
-        return target_per_task_label
     rules = _LABEL_SOURCE_BALANCE_RULES.get(task_name, {})
     max_ratios = cast("dict[str, float]", rules.get("max_bucket_ratios", {}))
     ratio = max_ratios.get(bucket)
@@ -3622,7 +3619,6 @@ def _fill_structured_router_quality_rows(
     target_per_task_label: int,
     single_pools: dict[str, list[str]],
     rng: random.Random,
-    llm_available: bool = False,
 ) -> None:
     gist_accept_clauses = (
         "the recap keeps the anchor detail and trims only obvious repetition",
@@ -3645,7 +3641,6 @@ def _fill_structured_router_quality_rows(
                 "consolidation_gist_quality",
                 "structured",
                 target_per_task_label=target_per_task_label,
-                llm_available=llm_available,
             )
             structured_count = _count_single_rows_with_source_prefix(
                 rows,
@@ -3784,7 +3779,6 @@ def _fill_structured_router_quality_rows(
                 "forgetting_action_policy",
                 "structured",
                 target_per_task_label=target_per_task_label,
-                llm_available=llm_available,
             )
             structured_count = _count_single_rows_with_source_prefix(
                 rows,
@@ -3944,6 +3938,206 @@ def _fill_structured_router_quality_rows(
                 )
                 if added:
                     structured_count += 1
+
+
+def _fill_structured_router_domain_rows(
+    *,
+    rows: _SingleTaskStore,
+    task_labels: dict[str, list[str]],
+    target_per_task_label: int,
+    single_pools: dict[str, list[str]],
+    rng: random.Random,
+) -> None:
+    if "query_domain" not in task_labels:
+        return
+
+    domain_profiles: dict[str, dict[str, Any]] = {
+        "general": {
+            "memory_types": ["semantic_fact", "observation", "message"],
+            "importance": 0.42,
+            "confidence": 0.58,
+            "access_count": 1,
+            "age_days": 20,
+            "dependency_count": 1,
+            "support_count": 2,
+            "mixed_topic": False,
+            "descriptor": "a broad everyday request without one strong specialty anchor",
+        },
+        "food": {
+            "memory_types": ["preference", "observation", "plan"],
+            "importance": 0.5,
+            "confidence": 0.64,
+            "access_count": 2,
+            "age_days": 14,
+            "dependency_count": 1,
+            "support_count": 2,
+            "mixed_topic": False,
+            "descriptor": "meal planning, groceries, cooking, or restaurant choices",
+        },
+        "travel": {
+            "memory_types": ["plan", "constraint", "observation"],
+            "importance": 0.56,
+            "confidence": 0.67,
+            "access_count": 2,
+            "age_days": 18,
+            "dependency_count": 2,
+            "support_count": 2,
+            "mixed_topic": False,
+            "descriptor": "transport, lodging, flights, routes, or trip timing",
+        },
+        "finance": {
+            "memory_types": ["constraint", "semantic_fact", "preference"],
+            "importance": 0.6,
+            "confidence": 0.7,
+            "access_count": 3,
+            "age_days": 12,
+            "dependency_count": 2,
+            "support_count": 3,
+            "mixed_topic": False,
+            "descriptor": "payments, banking, budgets, subscriptions, or account activity",
+        },
+        "health": {
+            "memory_types": ["observation", "constraint", "plan"],
+            "importance": 0.64,
+            "confidence": 0.66,
+            "access_count": 2,
+            "age_days": 10,
+            "dependency_count": 2,
+            "support_count": 2,
+            "mixed_topic": False,
+            "descriptor": "symptoms, medication, exercise, sleep, or wellness routines",
+        },
+        "work": {
+            "memory_types": ["task_state", "plan", "constraint"],
+            "importance": 0.58,
+            "confidence": 0.69,
+            "access_count": 3,
+            "age_days": 11,
+            "dependency_count": 2,
+            "support_count": 3,
+            "mixed_topic": False,
+            "descriptor": "projects, meetings, deadlines, deliverables, or office coordination",
+        },
+        "tech": {
+            "memory_types": ["tool_result", "knowledge", "reasoning_step"],
+            "importance": 0.55,
+            "confidence": 0.68,
+            "access_count": 2,
+            "age_days": 16,
+            "dependency_count": 2,
+            "support_count": 2,
+            "mixed_topic": False,
+            "descriptor": "software, devices, coding, debugging, or system setup",
+        },
+        "social": {
+            "memory_types": ["conversation", "message", "episodic_event"],
+            "importance": 0.47,
+            "confidence": 0.6,
+            "access_count": 2,
+            "age_days": 17,
+            "dependency_count": 1,
+            "support_count": 2,
+            "mixed_topic": False,
+            "descriptor": "friends, family, invitations, or shared social plans",
+        },
+    }
+    domain_specifics: dict[str, tuple[str, ...]] = {
+        "general": (
+            "the note stays broad enough to fit everyday planning",
+            "the thread has no strong niche vocabulary",
+            "the request reads like a catch-all personal assistant prompt",
+        ),
+        "food": (
+            "the note compares dinner options and pantry constraints",
+            "the thread mentions recipes, ingredients, and timing",
+            "the request centers on meals or restaurants",
+        ),
+        "travel": (
+            "the note tracks flights, commute timing, and bookings",
+            "the thread focuses on routes, hotels, or transport",
+            "the request is anchored in trip logistics",
+        ),
+        "finance": (
+            "the note focuses on payments, balances, or spending",
+            "the thread discusses accounts, transfers, or subscriptions",
+            "the request clearly sits in a money-management context",
+        ),
+        "health": (
+            "the note refers to symptoms, routines, or medication timing",
+            "the thread mentions recovery, exercise, or sleep",
+            "the request is grounded in wellbeing decisions",
+        ),
+        "work": (
+            "the note revolves around project progress and deadlines",
+            "the thread references teammates, meetings, or deliverables",
+            "the request belongs to a professional workflow",
+        ),
+        "tech": (
+            "the note cites code, devices, or debugging details",
+            "the thread talks about tools, systems, or setup steps",
+            "the request is framed in technical language",
+        ),
+        "social": (
+            "the note covers family plans or friend coordination",
+            "the thread centers on invitations, check-ins, or relationships",
+            "the request reads like a social planning exchange",
+        ),
+    }
+
+    for label in task_labels["query_domain"]:
+        profile = domain_profiles.get(label)
+        if profile is None:
+            continue
+        specifics = domain_specifics.get(label, ("the request stays inside one topical lane",))
+        while rows.count("query_domain", label) < target_per_task_label:
+            idx = rows.count("query_domain", label)
+            pack = _topic_pack(idx)
+            other = _other_topic_pack(idx)
+            seed = _seed_fragment(single_pools, rng=rng, idx=idx)
+            boundary = idx % 5 == 0
+            importance = float(profile["importance"]) + (0.03 * (idx % 3))
+            confidence = float(profile["confidence"]) + (0.03 * ((idx + 1) % 3))
+            access_count = int(profile["access_count"]) + (idx % 2)
+            age_days = int(profile["age_days"]) + (idx % 18)
+            dependency_count = int(profile["dependency_count"]) + (idx % 2)
+            support_count = int(profile["support_count"]) + (idx % 2)
+            mixed_topic = bool(profile["mixed_topic"])
+            memory_type = _cycle_choice(
+                list(cast("list[str]", profile["memory_types"])),
+                idx,
+                offset=1 if boundary else 0,
+            )
+            if boundary and label != "general":
+                confidence -= 0.05
+                mixed_topic = True
+            context_tags = [label]
+            if mixed_topic:
+                context_tags.append(other["topic"])
+            detail = _cycle_choice(specifics, idx, offset=1 if boundary else 0)
+            text = (
+                f"Domain routing note {idx}: {pack['gist']}. "
+                f"This request is about {profile['descriptor']}; {detail}. "
+                f"A nearby note still references {seed.lower()} for contrast."
+            )
+            rows.add(
+                "query_domain",
+                text,
+                label,
+                f"structured:query_domain:{label}",
+                extras=_structured_row_extras(
+                    topic=label,
+                    memory_type=memory_type,
+                    importance=importance,
+                    confidence=confidence,
+                    access_count=access_count,
+                    age_days=age_days,
+                    dependency_count=dependency_count,
+                    support_count=support_count,
+                    mixed_topic=mixed_topic,
+                    context_tags=context_tags,
+                    group_id=f"structured:query_domain:{label}:{idx}",
+                ),
+            )
 
 
 def _fill_structured_router_ordinal_rows(
@@ -4558,7 +4752,6 @@ def _fill_router_tasks_without_llm(
     single_pools: dict[str, list[str]],
     rng: random.Random,
     emit_progress: bool = False,
-    llm_available: bool = False,
 ) -> None:
     if emit_progress:
         print("Router fill [structured]: quality backfill...")
@@ -4568,7 +4761,6 @@ def _fill_router_tasks_without_llm(
         target_per_task_label=target_per_task_label,
         single_pools=single_pools,
         rng=rng,
-        llm_available=llm_available,
     )
     if emit_progress:
         print("Router fill [structured]: memory_type backfill...")
@@ -4579,6 +4771,13 @@ def _fill_router_tasks_without_llm(
         single_pools=single_pools,
         rng=rng,
         emit_progress=emit_progress,
+    )
+    _fill_structured_router_domain_rows(
+        rows=rows,
+        task_labels=task_labels,
+        target_per_task_label=target_per_task_label,
+        single_pools=single_pools,
+        rng=rng,
     )
     if emit_progress:
         print("Router fill [structured]: ordinal backfill...")
@@ -5499,7 +5698,7 @@ def _build_router_rows(
     prepare_cfg: dict,
     synthetic_cfg: dict,
     single_pools: dict[str, list[str]],
-    llm: _LLMGenerator | None,
+    llm: _LLMGenerator,
     task_labels: dict[str, list[str]],
     regression_tasks: set[str],
     existing_df: pd.DataFrame | None = None,
@@ -5555,13 +5754,12 @@ def _build_router_rows(
         single_pools=single_pools,
         rng=rng,
         emit_progress=True,
-        llm_available=llm is not None,
     )
 
     llm_task_labels = {
         task: labels for task, labels in task_labels.items() if task not in ORDINAL_ROUTER_TASKS
     }
-    if llm is not None and llm_task_labels:
+    if llm_task_labels:
         _fill_single_task_with_llm(
             rows=rows,
             llm=llm,
@@ -5582,7 +5780,7 @@ def _build_extractor_rows(
     prepare_cfg: dict,
     synthetic_cfg: dict,
     single_pools: dict[str, list[str]],
-    llm: _LLMGenerator | None,
+    llm: _LLMGenerator,
     existing_df: pd.DataFrame | None = None,
     use_multilingual: bool = True,
 ) -> list[dict]:
@@ -5616,19 +5814,18 @@ def _build_extractor_rows(
         rng=rng,
     )
 
-    if llm is not None:
-        print("Extractor fill [llm]: filling remaining labels...")
-        _fill_single_task_with_llm(
-            rows=rows,
-            llm=llm,
-            family="extractor",
-            task_labels=EXTRACTOR_TASK_LABELS,
-            target_per_task_label=target,
-            single_pools=single_pools,
-            rng=rng,
-            max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
-            use_multilingual=use_multilingual,
-        )
+    print("Extractor fill [llm]: filling remaining labels...")
+    _fill_single_task_with_llm(
+        rows=rows,
+        llm=llm,
+        family="extractor",
+        task_labels=EXTRACTOR_TASK_LABELS,
+        target_per_task_label=target,
+        single_pools=single_pools,
+        rng=rng,
+        max_attempts_per_label=int(synthetic_cfg.get("max_attempts_per_label", 80)),
+        use_multilingual=use_multilingual,
+    )
     return rows.rows
 
 
@@ -5639,7 +5836,7 @@ def _build_pair_rows(
     synthetic_cfg: dict,
     single_pools: dict[str, list[str]],
     pair_pool: list[tuple[str, str]],
-    llm: _LLMGenerator | None,
+    llm: _LLMGenerator,
     task_labels: dict[str, list[str]],
     existing_df: pd.DataFrame | None = None,
     use_multilingual: bool = True,
@@ -5674,7 +5871,7 @@ def _build_pair_rows(
     llm_task_labels = {
         task: labels for task, labels in task_labels.items() if task != "schema_match_pair"
     }
-    if llm is not None and llm_task_labels:
+    if llm_task_labels:
         _fill_pair_task_with_llm(
             rows=rows,
             llm=llm,
@@ -6066,20 +6263,18 @@ def _split_by_task_label(
     current_rows = {"train": 0, "test": 0, "eval": 0}
     assignments: dict[str, str] = {}
 
+    task_col = working["task"].astype(str)
+    label_col = working["label"].astype(str)
+    source_col = working["source"].fillna("").astype(str)
+    source_bucket_col = source_col.map(_source_bucket)
+
     group_payloads: list[dict[str, Any]] = []
     for group_id, group in working.groupby("_effective_group_id", sort=False):
         payload = {
             str(key): int(value)
             for key, value in group["_task_label_key"].value_counts().to_dict().items()
         }
-        task_sources = {
-            (str(task), str(source))
-            for task, source in zip(
-                group["task"].astype(str),
-                group["source"].fillna("").astype(str),
-                strict=False,
-            )
-        }
+        task_sources = {(task_col.at[idx], source_col.at[idx]) for idx in group.index}
         group_payloads.append(
             cast(
                 "dict[str, Any]",
@@ -6094,16 +6289,10 @@ def _split_by_task_label(
         )
     group_payloads.sort(key=lambda item: (-int(item["size"]), str(item["group_id"])))
 
-    source_bucket_col = working["source"].fillna("").astype(str).map(_source_bucket)
     for payload in group_payloads:
-        indices = payload["row_indices"]
-        subset = working.loc[indices]
-        tl_bucket: dict[tuple[str, str, str], int] = {}
-        for (task, label), grp in subset.groupby(
-            [subset["task"].astype(str), subset["label"].astype(str)], sort=False
-        ):
-            for bucket, cnt in source_bucket_col.loc[grp.index].value_counts().items():
-                tl_bucket[(str(task), str(label), str(bucket))] = int(cnt)
+        tl_bucket: dict[tuple[str, str, str], int] = defaultdict(int)
+        for idx in cast("list[int]", payload["row_indices"]):
+            tl_bucket[(task_col.at[idx], label_col.at[idx], source_bucket_col.at[idx])] += 1
         cast("dict[str, Any]", payload)["bucket_counts"] = tl_bucket
 
     current_bucket_counts: dict[str, dict[tuple[str, str, str], int]] = {
@@ -7127,25 +7316,19 @@ def main(argv: list[str] | None = None) -> int:
     pool_sizes = {k: len(v) for k, v in single_pools.items()}
     print(f"Seed pool sizes: single={pool_sizes}, pair={len(pair_pool)}")
 
-    llm: _LLMGenerator | None = None
     try:
         llm = _LLMGenerator(synthetic_cfg)
     except Exception as exc:
-        _warn(f"Continuing without synthetic LLM fill: {exc}")
-    else:
-        print(
-            "Using synthetic LLM provider="
-            f"{llm.provider or 'unknown'} model={llm.model} base_url={llm.base_url} "
-            f"temperature={llm.temperature} batch_size={llm.batch_size} "
-            f"concurrency={llm.concurrency} timeout={llm.timeout_seconds}s "
-            f"multilingual={use_multilingual}"
-        )
+        print(f"Synthetic LLM is required for prepare: {exc}", file=sys.stderr)
+        return 1
+    print(
+        "Using synthetic LLM provider="
+        f"{llm.provider or 'unknown'} model={llm.model} base_url={llm.base_url} "
+        f"temperature={llm.temperature} batch_size={llm.batch_size} "
+        f"concurrency={llm.concurrency} timeout={llm.timeout_seconds}s "
+        f"multilingual={use_multilingual}"
+    )
     manifest_warnings: list[str] = []
-    if use_multilingual and "fact_extraction_structured" in token_tasks and llm is None:
-        manifest_warnings.append(
-            "fact_extraction_structured multilingual token prep used deterministic templates only; "
-            "token-specific LLM fill was unavailable."
-        )
     embedding_cache_summary = _pair_embedding_cache_summary(prepared_dir)
     router_split_integrity = _existing_split_integrity(prepared_dir, "router")
     extractor_split_integrity = _existing_split_integrity(prepared_dir, "extractor")
@@ -7376,35 +7559,23 @@ def main(argv: list[str] | None = None) -> int:
                 "llm_temperature": synthetic_cfg["temperature"],
                 "token": token_prepare_cfg,
             },
-            "synthetic_llm": (
-                {
-                    "enabled": True,
-                    "provider": llm.provider,
-                    "model": llm.model,
-                    "base_url": llm.base_url,
-                    "temperature": llm.temperature,
-                    "top_p": llm.top_p,
-                    "batch_size": llm.batch_size,
-                    "concurrency": llm.concurrency,
-                    "max_tokens": llm.max_tokens,
-                    "max_attempts_per_label": int(synthetic_cfg["max_attempts_per_label"]),
-                    "log_stats_every_seconds": float(synthetic_cfg["log_stats_every_seconds"]),
-                    "log_zero_progress_every": int(synthetic_cfg["log_zero_progress_every"]),
-                    "parse_failure_log_every": int(synthetic_cfg["parse_failure_log_every"]),
-                    "log_request_failures": bool(synthetic_cfg["log_request_failures"]),
-                    "local_raw_scan_rows_per_file": int(
-                        synthetic_cfg["local_raw_scan_rows_per_file"]
-                    ),
-                }
-                if llm is not None
-                else {
-                    "enabled": False,
-                    "provider": synthetic_cfg.get("provider", ""),
-                    "model": synthetic_cfg.get("model", ""),
-                    "base_url": synthetic_cfg.get("base_url", ""),
-                    "reason": "Synthetic LLM unavailable; deterministic/public data only.",
-                }
-            ),
+            "synthetic_llm": {
+                "enabled": True,
+                "provider": llm.provider,
+                "model": llm.model,
+                "base_url": llm.base_url,
+                "temperature": llm.temperature,
+                "top_p": llm.top_p,
+                "batch_size": llm.batch_size,
+                "concurrency": llm.concurrency,
+                "max_tokens": llm.max_tokens,
+                "max_attempts_per_label": int(synthetic_cfg["max_attempts_per_label"]),
+                "log_stats_every_seconds": float(synthetic_cfg["log_stats_every_seconds"]),
+                "log_zero_progress_every": int(synthetic_cfg["log_zero_progress_every"]),
+                "parse_failure_log_every": int(synthetic_cfg["parse_failure_log_every"]),
+                "log_request_failures": bool(synthetic_cfg["log_request_failures"]),
+                "local_raw_scan_rows_per_file": int(synthetic_cfg["local_raw_scan_rows_per_file"]),
+            },
             "datasets": registry.status,
             "configured_tasks": {
                 "router": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),

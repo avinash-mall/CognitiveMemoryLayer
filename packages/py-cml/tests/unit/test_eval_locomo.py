@@ -28,7 +28,9 @@ def test_dashboard_post_sends_csrf_header(monkeypatch) -> None:
 
     monkeypatch.setattr("cml.eval.locomo.requests", SimpleNamespace(post=_fake_post))
 
-    result = _dashboard_post("http://localhost:8000", "test-key", "/consolidate", {"tenant_id": "t"})
+    result = _dashboard_post(
+        "http://localhost:8000", "test-key", "/consolidate", {"tenant_id": "t"}
+    )
 
     assert result == {"ok": True}
     assert captured["headers"]["X-Requested-With"] == "XMLHttpRequest"
