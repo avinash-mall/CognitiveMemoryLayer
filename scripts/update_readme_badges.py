@@ -71,8 +71,8 @@ def get_version(root: Path | None = None) -> str:
     """Match the repo's version-resolution order without depending on hatchling."""
     root = root or REPO_ROOT
     return (
-        _read_version_from_env_file(root)
-        or os.environ.get("VERSION")
+        os.environ.get("VERSION")
+        or _read_version_from_env_file(root)
         or _read_version_from_version_file(root)
         or "0.0.0"
     )

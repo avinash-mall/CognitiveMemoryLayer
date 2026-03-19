@@ -11,6 +11,22 @@ Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Iss
 
 Implementations from [CML Audit 2026-03-06](../../ProjectPlan/BaseCML/CML_Audit_2026-03-06.md) (server: constraint-first turn, ranked memories, graph expansion, typed reconsolidation — no SDK API changes) and [Packages Audit 2026-03-06](../../ProjectPlan/BaseCML/Packages_Audit_2026-03-06.md) (PKG-02, PKG-04, PKG-05, PKG-06, PKG-08, PKG-09).
 
+## [1.3.8] - 2026-03-19
+
+### Fixed
+
+- **Locomo eval data bootstrap** — `cml-eval run-locomo` and `run-full` now recover missing eval inputs automatically by downloading `locomo10.json` from the upstream LoCoMo repo and rebuilding `unified_input_samples_v2.json` from the checked-out repository assets.
+- **Dashboard consolidation compatibility** — LoCoMo evaluation dashboard POSTs now include `X-Requested-With: XMLHttpRequest`, fixing consolidation and reconsolidation calls on CML servers with CSRF protection enabled.
+- **Tag-driven release versioning** — `hatch_build.py` and the README badge updater now honor the `VERSION` environment variable before the local `.env` or committed `VERSION` file, so GitHub tag releases publish the tagged `py-cml` version instead of a stale local override.
+
+### Tests
+
+- Added unit coverage for eval-data auto-rebuild paths and dashboard CSRF header behavior.
+
+### Documentation
+
+- Updated the `py-cml` release guide to match the monorepo version sources used by the Hatch metadata hook.
+
 ### Added
 
 - **Modeling strict/allow-skips parity** - `cml-models train` and `cml-models pipeline` now expose `--strict` and `--allow-skips`; strict is the default (`TrainConfig.strict=True`).

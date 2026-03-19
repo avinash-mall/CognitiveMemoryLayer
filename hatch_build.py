@@ -1,9 +1,15 @@
-"""Hatch build plugin: set package version from .env (VERSION) or env var or VERSION file."""
+"""Hatch build plugin: set package version from env var, then .env, then VERSION file."""
 
 import os
 from pathlib import Path
 
-from hatchling.metadata.plugin.interface import MetadataHookInterface
+try:
+    from hatchling.metadata.plugin.interface import MetadataHookInterface
+except ImportError:
+    class MetadataHookInterface:  # type: ignore[no-redef]
+        """Fallback shim so helper functions remain importable outside hatch builds."""
+
+        root: str
 
 
 def get_version(root: Path | None = None) -> str:
@@ -13,8 +19,8 @@ def get_version(root: Path | None = None) -> str:
     if root is None:
         root = Path(__file__).resolve().parent
     return (
-        _read_version_from_env_file(root)
-        or os.environ.get("VERSION")
+        os.environ.get("VERSION")
+        or _read_version_from_env_file(root)
         or _read_version_from_version_file(root)
         or "0.0.0"
     )
@@ -44,7 +50,7 @@ def _read_version_from_version_file(root: Path) -> str | None:
 
 
 class VersionFromEnvMetadataHook(MetadataHookInterface):
-    """Set project version from .env (VERSION=...), then env var VERSION, then VERSION file."""
+    """Set project version from env var VERSION, then .env, then VERSION file."""
 
     def update(self, metadata: dict) -> None:
         root = Path(self.root)
