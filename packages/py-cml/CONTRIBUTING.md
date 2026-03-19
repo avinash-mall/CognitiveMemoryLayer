@@ -117,7 +117,10 @@ Releases are published to PyPI when a tag matching `py-cml-v*` is pushed. The wo
 
 ### Before each release
 
-1. **Bump version** in `packages/py-cml/pyproject.toml` and `packages/py-cml/src/cml/_version.py` (e.g. `0.1.0` → `0.1.1`).
+1. **Bump version** in the monorepo version sources:
+   - root `VERSION`
+   - `packages/py-cml/src/cml/_version.py`
+   If you keep a local `.env` with `VERSION=...` for badge tooling or local builds, update it too or unset it before building. The build metadata is resolved by [`hatch_build.py`](../../hatch_build.py). GitHub release builds set `VERSION` from the `py-cml-v*` tag, which now overrides both the local `.env` and the committed `VERSION` file.
 2. **Update CHANGELOG.md** — add a `## [X.Y.Z] - YYYY-MM-DD` section and move entries from Unreleased.
 3. **Commit and push to `main`:** e.g. `chore(py-cml): prepare release v0.1.1`
 
@@ -129,7 +132,7 @@ From the repository root, after the version bump is pushed to `main`:
 
 ```bash
 git pull origin main
-git tag py-cml-v0.1.0   # use the same version as in pyproject.toml
+git tag py-cml-v0.1.0   # use the same version as VERSION / cml/_version.py
 git push origin py-cml-v0.1.0
 ```
 

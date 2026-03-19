@@ -12,14 +12,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
+from typing import Any
 
-from cml.eval.config import find_repo_root, load_repo_dotenv
+from cml.eval.config import ensure_unified_eval_data, find_repo_root, load_repo_dotenv
 from cml.eval.types import LocomoEvalConfig
 
 try:
-    import requests
+    import requests as _requests
 except ImportError:
-    requests = None  # type: ignore[assignment]
+    requests: Any = None
+else:
+    requests = _requests
 
 try:
     from tqdm import tqdm
@@ -280,7 +283,11 @@ def _dashboard_post(
 ) -> dict:
     """POST to a dashboard endpoint; raises on non-2xx. Used for consolidate and reconsolidate."""
     url = f"{base_url.rstrip('/')}/api/v1/dashboard{path}"
-    headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
+    headers = {
+        "X-API-Key": api_key,
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+    }
     last_resp = None
     for attempt in range(max_attempts):
         resp = requests.post(url, json=body, headers=headers, timeout=120)
@@ -689,6 +696,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
     """Run LoCoMo-Plus evaluation and return prediction records."""
     _ensure_eval_dependencies()
     has_locomo_path = _ensure_locomo_plus_path()
+    unified_file = ensure_unified_eval_data(Path(config.unified_file), repo_root=_REPO_ROOT)
 
     out_dir = Path(config.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -709,7 +717,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
     else:
         load_unified_samples = _load_unified_samples_builtin
 
-    samples = load_unified_samples(str(config.unified_file))
+    samples = load_unified_samples(str(unified_file))
     total = len(samples)
     if config.limit_samples:
         samples = samples[: config.limit_samples]

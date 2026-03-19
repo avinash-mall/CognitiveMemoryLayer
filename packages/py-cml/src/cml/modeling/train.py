@@ -23,6 +23,7 @@ import os
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1122,7 +1123,23 @@ def _maybe_calibrate_classifier(
     pre_ece = _calibration_error(calibration_y, pre_pred, pre_probs)
     pre_acc = float(accuracy_score(calibration_y, pre_pred))
 
-    calibrated = _build_prefit_calibrated_classifier(model, method=method)
+    cv_splits = _calibration_cv_splits(calibration_y)
+    if FrozenEstimator is not None and cv_splits is None:
+        summary = {
+            "method": method,
+            "split": str(train_cfg.get("calibration_split", "eval") or "eval"),
+            "rows": len(calibration_y),
+            "pre_ece": pre_ece,
+            "post_ece": pre_ece,
+            "pre_accuracy": pre_acc,
+            "post_accuracy": pre_acc,
+            "accuracy_delta": 0.0,
+            "skipped": True,
+            "reason": "insufficient_class_examples",
+        }
+        return model, summary
+
+    calibrated = _build_prefit_calibrated_classifier(model, method=method, cv_splits=cv_splits)
     calibrated.fit(calibration_x, calibration_y)
 
     post_pred = _predict_batched(
@@ -1161,7 +1178,23 @@ def _maybe_calibrate_matrix_classifier(
     pre_ece = _calibration_error(calibration_y, pre_pred, pre_probs)
     pre_acc = float(accuracy_score(calibration_y, pre_pred))
 
-    calibrated = _build_prefit_calibrated_classifier(model, method=method)
+    cv_splits = _calibration_cv_splits(calibration_y)
+    if FrozenEstimator is not None and cv_splits is None:
+        summary = {
+            "method": method,
+            "split": str(train_cfg.get("calibration_split", "eval") or "eval"),
+            "rows": len(calibration_y),
+            "pre_ece": pre_ece,
+            "post_ece": pre_ece,
+            "pre_accuracy": pre_acc,
+            "post_accuracy": pre_acc,
+            "accuracy_delta": 0.0,
+            "skipped": True,
+            "reason": "insufficient_class_examples",
+        }
+        return model, summary
+
+    calibrated = _build_prefit_calibrated_classifier(model, method=method, cv_splits=cv_splits)
     calibrated.fit(calibration_x, calibration_y)
 
     post_pred = calibrated.predict(calibration_x).tolist()
@@ -1182,9 +1215,20 @@ def _maybe_calibrate_matrix_classifier(
     return calibrated, summary
 
 
-def _build_prefit_calibrated_classifier(model: Any, *, method: str) -> Any:
+def _calibration_cv_splits(calibration_y: list[str]) -> int | None:
+    min_class_count = min(Counter(calibration_y).values(), default=0)
+    if min_class_count < 2:
+        return None
+    return min(5, min_class_count)
+
+
+def _build_prefit_calibrated_classifier(
+    model: Any, *, method: str, cv_splits: int | None = None
+) -> Any:
     if FrozenEstimator is not None:
-        return CalibratedClassifierCV(FrozenEstimator(model), method=method)
+        if cv_splits is None:
+            raise ValueError("cv_splits is required when FrozenEstimator calibration is enabled")
+        return CalibratedClassifierCV(FrozenEstimator(model), method=method, cv=cv_splits)
     return CalibratedClassifierCV(model, method=method, cv="prefit")
 
 

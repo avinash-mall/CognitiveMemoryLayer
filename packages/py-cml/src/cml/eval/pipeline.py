@@ -12,6 +12,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from cml.eval.config import ensure_unified_eval_data
 from cml.eval.locomo import run_locomo_plus
 from cml.eval.report import generate_locomo_report
 from cml.eval.types import FullEvalConfig, LocomoEvalConfig
@@ -138,7 +139,8 @@ def _wait_for_health(url: str, *, poll_interval: int, timeout_sec: int) -> tuple
 def run_full_eval(config: FullEvalConfig) -> int:
     repo_root = Path(config.repo_root).resolve()
     paths = _resolve_paths(repo_root)
-    required = [paths.compose_file, paths.unified_file, repo_root / "evaluation" / "locomo_plus"]
+    ensure_unified_eval_data(paths.unified_file, repo_root=repo_root)
+    required = [paths.compose_file, repo_root / "evaluation" / "locomo_plus"]
     missing = [str(p) for p in required if not p.exists()]
     if missing:
         raise FileNotFoundError(
