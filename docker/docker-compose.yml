@@ -1,10 +1,9 @@
-# Phase 1: PostgreSQL (pgvector), Neo4j, Redis, and app test runner
-# All settings read from ../.env; see .env.example for Docker infrastructure and app/api vars.
+# Phase 1: PostgreSQL (pgvector), Neo4j, Redis, and app test runner.
+# Compose interpolates from ../.env, but infra services only receive the vars
+# they actually need so app-specific settings do not leak into database images.
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    env_file:
-      - ../.env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-memory}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memory}
@@ -19,9 +18,10 @@ services:
 
   neo4j:
     image: neo4j:5.26-community
-    env_file:
-      - ../.env
     environment:
+      # The official Neo4j image treats most NEO4J_* env vars as config keys.
+      # Passing the whole .env here can turn vars like NEO4J_USER/PASSWORD into
+      # invalid neo4j.conf entries and make the container exit at startup.
       NEO4J_AUTH: ${NEO4J_AUTH:-${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}}
     ports:
       - "7474:7474"
@@ -35,8 +35,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    env_file:
-      - ../.env
     ports:
       - "6379:6379"
     healthcheck:

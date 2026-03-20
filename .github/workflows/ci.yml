@@ -92,7 +92,11 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Start stack
-        run: docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml up -d postgres neo4j redis api
+        run: |
+          if ! docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml up -d postgres neo4j redis api; then
+            docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml logs neo4j postgres redis api || true
+            exit 1
+          fi
 
       - name: Wait for API
         run: |
@@ -159,4 +163,3 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
