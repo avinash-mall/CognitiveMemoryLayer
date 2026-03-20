@@ -11,7 +11,14 @@ Thank you for your interest in contributing. This document outlines how to get s
    cd CognitiveMemoryLayer
    python -m venv .venv
    source .venv/bin/activate   # or `.venv\Scripts\activate` on Windows
-   pip install -e ".[dev]"
+   pip install -e ".[dev,server]"
+   ```
+
+   Add extras as needed:
+
+   ```bash
+   pip install -e ".[embedded]"        # embedded engine / embedded tests
+   pip install -e ".[modeling,eval]"   # modeling and evaluation workflows
    ```
 
 2. **Environment**

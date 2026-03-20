@@ -5,7 +5,7 @@ This document describes how to run the test suite for the Cognitive Memory Layer
 ## Prerequisites
 
 - **Python 3.11+**
-- Project dependencies installed (e.g. `pip install -e ".[dev]"` from repo root, or `pip install -e ".[dev,embedded]"` for embedded tests)
+- Project dependencies installed (e.g. `pip install -e ".[dev,server]"` from repo root for server tests, or `pip install -e ".[dev,server,embedded,modeling,eval]"` for the full monorepo suite)
 
 ## Quick start
 
@@ -170,7 +170,7 @@ Tests read **all** configuration from the project root **`.env`** (loaded via `c
 
 - **Integration/e2e:** Require the CML API to be running. Set `CML_API_KEY` and `CML_BASE_URL` in repo root `.env` (use same value as server `AUTH__API_KEY`, e.g. `test-key`). Tests use `CML_TEST_URL` / `CML_TEST_API_KEY` when set, else `CML_BASE_URL` / `CML_API_KEY`. To run the API with test keys without editing `.env`, use: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.test-key.yml up -d api` (see `docker/docker-compose.test-key.yml`).
 - **Rate-limit note:** `/api/v1/health` and requests using local `test-key` are exempt from throttling to avoid false failures during integration/e2e test bursts.
-- **Embedded tests:** Require `pip install -e ".[embedded]"` in `packages/py-cml` so `aiosqlite` and embedded dependencies are available. Embedded config reads `EMBEDDING_INTERNAL__DIMENSIONS` (and other `EMBEDDING_INTERNAL__*` / `LLM_INTERNAL__*` vars) from `.env` when not set in code.
+- **Embedded tests:** Require `pip install -e ".[dev,embedded]"` from the repo root so `aiosqlite` and embedded dependencies are available. Embedded config reads `EMBEDDING_INTERNAL__DIMENSIONS` (and other `EMBEDDING_INTERNAL__*` / `LLM_INTERNAL__*` vars) from `.env` when not set in code.
 
 ### Optional LLM/embedding tests (skip when unavailable)
 

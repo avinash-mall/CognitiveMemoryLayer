@@ -1021,6 +1021,18 @@ def test_thinking_disable_policy_warns_for_openai_pro_and_codex_variants() -> No
     assert "Codex-only reasoning variant" in codex_policy["warning"]
 
 
+def test_thinking_disable_policy_requires_exact_openai_host_match() -> None:
+    openai_policy = prepare_module._thinking_disable_policy(
+        provider="openai_compatible",
+        base_url="https://api.openai.com.attacker.invalid/v1",
+        model_name="gpt-5-mini",
+        model_metadata={"id": "gpt-5-mini", "owned_by": "someone-else"},
+    )
+
+    assert openai_policy["reasoning_effort"] is None
+    assert openai_policy["warning"] == ""
+
+
 def test_looks_like_thinking_output_detects_reasoning_preamble() -> None:
     assert prepare_module._looks_like_thinking_output(
         "Okay, let's tackle this problem. The user wants me to generate JSON."
