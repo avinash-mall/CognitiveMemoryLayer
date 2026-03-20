@@ -2099,9 +2099,9 @@ def _thinking_disable_policy(
     if any(token in lowered for token in ("gpt-oss", "gpt_oss", "gptoss")):
         policy["assistant_prefill"] = "<think></think>\n"
 
-    is_openai = provider_lower == "openai" or "api.openai.com" in host or owner == "openai"
-    is_gemini_openai = "generativelanguage.googleapis.com" in host or lowered.startswith("gemini-")
-    is_deepseek = "api.deepseek.com" in host or lowered.startswith("deepseek-")
+    is_openai = provider_lower == "openai" or host == "api.openai.com" or owner == "openai"
+    is_gemini_openai = host == "generativelanguage.googleapis.com" or lowered.startswith("gemini-")
+    is_deepseek = host == "api.deepseek.com" or lowered.startswith("deepseek-")
 
     if is_openai:
         if lowered.startswith(("gpt-5-pro", "gpt-5.2-pro", "o3-pro")):

@@ -408,8 +408,8 @@ Full details: [packages/models/README.md](packages/models/README.md) &#8226; SDK
 ## Quick Start
 
 ```bash
-# 1. Install
-pip install -e .
+# 1. Install server/runtime deps (editable monorepo install)
+pip install -e ".[server,dev]"
 
 # 2. Configure
 cp .env.example .env   # Set DATABASE__POSTGRES_URL and AUTH__API_KEY
@@ -421,6 +421,8 @@ docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
 alembic upgrade head
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 ```
+
+For an SDK-only editable install, `pip install -e .` is enough; the API server/database stack lives in the `server` extra.
 
 <details>
 <summary><strong>Docker one-liner</strong></summary>

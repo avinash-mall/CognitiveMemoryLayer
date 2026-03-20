@@ -39,10 +39,13 @@ pip install cognitive-memory-layer[embedded]
 From the monorepo, the server and SDK are built from the **repository root** (single `pyproject.toml`). Install in editable mode with optional extras:
 
 ```bash
-# From repo root: install server + SDK
+# From repo root: install SDK only
 pip install -e .
 
-# With embedded mode (in-process engine)
+# From repo root: install server + SDK
+pip install -e ".[server,dev]"
+
+# From repo root: install SDK with embedded mode (in-process engine)
 pip install -e ".[embedded]"
 ```
 

@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse
 
 import redis.asyncio as redis
 import structlog
@@ -21,6 +22,11 @@ _logger = structlog.get_logger(__name__)
 # Pool sizing: max persistent connections and extra under peak load
 _PG_POOL_SIZE = 20
 _PG_MAX_OVERFLOW = 10
+
+
+def _neo4j_host_allows_empty_password(url: str) -> bool:
+    host = str(urlparse(url).hostname or "").strip().lower()
+    return host in {"localhost", "127.0.0.1", "::1"}
 
 
 def _attach_pool_metrics(engine: AsyncEngine) -> None:
@@ -87,7 +93,9 @@ class DatabaseManager:
             class_=AsyncSession,
             expire_on_commit=False,
         )
-        if not (db.neo4j_password or "").strip() and "localhost" not in (db.neo4j_url or ""):
+        if not (db.neo4j_password or "").strip() and not _neo4j_host_allows_empty_password(
+            db.neo4j_url or ""
+        ):
             raise ValueError(
                 "Neo4j password is required. Set DATABASE__NEO4J_PASSWORD in environment."
             )

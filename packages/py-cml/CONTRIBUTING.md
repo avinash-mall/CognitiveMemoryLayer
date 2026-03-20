@@ -6,18 +6,11 @@ Thanks for your interest in the CognitiveMemoryLayer Python SDK. This guide cove
 
 1. Fork and clone the CognitiveMemoryLayer repository (or work in a branch if you have write access).
 2. Create a virtual environment (recommended): `python -m venv .venv` then activate it.
-3. Install the package in editable mode with dev dependencies.
+3. Install the package in editable mode with dev dependencies from the repository root (the monorepo uses a single root `pyproject.toml`).
 
 From the **repository root**:
 
 ```bash
-pip install -e "packages/py-cml[dev]"
-```
-
-Or from inside the package:
-
-```bash
-cd packages/py-cml
 pip install -e ".[dev]"
 ```
 
@@ -46,7 +39,7 @@ Unit tests cover config, exceptions, retry logic, transport (including 403/422/4
 
 If `CML_TEST_API_KEY` is unset, the integration and e2e conftests use `CML_API_KEY` and `CML_BASE_URL` from the repo root `.env` (set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`). If the server is unreachable, tests are skipped. Optional LLM/embedding tests skip when the service is unavailable (see tests/README.md § Optional LLM/embedding tests).
 
-**Embedded tests** (require `pip install -e ".[dev,embedded]"` and CML engine):
+**Embedded tests** (require `pip install -e ".[dev,embedded]"` from the repository root and the CML engine):
 
 ```bash
 pytest tests/embedded/ -v -m embedded
