@@ -672,7 +672,9 @@ def phase_b_qa(
                 time.sleep(QA_READ_DELAY_SEC)
             if category == "Cognitive":
                 user_content = (
-                    (llm_context or "(No retrieved context.)") + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+                    (llm_context or "(No retrieved context.)")
+                    + "\n\n"
+                    + COGNITIVE_PROMPT.format(trigger)
                 )
             else:
                 user_content = (
@@ -681,7 +683,8 @@ def phase_b_qa(
             user_contents.append(user_content)
             meta.append(
                 {
-                    "question_input": trigger or ("Context dialogue (cue awareness)" if category == "Cognitive" else trigger),
+                    "question_input": trigger
+                    or ("Context dialogue (cue awareness)" if category == "Cognitive" else trigger),
                     "evidence": sample.get("evidence", ""),
                     "category": category,
                     "ground_truth": sample.get("answer") or "",
@@ -689,7 +692,10 @@ def phase_b_qa(
                 }
             )
 
-        print(f"  [Phase B/vLLM] Running batched inference on {len(user_contents)} prompts...", flush=True)
+        print(
+            f"  [Phase B/vLLM] Running batched inference on {len(user_contents)} prompts...",
+            flush=True,
+        )
         conversations = [[{"role": "user", "content": c}] for c in user_contents]
         predictions = generate_batch(qa_model, conversations, temperature=0.0, max_tokens=256)
 
@@ -709,7 +715,9 @@ def phase_b_qa(
 
     else:
         # --- Sequential HTTP path (default) ---
-        for i in _tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False):
+        for i in _tqdm(
+            range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False
+        ):
             sample = samples_qa[i]
             tenant_id = f"lp-{i}"
             trigger = (sample.get("trigger") or "").strip()
@@ -747,7 +755,9 @@ def phase_b_qa(
 
             prediction = _llm_chat(user_content, backend=backend)
             ground_truth = sample.get("answer")
-            if ground_truth is None or (isinstance(ground_truth, str) and ground_truth.strip() == ""):
+            if ground_truth is None or (
+                isinstance(ground_truth, str) and ground_truth.strip() == ""
+            ):
                 ground_truth = ""
             record = {
                 "question_input": question_input,
@@ -760,7 +770,9 @@ def phase_b_qa(
             if sample.get("time_gap"):
                 record["time_gap"] = sample["time_gap"]
             records.append(record)
-            pred_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+            pred_file.write_text(
+                json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
     empty_count = sum(1 for r in records if not (r.get("prediction") or "").strip())
     if empty_count:
