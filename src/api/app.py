@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -134,6 +134,13 @@ def create_app() -> FastAPI:
         app.mount(
             "/dashboard/static", StaticFiles(directory=str(_DASHBOARD_DIR)), name="dashboard-static"
         )
+
+        @app.get("/favicon.ico", include_in_schema=False)
+        async def dashboard_favicon():
+            icon = _DASHBOARD_DIR / "favicon.ico"
+            if icon.is_file():
+                return FileResponse(str(icon))
+            return Response(status_code=204)
 
         @app.get("/dashboard/{rest_of_path:path}")
         async def dashboard_spa(rest_of_path: str = ""):

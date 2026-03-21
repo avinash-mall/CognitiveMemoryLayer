@@ -205,10 +205,22 @@ class TestConstraintExtractor:
         assert constraints[0].constraint_type == "goal"
 
     def test_no_constraint_for_plain_text(self):
-        extractor = ConstraintExtractor()
+        extractor = ConstraintExtractor(
+            base_confidence=0.65,
+            modelpack=_StubModelPack(single={"constraint_type": ("goal", 0.16)}),
+        )
         chunk = _make_chunk("The sky is blue.")
         constraints = extractor.extract(chunk)
         assert len(constraints) == 0
+
+    def test_low_confidence_model_only_prediction_is_ignored(self):
+        extractor = ConstraintExtractor(
+            base_confidence=0.65,
+            modelpack=_StubModelPack(single={"constraint_type": ("value", 0.3)}),
+        )
+        chunk = _make_chunk("The sky is blue.")
+        constraints = extractor.extract(chunk)
+        assert constraints == []
 
     def test_empty_text_returns_empty(self):
         extractor = ConstraintExtractor()

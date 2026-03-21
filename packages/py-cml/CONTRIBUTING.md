@@ -37,7 +37,7 @@ Unit tests cover config, exceptions, retry logic, transport (including 403/422/4
 2. Tests load all configuration from the repo root **`.env`** (see [tests/README.md](../../tests/README.md)). Copy **.env.example** to **.env** and set `AUTH__API_KEY=test-key`, `AUTH__ADMIN_API_KEY=test-key`, `CML_API_KEY=test-key`, and `CML_BASE_URL=http://localhost:8000` so the API and tests use the same key and URL. Optionally set `CML_TEST_API_KEY` and `CML_TEST_URL` to override.
 3. From `packages/py-cml`: `pytest tests/integration/ tests/e2e/ -v -m "integration or e2e"`
 
-If `CML_TEST_API_KEY` is unset, the integration and e2e conftests use `CML_API_KEY` and `CML_BASE_URL` from the repo root `.env` (set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`). If the server is unreachable, tests are skipped. Optional LLM/embedding tests skip when the service is unavailable (see tests/README.md § Optional LLM/embedding tests).
+If `CML_TEST_API_KEY` is unset, the integration and e2e conftests use `CML_API_KEY` and `CML_BASE_URL` from the repo root `.env` (set `CML_API_KEY` to the same value as the server's `AUTH__API_KEY`). These live-server tests fail fast when the server is unreachable so CI and local Docker runs surface misconfigured URLs immediately. Optional LLM/embedding tests still skip when the service is unavailable (see tests/README.md § Optional LLM/embedding tests).
 
 **Embedded tests** (require `pip install -e ".[dev,embedded]"` from the repository root and the CML engine):
 
@@ -51,7 +51,7 @@ pytest tests/embedded/ -v -m embedded
 pytest -m "not integration and not embedded and not e2e" -v
 ```
 
-Shared fixtures live in `tests/conftest.py` (`test_config`, `mock_config`, `sync_client`, `async_client`, and mock response helpers). Integration tests use `live_client` from `tests/integration/conftest.py` and skip if the server is unreachable.
+Shared fixtures live in `tests/conftest.py` (`test_config`, `mock_config`, `sync_client`, `async_client`, and mock response helpers). Integration tests use `live_client` from `tests/integration/conftest.py` and require the server to be reachable.
 
 ## Code style and type checking
 

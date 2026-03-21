@@ -115,6 +115,27 @@ class TestWriteGate:
         assert result.redaction_required is True
         assert "contains_pii" in result.risk_flags
 
+    def test_high_confidence_classifier_without_lexical_pii_cue_does_not_redact(self):
+        class _PIIModelPack:
+            available = True
+
+            def predict_single(self, task: str, text: str):
+                if task == "pii_presence":
+                    return type("P", (), {"label": "pii", "confidence": 0.99})()
+                return None
+
+        gate = WriteGate(modelpack=_PIIModelPack())
+        chunk = SemanticChunk(
+            id="7",
+            text="I prefer dark mode.",
+            chunk_type=ChunkType.PREFERENCE,
+            salience=0.8,
+        )
+        result = gate.evaluate(chunk)
+        assert result.redaction_required is False
+        assert "contains_pii" not in result.risk_flags
+        assert result.decision == WriteDecision.STORE
+
 
 class TestWriteGateChunkTypeToMemoryType:
     """Flow: each ChunkType maps to expected MemoryType(s); decision store/skip as expected."""

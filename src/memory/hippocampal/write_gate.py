@@ -198,6 +198,24 @@ class WriteGate:
     def _check_secrets(self, text: str) -> bool:
         return any(pattern.search(text) for pattern in self._secret_patterns)
 
+    @staticmethod
+    def _has_lexical_pii_cue(text: str) -> bool:
+        """Require an explicit textual cue before trusting classifier-only PII hits."""
+        lowered = text.lower()
+        if re.search(r"[@\d]", text):
+            return True
+
+        lexical_cues = (
+            r"\b(?:email|e-mail)\b",
+            r"\b(?:phone|mobile|cell)\b",
+            r"\b(?:call|text|sms)\b",
+            r"\b(?:contact me|reach me)\b",
+            r"\baddress\b",
+            r"\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|lane|ln\.?|drive|dr\.?|boulevard|blvd\.?)\b",
+            r"\b(?:ssn|social security|passport|license)\b",
+        )
+        return any(re.search(pattern, lowered) for pattern in lexical_cues)
+
     def _predict_pii(self, text: str) -> bool:
         if not text.strip():
             return False
@@ -223,11 +241,14 @@ class WriteGate:
         label = pred.label.strip().lower()
         if label not in {"pii", "present", "contains_pii", "yes", "true"}:
             return False
+
+        # The current classifier can over-fire on benign sentences, so do not
+        # trust classifier-only positives unless the text also contains a
+        # concrete lexical cue. Regex and token-span hits above still win.
+        lexical_cue = self._has_lexical_pii_cue(text)
         if pred.confidence >= 0.85:
-            return True
-        # Medium-confidence model predictions require a lexical PII cue
-        # to reduce false positives on benign text.
-        return bool(re.search(r"[@\d]", text)) and pred.confidence >= 0.5
+            return lexical_cue
+        return lexical_cue and pred.confidence >= 0.5
 
     def _predict_importance(
         self,

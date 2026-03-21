@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-03-21
+
+### Fixed
+
+- **Embedded embedding-provider overrides** — the published SDK now applies embedded-mode embedding settings before engine initialization, so `mock`, `openai`, and other configured providers actually take effect instead of silently falling back to repo-level defaults.
+- **Embedded config provider parity** — `EmbeddedEmbeddingConfig` now accepts the `mock` provider, matching the server/test embedding stack and unblocking package integration and migration coverage.
+
+### Changed
+
+- **Packaging dependencies** — `scikit-learn` is no longer hard-pinned in the published extras/runtime metadata; compatibility is validated against model artifact metadata at runtime instead.
+
 ## [1.4.0] - 2026-03-21
 
 ### Added

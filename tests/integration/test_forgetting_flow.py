@@ -3,10 +3,12 @@
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import update
 
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
 from src.forgetting.worker import ForgettingWorker
+from src.storage.models import MemoryRecordModel
 from src.storage.postgres import PostgresMemoryStore
 
 
@@ -176,6 +178,57 @@ async def test_count_references_to_includes_supersedes_and_evidence_refs(
     )
     count = await store.count_references_to(r1.id)
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_dependency_counts_uses_metadata_evidence_refs(pg_session_factory):
+    """bulk_dependency_counts aggregates supersedes_id and metadata.evidence_refs in SQL."""
+    store = PostgresMemoryStore(pg_session_factory)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+
+    target = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Original memory.",
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    superseding = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Updated memory.",
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    evidence_holder = await store.upsert(
+        MemoryRecordCreate(
+            tenant_id=tenant_id,
+            context_tags=[],
+            type=MemoryType.EPISODIC_EVENT,
+            text="Evidence holder.",
+            metadata={"evidence_refs": [str(target.id)]},
+            provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+        )
+    )
+    assert evidence_holder.id is not None
+
+    async with pg_session_factory() as session:
+        await session.execute(
+            update(MemoryRecordModel)
+            .where(MemoryRecordModel.id == superseding.id)
+            .values(supersedes_id=target.id)
+        )
+        await session.commit()
+
+    missing_id = str(uuid4())
+    counts = await store.bulk_dependency_counts(tenant_id, [str(target.id), missing_id])
+
+    assert counts[str(target.id)] == 2
+    assert counts[missing_id] == 0
 
 
 @pytest.mark.asyncio

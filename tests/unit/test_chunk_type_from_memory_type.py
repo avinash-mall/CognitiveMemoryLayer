@@ -7,6 +7,13 @@ from src.memory.hippocampal.write_gate import WriteGate
 from src.memory.working.models import ChunkType, SemanticChunk
 
 
+class _NoModelPack:
+    available = False
+
+    def predict_single(self, task: str, text: str):
+        return None
+
+
 def _chunk(text: str, chunk_type: ChunkType = ChunkType.STATEMENT) -> SemanticChunk:
     return SemanticChunk(
         id=str(uuid4()),
@@ -41,7 +48,7 @@ def test_preference_memory_type_uses_chunk_type_preference_for_importance(monkey
             },
         )(),
     )
-    gate = WriteGate()
+    gate = WriteGate(modelpack=_NoModelPack())
     chunk = _chunk("I prefer dark mode", chunk_type=ChunkType.STATEMENT)
     unified_result = UnifiedExtractionResult(
         entities=[],
@@ -84,7 +91,7 @@ def test_constraint_memory_type_uses_chunk_type_constraint(monkeypatch):
             },
         )(),
     )
-    gate = WriteGate()
+    gate = WriteGate(modelpack=_NoModelPack())
     chunk = _chunk("I must avoid gluten", chunk_type=ChunkType.STATEMENT)
     unified_result = UnifiedExtractionResult(
         entities=[],
@@ -123,7 +130,7 @@ def test_unknown_memory_type_falls_back_to_statement(monkeypatch):
             },
         )(),
     )
-    gate = WriteGate()
+    gate = WriteGate(modelpack=_NoModelPack())
     chunk = _chunk("Some text", chunk_type=ChunkType.STATEMENT)
     unified_result = UnifiedExtractionResult(
         entities=[],

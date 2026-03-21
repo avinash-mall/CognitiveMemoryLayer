@@ -14,7 +14,7 @@ async def test_export_import_embedded_to_server(live_client, tmp_path):
     from cml.embedded import EmbeddedCognitiveMemoryLayer
     from cml.embedded_utils import export_memories_async, import_memories_async
 
-    async with EmbeddedCognitiveMemoryLayer() as emb:
+    async with EmbeddedCognitiveMemoryLayer(embedding_provider="mock") as emb:
         await emb.write("User loves Python and prefers it for scripting")
         await emb.write("User lives in Paris and works as a developer")
         out_path = tmp_path / "export.jsonl"

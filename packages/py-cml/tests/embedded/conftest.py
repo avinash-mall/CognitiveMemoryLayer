@@ -17,7 +17,16 @@ except ImportError:
 
 import os
 
-os.environ.setdefault("EMBEDDING_INTERNAL__PROVIDER", "mock")
+os.environ["EMBEDDING_INTERNAL__PROVIDER"] = "mock"
+
+try:
+    from src.core.config import get_settings
+    from src.utils.embeddings import clear_embedding_client_cache
+
+    get_settings.cache_clear()
+    clear_embedding_client_cache()
+except Exception:
+    pass
 
 # Optional: skip entire embedded dir if embedded extras not installed.
 # Actual engine (src.memory.orchestrator) may still be missing; tests skip on first use.

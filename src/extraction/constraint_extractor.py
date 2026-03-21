@@ -183,6 +183,10 @@ class ConstraintExtractor:
         text: str,
         chunk: SemanticChunk,
     ) -> tuple[str | None, float]:
+        heuristic = self._heuristic_constraint_type(text)
+        chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
+        mapped = _CHUNK_TYPE_TO_CONSTRAINT.get(str(chunk_type).lower())
+
         supports_task = getattr(self._modelpack, "supports_task", None)
         can_constraint_type = (
             bool(supports_task("constraint_type"))
@@ -194,18 +198,20 @@ class ConstraintExtractor:
             if pred and pred.label:
                 label = pred.label.strip().lower()
                 if label in _ALLOWED_CONSTRAINT_TYPES:
-                    model_confidence = max(self._base_confidence, min(1.0, pred.confidence))
-                    heuristic = self._heuristic_constraint_type(text)
-                    if heuristic and heuristic[1] > model_confidence:
-                        return heuristic
-                    return label, model_confidence
+                    raw_confidence = max(0.0, min(1.0, pred.confidence))
+                    if heuristic:
+                        model_confidence = max(self._base_confidence, raw_confidence)
+                        if heuristic[1] > model_confidence:
+                            return heuristic
+                        return label, model_confidence
+                    if mapped:
+                        return mapped, self._base_confidence
+                    if raw_confidence >= self._base_confidence:
+                        return label, raw_confidence
 
-        heuristic = self._heuristic_constraint_type(text)
         if heuristic:
             return heuristic
 
-        chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
-        mapped = _CHUNK_TYPE_TO_CONSTRAINT.get(str(chunk_type).lower())
         if mapped:
             return mapped, self._base_confidence
         return None, self._base_confidence

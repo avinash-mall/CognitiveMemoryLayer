@@ -1,0 +1,31 @@
+{
+  "manifest_schema_version": 3,
+  "trained_at_utc": "2026-03-15T15:21:42.319250+00:00",
+  "paths": {
+    "trained_models_dir": "packages/models/trained_models"
+  },
+  "build_metadata": {
+    "dependencies": {
+      "scikit_learn": "1.7.2"
+    }
+  },
+  "families": {
+    "router": {
+      "model_path": "packages/models/trained_models/router_model.joblib"
+    },
+    "extractor": {
+      "model_path": "packages/models/trained_models/extractor_model.joblib"
+    },
+    "pair": {
+      "model_path": "packages/models/trained_models/pair_model.joblib"
+    }
+  },
+  "task_models": {
+    "memory_rerank_pair": {
+      "model_path": "packages/models/trained_models/memory_rerank_pair_model.joblib"
+    },
+    "retrieval_constraint_relevance_pair": {
+      "model_path": "packages/models/trained_models/retrieval_constraint_relevance_pair_model.joblib"
+    }
+  }
+}
