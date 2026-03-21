@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-03-21
+
+### Fixed
+
+- **`LogisticRegression` compatibility with scikit-learn 1.6+** — removed the deprecated `multi_class="auto"` argument from the task-conditional calibrator so modeling training keeps working on newer scikit-learn releases.
+
+### Changed
+
+- **Minimal environment template** — refreshed `.env.minimal` to include the current version marker, explicit admin credentials, local OpenAI-compatible eval settings, and local embedding/summarizer defaults for single-machine setups.
+
 ## [1.4.1] - 2026-03-21
 
 ### Fixed
