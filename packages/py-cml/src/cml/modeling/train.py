@@ -1303,7 +1303,6 @@ def _maybe_calibrate_task_conditional_classifier(
         calibrator = LogisticRegression(
             max_iter=500,
             class_weight="balanced",
-            multi_class="auto",
             random_state=int(train_cfg["seed"]),
         )
         cal_x = build_task_conditional_calibration_features(task_probs)
