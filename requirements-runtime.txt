@@ -25,6 +25,10 @@ transformers
 sentence-transformers>=3.0
 einops>=0.7.0
 
+# Modelpack deserialization (sklearn pipelines serialized with joblib)
+scikit-learn>=1.5
+joblib>=1.4
+
 # GPU-accelerated torch (CUDA 12.8 — matches RTX 5070 Ti / driver 580+).
 # nvidia-ctk mounts GPU drivers into the container at runtime; torch just needs
 # the right CUDA wheel installed. CPU torch is pulled as a transitive dep above

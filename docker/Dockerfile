@@ -19,9 +19,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS runtime-dependencies
 
 COPY requirements-runtime.txt ./
+# pyproject.toml + hatch_build.py + py-cml source needed to install the cml
+# package so joblib can deserialize modelpack sklearn pipelines at runtime.
+COPY pyproject.toml hatch_build.py ./
+COPY packages/py-cml ./packages/py-cml
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements-runtime.txt \
+    && pip install --no-cache-dir "." \
     && python -m spacy download en_core_web_sm
 
 # Stage 2b: Dashboard frontend build (neovis.js bundle for offline graph)
