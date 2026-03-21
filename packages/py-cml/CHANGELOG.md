@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Embedded embedding-provider overrides** — the published SDK now applies embedded-mode embedding settings before engine initialization, so `mock`, `openai`, and other configured providers actually take effect instead of silently falling back to repo-level defaults.
 - **Embedded config provider parity** — `EmbeddedEmbeddingConfig` now accepts the `mock` provider, matching the server/test embedding stack and unblocking package integration and migration coverage.
+- **`LogisticRegression` compatibility with scikit-learn 1.6+** — removed the `multi_class="auto"` argument from the task-conditional calibrator in `train.py`; the parameter was removed in scikit-learn 1.6 and "auto" was already the implicit default.
 
 ### Changed
 
