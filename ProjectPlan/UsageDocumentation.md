@@ -238,7 +238,6 @@ Source of truth: `src/core/config.py`.
 Dashboard config writes through `src/core/env_file.py` and persists to `.env`, but:
 
 - DB URLs and key/password fields are write-protected.
-- `features.use_llm_enabled` (master LLM switch) is currently not exposed as an editable dashboard setting.
 
 ## Modelpack Runtime
 
