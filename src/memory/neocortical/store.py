@@ -318,14 +318,18 @@ class NeocorticalStore:
 
     async def _sync_fact_to_graph(self, tenant_id: str, fact: SemanticFact) -> None:
         """Sync a fact to the knowledge graph as a relation. Partition by tenant."""
+        # Use the category (e.g. VALUE, PREFERENCE) as the Neo4j relationship type —
+        # fact.predicate is a hash fragment that can contain colons and fails validation.
+        rel_type = fact.category.value.upper()
         await self.graph.merge_edge(
             tenant_id,
             tenant_id,
             subject=fact.subject,
-            predicate=fact.predicate,
+            predicate=rel_type,
             object=str(fact.value),
             properties={
                 "confidence": fact.confidence,
                 "fact_id": fact.id,
+                "predicate": fact.predicate,
             },
         )
