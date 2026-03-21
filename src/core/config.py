@@ -46,6 +46,7 @@ class EmbeddingInternalSettings(PydanticBaseModel):
     model: str | None = Field(default="nomic-ai/nomic-embed-text-v2-moe")
     dimensions: int | None = Field(default=768)
     local_model: str | None = Field(default="nomic-ai/nomic-embed-text-v2-moe")
+    revision: str | None = Field(default="7710840340a098cfb869c4f65e87cf2b1b70caca")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 

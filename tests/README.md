@@ -75,8 +75,10 @@ Run `python scripts/update_readme_badges.py` from the repo root to refresh versi
 | `test_forgetting_flow.py` | Forgetting decay flow |
 | `test_forgetting_llm_compression.py` | LLM-based compression (optional, `@pytest.mark.requires_llm`) |
 | `test_api_flow.py` | API health and auth flow |
+| `test_api_ingestion.py` | Live API ingestion helper round-trip |
 | `test_dashboard_flow.py` | Dashboard API with real DB |
 | `test_memory_type_storage_retrieval.py` | Memory types round-trip |
+| `test_workflow.py` | Live API write/read workflow |
 
 Key test areas: constraint layer, deep research improvements (stable keys, batch embeddings, write-time facts), **batch extraction** (`RelationExtractor.extract_batch` in `test_extraction_entity_relation_fact.py`; `UnifiedWritePathExtractor` in `test_unified_write_extractor.py`; orchestrator uses `get_internal_llm_client` in `test_orchestrator_seamless_provider.py`), evaluation (timestamp parsing, verbose diagnostics). Use `python scripts/verify_neo4j_graph.py` to run Neo4j diagnostics (relationship types, entity types, long/suspicious entities).
 
@@ -86,7 +88,7 @@ Key test areas: constraint layer, deep research improvements (stable keys, batch
 # Unit tests only (fast; no services required for dashboard/API route tests)
 pytest tests/unit -v
 
-# Integration tests only (requires Postgres; optional Neo4j/Redis/testcontainers)
+# Integration tests only (requires Postgres; some files also require a running API)
 pytest tests/integration -v
 
 # E2E tests only
@@ -121,6 +123,10 @@ Integration tests use the real FastAPI app and expect a database (and optionally
 
 3. **Testcontainers**  
    If `testcontainers` is installed and Docker is available, integration tests can start Postgres/Neo4j containers automatically when `USE_ENV_DB` and `DATABASE__POSTGRES_URL` are not set.
+
+### Live API integration tests
+
+`tests/integration/test_api_ingestion.py` and `tests/integration/test_workflow.py` talk to a running CML API over HTTP. They use `CML_TEST_URL` / `CML_TEST_API_KEY` when set, otherwise `CML_BASE_URL` / `CML_API_KEY`, and create isolated tenant/session ids with fixture-managed cleanup.
 
 ## Coverage
 

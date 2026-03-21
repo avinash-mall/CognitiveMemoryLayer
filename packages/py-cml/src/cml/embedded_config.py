@@ -46,7 +46,7 @@ def _env_int(key: str, default: int = 0) -> int:
 class EmbeddedEmbeddingConfig(BaseModel):
     """Embedding configuration for embedded mode. Read from .env: EMBEDDING_INTERNAL__*."""
 
-    provider: Literal["openai", "local", "openai_compatible", "vllm", "ollama"] = Field(
+    provider: Literal["openai", "local", "openai_compatible", "vllm", "ollama", "mock"] = Field(
         default="local"
     )
     model: str = Field(
@@ -63,7 +63,7 @@ class EmbeddedEmbeddingConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         prov = _env("EMBEDDING_INTERNAL__PROVIDER")
-        if prov and prov in ("openai", "local", "openai_compatible", "vllm", "ollama"):
+        if prov and prov in ("openai", "local", "openai_compatible", "vllm", "ollama", "mock"):
             data = {**data, "provider": prov}
         if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING_INTERNAL__MODEL"):
             data = {**data, "model": _env("EMBEDDING_INTERNAL__MODEL")}

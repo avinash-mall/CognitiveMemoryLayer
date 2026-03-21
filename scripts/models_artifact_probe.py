@@ -17,8 +17,11 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from _shared import load_repo_env, normalize_bool_env
 
@@ -256,6 +259,20 @@ def _runtime_probe() -> dict[str, Any]:
         checks[task] = (
             None if pred is None else {"label": pred.label, "confidence": pred.confidence}
         )
+    runtime_single_samples = {
+        "pii_presence_positive": ("pii_presence", "My email is test@example.com."),
+        "pii_presence_negative": ("pii_presence", "I prefer dark mode."),
+        "constraint_type_positive": (
+            "constraint_type",
+            "I'm trying to save money for a trip.",
+        ),
+        "constraint_type_negative": ("constraint_type", "The sky is blue."),
+    }
+    for check_name, (task, text) in runtime_single_samples.items():
+        pred = mp.predict_single(task, text)
+        checks[check_name] = (
+            None if pred is None else {"label": pred.label, "confidence": pred.confidence}
+        )
     pair_tasks = [
         "scope_match",
         "constraint_rerank",
@@ -296,6 +313,68 @@ def _runtime_probe() -> dict[str, Any]:
         )
     result["checks"] = checks
     return result
+
+
+def _prediction_label_and_confidence(check: Any) -> tuple[str, float]:
+    if not isinstance(check, dict):
+        return "", 0.0
+    label = str(check.get("label") or "").strip().lower()
+    confidence = float(check.get("confidence") or 0.0)
+    return label, confidence
+
+
+def _collect_runtime_mismatches(runtime: dict[str, Any]) -> list[str]:
+    mismatches: list[str] = []
+
+    for err in runtime.get("load_errors", []):
+        mismatches.append(f"[runtime] {err}")
+
+    checks = runtime.get("checks", {})
+    token_tasks = (
+        "pii_span_detection",
+        "fact_extraction_structured",
+        "fact_extraction_structured_multilingual",
+    )
+    for task_name in token_tasks:
+        check = checks.get(task_name)
+        spans = [] if not isinstance(check, dict) else list(check.get("spans") or [])
+        if not spans:
+            mismatches.append(f"[runtime] token task produced no spans: {task_name}")
+
+    positive_pii_labels = {"pii", "present", "contains_pii", "yes", "true"}
+    pii_positive_label, _ = _prediction_label_and_confidence(checks.get("pii_presence_positive"))
+    if pii_positive_label not in positive_pii_labels:
+        mismatches.append("[runtime] pii_presence positive sample was not classified as PII")
+
+    pii_negative_label, pii_negative_conf = _prediction_label_and_confidence(
+        checks.get("pii_presence_negative")
+    )
+    if pii_negative_label in positive_pii_labels and pii_negative_conf >= 0.85:
+        mismatches.append(
+            "[runtime] pii_presence negative sample was classified as PII with high confidence"
+        )
+
+    constraint_positive_label, _ = _prediction_label_and_confidence(
+        checks.get("constraint_type_positive")
+    )
+    if constraint_positive_label != "goal":
+        mismatches.append(
+            "[runtime] constraint_type positive sample did not resolve to the expected goal label"
+        )
+
+    constraint_negative_label, constraint_negative_conf = _prediction_label_and_confidence(
+        checks.get("constraint_type_negative")
+    )
+    if (
+        constraint_negative_label
+        and constraint_negative_label not in {"none", "constraint_other"}
+        and constraint_negative_conf >= 0.5
+    ):
+        mismatches.append(
+            "[runtime] constraint_type negative sample produced a non-none label with high confidence"
+        )
+
+    return mismatches
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -370,16 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.runtime_probe:
         runtime = _runtime_probe()
         result["runtime"] = runtime
-        token_checks = runtime.get("checks", {})
-        for task_name in (
-            "pii_span_detection",
-            "fact_extraction_structured",
-            "fact_extraction_structured_multilingual",
-        ):
-            check = token_checks.get(task_name)
-            spans = [] if not isinstance(check, dict) else list(check.get("spans") or [])
-            if not spans:
-                mismatches.append(f"[runtime] token task produced no spans: {task_name}")
+        mismatches.extend(_collect_runtime_mismatches(runtime))
 
     print(json.dumps(_jsonable(result), indent=2))
     if args.fail_on_mismatch and mismatches:

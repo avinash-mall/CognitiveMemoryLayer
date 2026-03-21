@@ -25,7 +25,9 @@ transformers
 sentence-transformers>=3.0
 einops>=0.7.0
 
-# Modelpack deserialization (sklearn pipelines serialized with joblib)
+# Modelpack deserialization; runtime compatibility is validated against the
+# trained artifact manifest by scripts/models_artifact_probe.py and modelpack
+# load diagnostics.
 scikit-learn>=1.5
 joblib>=1.4
 

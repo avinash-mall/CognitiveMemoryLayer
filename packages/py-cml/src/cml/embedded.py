@@ -187,9 +187,46 @@ class EmbeddedCognitiveMemoryLayer:
         self._sqlite_store = SQLiteMemoryStore(db_path=path)
         await self._sqlite_store.initialize()
 
-        # Use embedding client from engine config (.env: EMBEDDING_INTERNAL__*)
-        # so tests and embedded mode use .env, not a hardcoded HuggingFace model.
-        embedding_client = get_embedding_client()
+        # Build the embedding client from embedded config first, falling back to
+        # repo env defaults only for fields the caller did not override.
+        import os
+
+        from src.core.config import get_settings as get_engine_settings
+        from src.utils.embeddings import clear_embedding_client_cache
+
+        embedding_env_keys = (
+            "EMBEDDING_INTERNAL__PROVIDER",
+            "EMBEDDING_INTERNAL__MODEL",
+            "EMBEDDING_INTERNAL__LOCAL_MODEL",
+            "EMBEDDING_INTERNAL__DIMENSIONS",
+            "EMBEDDING_INTERNAL__API_KEY",
+            "EMBEDDING_INTERNAL__BASE_URL",
+        )
+        previous_embedding_env = {key: os.environ.get(key) for key in embedding_env_keys}
+        embedding_overrides = {
+            "EMBEDDING_INTERNAL__PROVIDER": self._config.embedding.provider,
+            "EMBEDDING_INTERNAL__MODEL": self._config.embedding.model,
+            "EMBEDDING_INTERNAL__LOCAL_MODEL": self._config.embedding.model,
+            "EMBEDDING_INTERNAL__DIMENSIONS": str(self._config.embedding.dimensions),
+            "EMBEDDING_INTERNAL__API_KEY": self._config.embedding.api_key,
+            "EMBEDDING_INTERNAL__BASE_URL": self._config.embedding.base_url,
+        }
+        try:
+            for key, value in embedding_overrides.items():
+                if value in (None, ""):
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = str(value)
+            get_engine_settings.cache_clear()
+            clear_embedding_client_cache()
+            embedding_client = get_embedding_client()
+        finally:
+            for key, value in previous_embedding_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            get_engine_settings.cache_clear()
 
         llm_client: Any | None = None
         # Respect master LLM switch: in non-LLM mode, do not construct an LLM client.

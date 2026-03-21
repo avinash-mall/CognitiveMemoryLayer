@@ -9,6 +9,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from scripts.models_artifact_probe import _collect_runtime_mismatches
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 pytest.importorskip("pandas", reason="models_artifact_probe requires pandas")
@@ -217,3 +219,53 @@ def test_models_artifact_probe_flags_missing_pair_embedding_cache(tmp_path: Path
 
     assert result.returncode == 1
     assert "pair embedding cache missing" in result.stderr
+
+
+def test_collect_runtime_mismatches_flags_dependency_drift_and_bad_sanity_checks() -> None:
+    runtime = {
+        "load_errors": [
+            "dependency version mismatch: scikit-learn trained_with=trained-version installed=installed-version"
+        ],
+        "checks": {
+            "pii_span_detection": {"spans": [[0, 5, "email"]], "confidence": 0.9},
+            "fact_extraction_structured": {"spans": [[0, 5, "location"]], "confidence": 0.9},
+            "fact_extraction_structured_multilingual": {
+                "spans": [[0, 5, "location"]],
+                "confidence": 0.9,
+            },
+            "pii_presence_positive": {"label": "no_pii", "confidence": 0.9},
+            "pii_presence_negative": {"label": "pii", "confidence": 0.99},
+            "constraint_type_positive": {"label": "value", "confidence": 0.8},
+            "constraint_type_negative": {"label": "goal", "confidence": 0.8},
+        },
+    }
+
+    mismatches = _collect_runtime_mismatches(runtime)
+
+    assert any("dependency version mismatch" in mismatch for mismatch in mismatches)
+    assert any("positive sample was not classified as PII" in mismatch for mismatch in mismatches)
+    assert any("negative sample was classified as PII" in mismatch for mismatch in mismatches)
+    assert any("expected goal label" in mismatch for mismatch in mismatches)
+    assert any("negative sample produced a non-none label" in mismatch for mismatch in mismatches)
+
+
+def test_collect_runtime_mismatches_accepts_guardrailed_negative_samples() -> None:
+    runtime = {
+        "load_errors": [],
+        "checks": {
+            "pii_span_detection": {"spans": [[0, 5, "email"]], "confidence": 0.9},
+            "fact_extraction_structured": {"spans": [[0, 5, "location"]], "confidence": 0.9},
+            "fact_extraction_structured_multilingual": {
+                "spans": [[0, 5, "location"]],
+                "confidence": 0.9,
+            },
+            "pii_presence_positive": {"label": "pii", "confidence": 0.99},
+            "pii_presence_negative": {"label": "pii", "confidence": 0.2},
+            "constraint_type_positive": {"label": "goal", "confidence": 0.2},
+            "constraint_type_negative": {"label": "goal", "confidence": 0.2},
+        },
+    }
+
+    mismatches = _collect_runtime_mismatches(runtime)
+
+    assert mismatches == []

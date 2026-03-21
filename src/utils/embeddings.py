@@ -25,7 +25,7 @@ except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 _logger = structlog.get_logger(__name__)
-_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str], "EmbeddingClient"] = {}
+_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str, str], "EmbeddingClient"] = {}
 
 
 @dataclass
@@ -132,7 +132,7 @@ class OpenAIEmbeddings(EmbeddingClient):
 class LocalEmbeddings(EmbeddingClient):
     """Local sentence-transformers embeddings (optional dependency)."""
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, model_name: str | None = None, revision: str | None = None) -> None:
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -147,6 +147,7 @@ class LocalEmbeddings(EmbeddingClient):
         settings = get_settings()
         ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
         name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL
+        model_revision = revision or ei.revision
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
             name = name.split(":")[0]
@@ -157,11 +158,26 @@ class LocalEmbeddings(EmbeddingClient):
                     device = "cuda"
             except Exception:
                 device = "cpu"
-        self.model = SentenceTransformer(name, trust_remote_code=True, device=device)
+        sentence_transformer_kwargs: dict[str, Any] = {
+            "trust_remote_code": True,
+            "device": device,
+            "model_kwargs": {"trust_remote_code": True},
+            "tokenizer_kwargs": {"trust_remote_code": True},
+            "config_kwargs": {"trust_remote_code": True},
+        }
+        if model_revision:
+            sentence_transformer_kwargs["revision"] = model_revision
+        self.model = SentenceTransformer(name, **sentence_transformer_kwargs)
         self.model_name = name
+        self.revision = model_revision
         self.device = device
         self._dimensions = self.model.get_sentence_embedding_dimension()
-        _logger.info("local_embeddings_loaded", model=self.model_name, device=self.device)
+        _logger.info(
+            "local_embeddings_loaded",
+            model=self.model_name,
+            revision=self.revision,
+            device=self.device,
+        )
 
     @property
     def dimensions(self) -> int:
@@ -358,10 +374,11 @@ def get_embedding_client() -> EmbeddingClient:
     dims = ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
     model = ei.model or _DEFAULT_EMBEDDING_MODEL
     local_model = ei.local_model or _DEFAULT_EMBEDDING_MODEL
+    revision = ei.revision or ""
     api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or ""
     base_url = ei.base_url or ""
 
-    cache_key = (provider, model, dims, local_model, api_key, base_url)
+    cache_key = (provider, model, dims, local_model, revision, api_key, base_url)
     cached = _EMBEDDING_CLIENT_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -406,7 +423,7 @@ def get_embedding_client() -> EmbeddingClient:
         client = MockEmbeddingClient(dimensions=dims)
     else:
         # default: local (nomic-embed-text-v2-moe) when provider is local or unset
-        client = LocalEmbeddings(model_name=local_model)
+        client = LocalEmbeddings(model_name=local_model, revision=ei.revision)
 
     _EMBEDDING_CLIENT_CACHE[cache_key] = client
     return client

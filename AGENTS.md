@@ -35,14 +35,13 @@ Must set `DATABASE__POSTGRES_URL` pointing to the local Postgres first.
 ### Running tests
 
 - **Unit tests** (no services needed for most): `pytest tests/unit -v --tb=short`
-- **Integration tests** (require Postgres + migrations): `pytest tests/integration -v --tb=short`
+- **Integration tests** (require Postgres + migrations; `test_api_ingestion.py` and `test_workflow.py` also require a running API): `pytest tests/integration -v --tb=short`
 - **E2E tests** (require running API): `pytest tests/e2e -v`
-- Skip `tests/unit/test_api_ingestion.py` and `tests/unit/test_workflow.py` as they require a running API server and are mislabeled as unit tests.
 - Override injected secrets with local DB values when running integration tests (same approach as for the API server).
 
 ### Memory and embedding model
 
-The local embedding model (`nomic-ai/nomic-embed-text-v2-moe` via sentence-transformers + PyTorch) uses ~3GB RAM. When running tests, set `EMBEDDING_INTERNAL__PROVIDER=openai` to avoid loading the model (unit/integration tests mock embeddings). The API server needs the model loaded for real write/read operations.
+The local embedding model (`nomic-ai/nomic-embed-text-v2-moe` via sentence-transformers + PyTorch) uses ~3GB RAM. When running tests, prefer `EMBEDDING_INTERNAL__PROVIDER=mock` to avoid loading the model unless you are explicitly validating the local embedding path.
 
 ### Linting
 

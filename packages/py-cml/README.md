@@ -18,9 +18,9 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Tests](https://img.shields.io/badge/Tests-323-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
-[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
+[![Version](https://img.shields.io/badge/version-1.4.1-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
-**What's new (1.3.x):** session-scoped `write` route support in `SessionScope`/`AsyncSessionScope`, new dashboard/admin helpers (`dashboard_facts`, `dashboard_invalidate_fact`, `dashboard_export_memories`, `graph_overview`, `admin_consolidate`, `admin_forget`), and wrapper parity updates for `user_timezone`/`timestamp`. See [CHANGELOG](CHANGELOG.md).
+**What's new (1.4.x):** session-scoped `write` route support in `SessionScope`/`AsyncSessionScope`, new dashboard/admin helpers (`dashboard_facts`, `dashboard_invalidate_fact`, `dashboard_export_memories`, `graph_overview`, `admin_consolidate`, `admin_forget`), embedded provider parity fixes, and wrapper parity updates for `user_timezone`/`timestamp`. See [CHANGELOG](CHANGELOG.md).
 
 ---
 

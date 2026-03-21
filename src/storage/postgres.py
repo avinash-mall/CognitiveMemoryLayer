@@ -583,7 +583,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                 COUNT(*) AS cnt
             FROM memory_records,
                  jsonb_array_elements(
-                     COALESCE(meta -> 'evidence_refs', '[]'::jsonb)
+                     COALESCE((metadata::jsonb) -> 'evidence_refs', '[]'::jsonb)
                  ) AS ref(value)
             WHERE tenant_id = :tenant_id
               AND ref.value #>> '{}' = ANY(:ids)

@@ -624,6 +624,14 @@ class ModelPackRuntime:
                     "installed": str(installed_version),
                 }
         if mismatches:
+            for pkg_name, payload in mismatches.items():
+                msg = (
+                    "dependency version mismatch: "
+                    f"{pkg_name} trained_with={payload['trained_with']} "
+                    f"installed={payload['installed']}"
+                )
+                if msg not in self._load_errors:
+                    self._load_errors.append(msg)
             logger.warning(
                 "modelpack_dependency_version_mismatch", extra={"mismatches": mismatches}
             )
