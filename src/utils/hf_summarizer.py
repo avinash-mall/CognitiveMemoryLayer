@@ -79,6 +79,19 @@ class HuggingFaceSummarizer:
             )
             return self._truncate(cleaned, cap)
 
+    def _resolve_device(self) -> int:
+        """Return the effective device index. -1 triggers auto-detection: use GPU 0 if available."""
+        if self.device >= 0:
+            return self.device
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                return 0
+        except ImportError:
+            pass
+        return -1
+
     def _get_pipeline(self) -> Any | None:
         if self._pipeline is not None:
             return self._pipeline
@@ -89,16 +102,17 @@ class HuggingFaceSummarizer:
         try:
             from transformers import pipeline
 
+            effective_device = self._resolve_device()
             pipeline_task: Any = self.task
             self._pipeline = pipeline(
                 pipeline_task,
                 model=self.model,
                 tokenizer=self.model,
-                device=self.device,
+                device=effective_device,
             )
             _logger.info(
                 "hf_summarizer_ready",
-                extra={"model": self.model, "task": self.task, "device": self.device},
+                extra={"model": self.model, "task": self.task, "device": effective_device},
             )
             return self._pipeline
         except Exception as exc:

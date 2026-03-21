@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Compatibility updates for CML server changes from [../../ProjectPlan/BaseCML/Issues.md](../../ProjectPlan/BaseCML/Issues.md) resolutions (F-04, F-13, E-01).
+## [1.4.0] - 2026-03-21
 
-Implementations from [CML Audit 2026-03-06](../../ProjectPlan/BaseCML/CML_Audit_2026-03-06.md) (server: constraint-first turn, ranked memories, graph expansion, typed reconsolidation — no SDK API changes) and [Packages Audit 2026-03-06](../../ProjectPlan/BaseCML/Packages_Audit_2026-03-06.md) (PKG-02, PKG-04, PKG-05, PKG-06, PKG-08, PKG-09).
+### Added
+
+- **vLLM backend for LoCoMo evaluation** — `LocomoEvalConfig` gains two new optional fields: `qa_backend` (default `"openai_compatible"`) and `judge_backend` (default `"call_llm"`). Setting either to `"vllm"` routes Phase B QA and Phase C judge calls through a local vLLM in-process instance with batched GPU inference. Phase B collects all CML contexts first, then issues a single `generate_batch()` call for maximum GPU utilisation.
+- **`cml-eval` vLLM flags** — `cml-eval run-locomo` and `cml-eval run-full` now accept `--qa-backend {openai_compatible,vllm}` and `--judge-backend {call_llm,call_vllm}`.
+- **`call_vllm` implemented** — previously raised `NotImplementedError`; now delegates to the shared vLLM singleton backend.
 
 ## [1.3.8] - 2026-03-19
 

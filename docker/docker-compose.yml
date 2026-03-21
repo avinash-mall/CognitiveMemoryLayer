@@ -58,7 +58,7 @@ services:
       DATABASE__NEO4J_PASSWORD: ${NEO4J_PASSWORD:-password}
       DATABASE__NEO4J_BROWSER_URL: bolt://localhost:7687
       DATABASE__REDIS_URL: redis://redis:6379
-      EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-openai}
+      EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +66,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"
 
   # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
@@ -83,8 +90,8 @@ services:
       DATABASE__NEO4J_PASSWORD: ${NEO4J_PASSWORD:-password}
       DATABASE__NEO4J_BROWSER_URL: bolt://localhost:7687
       DATABASE__REDIS_URL: redis://redis:6379
-      # Default to openai so API starts without sentence-transformers; set EMBEDDING_INTERNAL__PROVIDER=local in .env for local embeddings.
-      EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-openai}
+      # Uses local sentence-transformers on GPU; override to 'openai' for API-based embeddings.
+      EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-local}
       # Pass CI markers through so startup LLM validation can auto-skip in GitHub Actions.
       CI: ${CI:-}
       GITHUB_ACTIONS: ${GITHUB_ACTIONS:-}
@@ -100,6 +107,13 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     command: sh -c "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
