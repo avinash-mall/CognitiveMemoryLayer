@@ -66,6 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ../packages/models/trained_models:/app/packages/models/trained_models:ro
     deploy:
       resources:
         reservations:
@@ -107,6 +109,8 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - ../packages/models/trained_models:/app/packages/models/trained_models:ro
     deploy:
       resources:
         reservations:
