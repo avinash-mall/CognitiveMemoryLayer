@@ -156,8 +156,27 @@ def call_llm(input_prompt: str, model: str, **kwargs) -> str:
 
 
 def call_vllm(input_prompt: str, model: str, **kwargs) -> str:
-    """Call local vLLM. Not implemented."""
-    raise NotImplementedError("call_vllm not implemented yet; use --backend call_test for now.")
+    """Call local vLLM in-process on GPU (single-prompt path; use generate_batch for bulk)."""
+    from task_eval.vllm_backend import generate_single
+
+    temperature = kwargs.get("temperature", 0.3)
+    max_tokens = kwargs.get("max_tokens", 2048)
+    category = kwargs.get("category", "")
+    content = (
+        _build_model_input(input_prompt or "", category=category)
+        if category
+        else _prepend_conv_prefix(input_prompt or "")
+    )
+    try:
+        result = generate_single(
+            model,
+            [{"role": "user", "content": content}],
+            temperature=float(temperature),
+            max_tokens=int(max_tokens),
+        )
+        return result if result else "(empty)"
+    except Exception as e:
+        return f"[vLLM Error: {e}]"
 
 
 def call_model(input_prompt: str, model: str, backend: str = "call_test", **kwargs) -> str:

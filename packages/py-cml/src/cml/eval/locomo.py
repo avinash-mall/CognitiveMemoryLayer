@@ -197,6 +197,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="N",
         help="Number of concurrent workers for Phase A ingestion (default 10)",
     )
+    p.add_argument(
+        "--qa-backend",
+        type=str,
+        default="openai_compatible",
+        choices=["openai_compatible", "vllm"],
+        help=(
+            "Backend for Phase B QA inference. "
+            "'openai_compatible' calls LLM_EVAL__BASE_URL via HTTP (default). "
+            "'vllm' loads the model in-process on GPU and batches all prompts in one pass."
+        ),
+    )
+    p.add_argument(
+        "--judge-backend",
+        type=str,
+        default="call_llm",
+        choices=["call_llm", "call_vllm"],
+        help=(
+            "Backend for Phase C LLM-as-judge. "
+            "'call_llm' uses OpenAI-compatible HTTP API (default). "
+            "'call_vllm' runs inference in-process on GPU."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -384,8 +406,24 @@ def _get_llm_qa_config() -> tuple[str, str, str]:
     return base_url, model, api_key
 
 
-def _llm_chat(user_content: str, max_tokens: int = 256) -> str:
-    """Call LLM for QA using OpenAI-compatible API (provider from .env LLM_EVAL__* / LLM_INTERNAL__*). Retries once on empty."""
+def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_compatible") -> str:
+    """Call LLM for QA. backend='openai_compatible' uses HTTP API; backend='vllm' uses in-process GPU."""
+    if backend == "vllm":
+        _, model, _ = _get_llm_qa_config()
+        try:
+            from task_eval.vllm_backend import generate_single
+        except ImportError:
+            raise ImportError(
+                "task_eval.vllm_backend not found. Run from repo root so evaluation/locomo_plus is on sys.path."
+            )
+        result = generate_single(
+            model,
+            [{"role": "user", "content": user_content}],
+            temperature=0.0,
+            max_tokens=max_tokens,
+        )
+        return result or ""
+
     try:
         from openai import OpenAI
     except ImportError:
@@ -560,6 +598,7 @@ def phase_b_qa(
     limit: int | None,
     out_dir: Path,
     verbose: bool = False,
+    backend: str = "openai_compatible",
 ) -> list[dict]:
     _, qa_model, _ = _get_llm_qa_config()
     samples_qa = samples[:limit] if limit else samples
@@ -593,62 +632,135 @@ def phase_b_qa(
                     )
         except (json.JSONDecodeError, OSError):
             pass
+    backend_label = f"{qa_model}_cml" + ("_vllm" if backend == "vllm" else "")
     if start_index == 0:
         print(
-            f"\n[Phase B] Running QA on {len(samples_qa)} samples (LLM: {qa_model})...", flush=True
+            f"\n[Phase B] Running QA on {len(samples_qa)} samples "
+            f"(LLM: {qa_model}, backend: {backend})...",
+            flush=True,
         )
-    for i in _tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False):
-        sample = samples_qa[i]
-        tenant_id = f"lp-{i}"
-        trigger = (sample.get("trigger") or "").strip()
-        category = sample.get("category", "")
-        if category == "Cognitive":
-            question_input = trigger or "Context dialogue (cue awareness)"
-        else:
-            question_input = trigger
-        read_result = _cml_read(
-            cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
-        )
-        if verbose:
-            assert isinstance(read_result, tuple), "return_full=True yields tuple"
-            llm_context, raw_response = read_result
-            type_counts = _count_memory_types(raw_response)
-            _progress_write(
-                f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
-            )
-        else:
-            assert isinstance(read_result, str), "return_full=False yields str"
-            llm_context = read_result
-        if QA_READ_DELAY_SEC > 0:
-            time.sleep(QA_READ_DELAY_SEC)
 
-        if category == "Cognitive":
-            user_content = (
-                (llm_context or "(No retrieved context.)")
-                + "\n\n"
-                + COGNITIVE_PROMPT.format(trigger)
+    if backend == "vllm":
+        # --- Batched GPU path: collect all CML contexts first, then run one batched vLLM call ---
+        _ensure_locomo_plus_path()
+        from task_eval.vllm_backend import generate_batch
+
+        remaining = samples_qa[start_index:]
+        user_contents: list[str] = []
+        meta: list[dict] = []
+
+        print(f"  [Phase B/vLLM] Fetching {len(remaining)} CML contexts...", flush=True)
+        for i, sample in _tqdm(
+            enumerate(remaining, start=start_index), desc="CML read", unit="sample"
+        ):
+            tenant_id = f"lp-{i}"
+            trigger = (sample.get("trigger") or "").strip()
+            category = sample.get("category", "")
+            read_result = _cml_read(
+                cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
             )
-        else:
-            user_content = (
-                (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+            if verbose:
+                assert isinstance(read_result, tuple)
+                llm_context, raw_response = read_result
+                _progress_write(
+                    f"  [{category}] sample={i} types={_count_memory_types(raw_response)} "
+                    f"context_len={len(llm_context)}"
+                )
+            else:
+                llm_context = read_result  # type: ignore[assignment]
+            if QA_READ_DELAY_SEC > 0:
+                time.sleep(QA_READ_DELAY_SEC)
+            if category == "Cognitive":
+                user_content = (
+                    (llm_context or "(No retrieved context.)") + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+                )
+            else:
+                user_content = (
+                    (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+                )
+            user_contents.append(user_content)
+            meta.append(
+                {
+                    "question_input": trigger or ("Context dialogue (cue awareness)" if category == "Cognitive" else trigger),
+                    "evidence": sample.get("evidence", ""),
+                    "category": category,
+                    "ground_truth": sample.get("answer") or "",
+                    "time_gap": sample.get("time_gap"),
+                }
             )
 
-        prediction = _llm_chat(user_content)
-        ground_truth = sample.get("answer")
-        if ground_truth is None or (isinstance(ground_truth, str) and ground_truth.strip() == ""):
-            ground_truth = ""
-        record = {
-            "question_input": question_input,
-            "evidence": sample.get("evidence", ""),
-            "category": category,
-            "ground_truth": ground_truth,
-            "prediction": prediction,
-            "model": f"{qa_model}_cml",
-        }
-        if sample.get("time_gap"):
-            record["time_gap"] = sample["time_gap"]
-        records.append(record)
+        print(f"  [Phase B/vLLM] Running batched inference on {len(user_contents)} prompts...", flush=True)
+        conversations = [[{"role": "user", "content": c}] for c in user_contents]
+        predictions = generate_batch(qa_model, conversations, temperature=0.0, max_tokens=256)
+
+        for m, prediction in zip(meta, predictions, strict=False):
+            record: dict = {
+                "question_input": m["question_input"],
+                "evidence": m["evidence"],
+                "category": m["category"],
+                "ground_truth": m["ground_truth"],
+                "prediction": prediction,
+                "model": backend_label,
+            }
+            if m.get("time_gap"):
+                record["time_gap"] = m["time_gap"]
+            records.append(record)
         pred_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    else:
+        # --- Sequential HTTP path (default) ---
+        for i in _tqdm(range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False):
+            sample = samples_qa[i]
+            tenant_id = f"lp-{i}"
+            trigger = (sample.get("trigger") or "").strip()
+            category = sample.get("category", "")
+            if category == "Cognitive":
+                question_input = trigger or "Context dialogue (cue awareness)"
+            else:
+                question_input = trigger
+            read_result = _cml_read(
+                cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+            )
+            if verbose:
+                assert isinstance(read_result, tuple), "return_full=True yields tuple"
+                llm_context, raw_response = read_result
+                type_counts = _count_memory_types(raw_response)
+                _progress_write(
+                    f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
+                )
+            else:
+                assert isinstance(read_result, str), "return_full=False yields str"
+                llm_context = read_result
+            if QA_READ_DELAY_SEC > 0:
+                time.sleep(QA_READ_DELAY_SEC)
+
+            if category == "Cognitive":
+                user_content = (
+                    (llm_context or "(No retrieved context.)")
+                    + "\n\n"
+                    + COGNITIVE_PROMPT.format(trigger)
+                )
+            else:
+                user_content = (
+                    (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+                )
+
+            prediction = _llm_chat(user_content, backend=backend)
+            ground_truth = sample.get("answer")
+            if ground_truth is None or (isinstance(ground_truth, str) and ground_truth.strip() == ""):
+                ground_truth = ""
+            record = {
+                "question_input": question_input,
+                "evidence": sample.get("evidence", ""),
+                "category": category,
+                "ground_truth": ground_truth,
+                "prediction": prediction,
+                "model": backend_label,
+            }
+            if sample.get("time_gap"):
+                record["time_gap"] = sample["time_gap"]
+            records.append(record)
+            pred_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
 
     empty_count = sum(1 for r in records if not (r.get("prediction") or "").strip())
     if empty_count:
@@ -660,7 +772,9 @@ def phase_b_qa(
     return records
 
 
-def phase_c_judge(records: list[dict], out_dir: Path, judge_model: str) -> None:
+def phase_c_judge(
+    records: list[dict], out_dir: Path, judge_model: str, judge_backend: str = "call_llm"
+) -> None:
     if not _ensure_locomo_plus_path():
         raise ImportError(
             "LLM-as-judge requires the evaluation/locomo_plus directory from the CML repository. "
@@ -669,7 +783,8 @@ def phase_c_judge(records: list[dict], out_dir: Path, judge_model: str) -> None:
     from task_eval.llm_as_judge import run_judge
 
     print(
-        f"\n[Phase C] LLM-as-judge scoring {len(records)} predictions ({judge_model})...",
+        f"\n[Phase C] LLM-as-judge scoring {len(records)} predictions "
+        f"({judge_model}, backend: {judge_backend})...",
         flush=True,
     )
 
@@ -677,7 +792,7 @@ def phase_c_judge(records: list[dict], out_dir: Path, judge_model: str) -> None:
         input_file = ""
         out_file = str(out_dir / "locomo_plus_qa_cml_judged.json")
         model = judge_model
-        backend = "call_llm"
+        backend = judge_backend
         temperature = 0.0
         max_tokens = 512
         concurrency = 1
@@ -706,7 +821,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
         if not pred_file.exists():
             raise FileNotFoundError(f"Score-only requires {pred_file}")
         records = json.loads(pred_file.read_text(encoding="utf-8"))
-        phase_c_judge(records, out_dir, config.judge_model)
+        phase_c_judge(records, out_dir, config.judge_model, judge_backend=config.judge_backend)
         return records
 
     if has_locomo_path:
@@ -745,9 +860,10 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
         config.limit_samples,
         out_dir,
         verbose=config.verbose,
+        backend=config.qa_backend,
     )
 
-    phase_c_judge(records, out_dir, config.judge_model)
+    phase_c_judge(records, out_dir, config.judge_model, judge_backend=config.judge_backend)
     print(f"Predictions: {out_dir / 'locomo_plus_qa_cml_predictions.json'}")
     return records
 
@@ -767,6 +883,8 @@ def main(argv: list[str] | None = None) -> int:
         judge_model=str(args.judge_model),
         verbose=bool(args.verbose),
         ingestion_workers=int(args.ingestion_workers),
+        qa_backend=str(args.qa_backend),
+        judge_backend=str(args.judge_backend),
     )
     try:
         run_locomo_plus(cfg)

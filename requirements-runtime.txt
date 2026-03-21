@@ -24,3 +24,10 @@ semchunk
 transformers
 sentence-transformers>=3.0
 einops>=0.7.0
+
+# GPU-accelerated torch (CUDA 12.8 — matches RTX 5070 Ti / driver 580+).
+# nvidia-ctk mounts GPU drivers into the container at runtime; torch just needs
+# the right CUDA wheel installed. CPU torch is pulled as a transitive dep above
+# without this override, so this must come last to win.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch>=2.7.0

@@ -20,6 +20,8 @@ class LocomoEvalConfig:
     judge_model: str = "gpt-4o-mini"
     verbose: bool = False
     ingestion_workers: int = 10
+    qa_backend: str = "openai_compatible"
+    judge_backend: str = "call_llm"
 
 
 @dataclass(slots=True)
