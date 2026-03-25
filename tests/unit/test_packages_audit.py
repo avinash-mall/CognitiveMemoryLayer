@@ -133,7 +133,7 @@ class TestRetryMaxDelayWiring:
             actual_sleeps.append(d)
 
         with patch("cml.transport.retry.asyncio.sleep", side_effect=fake_sleep):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 _async_sleep_with_backoff(attempt=10, base_delay=1.0, max_delay=5.0)
             )
 
@@ -206,7 +206,7 @@ class TestExportImportFidelity:
         # The import helper accepts concrete client types; for this unit test we
         # only need an object with a compatible `write()` method.
         target = cast("Any", FakeTarget())
-        count = asyncio.get_event_loop().run_until_complete(
+        count = asyncio.run(
             import_memories_async(target, str(export_path))
         )
 
