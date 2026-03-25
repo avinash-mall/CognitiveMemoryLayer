@@ -60,7 +60,7 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 
 **`fact_extraction_structured`** - DocRED/Re-TACRED give relation extraction supervision. Mandatory synthesis maps extracted relations into CML fact schema (`key = user:{category}:{predicate}`, `category in FactCategory`, stable predicate normalization). Replaces `_PREDICATE_KEYWORDS` mapping and dependency-based relation extraction with fixed `confidence=0.65`.
 
-**`schema_match_pair`** - Supervision comes from SNLI with a corrected label mapping (`entailment + contradiction → match`, `neutral → no_match`; SNLI contradictions describe the *same scenario* so they share a schema). The original FEVER rows were removed because FEVER evidence text is stored as `"Title sentence N"` references rather than real sentences. CML-format template rows (`"{gist} Summary N." vs "{fact} Fact N."` from `_TEMPLATE_TOPIC_PACKS`) are included in training to expose the model to the memory-entry text format used in the test set. Preparation enforces train-source coverage and caps template rows.
+**`schema_match_pair`** - Supervision comes from SNLI with a corrected label mapping (`entailment + contradiction → match`, `neutral → no_match`; SNLI contradictions describe the *same scenario* so they share a schema). The original FEVER rows were removed because FEVER evidence text is stored as `"Title sentence N"` references rather than real sentences. CML-format template rows (`"{gist} Summary N." vs "{fact} Fact N."` from `_TEMPLATE_TOPIC_PACKS`) are included in training — 600 rows per label (`match` and `no_match`) to close the train/test distribution gap against memory-entry text format. Focal loss (gamma=1.5) is applied during DeBERTa fine-tuning to down-weight easy NLI pairs and focus training on hard neutral pairs that look semantically similar but share no schema. Preparation enforces train-source coverage and caps template rows.
 
 **`reconsolidation_candidate_pair`** - MS MARCO covers retrieval candidate ranking. FEVER/NLI/ANLI improve conflict candidate prioritization. Preparation mines nearest hard negatives from different `group_id` buckets, and training uses the same dense+lexical feature path as the other ranking tasks.
 
@@ -70,7 +70,7 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 
 **`context_tag`** - Dedicated transformer classification seeded from internet-sourced topical corpora (`travel`, `health`, `finance`, `tech`, `social`, and general conversation) and hardened with borderline-`general` negatives.
 
-**`pii_span_detection`** - PII-Masking-200k as primary span supervision. Synthesis for secrets patterns not fully covered by generic PII datasets (`api_key=`, tokens, credentials).
+**`pii_span_detection`** - PII-Masking-200k as primary span supervision (~30k English rows from the full 200k dataset). Synthesis for secrets patterns not fully covered by generic PII datasets (`api_key=`, tokens, credentials). Backbone: bert-base-multilingual-cased (8 epochs, LR=5e-5, max_seq=256, stride=64). With this training set size, `span_exact_match` achieves ~0.850; reaching ≥0.88 would require the full multilingual corpus. BPE tokenizers (roberta, xlm-roberta) cause systematic off-by-one span boundary errors due to preceding-whitespace inclusion in character offsets — `token_runtime.py::_decode_chunk` trims leading/trailing whitespace from span boundaries at inference time. Regex fallback augmentation (`_regex_pii_spans`) covers EMAIL, PHONE, SSN, CREDIT_CARD, IP_ADDRESS, and SECRET patterns independent of model output.
 
 **`consolidation_gist_quality`** - SummEval/FRANK/TRUE provide consistency/factuality quality supervision. Synthesize CML-specific labels (accept/reject, fallback-needed) using consolidation replay + reviewer labels. Preparation injects hardened shared-shell rows and caps template usage.
 
@@ -407,7 +407,7 @@ Generated prepared/trained artifacts are expected to stay in sync with source. A
 
 Manifest (`manifest.json`):
 
-- `manifest_schema_version` (v2)
+- `manifest_schema_version` (v3)
 - `configured_tasks` from `model_pipeline.toml`
 - `configured_tasks[*].trainer`, `feature_backend`, `label_order`, `embedding_model_name`
 - `families` map with artifact paths, metrics summary, labels.
@@ -448,6 +448,16 @@ python -m packages.models.scripts.train --objective-types pair_ranking,single_re
 python -m packages.models.scripts.train --max-seq-length 512 --learning-rate 5e-5
 python -m packages.models.scripts.train --calibration-split eval --export-thresholds
 python -m packages.models.scripts.train --tasks novelty_pair --strict
+```
+
+Post-hoc maintenance:
+
+```bash
+# Regenerate manifest.json from existing metrics files (after targeted retrains or recalibration)
+python packages/models/scripts/regenerate_manifest.py
+
+# ECE-optimal temperature sweep for pair ranker models
+python packages/models/scripts/recalibrate_pair_ranker_temperature.py
 ```
 
 Contract and probe checks:
@@ -496,6 +506,50 @@ Exit criteria: consolidation acceptance precision improves; forgetting policy do
 1. Local unified write extractor replacement complete.
 2. Semantic lineage API complete.
 3. Conflict detector offline benchmark integrated in CI.
+
+## Release Gates and Post-hoc Calibration
+
+### Release gates
+
+`_RELEASE_GATES` in `train.py` defines per-task metric thresholds that must pass before a model is considered shippable. Gates are checked after training and recorded in `manifest.json` under `release_gates`.
+
+Current gates (test set):
+
+| Task | Gate |
+|---|---|
+| `schema_match_pair` | macro_f1 ≥ 0.80, ECE ≤ 0.08 |
+| `memory_type` | macro_f1 ≥ 0.90, plan_f1 ≥ 0.90 |
+| `novelty_pair` | changed_f1 ≥ 0.80 |
+| `confidence_bin` | macro_f1 ≥ 0.75 |
+| `decay_profile` | macro_f1 ≥ 0.75 |
+| `pii_span_detection` | span_exact_match ≥ 0.84, span_f1 ≥ 0.93 |
+| `forgetting_action_policy` | macro_f1 ≥ 0.90, decay_recall ≥ 0.90, delete_recall ≥ 0.90 |
+| `constraint_dimension` | macro_f1 ≥ 0.80, ECE ≤ 0.08 |
+| `context_tag` | macro_f1 ≥ 0.85 |
+| `retrieval_constraint_relevance_pair` | ECE ≤ 0.08 |
+| `memory_rerank_pair` | ECE ≤ 0.08 |
+| `reconsolidation_candidate_pair` | ECE ≤ 0.08 |
+| `write_importance_regression` | test_mae ≤ 0.05 |
+
+To regenerate `manifest.json` gate results from existing metrics files (e.g. after a targeted retrain or post-hoc recalibration) without rerunning full training:
+
+```bash
+python packages/models/scripts/regenerate_manifest.py
+```
+
+### Post-hoc temperature calibration for pair rankers
+
+The DeBERTa-based pair rankers (`retrieval_constraint_relevance_pair`, `memory_rerank_pair`, `reconsolidation_candidate_pair`) use logistic regression temperature scaling. NLL-optimal training produces T=2.0, but ECE is minimized at T=3.0 for the bge-reranker-base backbone. To sweep temperatures on the eval set and update joblib models and metrics files:
+
+```bash
+python packages/models/scripts/recalibrate_pair_ranker_temperature.py
+```
+
+The script:
+1. Loads raw logits from the HF model checkpoint on CPU.
+2. Sweeps a temperature grid (0.7 → 5.0) and picks ECE-optimal T on eval.
+3. Gates on test ECE ≤ 0.08 before applying the update.
+4. Patches `runtime_model.temperature` in the joblib and rewrites the metrics JSON files.
 
 ## Validation and Safety Gates
 
