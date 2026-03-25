@@ -624,7 +624,7 @@ All settings are in `packages/models/model_pipeline.toml`:
 - Synthetic LLM parameters
 - `[multilingual]`: `enabled`, `english_weight` for multilingual synthetic generation
 
-Public dataset intake, mapper ownership, and license/provenance notes are documented in [dataset_shortlist.md](/nvme/CognitiveMemoryLayer/packages/models/dataset_shortlist.md).
+Public dataset intake, mapper ownership, and license/provenance notes are in the Dataset References section below.
 
 Key synthetic knobs:
 
@@ -640,20 +640,38 @@ Key synthetic knobs:
 
 ## Dataset References
 
-Primary public dataset sources used for model training:
+Hugging Face is the scripted primary source. Kaggle remains a manual secondary source when it offers better niche corpora or missing domains. `usage_role` and `task_targets` in `model_pipeline.toml` should match this table.
 
-- [MS MARCO](https://huggingface.co/datasets/microsoft/ms_marco)
-- [BEIR benchmark](https://arxiv.org/abs/2104.08663)
-- [Quora duplicates](https://huggingface.co/datasets/sentence-transformers/quora-duplicates)
-- [PAWS](https://aclanthology.org/N19-1131/)
-- [GLUE (QQP/MRPC/STS-B)](https://huggingface.co/datasets/nyu-mll/glue)
-- [SNLI](https://nlp.stanford.edu/projects/snli/)
-- [MultiNLI](https://cims.nyu.edu/~sbowman/multinli/)
-- [ANLI](https://aclanthology.org/2020.acl-main.441/)
-- [FEVER](https://aclanthology.org/N18-1074/)
-- [DocRED](https://aclanthology.org/P19-1074/)
-- [Re-TACRED](https://arxiv.org/abs/2104.08398)
-- [PII-Masking-200k](https://huggingface.co/datasets/ai4privacy/pii-masking-200k)
-- [SummEval](https://arxiv.org/abs/2007.12626)
-- [FRANK](https://aclanthology.org/2021.naacl-main.383/)
-- [TRUE benchmark](https://arxiv.org/abs/2204.04991)
+- `supervision` datasets provide direct labels or pair mappings.
+- `llm_seed` datasets provide seed text only; they are not used as direct supervision.
+
+### Direct Supervision
+
+| Dataset | `usage_role` | Tasks | Prepare mapper | License / URL |
+|---|---|---|---|---|
+| MS MARCO | `supervision` | `retrieval_constraint_relevance_pair`, `memory_rerank_pair`, `reconsolidation_candidate_pair` | `_add_existing_pair_rows` | [HF](https://huggingface.co/datasets/microsoft/ms_marco) |
+| SNLI | `supervision` | `schema_match_pair` (entailment+contradiction→match, neutral→no_match), pair-ranker tasks, `novelty_pair` | `_add_existing_pair_rows` | **Note**: SNLI contradictions map to `match` for schema_match_pair (same scenario). [HF](https://huggingface.co/datasets/stanfordnlp/snli) |
+| MultiNLI | `supervision` | `schema_match_pair`, pair-ranker tasks, `novelty_pair` | `_add_existing_pair_rows` | [HF](https://huggingface.co/datasets/nyu-mll/multi_nli) |
+| FEVER | `supervision` | `reconsolidation_candidate_pair` only — **excluded from `schema_match_pair`** (evidence text is `"Title sentence N"` references, not real sentences) | `_add_fever_schema_match_rows` | [HF](https://huggingface.co/datasets/fever/fever) |
+| FEVER-NLI | `supervision` | `schema_match_pair`, pair-ranker tasks | `_add_verification_pair_rows` | [HF](https://huggingface.co/datasets/pietrolesci/nli_fever) |
+| ANLI | `supervision` | `schema_match_pair`, pair-ranker hard negatives, `novelty_pair` | `_add_existing_pair_rows` | [HF](https://huggingface.co/datasets/facebook/anli) |
+| VitaminC | `supervision` | `schema_match_pair`, pair-ranker hard negatives | `_add_verification_pair_rows` | [HF](https://huggingface.co/datasets/tals/vitaminc) |
+| Climate-FEVER+ | `supervision` | `schema_match_pair`, pair-ranker hard negatives | `_add_verification_pair_rows` | [HF](https://huggingface.co/datasets/Jasontth/climate_fever_plus) |
+| SciTail | `supervision` | `schema_match_pair`, pair-ranker hard negatives | `_add_verification_pair_rows` | [HF](https://huggingface.co/datasets/allenai/scitail) |
+| QQP | `supervision` | `novelty_pair` duplicate/novel anchors | `_add_glue_novelty_rows` | [HF](https://huggingface.co/datasets/nyu-mll/glue) |
+| MRPC | `supervision` | `novelty_pair` duplicate/novel anchors | `_add_mrpc_novelty_rows` | [HF](https://huggingface.co/datasets/nyu-mll/glue) |
+| PAWS | `supervision` | `novelty_pair` duplicate/novel anchors | `_add_paws_novelty_rows` | [HF](https://huggingface.co/datasets/google-research-datasets/paws) |
+| DocRED / Re-TACRED | `supervision` | `fact_extraction_structured` | `_build_fact_token_rows` | [DocRED](https://huggingface.co/datasets/docred) / [Re-TACRED](https://huggingface.co/datasets/DFKI-SLT/re-tacred) |
+| PII-Masking-200k | `supervision` | `pii_presence`, `pii_span_detection` | `_add_existing_extractor_pii_rows`, `_build_pii_token_rows` | [HF](https://huggingface.co/datasets/ai4privacy/pii-masking-200k) |
+
+### LLM Seed Corpora
+
+| Dataset | `usage_role` | Tasks | Prepare mapper | URL |
+|---|---|---|---|---|
+| UltraChat 200k | `llm_seed` | `context_tag`, `constraint_dimension`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/HuggingFaceH4/ultrachat_200k) |
+| OpenAssistant OASST1 | `llm_seed` | `context_tag`, `constraint_dimension`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/OpenAssistant/oasst1) |
+| TripAdvisor hotel reviews | `llm_seed` | `context_tag`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/argilla/tripadvisor-hotel-reviews) |
+| medical-qa-datasets | `llm_seed` | `context_tag`, `constraint_dimension`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/ZuoXiaojia/medical-qa-datasets) |
+| customer-support-client-agent-conversations | `llm_seed` | `context_tag`, `constraint_dimension`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/Lakshan2003/customer-support-client-agent-conversations) |
+| TechnicalSupport | `llm_seed` | `context_tag`, `constraint_dimension`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/ai-training-datasets/TechnicalSupport) |
+| reddit-constructive | `llm_seed` | `context_tag`, `constraint_dimension`, `forgetting_action_policy` | `_collect_seed_pools` | [HF](https://huggingface.co/datasets/NiklasKoch/reddit-constructive) |
