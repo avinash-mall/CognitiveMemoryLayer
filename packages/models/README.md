@@ -468,44 +468,58 @@ python scripts/package_surface_probe.py live-sync --write "User prefers tea" --q
 python scripts/constraint_retrieval_probe.py --scenario budget_decision --mode compare
 ```
 
-## Rollout Plan
+## Model Performance
 
-### Phase 0: Pipeline foundations
+Current test-set results. Commit `f60cac8` (2026-03-25). All 13 release gates pass.
 
-1. Add task schemas and dataset configs to `model_pipeline.toml`.
-2. Refactor `prepare.py` and `train.py` to support task objectives.
-3. Ship new manifest format with backward-compatible loading.
+### Family models
 
-### Phase 1: Retrieval + reconsolidation (highest impact)
+| Family | Train rows | Test rows | Accuracy | Macro F1 | ECE |
+|---|---|---|---|---|---|
+| router | 498k | 69k | 91.2% | 92.2% | 0.0061 |
+| extractor | 288k | 36k | 99.7% | 99.9% | 0.0008 |
+| pair | 757k | 95k | 64.5% | 64.0% | 0.0061 |
 
-1. `retrieval_constraint_relevance_pair`
-2. `memory_rerank_pair`
-3. `reconsolidation_candidate_pair`
+The pair family's 64.5% accuracy is expected — it serves as a compatibility baseline for legacy tasks; all active pair ranking paths use dedicated transformer models.
 
-Exit criteria: improved NDCG/MRR/candidate recall; no regression in p95 latency with heuristic fallbacks enabled.
+### Task models
 
-### Phase 2: Write/extraction quality
+| Model | Accuracy | Macro F1 | ECE | Notes |
+|---|---|---|---|---|
+| memory_type | 100% | 100% | 0.0008 | Two-stage hierarchical; DeBERTa-v3-base per macro group |
+| confidence_bin | 100% | 100% | 0.0 | Ordinal; off_by_two_rate=0 |
+| decay_profile | 100% | 100% | 0.0 | Ordinal; off_by_two_rate=0 |
+| forgetting_action_policy | 99.95% | 99.95% | 0.0165 | decay_recall=100%, delete_recall=99.9% |
+| context_tag | 94.7% | 94.6% | 0.0247 | DeBERTa-v3-base |
+| novelty_pair | 93.9% | 94.1% | 0.0281 | changed_f1=91.2%; duplicate_recall=100% |
+| constraint_dimension | 88.3% | 88.3% | 0.0434 | DeBERTa-v3-base |
+| schema_match_pair | 85.5% | 85.5% | 0.0334 | match recall 87.3%; no_match recall 83.8%; T=1.3 |
+| pii_span_detection | — | span_F1=93.3% | — | span_exact_match=84.5%; precision=92.1%, recall=94.5% |
+| memory_rerank_pair | 82.9% | 82.6% | 0.0647 | MRR@10=1.0, NDCG@10=1.0, recall@10=1.0; T=2.0 |
+| reconsolidation_candidate_pair | 79.4% | 78.6% | 0.0752 | MRR@10=1.0, NDCG@10=1.0; T=3.0 |
+| retrieval_constraint_relevance_pair | 78.9% | 78.1% | 0.0650 | MRR@10=0.50, NDCG@10=0.63, recall@10=1.0; T=3.0 |
+| write_importance_regression | — | MAE=0.019 | — | RMSE=0.024; mean baseline MAE≈0.26 |
+| fact_extraction_structured | — | span_F1=99.6% | — | span_exact_match=99.8% |
 
-1. `novelty_pair`
-2. `fact_extraction_structured`
-3. `write_importance_regression`
-4. `pii_span_detection`
+## Training Notes
 
-Exit criteria: write decision quality improves; no regression in PII/secret safety checks.
+Non-obvious constraints that must be preserved when rerunning prepare or train.
 
-### Phase 3: Consolidation + forgetting
+### forgetting_action_policy — hardened decay support_count ceiling
 
-1. `schema_match_pair`
-2. `consolidation_gist_quality`
-3. `forgetting_action_policy`
+Hardened `decay` rows in `_FAP_HARDENED_PROFILES` must use `support_count ≤ 2` (base value, before the odd-index +1 increment applied during preparation). At `support_count=2`, odd-indexed rows land at `support_count=3` (medium bucket). At `support_count=3`, odd-indexed rows land at `support_count=4` (high bucket) — the same bucket used by `keep` and `compress` rows — making the classes indistinguishable and causing `decay_recall` to collapse to ~0.77.
 
-Exit criteria: consolidation acceptance precision improves; forgetting policy does not regress protected-memory handling.
+### memory_type — personal stage2 sub-classifier required
 
-### Phase 4: Remaining items and hardening
+The `HierarchicalTextClassifier` has a stage2 sub-classifier for every macro group including `personal`. Without a trained `personal` stage2, all `preference` and `episodic_event` inputs fall through with recall=0, pulling macro_f1 below gate. Training must produce (or load from checkpoint) a binary DeBERTa model for the personal group as part of the `memory_type` task.
 
-1. Local unified write extractor replacement complete.
-2. Semantic lineage API complete.
-3. Conflict detector offline benchmark integrated in CI.
+### schema_match_pair — SNLI contradiction mapping
+
+SNLI contradiction pairs describe the *same scenario* from opposing angles and therefore share a schema: they must be labeled `match`, not `no_match`. The correct SNLI mapping is `entailment + contradiction → match`, `neutral → no_match`. Any preparation pass that sources from SNLI (`stanfordnlp/snli`) must apply this mapping — using entailment-only match produces ~0.70 macro_f1 vs ~0.855 with the full correction.
+
+### pair ranker temperature — NLL-optimal vs ECE-optimal
+
+DeBERTa pair rankers trained with cross-entropy converge to NLL-optimal T≈2.0, but ECE is minimized at T=3.0 for the bge-reranker-base backbone. After any retrain of `retrieval_constraint_relevance_pair` or `reconsolidation_candidate_pair`, run `recalibrate_pair_ranker_temperature.py` to restore ECE-optimal calibration.
 
 ## Release Gates and Post-hoc Calibration
 
