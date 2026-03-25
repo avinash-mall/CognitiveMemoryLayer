@@ -82,6 +82,8 @@ _DEDICATED_ONLY_TASKS = {
     "memory_type",
     "constraint_dimension",
     "context_tag",
+    "confidence_bin",
+    "decay_profile",
     "retrieval_constraint_relevance_pair",
     "memory_rerank_pair",
     "novelty_pair",

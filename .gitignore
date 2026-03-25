@@ -42,6 +42,7 @@ cml_memory.db
 .idea/
 .vscode/
 .cursor/
+.claude/
 *.swp
 *.swo
 
