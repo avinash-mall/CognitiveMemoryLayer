@@ -144,9 +144,16 @@ class HFTokenSpanPredictor:
                 and current_end is not None
                 and current_end > current_start
             ):
-                span_text = text[current_start:current_end].strip()
+                raw_text = text[current_start:current_end]
+                span_text = raw_text.strip()
                 if span_text:
-                    spans.append((current_start, current_end, current_label))
+                    # Trim tokenizer-injected leading/trailing whitespace from span
+                    # boundaries (BPE tokenizers include surrounding spaces in offsets).
+                    leading = len(raw_text) - len(raw_text.lstrip())
+                    trailing = len(raw_text) - len(raw_text.rstrip())
+                    actual_start = current_start + leading
+                    actual_end = current_end - trailing
+                    spans.append((actual_start, actual_end, current_label))
             current_label = ""
             current_start = None
             current_end = None

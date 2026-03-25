@@ -3,10 +3,10 @@
   "split": "eval",
   "overall": {
     "rows": 36000,
-    "accuracy": 0.9981388888888889,
-    "macro_f1": 0.9995214264609192,
-    "weighted_f1": 0.9981388806813526,
-    "micro_f1": 0.9981388888888889,
+    "accuracy": 0.9981666666666666,
+    "macro_f1": 0.9995285691468461,
+    "weighted_f1": 0.9981666577932904,
+    "micro_f1": 0.9981666666666666,
     "labels": [
       "constraint_scope::finance",
       "constraint_scope::food",
@@ -845,8 +845,8 @@
         0,
         0,
         0,
-        4977,
-        23
+        4978,
+        22
       ],
       [
         0,
@@ -879,7 +879,7 @@
         4956
       ]
     ],
-    "calibration_error": 0.0007267772041869761,
+    "calibration_error": 0.0007514102792564575,
     "classification_report": {
       "constraint_scope::finance": {
         "precision": 1.0,
@@ -1038,28 +1038,28 @@
         "support": 1000.0
       },
       "pii_presence::no_pii": {
-        "precision": 0.9912368054172476,
-        "recall": 0.9954,
-        "f1-score": 0.9933140405149187,
+        "precision": 0.9912385503783353,
+        "recall": 0.9956,
+        "f1-score": 0.9934144881261225,
         "support": 5000.0
       },
       "pii_presence::pii": {
-        "precision": 0.9953805985137578,
+        "precision": 0.995580554439534,
         "recall": 0.9912,
-        "f1-score": 0.9932859003908208,
+        "f1-score": 0.9933854479855683,
         "support": 5000.0
       },
-      "accuracy": 0.9981388888888889,
+      "accuracy": 0.9981666666666666,
       "macro avg": {
-        "precision": 0.9995220501403931,
-        "recall": 0.9995214285714286,
-        "f1-score": 0.9995214264609192,
+        "precision": 0.9995292537434953,
+        "recall": 0.9995285714285714,
+        "f1-score": 0.9995285691468461,
         "support": 36000.0
       },
       "weighted avg": {
-        "precision": 0.9981413061015284,
-        "recall": 0.9981388888888889,
-        "f1-score": 0.9981388806813526,
+        "precision": 0.9981693201135929,
+        "recall": 0.9981666666666666,
+        "f1-score": 0.9981666577932904,
         "support": 36000.0
       }
     }
@@ -1387,18 +1387,18 @@
     },
     "pii_presence": {
       "rows": 10000,
-      "accuracy": 0.9933,
-      "macro_f1": 0.9932999704528698,
-      "weighted_f1": 0.9932999704528698,
-      "micro_f1": 0.9933,
+      "accuracy": 0.9934,
+      "macro_f1": 0.9933999680558454,
+      "weighted_f1": 0.9933999680558454,
+      "micro_f1": 0.9934,
       "labels": [
         "no_pii",
         "pii"
       ],
       "confusion_matrix": [
         [
-          4977,
-          23
+          4978,
+          22
         ],
         [
           44,
@@ -1413,51 +1413,51 @@
     "method": "task_conditional_sigmoid",
     "split": "eval",
     "rows": 36000,
-    "pre_ece": 0.06024052269622705,
-    "post_ece": 0.0007267772041869761,
-    "pre_accuracy": 0.9979444444444444,
-    "post_accuracy": 0.9981388888888889,
-    "accuracy_delta": 0.00019444444444449704,
+    "pre_ece": 0.06013730731601039,
+    "post_ece": 0.0007514102792564575,
+    "pre_accuracy": 0.9978333333333333,
+    "post_accuracy": 0.9981666666666666,
+    "accuracy_delta": 0.0003333333333332966,
     "tasks": {
       "constraint_scope": {
         "rows": 9000,
-        "pre_ece": 0.0073977550828098195,
-        "post_ece": 0.00019265409844981818,
+        "pre_ece": 0.0073926387441783925,
+        "post_ece": 0.00019267901287378653,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "constraint_stability": {
         "rows": 3000,
-        "pre_ece": 0.0035815840248716313,
-        "post_ece": 0.00016984114537266226,
+        "pre_ece": 0.0035802200536977353,
+        "post_ece": 0.00016981111181246789,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "constraint_type": {
         "rows": 8000,
-        "pre_ece": 0.014965253210282414,
-        "post_ece": 0.0003021590317218159,
+        "pre_ece": 0.0152260080692046,
+        "post_ece": 0.0002949549691239062,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "fact_type": {
         "rows": 6000,
-        "pre_ece": 0.008211313527995756,
-        "post_ece": 0.0002109632432973907,
+        "pre_ece": 0.008209015508071071,
+        "post_ece": 0.00021106970310058593,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "pii_presence": {
         "rows": 10000,
-        "pre_ece": 0.12816375588679663,
-        "post_ece": 0.0020237517315003927,
-        "pre_accuracy": 0.9926,
-        "post_accuracy": 0.9933,
-        "accuracy_delta": 0.0006999999999999229
+        "pre_ece": 0.1278197693399604,
+        "post_ece": 0.002118116763033487,
+        "pre_accuracy": 0.9922,
+        "post_accuracy": 0.9934,
+        "accuracy_delta": 0.0011999999999999789
       }
     }
   }

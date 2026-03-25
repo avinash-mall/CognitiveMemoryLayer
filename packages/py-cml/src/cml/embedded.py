@@ -217,7 +217,8 @@ class EmbeddedCognitiveMemoryLayer:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = str(value)
-            get_engine_settings.cache_clear()
+            if hasattr(get_engine_settings, "cache_clear"):
+                get_engine_settings.cache_clear()
             clear_embedding_client_cache()
             embedding_client = get_embedding_client()
         finally:
@@ -226,7 +227,8 @@ class EmbeddedCognitiveMemoryLayer:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
-            get_engine_settings.cache_clear()
+            if hasattr(get_engine_settings, "cache_clear"):
+                get_engine_settings.cache_clear()
 
         llm_client: Any | None = None
         # Respect master LLM switch: in non-LLM mode, do not construct an LLM client.

@@ -22,6 +22,8 @@ The pipeline trains three model families that serve as the backbone for all clas
 
 All families use TF-IDF + `SGDClassifier` for composite labels (`task::label`).
 
+Some tasks still exist inside the family models for compatibility, but upgraded tasks such as `memory_type`, `constraint_dimension`, `context_tag`, `schema_match_pair`, `novelty_pair`, and the dedicated pair-ranker tasks are now treated as dedicated-only at runtime.
+
 ## Task-Level Models
 
 Beyond the three family-level classifiers, the pipeline now ships dedicated task models for the weak spots where the family architecture was the bottleneck.
@@ -35,7 +37,9 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 | `reconsolidation_candidate_pair` | `embedding_pair` | Dense pair ranker with lexical interaction features and query-group top-1 scoring. |
 | `novelty_pair` | `classification` | 3 labels: `duplicate`, `changed`, `novel`. |
 | `schema_match_pair` | `classification` | Pair classifier for gist/schema compatibility. |
-| `memory_type` | `hierarchical_text` | Two-stage macro-group then fine-label classifier. |
+| `memory_type` | `hierarchical_text` | Two-stage macro-group then fine-label classifier. Stage1 classifies into 5 macro groups (analytical, conversational, factual, personal, procedural); Stage2 has one sub-classifier per group including a personal sub-classifier (preference / episodic_event). |
+| `constraint_dimension` | `classification` | Dedicated text classifier for query constraint dimensions. |
+| `context_tag` | `classification` | Dedicated text classifier for local write-path topic tagging. |
 | `salience_bin` | `ordinal_threshold` | Cumulative calibrated binary boundaries over TF-IDF text features. |
 | `importance_bin` | `ordinal_threshold` | Cumulative calibrated binary boundaries over TF-IDF text features. |
 | `confidence_bin` | `ordinal_threshold` | Cumulative calibrated binary boundaries over TF-IDF text features. |
@@ -56,17 +60,21 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 
 **`fact_extraction_structured`** - DocRED/Re-TACRED give relation extraction supervision. Mandatory synthesis maps extracted relations into CML fact schema (`key = user:{category}:{predicate}`, `category in FactCategory`, stable predicate normalization). Replaces `_PREDICATE_KEYWORDS` mapping and dependency-based relation extraction with fixed `confidence=0.65`.
 
-**`schema_match_pair`** - STS-B provides semantic similarity signal and FEVER/NLI provides support-vs-refute behavior. Preparation enforces FEVER-derived train coverage and caps template rows.
+**`schema_match_pair`** - Supervision comes from SNLI with a corrected label mapping (`entailment + contradiction → match`, `neutral → no_match`; SNLI contradictions describe the *same scenario* so they share a schema). The original FEVER rows were removed because FEVER evidence text is stored as `"Title sentence N"` references rather than real sentences. CML-format template rows (`"{gist} Summary N." vs "{fact} Fact N."` from `_TEMPLATE_TOPIC_PACKS`) are included in training to expose the model to the memory-entry text format used in the test set. Preparation enforces train-source coverage and caps template rows.
 
 **`reconsolidation_candidate_pair`** - MS MARCO covers retrieval candidate ranking. FEVER/NLI/ANLI improve conflict candidate prioritization. Preparation mines nearest hard negatives from different `group_id` buckets, and training uses the same dense+lexical feature path as the other ranking tasks.
 
-**`write_importance_regression`** - Fully internal labels built from replay logs and annotation: downstream retrieval frequency, survival/forgetting outcomes, human criticality labels for safety-relevant memories. This task is currently disabled by default until score-supervision parquet columns are available.
+**`write_importance_regression`** - Mixed `structured`, `derived`, and `llm` supervision built during preparation from public seed corpora plus router-style metadata. Training now requires real train/eval/test splits from prepare and no longer fabricates holdouts from train.
+
+**`constraint_dimension`** - Dedicated transformer classification seeded from public topic corpora plus adversarial synthetic rows that sharpen the `value` vs `state` vs `other` boundary.
+
+**`context_tag`** - Dedicated transformer classification seeded from internet-sourced topical corpora (`travel`, `health`, `finance`, `tech`, `social`, and general conversation) and hardened with borderline-`general` negatives.
 
 **`pii_span_detection`** - PII-Masking-200k as primary span supervision. Synthesis for secrets patterns not fully covered by generic PII datasets (`api_key=`, tokens, credentials).
 
 **`consolidation_gist_quality`** - SummEval/FRANK/TRUE provide consistency/factuality quality supervision. Synthesize CML-specific labels (accept/reject, fallback-needed) using consolidation replay + reviewer labels. Preparation injects hardened shared-shell rows and caps template usage.
 
-**`forgetting_action_policy`** - Fully internal replay and simulation. Labels: `keep`, `decay`, `silence`, `compress`, `delete`. Inputs include text + metadata features (`importance`, `access_count`, `age`, `type`, `dependency_count`). Preparation injects near-boundary hardened examples and caps template usage.
+**`forgetting_action_policy`** - Mixed `structured`, `template_hardened`, and LLM-seeded supervision. Labels: `keep`, `decay`, `silence`, `compress`, `delete`. Inputs include text + metadata features (`importance`, `access_count`, `age`, `type`, `dependency_count`). Preparation injects near-boundary hardened examples, enforces train-source coverage, and caps template usage. Two compound metadata tokens sharpen class boundaries: `fap_keep_signal=yes` fires when `access_count ≥ 6 AND age_days < 21` (exclusive to keep); `fap_decay_signal=yes` fires when `access_count ∈ [2,5] AND age_days ∈ [21,89]` (exclusive to template-hardened decay rows). Hardened decay rows must use `support_count` base `≤ 2` so that odd-indexed rows (which get `support_count + 1`) stay in the medium bucket and do not overlap with the high-support-count profile of keep/compress rows.
 
 ## Runtime Wiring
 
@@ -79,7 +87,6 @@ Modelpack inference is consumed from `src/utils/modelpack.py`.
 - `constraint_stability`: reranker
 - `supersession`: constraint extraction/supersession checks
 - `pii_presence` + `importance_bin`: write gate non-LLM path
-- `context_tag`: write path content-derived categorization (via `LocalUnifiedWriteExtractor`)
 - `confidence_bin`: write path content-derived confidence (via `LocalUnifiedWriteExtractor`)
 - `decay_profile`: write path per-memory decay rate (via `LocalUnifiedWriteExtractor`)
 
@@ -97,8 +104,11 @@ Modelpack inference is consumed from `src/utils/modelpack.py`.
 | `pii_span_detection` | `redactor.py::redact`, `write_gate.py::_predict_pii` | Merge model spans with regex/NER; regex remains safety baseline. |
 | `consolidation_gist_quality` | `worker.py::_is_valid_gist` | Model score gates gist acceptance; replaces string-match blacklist and rule-based mixed-topic detection. Deterministic overlap ratio check remains as guardrail. |
 | `forgetting_action_policy` | `scorer.py::_suggest_action` | Model proposes action; hard protected-type rules remain deterministic. |
+| `memory_type` | `local_unified_extractor.py::extract` | Dedicated classifier supplies local write-path `memory_type` when the LLM extractor is unavailable. |
+| `context_tag` | `local_unified_extractor.py::extract` | Dedicated classifier supplies local write-path `context_tags` when the LLM extractor is unavailable. |
+| `constraint_dimension` | `classifier.py::analyze_query` | Dedicated classifier fills query constraint dimensions when the LLM analyzer does not provide them. |
 
-If model artifacts are not present, runtime falls back to safe heuristic defaults for all paths. All model calls are wrapped in `try/except` with graceful fallthrough.
+If model artifacts are not present, runtime falls back to safe heuristic defaults for all paths. Upgraded dedicated-only tasks do not fall back to router/pair family predictions; they either use the dedicated artifact or fall through to the original heuristic path. All model calls are wrapped in `try/except` with graceful fallthrough.
 
 spaCy fallback defaults to `xx_ent_wiki_sm`, then falls back to `en_core_web_sm` when the multilingual model is not installed. Install it explicitly with:
 
@@ -122,8 +132,8 @@ Backend: `src/api/dashboard/models_routes.py`.
 
 Runtime capability helpers:
 
-- `supports_task(task)` checks whether a task can be served by either a loaded family model or a dedicated task model.
-- `capability_report()` returns load diagnostics (`available_families`, `available_tasks`, `pending_families`, `load_errors`, `manifest_schema_version`).
+- `supports_task(task)` checks whether a task can be served by the loaded runtime. Some upgraded tasks now require a dedicated task model and no longer fall back to router/pair family models.
+- `capability_report()` returns load diagnostics (`available_families`, `available_tasks`, `pending_families`, `dedicated_required_tasks`, `retired_family_tasks`, `load_errors`, `manifest_schema_version`).
 
 - `predict_single(task, text)` — single-text classification (existing)
 - `predict_pair(task, text_a, text_b)` — text-pair classification (existing)
@@ -139,12 +149,12 @@ Runtime capability helpers:
 - `fact_extraction_structured` for structured fact extraction
 - `write_importance_regression` for importance scoring
 - `pii_span_detection` for PII detection
-- `memory_type` router task for memory type classification
-- `context_tag` router task for content-derived categorization
+- `memory_type` dedicated task model for memory type classification
+- `context_tag` dedicated task model for content-derived categorization
 - `confidence_bin` router task for content-derived confidence (maps low/medium/high -> 0.35/0.65/0.9)
 - `decay_profile` router task for per-memory decay rate (maps very_fast/fast/medium/slow/very_slow -> 0.35/0.2/0.1/0.05/0.02)
 
-Deferred tasks (`write_importance_regression`, token objectives) remain optional: local extraction uses them only when corresponding task artifacts are present.
+Optional tasks remain capability-gated: local extraction uses them only when corresponding task artifacts are present.
 
 Wired into `HippocampalStore` via `MemoryOrchestrator.create()` and `create_lite()` when LLM is disabled. Both `encode_chunk` and `encode_batch` consume context_tags, confidence, and decay_rate from the local extractor when the LLM unified result is unavailable.
 
@@ -190,7 +200,8 @@ Public dataset mappers transform standard NLP datasets into CML task formats:
 
 - `PAWS/GLUE (QQP, MRPC, STS-B)` -> `novelty_pair`
 - `DocRED/Re-TACRED` -> `fact_extraction_structured`
-- `FEVER/NLI` -> `schema_match_pair`, `reconsolidation_candidate_pair`
+- `FEVER-NLI/VitaminC/Climate-FEVER+/SciTail` -> `schema_match_pair`, `retrieval_constraint_relevance_pair`, `memory_rerank_pair`, `reconsolidation_candidate_pair`
+- `TripAdvisor/medical/support/reddit seed corpora` -> `llm_seed` pools for `context_tag`, `constraint_dimension`, `forgetting_action_policy`
 
 ### Output split formats
 
@@ -208,10 +219,13 @@ The preparation manifest includes:
 - Per-task row counts and task-label distributions
 - Per-family split integrity summaries (`rows_without_group_id`, `unique_group_ids`, cross-split overlap counts)
 - Per-family train source diagnostics (template ratio, non-template rows, source bucket mix)
+- Per-task required source-coverage summaries for train splits
+- Regression provenance summaries for train splits
 - Source mix per task (including `template_hardened:*` sources for hardened router rows)
 - Synthetic ratio per label (counts `llm:*`, `template:*`, and `template_hardened:*`)
 - Adversarial fixture inventory for the hardened router/schema tasks
 - Top source breakdown
+- `dataset_shortlist` path used for public-data intake documentation
 
 ### Existing dataset folder
 
@@ -220,6 +234,8 @@ Raw dataset cache/downloads use existing flat folder: `packages/models/datasets`
 ## Synthetic Generation (LLM-only)
 
 Synthetic generation does not use rule-based labeling.
+
+Datasets marked `usage_role = "llm_seed"` in `model_pipeline.toml` feed seed pools only; they are not treated as direct supervision. Datasets marked `usage_role = "eval_only"` are excluded from seed-pool construction.
 
 Flow:
 
@@ -376,7 +392,7 @@ Per-task artifacts:
 - `<task>_epoch_stats.json`
 - `<task>_metrics_test.json`
 - `<task>_metrics_eval.json`
-- `<task>_thresholds.json` (when `--export-thresholds` is set)
+- `<task>_thresholds.json` (when `--export-thresholds` is set; includes threshold choice plus calibration/selection metadata when available)
 
 Pair embedding tasks also require:
 
@@ -396,11 +412,11 @@ Manifest (`manifest.json`):
 - `configured_tasks[*].trainer`, `feature_backend`, `label_order`, `embedding_model_name`
 - `families` map with artifact paths, metrics summary, labels.
 - `families[*].calibration.tasks` with task-conditional family calibration summaries when enabled.
-- `task_models` map with objective type, artifact path, train rows, test/eval metrics, and additive fields such as `actual_epochs`, `best_epoch`, `early_stopped`, `calibration`, and regression `data_profile`.
+- `task_models` map with objective type, artifact path, train rows, test/eval metrics, and additive fields such as `actual_epochs`, `best_epoch`, `early_stopped`, `selection_metric`, `selection_value`, `calibration`, and regression `data_profile`.
 - `task_training_status` with per-task status (`trained`, `disabled`, `filtered_out`, `failed`, `skipped`) and reason.
 - `preflight_validation` with objective/data/coverage checks run before task training.
 - `build_metadata` with Python/dependency versions and git state.
-- `runtime_thresholds` section with per-task confidence thresholds and calibration metadata.
+- `runtime_thresholds` section with per-task confidence thresholds plus calibration and checkpoint-selection metadata.
 
 Per-epoch training logs are printed to console and persisted in epoch stats files.
 
@@ -456,7 +472,7 @@ python scripts/constraint_retrieval_probe.py --scenario budget_decision --mode c
 2. `memory_rerank_pair`
 3. `reconsolidation_candidate_pair`
 
-Exit criteria: improved NDCG/MRR/candidate recall; no regression in p95 latency with fallbacks enabled.
+Exit criteria: improved NDCG/MRR/candidate recall; no regression in p95 latency with heuristic fallbacks enabled.
 
 ### Phase 2: Write/extraction quality
 
@@ -486,7 +502,7 @@ Exit criteria: consolidation acceptance precision improves; forgetting policy do
 For every model-assisted path:
 
 1. **Offline**: objective-specific metrics + calibration.
-2. **Runtime**: latency, fallback rate, error rate.
+2. **Runtime**: latency, dedicated-model hit rate, heuristic fallback rate, error rate.
 3. **Safety**: secret/PII hard regex checks intact; bounded output/truncation guaranteed; deterministic keys and control-plane behavior unchanged.
 4. **Shadow mode**: run heuristic + model in parallel via `ShadowModeLogger`; compare decisions and log deltas before switching defaults.
 
@@ -550,9 +566,11 @@ All settings are in `packages/models/model_pipeline.toml`:
 - Preparation targets/splits
 - Training hyperparameters
 - Per-task `[[tasks]]` blocks (family, input type, objective, labels, artifact name, metrics)
-- `[[datasets]]` entries with links, HF IDs, required/optional flags
+- `[[datasets]]` entries with links, HF IDs, required/optional flags, `usage_role`, and `task_targets`
 - Synthetic LLM parameters
 - `[multilingual]`: `enabled`, `english_weight` for multilingual synthetic generation
+
+Public dataset intake, mapper ownership, and license/provenance notes are documented in [dataset_shortlist.md](/nvme/CognitiveMemoryLayer/packages/models/dataset_shortlist.md).
 
 Key synthetic knobs:
 

@@ -21,8 +21,8 @@ alembic>=1.14
 # Runtime NLP stack
 spacy>=3.7
 semchunk
-transformers
-sentence-transformers>=3.0
+transformers>=4.45
+sentence-transformers>=5.0
 einops>=0.7.0
 
 # Modelpack deserialization; runtime compatibility is validated against the

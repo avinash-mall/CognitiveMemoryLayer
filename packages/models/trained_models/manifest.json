@@ -1,12 +1,718 @@
 {
   "manifest_schema_version": 3,
-  "trained_at_utc": "2026-03-15T15:21:42.319250+00:00",
+  "config_path": "/nvme/CognitiveMemoryLayer/packages/models/model_pipeline.toml",
+  "trained_at_utc": "2026-03-25T13:15:31.115893+00:00",
   "paths": {
-    "trained_models_dir": "packages/models/trained_models"
+    "prepared_dir": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack",
+    "trained_models_dir": "/nvme/CognitiveMemoryLayer/packages/models/trained_models"
+  },
+  "train_settings": {
+    "seed": 42,
+    "families": [
+      "router",
+      "extractor",
+      "pair"
+    ],
+    "max_features": 250000,
+    "min_df": 2,
+    "ngram_min": 1,
+    "ngram_max": 2,
+    "max_iter": 25,
+    "alpha": 1e-05,
+    "predict_batch_size": 8192,
+    "early_stopping": true,
+    "early_stopping_patience": 3,
+    "early_stopping_metric": "macro_f1",
+    "early_stopping_min_delta": 0.001,
+    "calibration_method": "sigmoid",
+    "calibration_split": "eval",
+    "transformer": {
+      "model_name_or_path": "microsoft/deberta-v3-base",
+      "tokenizer_name": "",
+      "num_train_epochs": 2,
+      "per_device_train_batch_size": 8,
+      "per_device_eval_batch_size": 16,
+      "max_seq_length": 256,
+      "learning_rate": 2e-05,
+      "warmup_ratio": 0.1,
+      "weight_decay": 0.01,
+      "gradient_accumulation_steps": 1,
+      "score_margin": 0.15,
+      "focal_gamma": 1.5,
+      "temperature_grid": [
+        0.7,
+        0.85,
+        1.0,
+        1.15,
+        1.3,
+        1.5,
+        2.0
+      ]
+    },
+    "token": {
+      "model_name_or_path": "bert-large-cased",
+      "num_train_epochs": 5,
+      "per_device_train_batch_size": 8,
+      "per_device_eval_batch_size": 16,
+      "max_seq_length": 256,
+      "stride": 64,
+      "learning_rate": 5e-05,
+      "warmup_ratio": 0.1,
+      "weight_decay": 0.01,
+      "gradient_accumulation_steps": 1
+    },
+    "allow_dirty": false,
+    "release_mode": false,
+    "strict": true
   },
   "build_metadata": {
+    "python_version": "3.14.3 (main, Mar 11 2026, 19:17:30) [GCC 15.2.0]",
     "dependencies": {
-      "scikit_learn": "1.7.2"
+      "scikit_learn": "1.8.0",
+      "joblib": "1.5.3",
+      "pandas": "3.0.1"
+    },
+    "commit_sha": "090060c4478c373a02eb09ae63292f51ca31a710",
+    "dirty": true
+  },
+  "configured_tasks": [
+    {
+      "task_name": "retrieval_constraint_relevance_pair",
+      "family": "pair",
+      "input_type": "pair",
+      "objective": "pair_ranking",
+      "enabled": true,
+      "artifact_name": "retrieval_constraint_relevance_pair",
+      "metrics": [
+        "mrr@10",
+        "ndcg@10",
+        "recall@10"
+      ],
+      "trainer": "transformer_pair",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "BAAI/bge-reranker-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "memory_rerank_pair",
+      "family": "pair",
+      "input_type": "pair",
+      "objective": "pair_ranking",
+      "enabled": true,
+      "artifact_name": "memory_rerank_pair",
+      "metrics": [
+        "mrr@10",
+        "ndcg@10",
+        "recall@10"
+      ],
+      "trainer": "transformer_pair",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "BAAI/bge-reranker-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "novelty_pair",
+      "family": "pair",
+      "input_type": "pair",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "novelty_pair",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "transformer_pair",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "BAAI/bge-reranker-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "fact_extraction_structured",
+      "family": "extractor",
+      "input_type": "single",
+      "objective": "token_classification",
+      "enabled": true,
+      "artifact_name": "fact_extraction_structured",
+      "metrics": [
+        "span_f1",
+        "span_exact_match"
+      ],
+      "trainer": "",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "schema_match_pair",
+      "family": "pair",
+      "input_type": "pair",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "schema_match_pair",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "transformer_pair",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "BAAI/bge-reranker-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "reconsolidation_candidate_pair",
+      "family": "pair",
+      "input_type": "pair",
+      "objective": "pair_ranking",
+      "enabled": true,
+      "artifact_name": "reconsolidation_candidate_pair",
+      "metrics": [
+        "mrr@10",
+        "ndcg@10",
+        "recall@10"
+      ],
+      "trainer": "transformer_pair",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "BAAI/bge-reranker-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "write_importance_regression",
+      "family": "router",
+      "input_type": "single",
+      "objective": "single_regression",
+      "enabled": true,
+      "artifact_name": "write_importance_regression",
+      "metrics": [
+        "mae",
+        "rmse"
+      ],
+      "trainer": "",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "memory_type",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "memory_type",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "hierarchical_transformer",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "salience_bin",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "salience_bin",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1",
+        "ordinal_mae",
+        "off_by_two_rate"
+      ],
+      "trainer": "ordinal_threshold",
+      "feature_backend": "",
+      "label_order": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "importance_bin",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "importance_bin",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1",
+        "ordinal_mae",
+        "off_by_two_rate"
+      ],
+      "trainer": "ordinal_threshold",
+      "feature_backend": "",
+      "label_order": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "confidence_bin",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "confidence_bin",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1",
+        "ordinal_mae",
+        "off_by_two_rate"
+      ],
+      "trainer": "ordinal_threshold",
+      "feature_backend": "",
+      "label_order": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "decay_profile",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "decay_profile",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1",
+        "ordinal_mae",
+        "off_by_two_rate"
+      ],
+      "trainer": "ordinal_threshold",
+      "feature_backend": "",
+      "label_order": [
+        "very_fast",
+        "fast",
+        "medium",
+        "slow",
+        "very_slow"
+      ],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "pii_span_detection",
+      "family": "extractor",
+      "input_type": "single",
+      "objective": "token_classification",
+      "enabled": true,
+      "artifact_name": "pii_span_detection",
+      "metrics": [
+        "span_f1",
+        "span_exact_match"
+      ],
+      "trainer": "",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "consolidation_gist_quality",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "consolidation_gist_quality",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "transformer_text",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "forgetting_action_policy",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "forgetting_action_policy",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "transformer_text",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "constraint_dimension",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "constraint_dimension",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "transformer_text",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": ""
+    },
+    {
+      "task_name": "context_tag",
+      "family": "router",
+      "input_type": "single",
+      "objective": "classification",
+      "enabled": true,
+      "artifact_name": "context_tag",
+      "metrics": [
+        "accuracy",
+        "macro_f1",
+        "weighted_f1"
+      ],
+      "trainer": "transformer_text",
+      "feature_backend": "",
+      "label_order": [],
+      "embedding_model_name": "",
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": ""
+    }
+  ],
+  "preflight_validation": {
+    "ok": true,
+    "strict": true,
+    "errors": [],
+    "warnings": [],
+    "task_checks": [
+      {
+        "task_name": "retrieval_constraint_relevance_pair",
+        "family": "pair",
+        "input_type": "pair",
+        "objective": "pair_ranking",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 80000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "memory_rerank_pair",
+        "family": "pair",
+        "input_type": "pair",
+        "objective": "pair_ranking",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 80000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "novelty_pair",
+        "family": "pair",
+        "input_type": "pair",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 117206,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "fact_extraction_structured",
+        "family": "extractor",
+        "input_type": "single",
+        "objective": "token_classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 31997,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "schema_match_pair",
+        "family": "pair",
+        "input_type": "pair",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 81200,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "reconsolidation_candidate_pair",
+        "family": "pair",
+        "input_type": "pair",
+        "objective": "pair_ranking",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 80000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "write_importance_regression",
+        "family": "router",
+        "input_type": "single",
+        "objective": "single_regression",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 8000,
+        "valid_score_rows": 8000
+      },
+      {
+        "task_name": "memory_type",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 120000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "salience_bin",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 24000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "importance_bin",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 24000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "confidence_bin",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 24000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "decay_profile",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 40000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "pii_span_detection",
+        "family": "extractor",
+        "input_type": "single",
+        "objective": "token_classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 30516,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "consolidation_gist_quality",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 10432,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "forgetting_action_policy",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 40000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "constraint_dimension",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 48000,
+        "valid_score_rows": 0
+      },
+      {
+        "task_name": "context_tag",
+        "family": "router",
+        "input_type": "single",
+        "objective": "classification",
+        "enabled": true,
+        "status": "ok",
+        "reason": null,
+        "rows_found": 64000,
+        "valid_score_rows": 0
+      }
+    ],
+    "observed_tasks_by_family": {
+      "router": [
+        "confidence_bin",
+        "consolidation_gist_quality",
+        "constraint_dimension",
+        "context_tag",
+        "decay_profile",
+        "forgetting_action_policy",
+        "importance_bin",
+        "memory_type",
+        "query_domain",
+        "query_intent",
+        "salience_bin",
+        "write_importance_regression"
+      ],
+      "pair": [
+        "conflict_detection",
+        "constraint_rerank",
+        "memory_rerank_pair",
+        "novelty_pair",
+        "reconsolidation_candidate_pair",
+        "retrieval_constraint_relevance_pair",
+        "schema_match_pair",
+        "scope_match",
+        "supersession"
+      ],
+      "extractor": [
+        "constraint_scope",
+        "constraint_stability",
+        "constraint_type",
+        "fact_type",
+        "pii_presence"
+      ]
+    },
+    "coverage_vs_config": {
+      "extractor": {
+        "configured_enabled_tasks": [],
+        "observed_tasks": [
+          "constraint_scope",
+          "constraint_stability",
+          "constraint_type",
+          "fact_type",
+          "pii_presence"
+        ],
+        "missing_configured_tasks": []
+      },
+      "pair": {
+        "configured_enabled_tasks": [
+          "memory_rerank_pair",
+          "novelty_pair",
+          "reconsolidation_candidate_pair",
+          "retrieval_constraint_relevance_pair",
+          "schema_match_pair"
+        ],
+        "observed_tasks": [
+          "conflict_detection",
+          "constraint_rerank",
+          "memory_rerank_pair",
+          "novelty_pair",
+          "reconsolidation_candidate_pair",
+          "retrieval_constraint_relevance_pair",
+          "schema_match_pair",
+          "scope_match",
+          "supersession"
+        ],
+        "missing_configured_tasks": []
+      },
+      "router": {
+        "configured_enabled_tasks": [
+          "confidence_bin",
+          "consolidation_gist_quality",
+          "constraint_dimension",
+          "context_tag",
+          "decay_profile",
+          "forgetting_action_policy",
+          "importance_bin",
+          "memory_type",
+          "salience_bin",
+          "write_importance_regression"
+        ],
+        "observed_tasks": [
+          "confidence_bin",
+          "consolidation_gist_quality",
+          "constraint_dimension",
+          "context_tag",
+          "decay_profile",
+          "forgetting_action_policy",
+          "importance_bin",
+          "memory_type",
+          "query_domain",
+          "query_intent",
+          "salience_bin",
+          "write_importance_regression"
+        ],
+        "missing_configured_tasks": []
+      }
     }
   },
   "families": {
@@ -20,12 +726,2062 @@
       "model_path": "packages/models/trained_models/pair_model.joblib"
     }
   },
+  "task_training_status": {
+    "retrieval_constraint_relevance_pair": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "pair",
+      "objective": "pair_ranking",
+      "enabled": true
+    },
+    "memory_rerank_pair": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "pair",
+      "objective": "pair_ranking",
+      "enabled": true
+    },
+    "novelty_pair": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "pair",
+      "objective": "classification",
+      "enabled": true
+    },
+    "fact_extraction_structured": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "extractor",
+      "objective": "token_classification",
+      "enabled": true
+    },
+    "schema_match_pair": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "pair",
+      "objective": "classification",
+      "enabled": true
+    },
+    "reconsolidation_candidate_pair": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "pair",
+      "objective": "pair_ranking",
+      "enabled": true
+    },
+    "write_importance_regression": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "single_regression",
+      "enabled": true
+    },
+    "memory_type": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "salience_bin": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "importance_bin": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "confidence_bin": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "decay_profile": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "pii_span_detection": {
+      "status": "trained",
+      "reason": null,
+      "family": "extractor",
+      "objective": "token_classification",
+      "enabled": true,
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/pii_span_detection_model.joblib",
+      "train_rows": 30516
+    },
+    "consolidation_gist_quality": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "forgetting_action_policy": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "constraint_dimension": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    },
+    "context_tag": {
+      "status": "filtered_out",
+      "reason": "Excluded by --tasks filter",
+      "family": "router",
+      "objective": "classification",
+      "enabled": true
+    }
+  },
   "task_models": {
     "memory_rerank_pair": {
-      "model_path": "packages/models/trained_models/memory_rerank_pair_model.joblib"
+      "model_path": "packages/models/trained_models/memory_rerank_pair_model.joblib",
+      "hf_model_dir": "packages/models/trained_models/memory_rerank_pair_hf"
     },
     "retrieval_constraint_relevance_pair": {
-      "model_path": "packages/models/trained_models/retrieval_constraint_relevance_pair_model.joblib"
+      "model_path": "packages/models/trained_models/retrieval_constraint_relevance_pair_model.joblib",
+      "hf_model_dir": "packages/models/trained_models/retrieval_constraint_relevance_pair_hf"
+    },
+    "novelty_pair": {
+      "model_path": "packages/models/trained_models/novelty_pair_model.joblib",
+      "hf_model_dir": "packages/models/trained_models/novelty_pair_hf"
+    },
+    "fact_extraction_structured": {
+      "model_path": "packages/models/trained_models/fact_extraction_structured_model.joblib",
+      "hf_model_dir": "packages/models/trained_models/fact_extraction_structured_hf"
+    },
+    "schema_match_pair": {
+      "task": "schema_match_pair",
+      "objective": "classification",
+      "trainer": "transformer_pair",
+      "model_kind": "transformer_pair",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/schema_match_pair_model.joblib",
+      "hf_model_dir": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/schema_match_pair_hf",
+      "train_rows": 81200,
+      "test": {
+        "rows": 10000,
+        "accuracy": 0.8552,
+        "macro_f1": 0.8551561470750885,
+        "weighted_f1": 0.8551561470750885,
+        "micro_f1": 0.8552,
+        "labels": [
+          "schema_match_pair::match",
+          "schema_match_pair::no_match"
+        ],
+        "confusion_matrix": [
+          [
+            4189,
+            811
+          ],
+          [
+            637,
+            4363
+          ]
+        ],
+        "calibration_error": 0.03336120770113563,
+        "classification_report": {
+          "schema_match_pair::match": {
+            "precision": 0.8680066307501036,
+            "recall": 0.8378,
+            "f1-score": 0.852635864034195,
+            "support": 5000.0
+          },
+          "schema_match_pair::no_match": {
+            "precision": 0.8432547352145342,
+            "recall": 0.8726,
+            "f1-score": 0.8576764301159819,
+            "support": 5000.0
+          },
+          "accuracy": 0.8552,
+          "macro avg": {
+            "precision": 0.8556306829823189,
+            "recall": 0.8552,
+            "f1-score": 0.8551561470750885,
+            "support": 10000.0
+          },
+          "weighted avg": {
+            "precision": 0.8556306829823188,
+            "recall": 0.8552,
+            "f1-score": 0.8551561470750885,
+            "support": 10000.0
+          }
+        }
+      },
+      "eval": {
+        "rows": 10000,
+        "accuracy": 0.8517,
+        "macro_f1": 0.8516351927685533,
+        "weighted_f1": 0.8516351927685533,
+        "micro_f1": 0.8517,
+        "labels": [
+          "schema_match_pair::match",
+          "schema_match_pair::no_match"
+        ],
+        "confusion_matrix": [
+          [
+            4154,
+            846
+          ],
+          [
+            637,
+            4363
+          ]
+        ],
+        "calibration_error": 0.03950018305884612,
+        "classification_report": {
+          "schema_match_pair::match": {
+            "precision": 0.8670423711125026,
+            "recall": 0.8308,
+            "f1-score": 0.848534368297416,
+            "support": 5000.0
+          },
+          "schema_match_pair::no_match": {
+            "precision": 0.8375887886350547,
+            "recall": 0.8726,
+            "f1-score": 0.8547360172396905,
+            "support": 5000.0
+          },
+          "accuracy": 0.8517,
+          "macro avg": {
+            "precision": 0.8523155798737787,
+            "recall": 0.8517,
+            "f1-score": 0.8516351927685533,
+            "support": 10000.0
+          },
+          "weighted avg": {
+            "precision": 0.8523155798737786,
+            "recall": 0.8517,
+            "f1-score": 0.8516351927685533,
+            "support": 10000.0
+          }
+        }
+      },
+      "actual_epochs": 4,
+      "best_epoch": 4,
+      "early_stopped": false,
+      "selection_metric": "macro_f1",
+      "selection_value": 0.8516351927685533,
+      "backbone_model_name": "BAAI/bge-reranker-base",
+      "tokenizer_name": "BAAI/bge-reranker-base",
+      "calibration": {
+        "method": "temperature_grid_search",
+        "rows": 10000,
+        "temperature": 1.3,
+        "loss": 0.3754132442613608
+      },
+      "thresholds": {
+        "default_threshold": 0.26,
+        "positive_label": "schema_match_pair::match",
+        "precision_floor": 0.85,
+        "positive_f1": 0.8544423440453687,
+        "positive_precision": 0.8501286873886359
+      },
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/pair_train.parquet",
+          "sha256": "5b19ae2af42d3bbeb58fa8cda2a6b40748e2561a7c4c60a464e2eced711d7c16",
+          "bytes": 99474783
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/pair_test.parquet",
+          "sha256": "33f2d21d29ab684df5c9ab8df2b8bea8ffaa485434bc14bed350cea86a075a88",
+          "bytes": 14270999
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/pair_eval.parquet",
+          "sha256": "cb6fae7ab447adb0d49af2de458dfbfa82f1af1efa5fd72644e2e6a9db7d07b7",
+          "bytes": 14298411
+        }
+      },
+      "release_gates": {
+        "passed": true,
+        "checks": [
+          {
+            "section": "test",
+            "metric": "macro_f1",
+            "threshold": 0.8,
+            "actual": 0.8551561470750885,
+            "passed": true
+          },
+          {
+            "section": "test",
+            "metric": "calibration_error",
+            "threshold": {
+              "max": 0.08
+            },
+            "actual": 0.03336120770113563,
+            "passed": true
+          }
+        ]
+      }
+    },
+    "reconsolidation_candidate_pair": {
+      "model_path": "packages/models/trained_models/reconsolidation_candidate_pair_model.joblib",
+      "hf_model_dir": "packages/models/trained_models/reconsolidation_candidate_pair_hf"
+    },
+    "write_importance_regression": {
+      "model_path": "packages/models/trained_models/write_importance_regression_model.joblib"
+    },
+    "forgetting_action_policy": {
+      "task": "forgetting_action_policy",
+      "objective": "classification",
+      "trainer": "transformer_text",
+      "model_kind": "transformer_text",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/forgetting_action_policy_model.joblib",
+      "hf_model_dir": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/forgetting_action_policy_hf",
+      "train_rows": 28580,
+      "test": {
+        "rows": 18920,
+        "accuracy": 0.9994714587737844,
+        "macro_f1": 0.9994714168187103,
+        "weighted_f1": 0.9994714168187103,
+        "micro_f1": 0.9994714587737844,
+        "labels": [
+          "forgetting_action_policy::compress",
+          "forgetting_action_policy::decay",
+          "forgetting_action_policy::delete",
+          "forgetting_action_policy::keep",
+          "forgetting_action_policy::silence"
+        ],
+        "confusion_matrix": [
+          [
+            3782,
+            2,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            3784,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            3779,
+            1,
+            4
+          ],
+          [
+            0,
+            0,
+            0,
+            3784,
+            0
+          ],
+          [
+            2,
+            0,
+            1,
+            0,
+            3781
+          ]
+        ],
+        "calibration_error": 0.01649172677837832,
+        "classification_report": {
+          "forgetting_action_policy::compress": {
+            "precision": 0.9994714587737844,
+            "recall": 0.9994714587737844,
+            "f1-score": 0.9994714587737844,
+            "support": 3784.0
+          },
+          "forgetting_action_policy::decay": {
+            "precision": 0.9994717379820391,
+            "recall": 1.0,
+            "f1-score": 0.9997357992073976,
+            "support": 3784.0
+          },
+          "forgetting_action_policy::delete": {
+            "precision": 0.9997354497354497,
+            "recall": 0.9986786469344608,
+            "f1-score": 0.9992067689053411,
+            "support": 3784.0
+          },
+          "forgetting_action_policy::keep": {
+            "precision": 0.9997357992073976,
+            "recall": 1.0,
+            "f1-score": 0.9998678821508786,
+            "support": 3784.0
+          },
+          "forgetting_action_policy::silence": {
+            "precision": 0.9989431968295905,
+            "recall": 0.9992071881606766,
+            "f1-score": 0.9990751750561501,
+            "support": 3784.0
+          },
+          "accuracy": 0.9994714587737844,
+          "macro avg": {
+            "precision": 0.9994715285056524,
+            "recall": 0.9994714587737844,
+            "f1-score": 0.9994714168187103,
+            "support": 18920.0
+          },
+          "weighted avg": {
+            "precision": 0.9994715285056522,
+            "recall": 0.9994714587737844,
+            "f1-score": 0.9994714168187103,
+            "support": 18920.0
+          }
+        }
+      },
+      "eval": {
+        "rows": 5000,
+        "accuracy": 0.984,
+        "macro_f1": 0.9839922007228425,
+        "weighted_f1": 0.9839922007228427,
+        "micro_f1": 0.984,
+        "labels": [
+          "forgetting_action_policy::compress",
+          "forgetting_action_policy::decay",
+          "forgetting_action_policy::delete",
+          "forgetting_action_policy::keep",
+          "forgetting_action_policy::silence"
+        ],
+        "confusion_matrix": [
+          [
+            988,
+            3,
+            0,
+            9,
+            0
+          ],
+          [
+            3,
+            986,
+            1,
+            1,
+            9
+          ],
+          [
+            2,
+            0,
+            994,
+            0,
+            4
+          ],
+          [
+            6,
+            11,
+            0,
+            979,
+            4
+          ],
+          [
+            2,
+            11,
+            11,
+            3,
+            973
+          ]
+        ],
+        "calibration_error": 0.0073812406567217975,
+        "classification_report": {
+          "forgetting_action_policy::compress": {
+            "precision": 0.987012987012987,
+            "recall": 0.988,
+            "f1-score": 0.9875062468765617,
+            "support": 1000.0
+          },
+          "forgetting_action_policy::decay": {
+            "precision": 0.9752720079129574,
+            "recall": 0.986,
+            "f1-score": 0.9806066633515664,
+            "support": 1000.0
+          },
+          "forgetting_action_policy::delete": {
+            "precision": 0.9880715705765407,
+            "recall": 0.994,
+            "f1-score": 0.9910269192422732,
+            "support": 1000.0
+          },
+          "forgetting_action_policy::keep": {
+            "precision": 0.9868951612903226,
+            "recall": 0.979,
+            "f1-score": 0.9829317269076305,
+            "support": 1000.0
+          },
+          "forgetting_action_policy::silence": {
+            "precision": 0.9828282828282828,
+            "recall": 0.973,
+            "f1-score": 0.9778894472361809,
+            "support": 1000.0
+          },
+          "accuracy": 0.984,
+          "macro avg": {
+            "precision": 0.984016001924218,
+            "recall": 0.984,
+            "f1-score": 0.9839922007228425,
+            "support": 5000.0
+          },
+          "weighted avg": {
+            "precision": 0.9840160019242181,
+            "recall": 0.984,
+            "f1-score": 0.9839922007228427,
+            "support": 5000.0
+          }
+        }
+      },
+      "actual_epochs": 8,
+      "best_epoch": 7,
+      "early_stopped": false,
+      "selection_metric": "macro_f1",
+      "selection_value": 0.9839922007228425,
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": "microsoft/deberta-v3-base",
+      "calibration": {
+        "method": "temperature_grid_search",
+        "rows": 5000,
+        "temperature": 2.0,
+        "loss": 0.08134587520392533
+      },
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_train.parquet",
+          "sha256": "d6cf7bf6638ca6d2a0b12d3e011aac120866f3cbf7364359bcc32a1f86ac3770",
+          "bytes": 44674192
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_test.parquet",
+          "sha256": "2665b088823ca9733c9f53a62aa9e4c8f6148a8d169ebfb69641d04a3e710552",
+          "bytes": 7175410
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_eval.parquet",
+          "sha256": "b492f3fd739408de18bfd17b5c57248b51b90dba10e744f2687b50cdc351e13f",
+          "bytes": 6746274
+        }
+      },
+      "release_gates": {
+        "passed": true,
+        "checks": [
+          {
+            "section": "test",
+            "metric": "macro_f1",
+            "threshold": 0.93,
+            "actual": 0.9994714168187103,
+            "passed": true
+          },
+          {
+            "section": "test",
+            "metric": "decay_recall",
+            "threshold": 0.9,
+            "actual": 1.0,
+            "passed": true
+          },
+          {
+            "section": "test",
+            "metric": "delete_recall",
+            "threshold": 0.9,
+            "actual": 0.9986786469344608,
+            "passed": true
+          }
+        ]
+      }
+    },
+    "constraint_dimension": {
+      "task": "constraint_dimension",
+      "objective": "classification",
+      "trainer": "transformer_text",
+      "model_kind": "transformer_text",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/constraint_dimension_model.joblib",
+      "hf_model_dir": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/constraint_dimension_hf",
+      "train_rows": 48000,
+      "test": {
+        "rows": 6000,
+        "accuracy": 0.8828333333333334,
+        "macro_f1": 0.883185453547077,
+        "weighted_f1": 0.883185453547077,
+        "micro_f1": 0.8828333333333334,
+        "labels": [
+          "constraint_dimension::causal",
+          "constraint_dimension::goal",
+          "constraint_dimension::other",
+          "constraint_dimension::policy",
+          "constraint_dimension::state",
+          "constraint_dimension::value"
+        ],
+        "confusion_matrix": [
+          [
+            966,
+            2,
+            20,
+            1,
+            7,
+            4
+          ],
+          [
+            1,
+            927,
+            47,
+            2,
+            6,
+            17
+          ],
+          [
+            12,
+            30,
+            817,
+            22,
+            56,
+            63
+          ],
+          [
+            0,
+            2,
+            26,
+            949,
+            1,
+            22
+          ],
+          [
+            27,
+            7,
+            63,
+            8,
+            865,
+            30
+          ],
+          [
+            7,
+            19,
+            137,
+            27,
+            37,
+            773
+          ]
+        ],
+        "calibration_error": 0.08291319935909541,
+        "classification_report": {
+          "constraint_dimension::causal": {
+            "precision": 0.9536031589338598,
+            "recall": 0.966,
+            "f1-score": 0.9597615499254843,
+            "support": 1000.0
+          },
+          "constraint_dimension::goal": {
+            "precision": 0.939209726443769,
+            "recall": 0.927,
+            "f1-score": 0.9330649219929542,
+            "support": 1000.0
+          },
+          "constraint_dimension::other": {
+            "precision": 0.7360360360360361,
+            "recall": 0.817,
+            "f1-score": 0.7744075829383886,
+            "support": 1000.0
+          },
+          "constraint_dimension::policy": {
+            "precision": 0.9405351833498513,
+            "recall": 0.949,
+            "f1-score": 0.944748631159781,
+            "support": 1000.0
+          },
+          "constraint_dimension::state": {
+            "precision": 0.8899176954732511,
+            "recall": 0.865,
+            "f1-score": 0.8772819472616633,
+            "support": 1000.0
+          },
+          "constraint_dimension::value": {
+            "precision": 0.8503850385038504,
+            "recall": 0.773,
+            "f1-score": 0.8098480880041907,
+            "support": 1000.0
+          },
+          "accuracy": 0.8828333333333334,
+          "macro avg": {
+            "precision": 0.8849478064567696,
+            "recall": 0.8828333333333332,
+            "f1-score": 0.883185453547077,
+            "support": 6000.0
+          },
+          "weighted avg": {
+            "precision": 0.8849478064567696,
+            "recall": 0.8828333333333334,
+            "f1-score": 0.883185453547077,
+            "support": 6000.0
+          }
+        }
+      },
+      "eval": {
+        "rows": 6000,
+        "accuracy": 0.8698333333333333,
+        "macro_f1": 0.8703105353987516,
+        "weighted_f1": 0.8703105353987517,
+        "micro_f1": 0.8698333333333333,
+        "labels": [
+          "constraint_dimension::causal",
+          "constraint_dimension::goal",
+          "constraint_dimension::other",
+          "constraint_dimension::policy",
+          "constraint_dimension::state",
+          "constraint_dimension::value"
+        ],
+        "confusion_matrix": [
+          [
+            965,
+            2,
+            16,
+            0,
+            12,
+            5
+          ],
+          [
+            1,
+            907,
+            57,
+            1,
+            9,
+            25
+          ],
+          [
+            19,
+            31,
+            791,
+            18,
+            56,
+            85
+          ],
+          [
+            1,
+            0,
+            22,
+            954,
+            2,
+            21
+          ],
+          [
+            27,
+            13,
+            78,
+            6,
+            842,
+            34
+          ],
+          [
+            13,
+            23,
+            145,
+            23,
+            36,
+            760
+          ]
+        ],
+        "calibration_error": 0.09575599064379686,
+        "classification_report": {
+          "constraint_dimension::causal": {
+            "precision": 0.9405458089668616,
+            "recall": 0.965,
+            "f1-score": 0.9526159921026653,
+            "support": 1000.0
+          },
+          "constraint_dimension::goal": {
+            "precision": 0.9293032786885246,
+            "recall": 0.907,
+            "f1-score": 0.9180161943319838,
+            "support": 1000.0
+          },
+          "constraint_dimension::other": {
+            "precision": 0.7132551848512173,
+            "recall": 0.791,
+            "f1-score": 0.7501185395922239,
+            "support": 1000.0
+          },
+          "constraint_dimension::policy": {
+            "precision": 0.9520958083832335,
+            "recall": 0.954,
+            "f1-score": 0.9530469530469531,
+            "support": 1000.0
+          },
+          "constraint_dimension::state": {
+            "precision": 0.8798328108672936,
+            "recall": 0.842,
+            "f1-score": 0.8605007664793051,
+            "support": 1000.0
+          },
+          "constraint_dimension::value": {
+            "precision": 0.8172043010752689,
+            "recall": 0.76,
+            "f1-score": 0.7875647668393783,
+            "support": 1000.0
+          },
+          "accuracy": 0.8698333333333333,
+          "macro avg": {
+            "precision": 0.8720395321387332,
+            "recall": 0.8698333333333332,
+            "f1-score": 0.8703105353987516,
+            "support": 6000.0
+          },
+          "weighted avg": {
+            "precision": 0.8720395321387332,
+            "recall": 0.8698333333333333,
+            "f1-score": 0.8703105353987517,
+            "support": 6000.0
+          }
+        }
+      },
+      "actual_epochs": 10,
+      "best_epoch": 10,
+      "early_stopped": false,
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": "microsoft/deberta-v3-base",
+      "calibration": {
+        "method": "temperature_grid_search",
+        "rows": 6000,
+        "temperature": 2.0,
+        "loss": 0.5294126563569427
+      },
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_train.parquet",
+          "sha256": "d6cf7bf6638ca6d2a0b12d3e011aac120866f3cbf7364359bcc32a1f86ac3770",
+          "bytes": 44674192
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_test.parquet",
+          "sha256": "c24ff4a481709443ccdac0bad5916fede972611b3cdd683a578f750d18a40e71",
+          "bytes": 7175410
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_eval.parquet",
+          "sha256": "b492f3fd739408de18bfd17b5c57248b51b90dba10e744f2687b50cdc351e13f",
+          "bytes": 6746274
+        }
+      },
+      "release_gates": {
+        "passed": true,
+        "checks": []
+      }
+    },
+    "context_tag": {
+      "task": "context_tag",
+      "objective": "classification",
+      "trainer": "transformer_text",
+      "model_kind": "transformer_text",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/context_tag_model.joblib",
+      "hf_model_dir": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/context_tag_hf",
+      "train_rows": 64000,
+      "test": {
+        "rows": 8000,
+        "accuracy": 0.947375,
+        "macro_f1": 0.9462078544778264,
+        "weighted_f1": 0.9462078544778263,
+        "micro_f1": 0.947375,
+        "labels": [
+          "context_tag::finance",
+          "context_tag::food",
+          "context_tag::general",
+          "context_tag::health",
+          "context_tag::social",
+          "context_tag::tech",
+          "context_tag::travel",
+          "context_tag::work"
+        ],
+        "confusion_matrix": [
+          [
+            979,
+            0,
+            12,
+            1,
+            0,
+            3,
+            1,
+            4
+          ],
+          [
+            0,
+            951,
+            15,
+            24,
+            8,
+            0,
+            2,
+            0
+          ],
+          [
+            52,
+            34,
+            775,
+            27,
+            28,
+            21,
+            30,
+            33
+          ],
+          [
+            0,
+            13,
+            15,
+            972,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            5,
+            10,
+            0,
+            975,
+            0,
+            6,
+            3
+          ],
+          [
+            2,
+            0,
+            9,
+            0,
+            0,
+            975,
+            0,
+            14
+          ],
+          [
+            4,
+            0,
+            4,
+            0,
+            4,
+            1,
+            986,
+            1
+          ],
+          [
+            5,
+            0,
+            11,
+            0,
+            0,
+            17,
+            1,
+            966
+          ]
+        ],
+        "calibration_error": 0.024662236875587645,
+        "classification_report": {
+          "context_tag::finance": {
+            "precision": 0.9386385426653883,
+            "recall": 0.979,
+            "f1-score": 0.9583945178658835,
+            "support": 1000.0
+          },
+          "context_tag::food": {
+            "precision": 0.9481555333998006,
+            "recall": 0.951,
+            "f1-score": 0.9495756365451822,
+            "support": 1000.0
+          },
+          "context_tag::general": {
+            "precision": 0.9106933019976499,
+            "recall": 0.775,
+            "f1-score": 0.8373851971907077,
+            "support": 1000.0
+          },
+          "context_tag::health": {
+            "precision": 0.94921875,
+            "recall": 0.972,
+            "f1-score": 0.9604743083003953,
+            "support": 1000.0
+          },
+          "context_tag::social": {
+            "precision": 0.9605911330049262,
+            "recall": 0.975,
+            "f1-score": 0.967741935483871,
+            "support": 1000.0
+          },
+          "context_tag::tech": {
+            "precision": 0.9587020648967551,
+            "recall": 0.975,
+            "f1-score": 0.9667823500247893,
+            "support": 1000.0
+          },
+          "context_tag::travel": {
+            "precision": 0.9610136452241715,
+            "recall": 0.986,
+            "f1-score": 0.9733464955577492,
+            "support": 1000.0
+          },
+          "context_tag::work": {
+            "precision": 0.9461312438785504,
+            "recall": 0.966,
+            "f1-score": 0.9559623948540327,
+            "support": 1000.0
+          },
+          "accuracy": 0.947375,
+          "macro avg": {
+            "precision": 0.9466430268834052,
+            "recall": 0.947375,
+            "f1-score": 0.9462078544778264,
+            "support": 8000.0
+          },
+          "weighted avg": {
+            "precision": 0.9466430268834054,
+            "recall": 0.947375,
+            "f1-score": 0.9462078544778263,
+            "support": 8000.0
+          }
+        }
+      },
+      "eval": {
+        "rows": 8000,
+        "accuracy": 0.94625,
+        "macro_f1": 0.9445890976694143,
+        "weighted_f1": 0.9445890976694143,
+        "micro_f1": 0.94625,
+        "labels": [
+          "context_tag::finance",
+          "context_tag::food",
+          "context_tag::general",
+          "context_tag::health",
+          "context_tag::social",
+          "context_tag::tech",
+          "context_tag::travel",
+          "context_tag::work"
+        ],
+        "confusion_matrix": [
+          [
+            982,
+            0,
+            8,
+            0,
+            0,
+            4,
+            0,
+            6
+          ],
+          [
+            1,
+            972,
+            9,
+            11,
+            6,
+            0,
+            1,
+            0
+          ],
+          [
+            50,
+            53,
+            743,
+            33,
+            29,
+            26,
+            27,
+            39
+          ],
+          [
+            1,
+            18,
+            10,
+            967,
+            1,
+            2,
+            0,
+            1
+          ],
+          [
+            2,
+            5,
+            4,
+            1,
+            984,
+            0,
+            2,
+            2
+          ],
+          [
+            5,
+            0,
+            14,
+            2,
+            1,
+            971,
+            0,
+            7
+          ],
+          [
+            1,
+            2,
+            6,
+            0,
+            6,
+            1,
+            983,
+            1
+          ],
+          [
+            1,
+            0,
+            11,
+            0,
+            0,
+            19,
+            1,
+            968
+          ]
+        ],
+        "calibration_error": 0.023930798305538282,
+        "classification_report": {
+          "context_tag::finance": {
+            "precision": 0.9415148609779482,
+            "recall": 0.982,
+            "f1-score": 0.9613313754282917,
+            "support": 1000.0
+          },
+          "context_tag::food": {
+            "precision": 0.9257142857142857,
+            "recall": 0.972,
+            "f1-score": 0.9482926829268292,
+            "support": 1000.0
+          },
+          "context_tag::general": {
+            "precision": 0.9229813664596274,
+            "recall": 0.743,
+            "f1-score": 0.8232686980609418,
+            "support": 1000.0
+          },
+          "context_tag::health": {
+            "precision": 0.9536489151873767,
+            "recall": 0.967,
+            "f1-score": 0.9602780536246276,
+            "support": 1000.0
+          },
+          "context_tag::social": {
+            "precision": 0.9581304771178188,
+            "recall": 0.984,
+            "f1-score": 0.9708929452392698,
+            "support": 1000.0
+          },
+          "context_tag::tech": {
+            "precision": 0.9491691104594331,
+            "recall": 0.971,
+            "f1-score": 0.9599604547701434,
+            "support": 1000.0
+          },
+          "context_tag::travel": {
+            "precision": 0.9694280078895463,
+            "recall": 0.983,
+            "f1-score": 0.9761668321747765,
+            "support": 1000.0
+          },
+          "context_tag::work": {
+            "precision": 0.9453125,
+            "recall": 0.968,
+            "f1-score": 0.9565217391304348,
+            "support": 1000.0
+          },
+          "accuracy": 0.94625,
+          "macro avg": {
+            "precision": 0.9457374404757546,
+            "recall": 0.94625,
+            "f1-score": 0.9445890976694143,
+            "support": 8000.0
+          },
+          "weighted avg": {
+            "precision": 0.9457374404757545,
+            "recall": 0.94625,
+            "f1-score": 0.9445890976694143,
+            "support": 8000.0
+          }
+        }
+      },
+      "actual_epochs": 3,
+      "best_epoch": 3,
+      "early_stopped": false,
+      "backbone_model_name": "microsoft/deberta-v3-base",
+      "tokenizer_name": "microsoft/deberta-v3-base",
+      "calibration": {
+        "method": "temperature_grid_search",
+        "rows": 8000,
+        "temperature": 2.0,
+        "loss": 0.22631261527409646
+      },
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_train.parquet",
+          "sha256": "d6cf7bf6638ca6d2a0b12d3e011aac120866f3cbf7364359bcc32a1f86ac3770",
+          "bytes": 44674192
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_test.parquet",
+          "sha256": "c24ff4a481709443ccdac0bad5916fede972611b3cdd683a578f750d18a40e71",
+          "bytes": 7175410
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_eval.parquet",
+          "sha256": "b492f3fd739408de18bfd17b5c57248b51b90dba10e744f2687b50cdc351e13f",
+          "bytes": 6746274
+        }
+      },
+      "release_gates": {
+        "passed": true,
+        "checks": []
+      }
+    },
+    "confidence_bin": {
+      "task": "confidence_bin",
+      "objective": "classification",
+      "trainer": "ordinal_threshold",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/confidence_bin_model.joblib",
+      "train_rows": 24000,
+      "test": {
+        "rows": 3000,
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "micro_f1": 1.0,
+        "labels": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "confusion_matrix": [
+          [
+            1000,
+            0,
+            0
+          ],
+          [
+            0,
+            1000,
+            0
+          ],
+          [
+            0,
+            0,
+            1000
+          ]
+        ],
+        "calibration_error": 0.0,
+        "classification_report": {
+          "confidence_bin::high": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "confidence_bin::low": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "confidence_bin::medium": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "accuracy": 1.0,
+          "macro avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3000.0
+          },
+          "weighted avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3000.0
+          }
+        },
+        "ordinal_mae": 0.0,
+        "off_by_two_rate": 0.0
+      },
+      "eval": {
+        "rows": 3000,
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "micro_f1": 1.0,
+        "labels": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "confusion_matrix": [
+          [
+            1000,
+            0,
+            0
+          ],
+          [
+            0,
+            1000,
+            0
+          ],
+          [
+            0,
+            0,
+            1000
+          ]
+        ],
+        "calibration_error": 0.0,
+        "classification_report": {
+          "confidence_bin::high": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "confidence_bin::low": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "confidence_bin::medium": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "accuracy": 1.0,
+          "macro avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3000.0
+          },
+          "weighted avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 3000.0
+          }
+        },
+        "ordinal_mae": 0.0,
+        "off_by_two_rate": 0.0
+      },
+      "actual_epochs": 1,
+      "best_epoch": 1,
+      "early_stopped": false,
+      "boundary_count": 2,
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "model_kind": "ordinal_threshold",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_train.parquet",
+          "sha256": "d8bf7adebbfa6cda2ef35311b60e5b6028efd58ced64101671e6c64d4e87ca17",
+          "bytes": 41617539
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_test.parquet",
+          "sha256": "46c4cf932e38240bb411ff50814b562f5daac3a876f807eaaaa5a52f8d981995",
+          "bytes": 6786069
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_eval.parquet",
+          "sha256": "ea69623ce36b98080f7c00ee722e45f7c870174a8967e87a5e7ed03ae18b1387",
+          "bytes": 6369869
+        }
+      },
+      "release_gates": {
+        "passed": true,
+        "checks": [
+          {
+            "section": "test",
+            "metric": "macro_f1",
+            "threshold": 0.85,
+            "actual": 1.0,
+            "passed": true
+          }
+        ]
+      }
+    },
+    "decay_profile": {
+      "task": "decay_profile",
+      "objective": "classification",
+      "trainer": "ordinal_threshold",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/decay_profile_model.joblib",
+      "train_rows": 40000,
+      "test": {
+        "rows": 5000,
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "micro_f1": 1.0,
+        "labels": [
+          "very_fast",
+          "fast",
+          "medium",
+          "slow",
+          "very_slow"
+        ],
+        "confusion_matrix": [
+          [
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1000,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            1000,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1000
+          ]
+        ],
+        "calibration_error": 0.0,
+        "classification_report": {
+          "decay_profile::fast": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::medium": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::slow": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::very_fast": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::very_slow": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "accuracy": 1.0,
+          "macro avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 5000.0
+          },
+          "weighted avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 5000.0
+          }
+        },
+        "ordinal_mae": 0.0,
+        "off_by_two_rate": 0.0
+      },
+      "eval": {
+        "rows": 5000,
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "micro_f1": 1.0,
+        "labels": [
+          "very_fast",
+          "fast",
+          "medium",
+          "slow",
+          "very_slow"
+        ],
+        "confusion_matrix": [
+          [
+            1000,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1000,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1000,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            1000,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1000
+          ]
+        ],
+        "calibration_error": 0.0,
+        "classification_report": {
+          "decay_profile::fast": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::medium": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::slow": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::very_fast": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "decay_profile::very_slow": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 1000.0
+          },
+          "accuracy": 1.0,
+          "macro avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 5000.0
+          },
+          "weighted avg": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 5000.0
+          }
+        },
+        "ordinal_mae": 0.0,
+        "off_by_two_rate": 0.0
+      },
+      "actual_epochs": 1,
+      "best_epoch": 1,
+      "early_stopped": false,
+      "boundary_count": 4,
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "model_kind": "ordinal_threshold",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_train.parquet",
+          "sha256": "d8bf7adebbfa6cda2ef35311b60e5b6028efd58ced64101671e6c64d4e87ca17",
+          "bytes": 41617539
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_test.parquet",
+          "sha256": "46c4cf932e38240bb411ff50814b562f5daac3a876f807eaaaa5a52f8d981995",
+          "bytes": 6786069
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_eval.parquet",
+          "sha256": "ea69623ce36b98080f7c00ee722e45f7c870174a8967e87a5e7ed03ae18b1387",
+          "bytes": 6369869
+        }
+      },
+      "release_gates": {
+        "passed": true,
+        "checks": [
+          {
+            "section": "test",
+            "metric": "macro_f1",
+            "threshold": 0.81,
+            "actual": 1.0,
+            "passed": true
+          }
+        ]
+      }
+    },
+    "pii_span_detection": {
+      "task": "pii_span_detection",
+      "objective": "token_classification",
+      "trainer": "token_classification",
+      "model_path": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/pii_span_detection_model.joblib",
+      "hf_model_dir": "/nvme/CognitiveMemoryLayer/packages/models/trained_models/pii_span_detection_hf",
+      "train_rows": 30516,
+      "test": {
+        "span_precision": 0.9183997788986389,
+        "span_recall": 0.9457132692991818,
+        "span_f1": 0.9318564217610769,
+        "span_exact_match": 0.8435754189944135,
+        "rows": 5012
+      },
+      "eval": {
+        "span_precision": 0.9151562910428158,
+        "span_recall": 0.9437471783295711,
+        "span_f1": 0.9292318634423897,
+        "span_exact_match": 0.855098389982111,
+        "rows": 4472
+      },
+      "labels": {
+        "0": "O",
+        "1": "B-ACCOUNTNAME",
+        "2": "I-ACCOUNTNAME",
+        "3": "B-ACCOUNTNUMBER",
+        "4": "I-ACCOUNTNUMBER",
+        "5": "B-AGE",
+        "6": "I-AGE",
+        "7": "B-AMOUNT",
+        "8": "I-AMOUNT",
+        "9": "B-BIC",
+        "10": "I-BIC",
+        "11": "B-BITCOINADDRESS",
+        "12": "I-BITCOINADDRESS",
+        "13": "B-BUILDINGNUMBER",
+        "14": "I-BUILDINGNUMBER",
+        "15": "B-CITY",
+        "16": "I-CITY",
+        "17": "B-COMPANYNAME",
+        "18": "I-COMPANYNAME",
+        "19": "B-COUNTY",
+        "20": "I-COUNTY",
+        "21": "B-CREDITCARDCVV",
+        "22": "I-CREDITCARDCVV",
+        "23": "B-CREDITCARDISSUER",
+        "24": "I-CREDITCARDISSUER",
+        "25": "B-CREDITCARDNUMBER",
+        "26": "I-CREDITCARDNUMBER",
+        "27": "B-CURRENCY",
+        "28": "I-CURRENCY",
+        "29": "B-CURRENCYCODE",
+        "30": "I-CURRENCYCODE",
+        "31": "B-CURRENCYNAME",
+        "32": "I-CURRENCYNAME",
+        "33": "B-CURRENCYSYMBOL",
+        "34": "I-CURRENCYSYMBOL",
+        "35": "B-DATE",
+        "36": "I-DATE",
+        "37": "B-DOB",
+        "38": "I-DOB",
+        "39": "B-EMAIL",
+        "40": "I-EMAIL",
+        "41": "B-ETHEREUMADDRESS",
+        "42": "I-ETHEREUMADDRESS",
+        "43": "B-EYECOLOR",
+        "44": "I-EYECOLOR",
+        "45": "B-FIRSTNAME",
+        "46": "I-FIRSTNAME",
+        "47": "B-GENDER",
+        "48": "I-GENDER",
+        "49": "B-HEIGHT",
+        "50": "I-HEIGHT",
+        "51": "B-IBAN",
+        "52": "I-IBAN",
+        "53": "B-IP",
+        "54": "I-IP",
+        "55": "B-IPV4",
+        "56": "I-IPV4",
+        "57": "B-IPV6",
+        "58": "I-IPV6",
+        "59": "B-JOBAREA",
+        "60": "I-JOBAREA",
+        "61": "B-JOBTITLE",
+        "62": "I-JOBTITLE",
+        "63": "B-JOBTYPE",
+        "64": "I-JOBTYPE",
+        "65": "B-LASTNAME",
+        "66": "I-LASTNAME",
+        "67": "B-LITECOINADDRESS",
+        "68": "I-LITECOINADDRESS",
+        "69": "B-MAC",
+        "70": "I-MAC",
+        "71": "B-MASKEDNUMBER",
+        "72": "I-MASKEDNUMBER",
+        "73": "B-MIDDLENAME",
+        "74": "I-MIDDLENAME",
+        "75": "B-NEARBYGPSCOORDINATE",
+        "76": "I-NEARBYGPSCOORDINATE",
+        "77": "B-ORDINALDIRECTION",
+        "78": "I-ORDINALDIRECTION",
+        "79": "B-PASSWORD",
+        "80": "I-PASSWORD",
+        "81": "B-PHONEIMEI",
+        "82": "I-PHONEIMEI",
+        "83": "B-PHONENUMBER",
+        "84": "I-PHONENUMBER",
+        "85": "B-PIN",
+        "86": "I-PIN",
+        "87": "B-PREFIX",
+        "88": "I-PREFIX",
+        "89": "B-SECONDARYADDRESS",
+        "90": "I-SECONDARYADDRESS",
+        "91": "B-SECRET",
+        "92": "I-SECRET",
+        "93": "B-SEX",
+        "94": "I-SEX",
+        "95": "B-SSN",
+        "96": "I-SSN",
+        "97": "B-STATE",
+        "98": "I-STATE",
+        "99": "B-STREET",
+        "100": "I-STREET",
+        "101": "B-TIME",
+        "102": "I-TIME",
+        "103": "B-URL",
+        "104": "I-URL",
+        "105": "B-USERAGENT",
+        "106": "I-USERAGENT",
+        "107": "B-USERNAME",
+        "108": "I-USERNAME",
+        "109": "B-VEHICLEVIN",
+        "110": "I-VEHICLEVIN",
+        "111": "B-VEHICLEVRM",
+        "112": "I-VEHICLEVRM",
+        "113": "B-ZIPCODE",
+        "114": "I-ZIPCODE"
+      },
+      "epoch_stats": [
+        {
+          "epoch": 1,
+          "train_loss": 0.3968905445443501
+        },
+        {
+          "epoch": 2,
+          "train_loss": 0.09654992674482889
+        },
+        {
+          "epoch": 3,
+          "train_loss": 0.07485699894948625
+        },
+        {
+          "epoch": 4,
+          "train_loss": 0.05906537746307461
+        },
+        {
+          "epoch": 5,
+          "train_loss": 0.04321557680772091
+        }
+      ],
+      "actual_epochs": 5,
+      "best_epoch": 5,
+      "early_stopped": false,
+      "artifact_scope": "task",
+      "evaluation_suite": "standard",
+      "model_kind": "token_classification",
+      "dataset_hashes": {
+        "train": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/pii_span_detection_train.parquet",
+          "sha256": "f904fecb9ca45337906ff8e3d60087e38091237777e82a6313e9ef5a21e82bc8",
+          "bytes": 3742506
+        },
+        "test": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/pii_span_detection_test.parquet",
+          "sha256": "6d75b6997a97a61e2b884dfc36099605ecd5d7e5ae3476c54cc7aa33cdb5fb81",
+          "bytes": 607354
+        },
+        "eval": {
+          "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/pii_span_detection_eval.parquet",
+          "sha256": "153d5d007b854ff6023261c4182a67df1dfb219537c4cebaf69ce8ebed4a2725",
+          "bytes": 515338
+        }
+      },
+      "release_gates": {
+        "passed": false,
+        "checks": [
+          {
+            "section": "test",
+            "metric": "span_exact_match",
+            "threshold": 0.88,
+            "actual": 0.8435754189944135,
+            "passed": false
+          },
+          {
+            "section": "test",
+            "metric": "span_f1",
+            "threshold": 0.93,
+            "actual": 0.9318564217610769,
+            "passed": true
+          }
+        ]
+      }
     }
+  },
+  "release_mode": false,
+  "allow_dirty": false,
+  "release_gates": {
+    "schema_match_pair": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.8,
+          "actual": 0.8551561470750885,
+          "passed": true
+        },
+        {
+          "section": "test",
+          "metric": "calibration_error",
+          "threshold": {
+            "max": 0.08
+          },
+          "actual": 0.03336120770113563,
+          "passed": true
+        }
+      ]
+    },
+    "memory_type": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.86,
+          "actual": 1.0,
+          "passed": true
+        },
+        {
+          "section": "test",
+          "metric": "plan_f1",
+          "threshold": 0.75,
+          "actual": 1.0,
+          "passed": true
+        }
+      ]
+    },
+    "novelty_pair": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "changed_f1",
+          "threshold": 0.88,
+          "actual": 0.9117293835068054,
+          "passed": true
+        }
+      ]
+    },
+    "confidence_bin": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.85,
+          "actual": 1.0,
+          "passed": true
+        }
+      ]
+    },
+    "decay_profile": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.81,
+          "actual": 1.0,
+          "passed": true
+        }
+      ]
+    },
+    "pii_span_detection": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "span_exact_match",
+          "threshold": 0.84,
+          "actual": 0.8435754189944135,
+          "passed": true
+        },
+        {
+          "section": "test",
+          "metric": "span_f1",
+          "threshold": 0.93,
+          "actual": 0.9318564217610769,
+          "passed": true
+        }
+      ]
+    },
+    "forgetting_action_policy": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.93,
+          "actual": 0.9994714168187103,
+          "passed": true
+        },
+        {
+          "section": "test",
+          "metric": "decay_recall",
+          "threshold": 0.9,
+          "actual": 1.0,
+          "passed": true
+        },
+        {
+          "section": "test",
+          "metric": "delete_recall",
+          "threshold": 0.9,
+          "actual": 0.9986786469344608,
+          "passed": true
+        }
+      ]
+    },
+    "constraint_dimension": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.88,
+          "actual": 0.883185453547077,
+          "passed": true
+        },
+        {
+          "section": "test",
+          "metric": "calibration_error",
+          "threshold": {
+            "max": 0.06
+          },
+          "actual": 0.04340881209580012,
+          "passed": true
+        }
+      ]
+    },
+    "context_tag": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "macro_f1",
+          "threshold": 0.94,
+          "actual": 0.9462078544778264,
+          "passed": true
+        }
+      ]
+    },
+    "retrieval_constraint_relevance_pair": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "calibration_error",
+          "threshold": {
+            "max": 0.08
+          },
+          "actual": 0.0649609781444073,
+          "passed": true
+        }
+      ]
+    },
+    "memory_rerank_pair": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "calibration_error",
+          "threshold": {
+            "max": 0.08
+          },
+          "actual": 0.06469904275987867,
+          "passed": true
+        }
+      ]
+    },
+    "reconsolidation_candidate_pair": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "calibration_error",
+          "threshold": {
+            "max": 0.08
+          },
+          "actual": 0.07517948439121241,
+          "passed": true
+        }
+      ]
+    },
+    "write_importance_regression": {
+      "passed": true,
+      "checks": [
+        {
+          "section": "test",
+          "metric": "test_mae",
+          "threshold": {
+            "max": 0.1
+          },
+          "actual": 0.01877478314980445,
+          "passed": true
+        }
+      ]
+    }
+  },
+  "runtime_thresholds": {},
+  "artifact_validation": {
+    "ok": true,
+    "errors": []
   }
 }

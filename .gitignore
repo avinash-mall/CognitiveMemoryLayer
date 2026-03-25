@@ -84,5 +84,12 @@ Thumbs.db
 packages/models/datasets/
 packages/models/prepared_data/
 
+# Generated local training outputs (tracked canonical artifacts may still appear
+# as modified, but new task-specific outputs should stay out of git status)
+packages/models/trained_models/*_epoch_stats.json
+packages/models/trained_models/*_metrics_*.json
+packages/models/trained_models/*_report_*.json
+packages/models/trained_models/*_training_metadata.json
+
 # Quality test results
 scripts/quality_test_results.json

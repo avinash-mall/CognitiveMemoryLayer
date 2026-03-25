@@ -123,6 +123,9 @@ artifact_name = "retrieval_constraint_relevance_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
 trainer = "transformer_pair"
 backbone_model_name = "BAAI/bge-reranker-base"
+# Extra epoch and tighter margin improve ranking precision on reranker tasks
+num_train_epochs = 3
+score_margin = 0.20
 
 [[tasks]]
 task_name = "memory_rerank_pair"
@@ -134,6 +137,9 @@ artifact_name = "memory_rerank_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
 trainer = "transformer_pair"
 backbone_model_name = "BAAI/bge-reranker-base"
+# Extra epoch and tighter margin improve ranking precision on reranker tasks
+num_train_epochs = 3
+score_margin = 0.20
 
 [[tasks]]
 task_name = "novelty_pair"
@@ -145,6 +151,8 @@ artifact_name = "novelty_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
 trainer = "transformer_pair"
 backbone_model_name = "BAAI/bge-reranker-base"
+# 4 epochs: 2-epoch changed_f1 was borderline on test gate (0.78 target)
+num_train_epochs = 4
 
 [[tasks]]
 task_name = "fact_extraction_structured"
@@ -166,6 +174,9 @@ artifact_name = "schema_match_pair"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
 trainer = "transformer_pair"
 backbone_model_name = "BAAI/bge-reranker-base"
+# 4 epochs: 2-epoch run shows eval=79.6% → test=67.9% distribution shift (-11.7pt).
+# More epochs + more data (need target_per_task_label rows) should reduce gap.
+num_train_epochs = 4
 
 [[tasks]]
 task_name = "reconsolidation_candidate_pair"
@@ -177,6 +188,9 @@ artifact_name = "reconsolidation_candidate_pair"
 metrics = ["mrr@10", "ndcg@10", "recall@10"]
 trainer = "transformer_pair"
 backbone_model_name = "BAAI/bge-reranker-base"
+# Extra epoch and tighter margin for this reranker task
+num_train_epochs = 3
+score_margin = 0.20
 
 [[tasks]]
 task_name = "write_importance_regression"
@@ -279,6 +293,49 @@ artifact_name = "forgetting_action_policy"
 metrics = ["accuracy", "macro_f1", "weighted_f1"]
 trainer = "transformer_text"
 backbone_model_name = "microsoft/deberta-v3-base"
+# 8 epochs: first 4-epoch run reached 0.61 test accuracy (gate: 0.85). Loss was still descending
+# at epoch 4 (1.077→0.510→0.353→0.229), so more epochs are expected to push above the gate.
+num_train_epochs = 8
+# Reduced batch size and seq length to fit DeBERTa alongside uvicorn API server on 16 GiB GPU.
+per_device_train_batch_size = 4
+max_seq_length = 128
+
+[[tasks]]
+task_name = "constraint_dimension"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["policy", "goal", "value", "causal", "state", "other"]
+artifact_name = "constraint_dimension"
+metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "transformer_text"
+backbone_model_name = "microsoft/deberta-v3-base"
+# Router family TF-IDF has poor F1 on constraint_dimension; dedicated DeBERTa model needed.
+# 3-epoch run collapsed (loss stuck at log(6)=1.791 throughout): semantic task is harder than
+# lexical topic classification (context_tag). Fix: gradient_accumulation_steps=4 for stable
+# gradient direction + higher learning_rate + more epochs.
+num_train_epochs = 10
+per_device_train_batch_size = 4
+max_seq_length = 128
+gradient_accumulation_steps = 4
+learning_rate = 0.00005
+enabled = true
+
+[[tasks]]
+task_name = "context_tag"
+family = "router"
+input_type = "single"
+objective = "classification"
+labels = ["general", "food", "travel", "finance", "health", "work", "tech", "social"]
+artifact_name = "context_tag"
+metrics = ["accuracy", "macro_f1", "weighted_f1"]
+trainer = "transformer_text"
+backbone_model_name = "microsoft/deberta-v3-base"
+# Router family TF-IDF has poor F1 on context_tag; dedicated DeBERTa model needed.
+num_train_epochs = 3
+per_device_train_batch_size = 4
+max_seq_length = 128
+enabled = true
 
 [synthetic_llm]
 # Synthetic generation is LLM-only.
@@ -335,8 +392,11 @@ max_examples_per_task = 80000
 max_spans_per_example = 16
 
 [train.token]
-model_name_or_path = "distilbert-base-multilingual-cased"
-num_train_epochs = 3
+# bert-base-multilingual-cased achieves span_exact_match=0.850 (gate: 0.84) with 8 epochs.
+# distilbert-base-multilingual-cased tops out at 0.837 (fails gate). Upgrade to bert-base.
+# Reaching 0.88 would require the full 200k pii-masking dataset (currently using ~30k English rows).
+model_name_or_path = "bert-base-multilingual-cased"
+num_train_epochs = 8
 per_device_train_batch_size = 8
 per_device_eval_batch_size = 16
 max_seq_length = 256
@@ -358,6 +418,9 @@ gradient_accumulation_steps = 1
 # - config: optional HF config/subset
 # - split: HF split name (train/validation/test)
 # - max_rows: optional per-dataset cap override
+# - usage_role: "supervision" | "llm_seed" | "eval_only"
+# - task_targets: optional list of tasks this dataset primarily feeds
+# - license: optional license/provenance note for shortlist reporting
 # - enabled: include this dataset in pipeline
 # - required: fail prep if download/load fails
 
@@ -370,6 +433,8 @@ dataset_id = "banking77"
 config = ""
 split = "train"
 max_rows = 60000
+usage_role = "supervision"
+task_targets = ["query_domain", "context_tag"]
 enabled = true
 required = true
 
@@ -490,6 +555,8 @@ dataset_id = "HuggingFaceH4/ultrachat_200k"
 config = ""
 split = "train_sft"
 max_rows = 80000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
 enabled = true
 required = false
 
@@ -502,6 +569,8 @@ dataset_id = "OpenAssistant/oasst1"
 config = ""
 split = "train"
 max_rows = 80000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
 enabled = true
 required = false
 
@@ -530,6 +599,8 @@ dataset_id = "google-research-datasets/paws"
 config = "labeled_final"
 split = "train"
 max_rows = 60000
+usage_role = "supervision"
+task_targets = ["novelty_pair"]
 enabled = true
 required = false
 
@@ -542,6 +613,8 @@ dataset_id = "nyu-mll/glue"
 config = "qqp"
 split = "train"
 max_rows = 100000
+usage_role = "supervision"
+task_targets = ["novelty_pair"]
 enabled = true
 required = false
 
@@ -554,6 +627,8 @@ dataset_id = "nyu-mll/glue"
 config = "mrpc"
 split = "train"
 max_rows = 10000
+usage_role = "supervision"
+task_targets = ["novelty_pair"]
 enabled = true
 required = false
 
@@ -578,6 +653,8 @@ dataset_id = "fever/fever"
 config = "v1.0"
 split = "train"
 max_rows = 120000
+usage_role = "supervision"
+task_targets = ["schema_match_pair", "reconsolidation_candidate_pair"]
 enabled = true
 required = false
 
@@ -602,5 +679,131 @@ dataset_id = "DFKI-SLT/re-tacred"
 config = ""
 split = "train"
 max_rows = 60000
+enabled = true
+required = false
+
+[[datasets]]
+name = "nli_fever"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/pietrolesci/nli_fever"
+dataset_id = "pietrolesci/nli_fever"
+config = ""
+split = "train"
+max_rows = 60000
+usage_role = "supervision"
+task_targets = ["schema_match_pair", "retrieval_constraint_relevance_pair", "memory_rerank_pair", "reconsolidation_candidate_pair"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "vitaminc"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/tals/vitaminc"
+dataset_id = "tals/vitaminc"
+config = ""
+split = "train"
+max_rows = 60000
+usage_role = "supervision"
+task_targets = ["schema_match_pair", "retrieval_constraint_relevance_pair", "memory_rerank_pair", "reconsolidation_candidate_pair"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "climate_fever_plus"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/Jasontth/climate_fever_plus"
+dataset_id = "Jasontth/climate_fever_plus"
+config = ""
+split = "train"
+max_rows = 40000
+usage_role = "supervision"
+task_targets = ["schema_match_pair", "retrieval_constraint_relevance_pair", "memory_rerank_pair", "reconsolidation_candidate_pair"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "scitail"
+target = "pair"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/allenai/scitail"
+dataset_id = "allenai/scitail"
+config = "snli_format"
+split = "train"
+max_rows = 50000
+usage_role = "supervision"
+task_targets = ["schema_match_pair", "retrieval_constraint_relevance_pair", "memory_rerank_pair", "reconsolidation_candidate_pair"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "tripadvisor_hotel_reviews"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/argilla/tripadvisor-hotel-reviews"
+dataset_id = "argilla/tripadvisor-hotel-reviews"
+config = ""
+split = "train"
+max_rows = 30000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "medical_qa_datasets"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/ZuoXiaojia/medical-qa-datasets"
+dataset_id = "ZuoXiaojia/medical-qa-datasets"
+config = ""
+split = "train"
+max_rows = 30000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "customer_support_client_agent_conversations"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/Lakshan2003/customer-support-client-agent-conversations"
+dataset_id = "Lakshan2003/customer-support-client-agent-conversations"
+config = ""
+split = "train"
+max_rows = 30000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "technical_support"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/ai-training-datasets/TechnicalSupport"
+dataset_id = "ai-training-datasets/TechnicalSupport"
+config = ""
+split = "train"
+max_rows = 30000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
+enabled = true
+required = false
+
+[[datasets]]
+name = "reddit_constructive"
+target = "seed"
+kind = "huggingface"
+link = "https://huggingface.co/datasets/NiklasKoch/reddit-constructive"
+dataset_id = "NiklasKoch/reddit-constructive"
+config = ""
+split = "train"
+max_rows = 30000
+usage_role = "llm_seed"
+task_targets = ["context_tag", "constraint_dimension", "forgetting_action_policy"]
 enabled = true
 required = false

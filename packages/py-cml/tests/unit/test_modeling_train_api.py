@@ -260,7 +260,7 @@ def test_write_task_metrics_does_not_emit_adversarial_artifact(tmp_path: Path) -
 def test_release_gate_results_do_not_require_adversarial_metrics() -> None:
     result = train_module._release_gate_results(
         "schema_match_pair",
-        {"test": {"accuracy": 0.81}},
+        {"test": {"macro_f1": 0.81, "calibration_error": 0.07}},
     )
 
     assert result["passed"] is True

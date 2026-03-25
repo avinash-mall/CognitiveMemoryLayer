@@ -71,7 +71,8 @@ class TestModelPackCapabilityReporting:
             ["pair_model.joblib", "router_model.joblib", "extractor_model.joblib"],
         )
         assert rt.available_families == ["extractor", "pair", "router"]
-        assert "memory_type" in rt.available_tasks
+        assert "query_domain" in rt.available_tasks
+        assert "memory_type" not in rt.available_tasks
 
     def test_available_no_models(self, tmp_path: Path):
         rt = self._make_runtime(tmp_path, [])
@@ -102,6 +103,8 @@ class TestModelPackCapabilityReporting:
         assert report["available_families"] == ["pair"]
         assert "scope_match" in report["available_tasks"]
         assert "pending_families" in report
+        assert "dedicated_required_tasks" in report
+        assert "memory_type" in report["dedicated_required_tasks"]
 
 
 # ---------------------------------------------------------------------------

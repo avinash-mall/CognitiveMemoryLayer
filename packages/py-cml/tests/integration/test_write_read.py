@@ -20,10 +20,11 @@ async def test_write_then_read(live_client):
 @pytest.mark.asyncio
 async def test_write_multiple_then_read(live_client):
     """Write multiple memories, read and verify count."""
-    w1 = await live_client.write("Memory one: coffee")
-    w2 = await live_client.write("Memory two: tea")
-    assert (w1.chunks_created + w2.chunks_created) > 0
-    r = await live_client.read("drinks")
+    w1 = await live_client.write("Alice works as a software engineer at a technology company")
+    w2 = await live_client.write("Bob is a professional chef who specializes in Italian cuisine")
+    assert w1.chunks_created > 0, "First write must succeed"
+    assert w2.chunks_created > 0, "Second write must succeed"
+    r = await live_client.read("profession job career")
     assert r.total_count >= 2
 
 

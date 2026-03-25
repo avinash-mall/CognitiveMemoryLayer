@@ -21,6 +21,10 @@ services:
       FEATURES__USE_LLM_ENABLED: false
       LLM_STARTUP_VALIDATION_ENABLED: false
     command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short -rs"
+    deploy:
+      resources:
+        reservations:
+          devices: []
 
   api:
     image: cml-api-ci:latest
@@ -32,3 +36,7 @@ services:
       FEATURES__USE_LLM_ENABLED: false
       LLM_STARTUP_VALIDATION_ENABLED: false
       LLM_STARTUP_VALIDATE_IN_CI: false
+    deploy:
+      resources:
+        reservations:
+          devices: []

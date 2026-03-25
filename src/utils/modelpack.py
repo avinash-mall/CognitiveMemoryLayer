@@ -78,6 +78,21 @@ _TASK_FAMILY: dict[str, str] = {
     "forgetting_action_policy": "_task",
 }
 
+_DEDICATED_ONLY_TASKS = {
+    "memory_type",
+    "constraint_dimension",
+    "context_tag",
+    "retrieval_constraint_relevance_pair",
+    "memory_rerank_pair",
+    "novelty_pair",
+    "fact_extraction_structured",
+    "schema_match_pair",
+    "reconsolidation_candidate_pair",
+    "write_importance_regression",
+    "pii_span_detection",
+    "forgetting_action_policy",
+}
+
 _MODEL_FILE = {
     "router": "router_model.joblib",
     "extractor": "extractor_model.joblib",
@@ -86,6 +101,8 @@ _MODEL_FILE = {
 
 _TASK_MODEL_FILE: dict[str, str] = {
     "memory_type": "memory_type_model.joblib",
+    "constraint_dimension": "constraint_dimension_model.joblib",
+    "context_tag": "context_tag_model.joblib",
     "salience_bin": "salience_bin_model.joblib",
     "importance_bin": "importance_bin_model.joblib",
     "confidence_bin": "confidence_bin_model.joblib",
@@ -261,6 +278,10 @@ def _normalize_tags(value: object) -> list[str]:
     return []
 
 
+def _requires_dedicated_task_model(task: str) -> bool:
+    return task in _DEDICATED_ONLY_TASKS
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -309,6 +330,8 @@ class ModelPackRuntime:
             self._load_all()
         tasks: set[str] = set(self._task_models.keys())
         for task_name, family in _TASK_FAMILY.items():
+            if _requires_dedicated_task_model(task_name):
+                continue
             if family in self._models:
                 tasks.add(task_name)
         return sorted(tasks)
@@ -322,6 +345,8 @@ class ModelPackRuntime:
             return False
         if task in self._task_models:
             return True
+        if _requires_dedicated_task_model(task):
+            return False
         return family in self._models
 
     def capability_report(self) -> dict[str, Any]:
@@ -335,6 +360,8 @@ class ModelPackRuntime:
             "available_families": sorted(self._models.keys()),
             "available_tasks": self.available_tasks,
             "pending_families": pending_families,
+            "dedicated_required_tasks": sorted(_DEDICATED_ONLY_TASKS),
+            "retired_family_tasks": sorted(_DEDICATED_ONLY_TASKS),
             "load_errors": list(self._load_errors),
             "manifest_schema_version": (
                 self._manifest.get("manifest_schema_version")
@@ -358,7 +385,7 @@ class ModelPackRuntime:
             pred = self._predict_from_model(task_model, task=task, feature=feature)
         else:
             family = _TASK_FAMILY.get(task)
-            if family in {"router", "extractor"}:
+            if family in {"router", "extractor"} and not _requires_dedicated_task_model(task):
                 model = self._get_family_model(family)
                 if model is not None:
                     feature = self._serialize_single_feature(task, text, metadata=metadata)
@@ -395,7 +422,7 @@ class ModelPackRuntime:
             feature = f"task={task} [a] {text_a.strip()} [b] {text_b.strip()}"
             return self._predict_from_model(task_model, task=task, feature=feature)
         family = _TASK_FAMILY.get(task)
-        if family != "pair":
+        if family != "pair" or _requires_dedicated_task_model(task):
             return None
         model = self._get_family_model(family)
         if model is None:

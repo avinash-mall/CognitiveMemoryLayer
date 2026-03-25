@@ -480,6 +480,8 @@ class HierarchicalTextClassifier:
             stage2_cache[macro_name] = (labels, probs)
 
         for macro_name, labels in self.macro_to_labels.items():
+            if macro_name not in stage2_cache:
+                continue  # macro group had no training data; skip
             macro_prob = (
                 stage1_probs[:, macro_index[macro_name]]
                 if macro_name in macro_index

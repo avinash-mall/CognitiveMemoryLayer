@@ -1,6 +1,6 @@
 {
   "family": "extractor",
-  "trained_at_utc": "2026-03-15T15:17:01.920491+00:00",
+  "trained_at_utc": "2026-03-24T13:45:54.396697+00:00",
   "rows": {
     "train": 288000,
     "test": 36000,
@@ -213,7 +213,7 @@
   "training_summary": {
     "actual_epochs": 4,
     "best_epoch": 1,
-    "best_metric": 0.9994714282331426,
+    "best_metric": 0.9994428567862855,
     "monitor_metric": "macro_f1",
     "early_stopped": true
   },
@@ -221,109 +221,109 @@
     "method": "task_conditional_sigmoid",
     "split": "eval",
     "rows": 36000,
-    "pre_ece": 0.06024052269622705,
-    "post_ece": 0.0007267772041869761,
-    "pre_accuracy": 0.9979444444444444,
-    "post_accuracy": 0.9981388888888889,
-    "accuracy_delta": 0.00019444444444449704,
+    "pre_ece": 0.06013730731601039,
+    "post_ece": 0.0007514102792564575,
+    "pre_accuracy": 0.9978333333333333,
+    "post_accuracy": 0.9981666666666666,
+    "accuracy_delta": 0.0003333333333332966,
     "tasks": {
       "constraint_scope": {
         "rows": 9000,
-        "pre_ece": 0.0073977550828098195,
-        "post_ece": 0.00019265409844981818,
+        "pre_ece": 0.0073926387441783925,
+        "post_ece": 0.00019267901287378653,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "constraint_stability": {
         "rows": 3000,
-        "pre_ece": 0.0035815840248716313,
-        "post_ece": 0.00016984114537266226,
+        "pre_ece": 0.0035802200536977353,
+        "post_ece": 0.00016981111181246789,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "constraint_type": {
         "rows": 8000,
-        "pre_ece": 0.014965253210282414,
-        "post_ece": 0.0003021590317218159,
+        "pre_ece": 0.0152260080692046,
+        "post_ece": 0.0002949549691239062,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "fact_type": {
         "rows": 6000,
-        "pre_ece": 0.008211313527995756,
-        "post_ece": 0.0002109632432973907,
+        "pre_ece": 0.008209015508071071,
+        "post_ece": 0.00021106970310058593,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "pii_presence": {
         "rows": 10000,
-        "pre_ece": 0.12816375588679663,
-        "post_ece": 0.0020237517315003927,
-        "pre_accuracy": 0.9926,
-        "post_accuracy": 0.9933,
-        "accuracy_delta": 0.0006999999999999229
+        "pre_ece": 0.1278197693399604,
+        "post_ece": 0.002118116763033487,
+        "pre_accuracy": 0.9922,
+        "post_accuracy": 0.9934,
+        "accuracy_delta": 0.0011999999999999789
       }
     }
   },
   "epoch_stats": [
     {
       "epoch": 1,
-      "train_loss": 0.07315772398985448,
-      "train_accuracy": 0.99853125,
-      "train_macro_f1": 0.9996223213855515,
-      "train_weighted_f1": 0.9985312498327003,
-      "valid_loss": 0.07041331365379355,
-      "valid_accuracy": 0.9979444444444444,
-      "valid_macro_f1": 0.9994714282331426,
-      "valid_weighted_f1": 0.9979444431288881,
+      "train_loss": 0.07304321517285889,
+      "train_accuracy": 0.9985243055555556,
+      "train_macro_f1": 0.9996205356573068,
+      "train_weighted_f1": 0.9985243053339707,
+      "valid_loss": 0.07040478728784708,
+      "valid_accuracy": 0.9978333333333333,
+      "valid_macro_f1": 0.9994428567862855,
+      "valid_weighted_f1": 0.9978333319466658,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.9994714282331426,
+      "monitor_value": 0.9994428567862855,
       "improved": true
     },
     {
       "epoch": 2,
-      "train_loss": 0.0711101974668768,
-      "train_accuracy": 0.9985208333333333,
-      "train_macro_f1": 0.9996196427884408,
-      "train_weighted_f1": 0.9985208330661588,
-      "valid_loss": 0.06897592992816216,
-      "valid_accuracy": 0.9979444444444444,
-      "valid_macro_f1": 0.9994714280428567,
-      "valid_weighted_f1": 0.9979444423888868,
+      "train_loss": 0.07098693556871623,
+      "train_accuracy": 0.9985138888888889,
+      "train_macro_f1": 0.9996178570566361,
+      "train_weighted_f1": 0.998513888553585,
+      "valid_loss": 0.06895428509737356,
+      "valid_accuracy": 0.9979166666666667,
+      "valid_macro_f1": 0.9994642852803567,
+      "valid_weighted_f1": 0.9979166649791653,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.9994714280428567,
+      "monitor_value": 0.9994642852803567,
       "improved": false
     },
     {
       "epoch": 3,
-      "train_loss": 0.07004518600682323,
-      "train_accuracy": 0.9984861111111111,
-      "train_macro_f1": 0.9996107141883928,
-      "train_weighted_f1": 0.9984861107326388,
-      "valid_loss": 0.06820225017111697,
-      "valid_accuracy": 0.9979444444444444,
-      "valid_macro_f1": 0.9994714280428567,
-      "valid_weighted_f1": 0.9979444423888868,
+      "train_loss": 0.06992293075722475,
+      "train_accuracy": 0.9984930555555556,
+      "train_macro_f1": 0.9996124998827812,
+      "train_weighted_f1": 0.9984930550997047,
+      "valid_loss": 0.06817925236885357,
+      "valid_accuracy": 0.9979166666666667,
+      "valid_macro_f1": 0.9994642852803567,
+      "valid_weighted_f1": 0.9979166649791653,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.9994714280428567,
+      "monitor_value": 0.9994642852803567,
       "improved": false
     },
     {
       "epoch": 4,
-      "train_loss": 0.06934787533003972,
-      "train_accuracy": 0.9984826388888889,
-      "train_macro_f1": 0.9996098213260886,
-      "train_weighted_f1": 0.9984826384903445,
-      "valid_loss": 0.06768713506310439,
+      "train_loss": 0.0692276576162906,
+      "train_accuracy": 0.9984861111111111,
+      "train_macro_f1": 0.9996107141570066,
+      "train_weighted_f1": 0.9984861106105815,
+      "valid_loss": 0.06766472301272425,
       "valid_accuracy": 0.9979166666666667,
-      "valid_macro_f1": 0.9994642850660707,
-      "valid_weighted_f1": 0.9979166641458304,
+      "valid_macro_f1": 0.9994642852803567,
+      "valid_weighted_f1": 0.9979166649791653,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.9994642850660707,
+      "monitor_value": 0.9994642852803567,
       "improved": false
     }
   ],
@@ -332,19 +332,19 @@
   "evaluation_suite": "standard",
   "dataset_hashes": {
     "train": {
-      "path": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack\\extractor_train.parquet",
-      "sha256": "ef2303d981a95860a065a4a8af7ed2332451596824030b245ddef1920f8d77da",
-      "bytes": 21260735
+      "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/extractor_train.parquet",
+      "sha256": "7001566078ce06fa63779c2025be27b27a1fed4a304133dc334fcbf1336dcd1e",
+      "bytes": 21540433
     },
     "test": {
-      "path": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack\\extractor_test.parquet",
-      "sha256": "72d1be53625b64e07187832abdfbaa46ca5b0ea0f88e5e184b9bcccb36a675de",
-      "bytes": 2688169
+      "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/extractor_test.parquet",
+      "sha256": "8fa0af53f8cbd8116335d00659608404ba96055df49b1ab89799418c646a48d3",
+      "bytes": 2721025
     },
     "eval": {
-      "path": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack\\extractor_eval.parquet",
-      "sha256": "fa9e39763e0bc9b8680c5631ad4e4745c51da4f3bd915263044d29624cf6d630",
-      "bytes": 2677866
+      "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/extractor_eval.parquet",
+      "sha256": "d066db9c6cadeaea12f4c367262fee444f0992575af2daca06af75f40e9935ce",
+      "bytes": 2709873
     }
   }
 }

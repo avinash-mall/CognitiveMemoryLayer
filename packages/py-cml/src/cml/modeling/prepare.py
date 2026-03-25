@@ -208,8 +208,20 @@ _TASK_TEMPLATE_CAPS = {
     "forgetting_action_policy": 0.35,
     "schema_match_pair": 0.1,
 }
-_TASK_REQUIRED_SOURCE_TARGET_RATIOS = {"schema_match_pair": {"hf:fever": 0.3}}
-_REQUIRED_SOURCE_PREFIXES = {"schema_match_pair": ("hf:fever",)}
+# NOTE: FEVER evidence text is stored as "Title sentence N" references (not actual sentences),
+# so FEVER rows are excluded from schema_match_pair training to avoid noise. SNLI/NLI data
+# provides real sentence pairs that support proper semantic matching.
+_TASK_REQUIRED_SOURCE_TARGET_RATIOS: dict[str, dict[str, float]] = {}
+_REQUIRED_SOURCE_PREFIXES = {
+    "forgetting_action_policy": (
+        "structured:forgetting_action_policy",
+        "template_hardened:forgetting_action_policy",
+    ),
+    "write_importance_regression": (
+        "structured:write_importance_regression",
+        "derived:",
+    ),
+}
 _MIN_SPLIT_ROWS_PER_LABEL = {"train": 200, "test": 50, "eval": 50}
 _MIN_SOURCE_RULE_ROWS = 200
 _LABEL_SOURCE_BALANCE_RULES: dict[str, dict[str, Any]] = {
@@ -224,15 +236,16 @@ _LABEL_SOURCE_BALANCE_RULES: dict[str, dict[str, Any]] = {
             "structured": 0.35,
             "template_hardened": 0.35,
         },
+        "min_bucket_ratios": {
+            "structured": 0.15,
+            "template_hardened": 0.15,
+        },
     },
     "schema_match_pair": {
         "max_bucket_ratios": {
-            "template": 0.35,
-            "template_hardened": 0.35,
-            "derived": 0.60,
-        },
-        "min_bucket_ratios": {
-            "hf": 0.30,
+            "template": 0.20,
+            "template_hardened": 0.20,
+            "derived": 0.80,
         },
     },
 }
@@ -257,6 +270,8 @@ _DERIVED_NEGATIVE_RULES: dict[str, dict[str, Any]] = {
     },
 }
 _MAX_PRECOMPUTED_ROUTER_FEATURE_ROWS = 50000
+_SEED_POOL_USAGE_ROLES = {"", "supervision", "llm_seed"}
+_LLM_SEED_CONTEXT_TASKS = {"context_tag", "constraint_dimension", "forgetting_action_policy"}
 FACT_SPAN_LABELS = [
     "preference",
     "identity",
@@ -1844,6 +1859,13 @@ class _HFRegistry:
                 "name": name,
                 "link": dcfg.get("link", ""),
                 "dataset_id": dcfg.get("dataset_id", ""),
+                "usage_role": str(dcfg.get("usage_role", "") or "").strip(),
+                "task_targets": [
+                    str(item).strip()
+                    for item in cast("list[Any]", dcfg.get("task_targets", []))
+                    if str(item).strip()
+                ],
+                "license": str(dcfg.get("license", "") or "").strip(),
                 "required": bool(dcfg.get("required", False)),
                 "enabled": bool(dcfg.get("enabled", True)),
                 "loaded": False,
@@ -2759,7 +2781,11 @@ def _collect_seed_pools(
     for dcfg in enabled:
         name = str(dcfg.get("name", "")).strip()
         target = str(dcfg.get("target", "")).strip().lower()
+        usage_role = str(dcfg.get("usage_role", "") or "").strip().lower()
         if not name:
+            pbar.update(1)
+            continue
+        if usage_role not in _SEED_POOL_USAGE_ROLES:
             pbar.update(1)
             continue
         pbar.set_description(f"Remote seeds [{name}]")
@@ -2845,6 +2871,12 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
             is_conflict = label_name == "contradiction"
             is_scope_match = label_name in {"contradiction", "entailment"}
             is_supersedes = label_name == "contradiction"
+            # SNLI/NLI schema_match_pair mapping:
+            # entailment + contradiction → "match"  (both describe the SAME scenario/schema)
+            # neutral → "no_match" (different topics/schemas)
+            schema_label = "match" if label_name in {"entailment", "contradiction"} else "no_match"
+            relevance_label = "relevant" if label_name == "entailment" else "not_relevant"
+            group_id = f"hf:{dataset_name}:{_stable_group_id(dataset_name, ex.get('premise', ''), ex.get('hypothesis', ''))}"
 
             rows.add(
                 "conflict_detection",
@@ -2873,6 +2905,38 @@ def _add_existing_pair_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None
                 ex.get("hypothesis", ""),
                 "changed" if is_conflict else "novel",
                 f"hf:{dataset_name}",
+            )
+            rows.add(
+                "schema_match_pair",
+                ex.get("premise", ""),
+                ex.get("hypothesis", ""),
+                schema_label,
+                f"hf:{dataset_name}",
+                extras={"group_id": group_id},
+            )
+            rows.add(
+                "retrieval_constraint_relevance_pair",
+                ex.get("premise", ""),
+                ex.get("hypothesis", ""),
+                relevance_label,
+                f"hf:{dataset_name}",
+                extras={"group_id": group_id},
+            )
+            rows.add(
+                "memory_rerank_pair",
+                ex.get("premise", ""),
+                ex.get("hypothesis", ""),
+                relevance_label,
+                f"hf:{dataset_name}",
+                extras={"group_id": group_id},
+            )
+            rows.add(
+                "reconsolidation_candidate_pair",
+                ex.get("premise", ""),
+                ex.get("hypothesis", ""),
+                relevance_label,
+                f"hf:{dataset_name}",
+                extras={"group_id": group_id},
             )
 
     ds_mm = registry.get("ms_marco")
@@ -3138,32 +3202,143 @@ def _add_glue_novelty_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None:
         )
 
 
+def _add_mrpc_novelty_rows(rows: _PairTaskStore, registry: _HFRegistry) -> None:
+    ds = registry.get("glue_mrpc")
+    if ds is None:
+        return
+    for ex in _iter_dataset_rows(
+        ds, limit=registry.limit("glue_mrpc"), desc="Novelty rows [glue_mrpc]"
+    ):
+        if not isinstance(ex, dict):
+            continue
+        try:
+            lbl = int(ex.get("label", -1))
+        except Exception:
+            continue
+        if lbl == 1:
+            mapped = "duplicate"
+        elif lbl == 0:
+            mapped = "novel"
+        else:
+            continue
+        rows.add(
+            "novelty_pair",
+            ex.get("sentence1", ""),
+            ex.get("sentence2", ""),
+            mapped,
+            "hf:glue_mrpc",
+        )
+
+
+def _verification_label(raw_label: object) -> tuple[str, str] | None:
+    text = _clean(raw_label, 80).lower()
+    if not text:
+        return None
+    if any(token in text for token in ("support", "entail", "agree", "yes", "true")):
+        return ("match", "relevant")
+    if any(
+        token in text
+        for token in ("refute", "contradict", "not enough", "nei", "neutral", "false", "no")
+    ):
+        return ("no_match", "not_relevant")
+    return None
+
+
+def _extract_verification_pair(ex: dict[str, Any]) -> tuple[str, str]:
+    left = _clean(
+        ex.get("claim", ex.get("hypothesis", ex.get("question", ex.get("sentence1", "")))),
+        700,
+    )
+    right = _clean(
+        ex.get(
+            "evidence",
+            ex.get(
+                "evidence_sentence",
+                ex.get(
+                    "evidences",
+                    ex.get("premise", ex.get("context", ex.get("sentence2", ex.get("text", "")))),
+                ),
+            ),
+        ),
+        700,
+    )
+    return left, right
+
+
+def _add_verification_pair_rows(
+    rows: _PairTaskStore,
+    registry: _HFRegistry,
+    *,
+    dataset_name: str,
+    source_name: str,
+    limit_name: str | None = None,
+) -> None:
+    ds = registry.get(dataset_name)
+    if ds is None:
+        return
+    limit_key = limit_name or dataset_name
+    for idx, ex in enumerate(
+        _iter_dataset_rows(ds, limit=registry.limit(limit_key), desc=f"Verification rows [{dataset_name}]")
+    ):
+        if not isinstance(ex, dict):
+            continue
+        pair = _verification_label(ex.get("label", ex.get("gold_label", ex.get("answer", ""))))
+        if pair is None:
+            continue
+        claim, evidence = _extract_verification_pair(ex)
+        if not claim or not evidence:
+            continue
+        schema_label, relevance_label = pair
+        group_id = f"{source_name}:{idx}"
+        rows.add(
+            "schema_match_pair",
+            claim,
+            evidence,
+            schema_label,
+            source_name,
+            extras={"group_id": group_id},
+        )
+        rows.add(
+            "reconsolidation_candidate_pair",
+            claim,
+            evidence,
+            relevance_label,
+            source_name,
+            extras={"group_id": group_id},
+        )
+        rows.add(
+            "retrieval_constraint_relevance_pair",
+            claim,
+            evidence,
+            relevance_label,
+            source_name,
+            extras={"group_id": group_id},
+        )
+        rows.add(
+            "memory_rerank_pair",
+            claim,
+            evidence,
+            relevance_label,
+            source_name,
+            extras={"group_id": group_id},
+        )
+
+
 def _add_fever_schema_match_rows(
     rows: _PairTaskStore,
     registry: _HFRegistry,
     *,
     target_per_task_label: int | None = None,
 ) -> None:
+    # FEVER evidence text is "Title sentence N" sentence references, not real sentences.
+    # schema_match_pair is intentionally excluded — SNLI/NLI supply real sentence pairs.
+    # reconsolidation_candidate_pair is still populated from FEVER claims+evidence.
     ds = registry.get("fever")
     if ds is None:
         return
-    fever_target_per_label = None
-    if target_per_task_label is not None:
-        fever_target_per_label = max(
-            1,
-            round(
-                target_per_task_label
-                * float(
-                    _TASK_REQUIRED_SOURCE_TARGET_RATIOS.get("schema_match_pair", {}).get(
-                        "hf:fever", 1.0
-                    )
-                )
-            ),
-        )
-    fever_counts = {"match": 0, "no_match": 0}
     for idx, ex in enumerate(
         _iter_dataset_rows(
-            ds, limit=registry.limit("fever"), desc="Schema/reconsolidation rows [fever]"
+            ds, limit=registry.limit("fever"), desc="Reconsolidation rows [fever]"
         )
     ):
         if not isinstance(ex, dict):
@@ -3176,7 +3351,6 @@ def _add_fever_schema_match_rows(
             continue
         raw_label = str(ex.get("label", ex.get("gold_label", ""))).strip().lower()
         if "support" in raw_label or "entail" in raw_label:
-            schema_label = "match"
             recon_label = "relevant"
         elif (
             "refute" in raw_label
@@ -3184,26 +3358,10 @@ def _add_fever_schema_match_rows(
             or "not enough" in raw_label
             or "nei" in raw_label
         ):
-            schema_label = "no_match"
             recon_label = "not_relevant"
         else:
             continue
-        if (
-            fever_target_per_label is not None
-            and fever_counts[schema_label] >= fever_target_per_label
-        ):
-            continue
         group_id = f"hf:fever:{idx}"
-        added_schema = rows.add(
-            "schema_match_pair",
-            claim,
-            evidence,
-            schema_label,
-            "hf:fever",
-            extras={"group_id": group_id},
-        )
-        if added_schema:
-            fever_counts[schema_label] += 1
         rows.add(
             "reconsolidation_candidate_pair",
             claim,
@@ -3531,7 +3689,7 @@ def _inject_hardened_router_rows(
                 "access_count": 3,
                 "age_days": 48,
                 "dependency_count": 1,
-                "support_count": 3,
+                "support_count": 2,
                 "mixed_topic": False,
                 "memory_type": "episodic_event",
             },
@@ -4221,7 +4379,9 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 1,
                 "age_days": 38,
                 "dependency_count": 0,
-                "support_count": 1,
+                # support_count=0: range 0-1 → none/low bucket.
+                # B0 discriminator: low has none/low support; medium/high always have medium/high.
+                "support_count": 0,
                 "mixed_topic": True,
             },
             "medium": {
@@ -4231,6 +4391,7 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 2,
                 "age_days": 28,
                 "dependency_count": 1,
+                # support_count=2: range 2-3 → always medium bucket.
                 "support_count": 2,
                 "mixed_topic": False,
             },
@@ -4241,7 +4402,9 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 3,
                 "age_days": 18,
                 "dependency_count": 2,
-                "support_count": 3,
+                # support_count=4: range 4-5 → always high bucket.
+                # B1 discriminator: high has high support; medium always has medium support.
+                "support_count": 4,
                 "mixed_topic": False,
             },
         },
@@ -4253,7 +4416,9 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 0,
                 "age_days": 170,
                 "dependency_count": 0,
-                "support_count": 1,
+                # support_count=0: range 0-1 → none/low bucket.
+                # B0 discriminator: very_fast has none/low support; all others have medium/high.
+                "support_count": 0,
                 "mixed_topic": True,
             },
             "fast": {
@@ -4263,7 +4428,9 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 1,
                 "age_days": 95,
                 "dependency_count": 0,
-                "support_count": 1,
+                # support_count=2: range 2-3 → always medium bucket (was 1).
+                # Ensures fast is clearly above very_fast (none/low) on B0.
+                "support_count": 2,
                 "mixed_topic": True,
             },
             "medium": {
@@ -4273,6 +4440,7 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 2,
                 "age_days": 56,
                 "dependency_count": 1,
+                # support_count=2: range 2-3 → always medium bucket.
                 "support_count": 2,
                 "mixed_topic": False,
             },
@@ -4283,14 +4451,19 @@ def _fill_structured_router_ordinal_rows(
                 "access_count": 3,
                 "age_days": 30,
                 "dependency_count": 2,
-                "support_count": 3,
+                # support_count=4: range 4-5 → always high bucket (was 3).
+                # B2 discriminator: slow/very_slow have high support; medium always has medium.
+                "support_count": 4,
                 "mixed_topic": False,
             },
             "very_slow": {
                 "memory_types": ["constraint", "semantic_fact", "preference"],
                 "importance": 0.69,
                 "confidence": 0.76,
-                "access_count": 4,
+                # access_count=7: range 7-9 → always high bucket (was 4, B3 discriminator).
+                # Base=7 not 6 because boundary rows apply access−1; 7−1=6 still "high" (≥6).
+                # B3 discriminator: very_slow has high access; slow always has medium access (3-5).
+                "access_count": 7,
                 "age_days": 14,
                 "dependency_count": 3,
                 "support_count": 4,
@@ -4798,52 +4971,70 @@ def _fill_router_tasks_without_llm(
         while regression_rows.count("write_importance_regression") < target_per_task_label:
             idx = regression_idx
             pack = _topic_pack(idx)
+            seed = _seed_fragment(single_pools, rng=rng, idx=idx)
             band = idx % 5
             if band == 0:
                 score = 0.94
                 memory_type = "constraint"
-                text = f"High-priority policy {idx}: {pack['relevant']} and this should always guide decisions."
+                text = (
+                    f"High-priority policy {idx}: {pack['relevant']} and this should always guide "
+                    f"decisions. Supporting note keeps {seed.lower()} in active review."
+                )
                 importance = 0.95
                 access_count = 8
                 age_days = 2
                 dependency_count = 3
+                source = "structured:write_importance_regression:critical"
             elif band == 1:
                 score = 0.76
                 memory_type = "preference"
-                text = f"Stable preference {idx}: {pack['relevant']} for future recommendations."
+                text = (
+                    f"Stable preference {idx}: {pack['relevant']} for future recommendations. "
+                    f"Related reminder keeps {seed.lower()} available."
+                )
                 importance = 0.78
                 access_count = 5
                 age_days = 7
                 dependency_count = 1
+                source = "structured:write_importance_regression:stable"
             elif band == 2:
                 score = 0.52
                 memory_type = "semantic_fact"
-                text = f"Useful fact {idx}: {pack['fact']}."
+                text = f"Useful fact {idx}: {pack['fact']}. Reference line keeps {seed.lower()} nearby."
                 importance = 0.55
                 access_count = 2
                 age_days = 21
                 dependency_count = 1
+                source = "derived:write_importance_regression:fact"
             elif band == 3:
                 score = 0.27
                 memory_type = "episodic_event"
-                text = f"Minor event {idx}: the user briefly mentioned {pack['topic']} logistics."
+                text = (
+                    f"Minor event {idx}: the user briefly mentioned {pack['topic']} logistics. "
+                    f"Archive note references {seed.lower()}."
+                )
                 importance = 0.3
                 access_count = 1
                 age_days = 75
                 dependency_count = 0
+                source = "derived:write_importance_regression:episodic"
             else:
                 score = 0.08
                 memory_type = "scratch"
-                text = f"Ephemeral scratch note {idx}: temporary reminder about {pack['topic']}."
+                text = (
+                    f"Ephemeral scratch note {idx}: temporary reminder about {pack['topic']}. "
+                    f"Loose draft still mentions {seed.lower()}."
+                )
                 importance = 0.1
                 access_count = 0
                 age_days = 180
                 dependency_count = 0
+                source = "structured:write_importance_regression:ephemeral"
             added = regression_rows.add(
                 "write_importance_regression",
                 text,
                 score,
-                "template:write_importance_regression",
+                source,
                 extras=_structured_row_extras(
                     topic=pack["topic"],
                     memory_type=memory_type,
@@ -4852,6 +5043,7 @@ def _fill_router_tasks_without_llm(
                     access_count=access_count,
                     age_days=age_days,
                     dependency_count=dependency_count,
+                    group_id=_stable_group_id(source, memory_type, pack["topic"], text),
                 ),
             )
             regression_idx += 1
@@ -5860,7 +6052,32 @@ def _build_pair_rows(
     _add_existing_pair_rows(rows, registry)
     _add_paws_novelty_rows(rows, registry)
     _add_glue_novelty_rows(rows, registry)
+    _add_mrpc_novelty_rows(rows, registry)
     _add_fever_schema_match_rows(rows, registry, target_per_task_label=target)
+    _add_verification_pair_rows(
+        rows,
+        registry,
+        dataset_name="nli_fever",
+        source_name="hf:nli_fever",
+    )
+    _add_verification_pair_rows(
+        rows,
+        registry,
+        dataset_name="vitaminc",
+        source_name="hf:vitaminc",
+    )
+    _add_verification_pair_rows(
+        rows,
+        registry,
+        dataset_name="climate_fever_plus",
+        source_name="hf:climate_fever_plus",
+    )
+    _add_verification_pair_rows(
+        rows,
+        registry,
+        dataset_name="scitail",
+        source_name="hf:scitail",
+    )
     _derive_schema_from_pair_rows(rows, target_per_task_label=target)
     _fill_pair_tasks_without_llm(
         rows,
@@ -6062,6 +6279,52 @@ def _source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
             "source_buckets": bucket_counts,
         }
     return out
+
+
+def _required_source_coverage_summary(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    if df.empty or not {"task", "source"}.issubset(df.columns):
+        return {}
+    task_series = df["task"].fillna("").astype(str)
+    source_series = df["source"].fillna("").astype(str)
+    summary: dict[str, dict[str, Any]] = {}
+    for task, prefixes in _REQUIRED_SOURCE_PREFIXES.items():
+        task_mask = task_series == task
+        if not bool(task_mask.any()):
+            continue
+        sources = source_series[task_mask]
+        prefix_summary = {
+            prefix: bool(sources.str.startswith(prefix, na=False).any()) for prefix in prefixes
+        }
+        summary[task] = {
+            "required_prefixes": list(prefixes),
+            "present": prefix_summary,
+            "ok": all(prefix_summary.values()),
+        }
+    return summary
+
+
+def _regression_provenance_summary(df: pd.DataFrame) -> dict[str, Any]:
+    if df.empty or "score" not in df.columns or "task" not in df.columns:
+        return {}
+    subset = df[df["task"].astype(str) == "write_importance_regression"].copy()
+    if subset.empty:
+        return {}
+    source_counts = {
+        str(source): int(count)
+        for source, count in subset["source"].astype(str).value_counts().items()
+    }
+    bucket_counts = {
+        str(bucket): int(count)
+        for bucket, count in subset["source"].astype(str).map(_source_bucket).value_counts().items()
+    }
+    return {
+        "rows": int(len(subset)),
+        "source_counts": source_counts,
+        "source_buckets": bucket_counts,
+        "score_min": float(subset["score"].min()),
+        "score_max": float(subset["score"].max()),
+        "score_mean": float(subset["score"].mean()),
+    }
 
 
 def _label_source_diagnostics(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
@@ -6414,7 +6677,13 @@ def _split_by_task_label(
 
 def _write_splits(
     df: pd.DataFrame, *, prefix: str, out_dir: Path, seed: int, ratios: dict[str, float]
-) -> tuple[dict[str, int], dict[str, Any], dict[str, dict[str, Any]]]:
+) -> tuple[
+    dict[str, int],
+    dict[str, Any],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, Any],
+]:
     splits = _split_by_task_label(df, seed, ratios)
     split_integrity = _split_integrity_summary(splits)
     if not split_integrity["ok"]:
@@ -6423,12 +6692,20 @@ def _write_splits(
     train_source_diagnostics = _validate_source_coverage(
         splits["train"], split_name=f"{prefix}:train"
     )
+    train_required_source_coverage = _required_source_coverage_summary(splits["train"])
+    train_regression_provenance = _regression_provenance_summary(splits["train"])
     counts: dict[str, int] = {}
     for split_name, split_df in splits.items():
         path = out_dir / f"{prefix}_{split_name}.parquet"
         split_df.to_parquet(path, index=False)
         counts[split_name] = len(split_df)
-    return counts, split_integrity, train_source_diagnostics
+    return (
+        counts,
+        split_integrity,
+        train_source_diagnostics,
+        train_required_source_coverage,
+        train_regression_provenance,
+    )
 
 
 def _pair_embedding_cache_summary(prepared_dir: Path) -> dict[str, Any] | None:
@@ -7167,6 +7444,7 @@ def main(argv: list[str] | None = None) -> int:
                 "prepared_dir": str(prepared_dir),
                 "bootstrap_prepared_dir": str(bootstrap_dir),
                 "datasets_cache_dir": str(cache_dir) if cache_dir else "",
+                "dataset_shortlist": str(MODELS_ROOT / "dataset_shortlist.md"),
             },
             "datasets": {},
             "configured_tasks": {
@@ -7338,6 +7616,12 @@ def main(argv: list[str] | None = None) -> int:
         prepared_dir, "extractor"
     )
     pair_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "pair")
+    router_required_source_coverage: dict[str, dict[str, Any]] = {}
+    extractor_required_source_coverage: dict[str, dict[str, Any]] = {}
+    pair_required_source_coverage: dict[str, dict[str, Any]] = {}
+    router_regression_provenance: dict[str, Any] = {}
+    extractor_regression_provenance: dict[str, Any] = {}
+    pair_regression_provenance: dict[str, Any] = {}
     pair_hard_negative_augmentation: dict[str, int] = {}
     try:
         if needs_router:
@@ -7378,6 +7662,8 @@ def main(argv: list[str] | None = None) -> int:
                 router_splits,
                 router_split_integrity,
                 router_train_source_diagnostics,
+                router_required_source_coverage,
+                router_regression_provenance,
             ) = _write_splits(
                 router_df,
                 prefix="router",
@@ -7408,6 +7694,8 @@ def main(argv: list[str] | None = None) -> int:
                 extractor_splits,
                 extractor_split_integrity,
                 extractor_train_source_diagnostics,
+                extractor_required_source_coverage,
+                extractor_regression_provenance,
             ) = _write_splits(
                 extractor_df,
                 prefix="extractor",
@@ -7455,6 +7743,8 @@ def main(argv: list[str] | None = None) -> int:
                 pair_splits,
                 pair_split_integrity,
                 pair_train_source_diagnostics,
+                pair_required_source_coverage,
+                pair_regression_provenance,
             ) = _write_splits(
                 pair_df,
                 prefix="pair",
@@ -7598,6 +7888,8 @@ def main(argv: list[str] | None = None) -> int:
                 "split_integrity": router_split_integrity,
                 "label_coverage": _existing_label_coverage(prepared_dir, "router"),
                 "train_source_diagnostics": router_train_source_diagnostics,
+                "required_source_coverage": router_required_source_coverage,
+                "regression_provenance": router_regression_provenance,
                 "tasks": sorted(router_task_labels.keys()) + sorted(router_regression_tasks),
                 "updated": needs_router,
                 "missing_before": router_missing
@@ -7624,6 +7916,7 @@ def main(argv: list[str] | None = None) -> int:
                 "split_integrity": pair_split_integrity,
                 "label_coverage": _existing_label_coverage(prepared_dir, "pair"),
                 "train_source_diagnostics": pair_train_source_diagnostics,
+                "required_source_coverage": pair_required_source_coverage,
                 "tasks": sorted(pair_task_labels.keys()),
                 "updated": needs_pair,
                 "missing_before": pair_missing,

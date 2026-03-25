@@ -351,17 +351,12 @@ def test_group_aware_split_keeps_group_ids_in_single_split() -> None:
     assert sum(len(frame) for frame in splits.values()) == len(df)
 
 
-def test_group_aware_split_reserves_required_source_prefix_in_train() -> None:
+def test_group_aware_split_schema_match_pair_uses_nli_not_fever() -> None:
+    # FEVER rows are no longer added to schema_match_pair (evidence is "Title sentence N"
+    # references, not real text). Only derived NLI rows are used. Verify the splitter
+    # handles a purely derived schema_match_pair dataset without error.
     df = pd.DataFrame(
         [
-            {
-                "task": "schema_match_pair",
-                "label": "match",
-                "text_a": "claim fever",
-                "text_b": "evidence fever",
-                "source": "hf:fever",
-                "group_id": "g-fever",
-            },
             {
                 "task": "schema_match_pair",
                 "label": "match",
@@ -372,7 +367,7 @@ def test_group_aware_split_reserves_required_source_prefix_in_train() -> None:
             },
             {
                 "task": "schema_match_pair",
-                "label": "no_match",
+                "label": "match",
                 "text_a": "claim derived 2",
                 "text_b": "evidence derived 2",
                 "source": "derived:hf:snli",
@@ -383,8 +378,16 @@ def test_group_aware_split_reserves_required_source_prefix_in_train() -> None:
                 "label": "no_match",
                 "text_a": "claim derived 3",
                 "text_b": "evidence derived 3",
-                "source": "derived:hf:multi_nli",
+                "source": "derived:hf:snli",
                 "group_id": "g-derived-3",
+            },
+            {
+                "task": "schema_match_pair",
+                "label": "no_match",
+                "text_a": "claim derived 4",
+                "text_b": "evidence derived 4",
+                "source": "derived:hf:multi_nli",
+                "group_id": "g-derived-4",
             },
         ]
     )
@@ -392,11 +395,13 @@ def test_group_aware_split_reserves_required_source_prefix_in_train() -> None:
     splits = prepare_module._split_by_task_label(
         df,
         seed=11,
-        ratios={"train": 0.25, "test": 0.5, "eval": 0.25},
+        ratios={"train": 0.5, "test": 0.25, "eval": 0.25},
     )
 
-    train_schema = splits["train"][splits["train"]["task"].astype(str) == "schema_match_pair"]
-    assert train_schema["source"].astype(str).str.startswith("hf:fever").any()
+    all_schema = pd.concat(splits.values())
+    assert len(all_schema) == len(df)
+    # No FEVER rows should be present in schema_match_pair
+    assert not all_schema["source"].astype(str).str.startswith("hf:fever").any()
 
 
 def test_router_structured_fill_keeps_group_ids_and_non_template_majority() -> None:
@@ -610,9 +615,18 @@ def test_fill_structured_extractor_rows_scales_constraint_type_past_topic_cycle(
 def test_regression_backfill_advances_past_seeded_duplicate() -> None:
     regression_rows = prepare_module._RegressionTaskStore(max_per_task=4)
     pack = prepare_module._topic_pack(1)
+    # Pre-seed with the exact text that band=1/idx=1 would generate, so the fill
+    # loop treats it as a duplicate and advances to idx=2 (band=2 → "Useful fact 2:").
+    # The seed fragment comes from the single pool item ("Review the release checklist
+    # tomorrow." → first sentence → "Review the release checklist tomorrow").
+    seed_fragment = "review the release checklist tomorrow"
+    pre_seeded_text = (
+        f"Stable preference 1: {pack['relevant']} for future recommendations. "
+        f"Related reminder keeps {seed_fragment} available."
+    )
     added = regression_rows.add(
         "write_importance_regression",
-        f"Stable preference 1: {pack['relevant']} for future recommendations.",
+        pre_seeded_text,
         0.76,
         "prepared:existing",
         extras=prepare_module._structured_row_extras(
@@ -639,7 +653,7 @@ def test_regression_backfill_advances_past_seeded_duplicate() -> None:
 
     assert regression_rows.count("write_importance_regression") == 2
     texts = {str(row["text"]) for row in regression_rows.rows}
-    assert f"Stable preference 1: {pack['relevant']} for future recommendations." in texts
+    assert pre_seeded_text in texts
     assert any(text.startswith("Useful fact 2:") for text in texts)
 
 

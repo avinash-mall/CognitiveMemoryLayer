@@ -1,10 +1,10 @@
 {
   "family": "router",
-  "trained_at_utc": "2026-03-15T15:15:55.759608+00:00",
+  "trained_at_utc": "2026-03-24T13:45:03.612605+00:00",
   "rows": {
-    "train": 484512,
-    "test": 76920,
-    "eval": 68568
+    "train": 498432,
+    "test": 68568,
+    "eval": 63000
   },
   "tasks": [
     "confidence_bin",
@@ -56,11 +56,11 @@
         "very_slow": 8000
       },
       "forgetting_action_policy": {
-        "compress": 5216,
-        "decay": 5216,
-        "delete": 5216,
-        "keep": 5216,
-        "silence": 5216
+        "compress": 8000,
+        "decay": 8000,
+        "delete": 8000,
+        "keep": 8000,
+        "silence": 8000
       },
       "importance_bin": {
         "high": 8000,
@@ -114,8 +114,8 @@
         "medium": 1000
       },
       "consolidation_gist_quality": {
-        "accept": 1000,
-        "reject": 1000
+        "accept": 3784,
+        "reject": 3784
       },
       "constraint_dimension": {
         "causal": 1000,
@@ -143,11 +143,11 @@
         "very_slow": 1000
       },
       "forgetting_action_policy": {
-        "compress": 3784,
-        "decay": 3784,
-        "delete": 3784,
-        "keep": 3784,
-        "silence": 3784
+        "compress": 1000,
+        "decay": 1000,
+        "delete": 1000,
+        "keep": 1000,
+        "silence": 1000
       },
       "importance_bin": {
         "high": 1000,
@@ -201,8 +201,8 @@
         "medium": 1000
       },
       "consolidation_gist_quality": {
-        "accept": 3784,
-        "reject": 3784
+        "accept": 1000,
+        "reject": 1000
       },
       "constraint_dimension": {
         "causal": 1000,
@@ -430,165 +430,165 @@
   "training_summary": {
     "actual_epochs": 4,
     "best_epoch": 1,
-    "best_metric": 0.8669346103172051,
+    "best_metric": 0.926235654207045,
     "monitor_metric": "macro_f1",
     "early_stopped": true
   },
   "calibration": {
     "method": "task_conditional_sigmoid",
     "split": "eval",
-    "rows": 68568,
-    "pre_ece": 0.2747621162238971,
-    "post_ece": 0.012784867698444195,
-    "pre_accuracy": 0.8570907712052269,
-    "post_accuracy": 0.874270796873177,
-    "accuracy_delta": 0.017180025667950072,
+    "rows": 63000,
+    "pre_ece": 0.22489146840110125,
+    "post_ece": 0.006088071984261153,
+    "pre_accuracy": 0.9244285714285714,
+    "post_accuracy": 0.9264920634920635,
+    "accuracy_delta": 0.0020634920634921006,
     "tasks": {
       "confidence_bin": {
         "rows": 3000,
-        "pre_ece": 0.13575520436944358,
-        "post_ece": 0.045542293980774425,
-        "pre_accuracy": 0.8443333333333334,
-        "post_accuracy": 0.8326666666666667,
-        "accuracy_delta": -0.011666666666666714
+        "pre_ece": 0.13866135910149907,
+        "post_ece": 0.0016027959521529472,
+        "pre_accuracy": 1.0,
+        "post_accuracy": 1.0,
+        "accuracy_delta": 0.0
       },
       "consolidation_gist_quality": {
-        "rows": 7568,
-        "pre_ece": 0.10314594449975004,
-        "post_ece": 0.019135444746877648,
-        "pre_accuracy": 0.80642177589852,
-        "post_accuracy": 0.8309989429175476,
-        "accuracy_delta": 0.024577167019027568
+        "rows": 2000,
+        "pre_ece": 0.15025429603356924,
+        "post_ece": 0.03891784993723182,
+        "pre_accuracy": 0.937,
+        "post_accuracy": 0.9495,
+        "accuracy_delta": 0.012499999999999956
       },
       "constraint_dimension": {
         "rows": 6000,
-        "pre_ece": 0.30394176141230833,
-        "post_ece": 0.012054092914992926,
-        "pre_accuracy": 0.75,
-        "post_accuracy": 0.754,
-        "accuracy_delta": 0.0040000000000000036
+        "pre_ece": 0.3325902217828829,
+        "post_ece": 0.015778614217428582,
+        "pre_accuracy": 0.7585,
+        "post_accuracy": 0.7601666666666667,
+        "accuracy_delta": 0.0016666666666667052
       },
       "context_tag": {
         "rows": 8000,
-        "pre_ece": 0.39583124755829135,
-        "post_ece": 0.014204213716293062,
-        "pre_accuracy": 0.835875,
-        "post_accuracy": 0.8455,
-        "accuracy_delta": 0.009624999999999995
+        "pre_ece": 0.4043376982492477,
+        "post_ece": 0.024609970105998955,
+        "pre_accuracy": 0.8375,
+        "post_accuracy": 0.840625,
+        "accuracy_delta": 0.0031249999999999334
       },
       "decay_profile": {
         "rows": 5000,
-        "pre_ece": 0.16207503454727543,
-        "post_ece": 0.05733867244406181,
-        "pre_accuracy": 0.7828,
-        "post_accuracy": 0.7772,
-        "accuracy_delta": -0.005600000000000049
+        "pre_ece": 0.15358418654131878,
+        "post_ece": 0.0013272415521243808,
+        "pre_accuracy": 1.0,
+        "post_accuracy": 1.0,
+        "accuracy_delta": 0.0
       },
       "forgetting_action_policy": {
         "rows": 5000,
-        "pre_ece": 0.23667523926751277,
-        "post_ece": 0.05179480916817031,
-        "pre_accuracy": 0.8458,
-        "post_accuracy": 0.905,
-        "accuracy_delta": 0.05920000000000003
+        "pre_ece": 0.2036280844454815,
+        "post_ece": 0.02501073824131013,
+        "pre_accuracy": 0.8934,
+        "post_accuracy": 0.9132,
+        "accuracy_delta": 0.01980000000000004
       },
       "importance_bin": {
         "rows": 3000,
-        "pre_ece": 0.12056095817552698,
-        "post_ece": 0.03656609361466613,
-        "pre_accuracy": 0.868,
-        "post_accuracy": 0.8626666666666667,
-        "accuracy_delta": -0.005333333333333301
+        "pre_ece": 0.11229400916447166,
+        "post_ece": 0.03770335825668174,
+        "pre_accuracy": 0.8703333333333333,
+        "post_accuracy": 0.862,
+        "accuracy_delta": -0.008333333333333304
       },
       "memory_type": {
         "rows": 15000,
-        "pre_ece": 0.012313323639850271,
-        "post_ece": 0.0002480668927490326,
+        "pre_ece": 0.01246958845643098,
+        "post_ece": 0.00022353283097098497,
         "pre_accuracy": 1.0,
         "post_accuracy": 1.0,
         "accuracy_delta": 0.0
       },
       "query_domain": {
         "rows": 8000,
-        "pre_ece": 0.366648394477011,
-        "post_ece": 0.017475368918719515,
-        "pre_accuracy": 0.845,
-        "post_accuracy": 0.852375,
-        "accuracy_delta": 0.00737500000000002
+        "pre_ece": 0.01956447437846054,
+        "post_ece": 0.00023884021157294377,
+        "pre_accuracy": 1.0,
+        "post_accuracy": 1.0,
+        "accuracy_delta": 0.0
       },
       "query_intent": {
         "rows": 5000,
-        "pre_ece": 0.2543269743547712,
-        "post_ece": 0.009056931153377863,
-        "pre_accuracy": 0.8932,
-        "post_accuracy": 0.895,
-        "accuracy_delta": 0.0018000000000000238
+        "pre_ece": 0.28094868201405077,
+        "post_ece": 0.01131228138276847,
+        "pre_accuracy": 0.8876,
+        "post_accuracy": 0.889,
+        "accuracy_delta": 0.0014000000000000679
       },
       "salience_bin": {
         "rows": 3000,
-        "pre_ece": 0.10672422516307127,
-        "post_ece": 0.04058286831583958,
-        "pre_accuracy": 0.8626666666666667,
-        "post_accuracy": 0.8596666666666667,
-        "accuracy_delta": -0.0030000000000000027
+        "pre_ece": 0.10640290050767787,
+        "post_ece": 0.03726964949288712,
+        "pre_accuracy": 0.8673333333333333,
+        "post_accuracy": 0.8623333333333333,
+        "accuracy_delta": -0.0050000000000000044
       }
     }
   },
   "epoch_stats": [
     {
       "epoch": 1,
-      "train_loss": 0.7099393079986854,
-      "train_accuracy": 0.8910181791163068,
-      "train_macro_f1": 0.8916709403880889,
-      "train_weighted_f1": 0.8927687627273179,
-      "valid_loss": 0.7310518078604672,
-      "valid_accuracy": 0.8570907712052269,
-      "valid_macro_f1": 0.8669346103172051,
-      "valid_weighted_f1": 0.8578688946046636,
+      "train_loss": 0.49642418763078416,
+      "train_accuracy": 0.9312062628402671,
+      "train_macro_f1": 0.9326022828659377,
+      "train_weighted_f1": 0.9329824209239074,
+      "valid_loss": 0.48209625883806756,
+      "valid_accuracy": 0.9244285714285714,
+      "valid_macro_f1": 0.926235654207045,
+      "valid_weighted_f1": 0.9262356542070449,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.8669346103172051,
+      "monitor_value": 0.926235654207045,
       "improved": true
     },
     {
       "epoch": 2,
-      "train_loss": 0.7088329725374198,
-      "train_accuracy": 0.8913731754837857,
-      "train_macro_f1": 0.8916028781742023,
-      "train_weighted_f1": 0.8926277600323547,
-      "valid_loss": 0.7304825380156125,
-      "valid_accuracy": 0.8568136740170342,
-      "valid_macro_f1": 0.8663631204441763,
-      "valid_weighted_f1": 0.856707213820728,
+      "train_loss": 0.4947039043467635,
+      "train_accuracy": 0.9312764830508474,
+      "train_macro_f1": 0.9326193201974093,
+      "train_weighted_f1": 0.9330261981483748,
+      "valid_loss": 0.48111536743049177,
+      "valid_accuracy": 0.924063492063492,
+      "valid_macro_f1": 0.9258597217031788,
+      "valid_weighted_f1": 0.9258597217031788,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.8663631204441763,
+      "monitor_value": 0.9258597217031788,
       "improved": false
     },
     {
       "epoch": 3,
-      "train_loss": 0.7084305084823769,
-      "train_accuracy": 0.8913834951456311,
-      "train_macro_f1": 0.8915567558248119,
-      "train_weighted_f1": 0.892578096574527,
-      "valid_loss": 0.7300935259085242,
-      "valid_accuracy": 0.8573241162058103,
-      "valid_macro_f1": 0.8667083505256441,
-      "valid_weighted_f1": 0.8571066615896592,
+      "train_loss": 0.4937372258754057,
+      "train_accuracy": 0.9310979230868002,
+      "train_macro_f1": 0.9323201961881513,
+      "train_weighted_f1": 0.9327362686877312,
+      "valid_loss": 0.4804930006915956,
+      "valid_accuracy": 0.9240952380952381,
+      "valid_macro_f1": 0.9257796353540717,
+      "valid_weighted_f1": 0.9257796353540717,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.8667083505256441,
+      "monitor_value": 0.9257796353540717,
       "improved": false
     },
     {
       "epoch": 4,
-      "train_loss": 0.7082164997933275,
-      "train_accuracy": 0.8916724456773001,
-      "train_macro_f1": 0.891769592485504,
-      "train_weighted_f1": 0.8927878481331466,
-      "valid_loss": 0.7299451657103606,
-      "valid_accuracy": 0.8577324699568312,
-      "valid_macro_f1": 0.8670137600711562,
-      "valid_weighted_f1": 0.8574058810660489,
+      "train_loss": 0.49309408342873645,
+      "train_accuracy": 0.9308651932460195,
+      "train_macro_f1": 0.9319746389710357,
+      "train_weighted_f1": 0.9324168201678176,
+      "valid_loss": 0.4800581472921111,
+      "valid_accuracy": 0.9243174603174603,
+      "valid_macro_f1": 0.925926196173538,
+      "valid_weighted_f1": 0.9259261961735378,
       "monitor_metric": "macro_f1",
-      "monitor_value": 0.8670137600711562,
+      "monitor_value": 0.925926196173538,
       "improved": false
     }
   ],
@@ -597,19 +597,19 @@
   "evaluation_suite": "standard",
   "dataset_hashes": {
     "train": {
-      "path": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack\\router_train.parquet",
-      "sha256": "8b1403cc68d9fc617d782d70ac58e4ca1ac4e6a7f5ccd61ce069f457d1e7faea",
-      "bytes": 42003763
+      "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_train.parquet",
+      "sha256": "010b765848904f690633e2f56346551005897a12e277ad3b5441deda2e8d8b46",
+      "bytes": 47609764
     },
     "test": {
-      "path": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack\\router_test.parquet",
-      "sha256": "aae7b548e6e642af53b9d4c9e7a70307c6a320723591e56dca0e37bf202bdae8",
-      "bytes": 6804263
+      "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_test.parquet",
+      "sha256": "d53a1e08351af99453737cae7aad78c0c3804955fc27aaad91a8aef4a15f7b71",
+      "bytes": 6868592
     },
     "eval": {
-      "path": "E:\\CognitiveMemoryLayer\\packages\\models\\prepared_data\\modelpack\\router_eval.parquet",
-      "sha256": "46905af070fd3d793e7a2692f81e0eda9515a53351457475b233bc191cddf989",
-      "bytes": 6386433
+      "path": "/nvme/CognitiveMemoryLayer/packages/models/prepared_data/modelpack/router_eval.parquet",
+      "sha256": "45b9455d41256eef17477b256335a1c0e30400beb298cc268a427e9b459816a7",
+      "bytes": 6147505
     }
   }
 }

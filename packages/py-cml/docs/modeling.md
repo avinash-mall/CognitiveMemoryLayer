@@ -16,7 +16,7 @@ All subcommands are available via `cml-models`.
 
 ### `prepare` - Prepare modeling datasets
 
-Downloads public NLP datasets, generates synthetic data, applies balancing, and writes train/test/eval splits.
+Downloads public NLP datasets, applies dataset-role filtering (`usage_role`, `task_targets`), generates synthetic data, applies balancing, and writes group-aware train/test/eval splits.
 
 ```bash
 cml-models prepare --config packages/models/model_pipeline.toml
@@ -71,9 +71,11 @@ cml-models train --config packages/models/model_pipeline.toml
 | `--strict` | on | Hard-fail on preflight, unsupported objectives, disabled selected tasks, empty/missing task rows, or missing artifacts |
 | `--allow-skips` | off | Legacy behavior; continue despite preflight/task/artifact errors |
 
-Strict mode is the default (`TrainConfig.strict=True`). Preflight validates objective support, required columns, configured-vs-observed task coverage, and regression score requirements before training task models. The train manifest is schema v2 and includes `configured_tasks`, `preflight_validation`, `task_training_status`, and `build_metadata`.
+Strict mode is the default (`TrainConfig.strict=True`). Preflight validates objective support, required columns, configured-vs-observed task coverage, and regression score requirements before training task models. Transformer task trainers record per-epoch eval metrics, restore the best checkpoint by task objective (`macro_f1`, `ndcg@10`, or `mae`), and threshold export can include calibration and checkpoint-selection metadata. Regression tasks now require real eval/test splits from prepare and no longer fabricate holdouts from train. The train manifest is schema v2 and includes `configured_tasks`, `preflight_validation`, `task_training_status`, and `build_metadata`.
 
 Tasks with objective `token_classification` use dedicated per-task parquet splits and a Hugging Face token-classification trainer. Strict mode fails when those dedicated splits or trained artifacts are missing.
+
+The prepare manifest records split integrity, per-task train source coverage, regression provenance summaries, and the checked-in dataset shortlist path used for public-data intake.
 
 ### `pipeline` - Run prepare + train in one command
 
@@ -193,3 +195,13 @@ Legacy wrapper entry points remain available:
 - `python -m packages.models.scripts.train ...`
 
 Internal helpers used by tests (for example `_missing_task_labels`) are re-exported from wrapper modules.
+
+## Dataset Registry Notes
+
+`packages/models/model_pipeline.toml` now supports dataset-level metadata used by prepare:
+
+- `usage_role`: `supervision`, `llm_seed`, or `eval_only`
+- `task_targets`: tasks primarily fed by that dataset
+- `license`: optional provenance note surfaced in shortlist documentation
+
+The canonical public-data shortlist lives in `packages/models/dataset_shortlist.md` and documents which sources are used as direct supervision versus LLM seed corpora.

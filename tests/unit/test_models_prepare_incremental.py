@@ -224,3 +224,54 @@ def test_generate_pair_recovers_without_valid_json():
     assert out[0][0].startswith("I like tea")
     assert fake.recovered == 2
     assert fake.failed == 0
+
+
+def test_validate_source_coverage_requires_forgetting_hardened_and_structured_sources():
+    df = pd.DataFrame(
+        [
+            {
+                "text": f"keep structured {idx}",
+                "task": "forgetting_action_policy",
+                "label": "keep",
+                "source": "structured:forgetting_action_policy:keep",
+            }
+            for idx in range(80)
+        ]
+        + [
+            {
+                "text": f"keep hardened {idx}",
+                "task": "forgetting_action_policy",
+                "label": "keep",
+                "source": "template_hardened:forgetting_action_policy:keep",
+            }
+            for idx in range(80)
+        ]
+        + [
+            {
+                "text": f"keep llm {idx}",
+                "task": "forgetting_action_policy",
+                "label": "keep",
+                "source": "llm:forgetting_action_policy:keep",
+            }
+            for idx in range(80)
+        ]
+    )
+    diagnostics = p._validate_source_coverage(df, split_name="router:train")
+    assert "forgetting_action_policy" in diagnostics
+
+
+def test_validate_source_coverage_rejects_missing_required_regression_prefixes():
+    df = pd.DataFrame(
+        [
+            {
+                "text": f"row {idx}",
+                "task": "write_importance_regression",
+                "label": "",
+                "score": 0.5,
+                "source": "structured:write_importance_regression:critical",
+            }
+            for idx in range(220)
+        ]
+    )
+    with pytest.raises(ValueError, match="write_importance_regression"):
+        p._validate_source_coverage(df, split_name="router:train")

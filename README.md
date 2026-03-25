@@ -342,24 +342,27 @@ Types are defined in `src/core/enums.py` as `MemoryType`. **Decay**: Fast/Very F
 CML includes a custom model pipeline (`packages/models/`) that trains lightweight task-specific models to replace heuristic and rule-based logic throughout the runtime. Models are served via the `ModelPack` adapter in `src/utils/modelpack.py`.
 
 <details>
-<summary><strong>Task-specific models</strong> &mdash; 10 models replacing heuristics with learned behavior</summary>
+<summary><strong>Task-specific models</strong> &mdash; dedicated classifiers, rankers, and extractors that replace or gate heuristics</summary>
 
 | Model | What It Replaces | Location |
 | :--- | :--- | :--- |
 | `retrieval_constraint_relevance_pair` | Domain keyword bonus | `src/retrieval/retriever.py` |
 | `memory_rerank_pair` | Weighted reranker with hard-coded stability rules | `src/retrieval/reranker.py` |
 | `novelty_pair` | Jaccard novelty and cosine-threshold duplicate detection | `src/memory/hippocampal/write_gate.py`, `src/forgetting/interference.py` |
-| `fact_extraction_structured` *(planned)* | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
+| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
 | `schema_match_pair` | Jaccard schema similarity | `src/consolidation/schema_aligner.py` |
 | `reconsolidation_candidate_pair` | Word-overlap top-k candidate selection | `src/reconsolidation/service.py` |
-| `write_importance_regression` *(deferred)* | Fixed importance bins | `src/memory/hippocampal/write_gate.py` |
-| `pii_span_detection` *(planned)* | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
+| `write_importance_regression` | Fixed importance bins | `src/memory/hippocampal/write_gate.py` |
+| `pii_span_detection` | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
 | `consolidation_gist_quality` | String-match gist blacklist | `src/consolidation/worker.py` |
 | `forgetting_action_policy` | Heuristic action choice | `src/forgetting/scorer.py` |
+| `memory_type` | Heuristic write-path type classification in local extraction mode | `src/extraction/local_unified_extractor.py` |
+| `context_tag` | Heuristic local write-path tagging | `src/extraction/local_unified_extractor.py` |
+| `constraint_dimension` | Heuristic query constraint-dimension labeling | `src/retrieval/classifier.py` |
 
-Default config keeps deferred token/regression tasks disabled until their data/trainer contracts are complete.
+Upgraded tasks now prefer dedicated artifacts over router/pair family fallbacks. If a dedicated artifact is unavailable, runtime drops to the original heuristic path rather than silently using the old family classifier.
 
-All model-assisted paths preserve deterministic fallbacks: if a model is unavailable, the original heuristic runs unchanged. Safety-critical paths (secret detection, PII regex baseline, deterministic key generation) are never delegated to models.
+All model-assisted paths preserve deterministic fallbacks. For dedicated-only tasks, runtime uses either the dedicated model or the original heuristic path; it does not fall back to the legacy router/pair family model. Safety-critical paths (secret detection, PII regex baseline, deterministic key generation) are never delegated to models.
 
 </details>
 
@@ -379,14 +382,16 @@ When `fact_extraction_structured` is trained and loaded, `extract_relations()` a
 </details>
 
 <details>
-<summary><strong>Training & data preparation</strong> &mdash; TF-IDF baselines with LLM-generated synthetic data</summary>
+<summary><strong>Training & data preparation</strong> &mdash; hybrid TF-IDF baselines, transformer task models, and internet-sourced public datasets</summary>
 
-The pipeline trains 3 model families (router, extractor, pair) and task-specific models using TF-IDF + SGDClassifier/SGDRegressor. Training is strict-by-default and runs preflight/artifact validation before reporting success.
+The pipeline trains 3 family models plus dedicated task models across TF-IDF, dense pair-ranking, hierarchical text, transformer text, regression, and token-classification objectives. Training is strict-by-default and runs preflight/artifact validation before reporting success.
 
-- Auto-download from 15+ public NLP datasets via Hugging Face
+- Auto-download from a registry of public NLP datasets via Hugging Face, with `usage_role` and `task_targets` per dataset
+- Checked-in public dataset shortlist for supervision and LLM seed corpora
 - LLM-only synthetic data generation for domain-specific tasks
 - Missing-only balancing with configurable target counts
-- Stratified train/test/eval splits
+- Group-aware train/test/eval splits with source-coverage and regression-provenance checks
+- Best-checkpoint selection and optional threshold export for calibrated task models
 
 ```bash
 # Via cml-models CLI (requires `pip install "cognitive-memory-layer[modeling]"`)

@@ -40,10 +40,14 @@ htmlcov
 # examples/
 # ProjectPlan/
 
-# Large local model/data artifacts (not required to run API)
+# Large local model/data artifacts (datasets/prepared rows are not needed in the
+# runtime image; trained model runtime artifacts are allowed below).
 packages/models/datasets/
 packages/models/prepared_data/
-packages/models/trained_models/
+packages/models/trained_models/*_epoch_stats.json
+packages/models/trained_models/*_metrics_*.json
+packages/models/trained_models/*_report_*.json
+packages/models/trained_models/*_training_metadata.json
 
 # Local caches and databases
 .mypy_cache/

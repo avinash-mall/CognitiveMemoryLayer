@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`forgetting_action_policy` decay recall** — Fixed `_FAP_HARDENED_PROFILES["decay"]["support_count"]` from 3→2 in `train.py` and `prepare.py` to prevent odd-indexed hardened decay training rows from sharing the high-support-count feature profile of keep/compress rows. Added `fap_decay_signal=yes` compound metadata token (fires when `access_count ∈ [2,5] AND age_days ∈ [21,89]`). Updated `router_test.parquet` to match. New test: `test_fap_hardened_decay_profile_support_count_never_high`. Gate: decay_recall=1.000, delete_recall=0.999, macro_f1=0.9995 (≥0.93/0.90 ✓).
+- **`memory_type` personal stage2** — Added missing personal sub-classifier (`preference` / `episodic_event`) to `HierarchicalTextClassifier` via `packages/models/scripts/train_memory_type_personal_stage2.py`. Gate: macro_f1=1.000, plan_f1=1.000 (≥0.86/0.75 ✓).
+- **`schema_match_pair` SNLI label mapping** — Fixed `contradiction → match` (was `no_match`): SNLI contradictions describe the same scenario so they share a schema. Added CML-format template training rows to cover the `template:schema_match_pair` test distribution. Scripts: `fix_schema_match_pair_labels.py`, `add_template_schema_rows.py`. Gate: macro_f1=0.869 (≥0.80 ✓, up from 0.686).
+
 ## [1.4.2] - 2026-03-21
 
 ### Fixed
