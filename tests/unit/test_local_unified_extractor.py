@@ -67,7 +67,7 @@ class TestLocalUnifiedExtractorExtract:
     def test_returns_default_result_when_no_models(self):
         mp = _make_modelpack(available_tasks=[])
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("test text"))
+        result = asyncio.run(ext.extract("test text"))
         assert result["source"] == "local_unified"
         assert result["importance"] == 0.5
         assert result["facts"] == []
@@ -84,7 +84,7 @@ class TestLocalUnifiedExtractorExtract:
             spans_result=spans,
         )
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("test text here"))
+        result = asyncio.run(ext.extract("test text here"))
         assert len(result["facts"]) == 2
         assert result["facts"][0].category.value == "preference"
 
@@ -95,7 +95,7 @@ class TestLocalUnifiedExtractorExtract:
             score_result=score,
         )
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("important text"))
+        result = asyncio.run(ext.extract("important text"))
         assert result["importance"] == pytest.approx(0.85)
 
     def test_extracts_pii_spans_from_model(self):
@@ -108,7 +108,7 @@ class TestLocalUnifiedExtractorExtract:
             spans_result=pii,
         )
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("a@b.c text"))
+        result = asyncio.run(ext.extract("a@b.c text"))
         assert len(result["pii_spans"]) == 1
         assert result["pii_spans"][0]["label"] == "EMAIL"
 
@@ -116,14 +116,14 @@ class TestLocalUnifiedExtractorExtract:
         pred = ModelPrediction(task="memory_type", label="preference", confidence=0.9)
         mp = _make_modelpack(available_tasks=[], single_result=pred)
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("I love pizza"))
+        result = asyncio.run(ext.extract("I love pizza"))
         assert result["memory_type"] == "preference"
 
     def test_fallback_on_model_exception(self):
         mp = _make_modelpack(available_tasks=["fact_extraction_structured"])
         mp.predict_spans.side_effect = RuntimeError("model crashed")
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("text"))
+        result = asyncio.run(ext.extract("text"))
         assert result["facts"] == []
         assert result["source"] == "local_unified"
 
@@ -134,22 +134,20 @@ class TestLocalUnifiedExtractorExtract:
             score_result=score,
         )
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("text"))
+        result = asyncio.run(ext.extract("text"))
         assert result["importance"] == 1.0
 
     def test_empty_text_returns_defaults(self):
         mp = _make_modelpack(available_tasks=["write_importance_regression"])
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract(""))
+        result = asyncio.run(ext.extract(""))
         assert result["importance"] == 0.5
 
     def test_extracts_context_tag_from_router(self):
         pred = ModelPrediction(task="context_tag", label="food", confidence=0.85)
         mp = _make_modelpack(available=True, single_result=pred)
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(
-            ext.extract("I prefer vegetarian cuisine")
-        )
+        result = asyncio.run(ext.extract("I prefer vegetarian cuisine"))
         assert result["context_tags"] == ["food"]
 
     def test_extracts_confidence_bin_maps_to_float(self):
@@ -157,7 +155,7 @@ class TestLocalUnifiedExtractorExtract:
             pred = ModelPrediction(task="confidence_bin", label=label, confidence=0.8)
             mp = _make_modelpack(available=True, single_result=pred)
             ext = LocalUnifiedWriteExtractor(modelpack=mp)
-            result = asyncio.get_event_loop().run_until_complete(ext.extract("some text"))
+            result = asyncio.run(ext.extract("some text"))
             assert result["confidence"] == pytest.approx(expected)
 
     def test_extracts_decay_profile_maps_to_float(self):
@@ -171,13 +169,13 @@ class TestLocalUnifiedExtractorExtract:
             pred = ModelPrediction(task="decay_profile", label=label, confidence=0.8)
             mp = _make_modelpack(available=True, single_result=pred)
             ext = LocalUnifiedWriteExtractor(modelpack=mp)
-            result = asyncio.get_event_loop().run_until_complete(ext.extract("ephemeral note"))
+            result = asyncio.run(ext.extract("ephemeral note"))
             assert result["decay_rate"] == pytest.approx(expected)
 
     def test_context_tag_confidence_decay_fallback_when_predict_fails(self):
         mp = _make_modelpack(available=True, single_result=None)
         ext = LocalUnifiedWriteExtractor(modelpack=mp)
-        result = asyncio.get_event_loop().run_until_complete(ext.extract("text"))
+        result = asyncio.run(ext.extract("text"))
         assert result["context_tags"] == []
         assert result["confidence"] == 0.5
         assert result["decay_rate"] is None
