@@ -7,9 +7,8 @@ import pytest
 pytest.importorskip("pandas")
 pytest.importorskip("sklearn")
 
-import cml.modeling.train as train_module
 import cml.modeling.prepare as prepare_module
-
+import cml.modeling.train as train_module
 
 # ── Release gate enforcement ──────────────────────────────────────────────────
 
@@ -131,7 +130,7 @@ def test_release_gate_memory_type_plan_f1_from_report() -> None:
 
 def test_train_classifier_with_monitoring_records_eval_macro_f1_per_epoch() -> None:
     """Epoch stats must contain eval_macro_f1 when validation data is provided."""
-    model, epoch_stats, summary = train_module._train_classifier_with_monitoring(
+    _model, epoch_stats, _summary = train_module._train_classifier_with_monitoring(
         train_x=["apple fruit", "banana fruit", "cat animal", "dog animal"],
         train_y=["router::fruit", "router::fruit", "router::animal", "router::animal"],
         valid_x=["kiwi fruit", "mouse animal"],

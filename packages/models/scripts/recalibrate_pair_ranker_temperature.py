@@ -14,17 +14,14 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "packages" / "py-cml" / "src"))
-
 import joblib
 import numpy as np
 import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from cml.modeling.train import _sequence_inputs_from_features
-
+REPO_ROOT = Path(__file__).resolve().parents[3]
+PY_CML_SRC = REPO_ROOT / "packages" / "py-cml" / "src"
 MODELS_DIR = REPO_ROOT / "packages" / "models"
 PREPARED_DIR = MODELS_DIR / "prepared_data" / "modelpack"
 TRAINED_DIR = MODELS_DIR / "trained_models"
@@ -37,6 +34,14 @@ TASKS = [
 TEMPERATURE_GRID = [
     0.7, 0.85, 1.0, 1.15, 1.3, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0
 ]
+
+
+def _load_sequence_inputs_from_features():
+    if str(PY_CML_SRC) not in sys.path:
+        sys.path.insert(0, str(PY_CML_SRC))
+    from cml.modeling.train import _sequence_inputs_from_features
+
+    return _sequence_inputs_from_features
 
 
 def compute_ece(p_pos: np.ndarray, binary_labels: np.ndarray, n_bins: int = 10) -> float:
@@ -68,7 +73,9 @@ def get_raw_logits(
         f"task={row.task} [a] {row.text_a} [b] {row.text_b}"
         for row in task_df.itertuples()
     ]
-    left, right = _sequence_inputs_from_features(features, input_type="pair")
+    sequence_inputs_from_features = _load_sequence_inputs_from_features()
+    left, right = sequence_inputs_from_features(features, input_type="pair")
+    assert right is not None
 
     outputs = []
     batch_size = 32
@@ -92,12 +99,12 @@ def find_optimal_temperature(
 ) -> tuple[float, float]:
     best_ece = float("inf")
     best_t = 1.0
-    for T in grid:
-        p_pos = 1.0 / (1.0 + np.exp(-raw_logits / T))
+    for temperature in grid:
+        p_pos = 1.0 / (1.0 + np.exp(-raw_logits / temperature))
         ece = compute_ece(p_pos, binary_labels)
         if ece < best_ece:
             best_ece = ece
-            best_t = T
+            best_t = temperature
     return best_t, best_ece
 
 

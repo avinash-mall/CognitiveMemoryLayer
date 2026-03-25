@@ -225,15 +225,15 @@ _FAP_HARDENED_PROFILES: dict[str, dict[str, int]] = {
 }
 # Start idx well above the test range (test group_ids are in ~[0, 4000]).
 _FAP_HARDENED_TRAIN_IDX_START = 10001
-# Number of unique texts per label to generate (×5 labels = total augmented rows).
-# 500 unique texts × 5 labels = 2500 rows ≈ 9.6% of original 26080 training rows.
-# 2000 rows caused delete→silence/decay regressions in multiple runs. 500 was the stable
+# Number of unique texts per label to generate (x5 labels = total augmented rows).
+# 500 unique texts x 5 labels = 2500 rows, about 9.6% of the original 26080 training rows.
+# 2000 rows caused delete->silence/decay regressions in multiple runs. 500 was the stable
 # baseline (84.07% test accuracy). fap_keep_signal=yes provides the discriminative keep
 # signal needed to push beyond 84%, avoiding the need for more augmented volume.
 _FAP_HARDENED_TRAIN_COUNT = 500
 
 
-def _build_forgetting_policy_hardened_rows() -> "pd.DataFrame":
+def _build_forgetting_policy_hardened_rows() -> pd.DataFrame:
     """Generate template_hardened-style training rows for forgetting_action_policy.
 
     For each idx, all 5 labels get the SAME text but different metadata (per _FAP_HARDENED_PROFILES).
@@ -670,9 +670,9 @@ def _single_metadata_tokens(
         and age_days < 21
     ):
         tokens.append("fap_keep_signal=yes")
-    # Compound decay signal for forgetting_action_policy: access_count medium (2–5) AND
-    # age_days medium (21–89). This combination is exclusive to the "decay" label profile in
-    # template_hardened test rows — compress has age=high (≥90), keep has access=high (≥6),
+    # Compound decay signal for forgetting_action_policy: access_count medium (2-5) AND
+    # age_days medium (21-89). This combination is exclusive to the "decay" label profile in
+    # template_hardened test rows - compress has age=high (>=90), keep has access=high (>=6),
     # delete/silence have access=none/low (<2). Never fires for LLM rows (no LLM row has
     # an explicit access_count value).
     if (
@@ -2964,7 +2964,7 @@ def _train_transformer_text_task(
         train_df = pd.concat([train_df, hardened_rows], ignore_index=True)
         print(
             f"[task:{spec.task_name}] augmented with {len(hardened_rows)} template_hardened rows"
-            f" ({_FAP_HARDENED_TRAIN_COUNT} unique texts × 5 labels)"
+            f" ({_FAP_HARDENED_TRAIN_COUNT} unique texts x 5 labels)"
         )
 
     train_x = _encode_features(train_df, family)

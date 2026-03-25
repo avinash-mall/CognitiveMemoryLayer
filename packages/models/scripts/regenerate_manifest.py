@@ -14,9 +14,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "packages" / "py-cml" / "src"))
-
-from cml.modeling.train import _release_gate_results
+PY_CML_SRC = REPO_ROOT / "packages" / "py-cml" / "src"
 
 TRAINED_DIR = REPO_ROOT / "packages" / "models" / "trained_models"
 MANIFEST_PATH = TRAINED_DIR / "manifest.json"
@@ -37,6 +35,14 @@ GATED_TASKS = [
     "reconsolidation_candidate_pair",
     "write_importance_regression",
 ]
+
+
+def _load_release_gate_results():
+    if str(PY_CML_SRC) not in sys.path:
+        sys.path.insert(0, str(PY_CML_SRC))
+    from cml.modeling.train import _release_gate_results
+
+    return _release_gate_results
 
 
 def load_task_metrics(task: str) -> dict | None:
@@ -70,6 +76,8 @@ def main() -> None:
         print(f"ERROR: manifest not found at {MANIFEST_PATH}")
         sys.exit(1)
 
+    release_gate_results = _load_release_gate_results()
+
     with open(MANIFEST_PATH) as f:
         manifest = json.load(f)
 
@@ -84,7 +92,7 @@ def main() -> None:
             all_passed = False
             continue
 
-        gate_result = _release_gate_results(task, {"test": summary})
+        gate_result = release_gate_results(task, {"test": summary})
         new_gates[task] = gate_result
 
         def fmt_val(v):

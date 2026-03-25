@@ -4460,8 +4460,8 @@ def _fill_structured_router_ordinal_rows(
                 "memory_types": ["constraint", "semantic_fact", "preference"],
                 "importance": 0.69,
                 "confidence": 0.76,
-                # access_count=7: range 7-9 → always high bucket (was 4, B3 discriminator).
-                # Base=7 not 6 because boundary rows apply access−1; 7−1=6 still "high" (≥6).
+                # access_count=7: range 7-9 always lands in the high bucket (was 4, B3 discriminator).
+                # Base=7 not 6 because boundary rows apply access-1; 7-1=6 is still "high" (>=6).
                 # B3 discriminator: very_slow has high access; slow always has medium access (3-5).
                 "access_count": 7,
                 "age_days": 14,
@@ -6318,7 +6318,7 @@ def _regression_provenance_summary(df: pd.DataFrame) -> dict[str, Any]:
         for bucket, count in subset["source"].astype(str).map(_source_bucket).value_counts().items()
     }
     return {
-        "rows": int(len(subset)),
+        "rows": len(subset),
         "source_counts": source_counts,
         "source_buckets": bucket_counts,
         "score_min": float(subset["score"].min()),
@@ -7617,11 +7617,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     pair_train_source_diagnostics = _existing_train_source_diagnostics(prepared_dir, "pair")
     router_required_source_coverage: dict[str, dict[str, Any]] = {}
-    extractor_required_source_coverage: dict[str, dict[str, Any]] = {}
+    _extractor_required_source_coverage: dict[str, dict[str, Any]] = {}
     pair_required_source_coverage: dict[str, dict[str, Any]] = {}
     router_regression_provenance: dict[str, Any] = {}
-    extractor_regression_provenance: dict[str, Any] = {}
-    pair_regression_provenance: dict[str, Any] = {}
+    _extractor_regression_provenance: dict[str, Any] = {}
+    _pair_regression_provenance: dict[str, Any] = {}
     pair_hard_negative_augmentation: dict[str, int] = {}
     try:
         if needs_router:
@@ -7694,8 +7694,8 @@ def main(argv: list[str] | None = None) -> int:
                 extractor_splits,
                 extractor_split_integrity,
                 extractor_train_source_diagnostics,
-                extractor_required_source_coverage,
-                extractor_regression_provenance,
+                _extractor_required_source_coverage,
+                _extractor_regression_provenance,
             ) = _write_splits(
                 extractor_df,
                 prefix="extractor",
@@ -7744,7 +7744,7 @@ def main(argv: list[str] | None = None) -> int:
                 pair_split_integrity,
                 pair_train_source_diagnostics,
                 pair_required_source_coverage,
-                pair_regression_provenance,
+                _pair_regression_provenance,
             ) = _write_splits(
                 pair_df,
                 prefix="pair",
