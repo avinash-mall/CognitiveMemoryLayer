@@ -433,7 +433,8 @@ For an SDK-only editable install, `pip install -e .` is enough; the API server/d
 <summary><strong>Docker one-liner</strong></summary>
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d api
+# GPU auto-detected (requires nvidia-smi on PATH for GPU hosts)
+./docker/up.sh up -d api
 ```
 
 </details>
@@ -587,17 +588,19 @@ A minimal working config (no LLM, SQLite embedded mode) is in `.env.minimal`.
 ### Step 5 — Start Infrastructure
 
 ```bash
-# Start Postgres (with pgvector), Neo4j, and Redis
-docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
+# Auto-detects GPU (NVIDIA) and applies the right compose config
+./docker/up.sh up -d postgres neo4j redis
 
 # Wait for Postgres to be ready, then run migrations
 alembic upgrade head
 ```
 
+`docker/up.sh` wraps `docker compose` and automatically adds the GPU override when `nvidia-smi` is available. You can override detection with `GPU=1 ./docker/up.sh ...` or `GPU=0 ./docker/up.sh ...`.
+
 Verify all services are up:
 
 ```bash
-docker compose -f docker/docker-compose.yml ps
+./docker/up.sh ps
 ```
 
 ---
@@ -608,10 +611,10 @@ docker compose -f docker/docker-compose.yml ps
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or with the full stack (API + Celery workers) via Docker:
+Or with the full stack via Docker (GPU auto-detected):
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d api
+./docker/up.sh up -d api
 ```
 
 ---
