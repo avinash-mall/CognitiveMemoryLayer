@@ -164,3 +164,65 @@ async def test_retry_async_rate_limit_exhausted_raises() -> None:
     with pytest.raises(RateLimitError):
         await retry_async(config, always_rate_limited)
     assert len(calls) == 2
+
+
+def test_retry_sync_rate_limit_no_retry_after_uses_backoff() -> None:
+    """retry_sync uses backoff when RateLimitError has no retry_after."""
+    config = CMLConfig(max_retries=1, retry_delay=0.01)
+    calls = []
+
+    def rate_limited_no_after() -> str:
+        calls.append(1)
+        if len(calls) < 2:
+            raise RateLimitError("Too many requests", retry_after=None)
+        return "ok"
+
+    result = retry_sync(config, rate_limited_no_after)
+    assert result == "ok"
+    assert len(calls) == 2
+
+
+def test_retry_sync_exhausted_retryable_raises_last() -> None:
+    """retry_sync raises the last RETRYABLE_EXCEPTIONS after all retries."""
+    config = CMLConfig(max_retries=1, retry_delay=0.01)
+    calls = []
+
+    def always_server_error() -> None:
+        calls.append(1)
+        raise ServerError("boom", status_code=503)
+
+    with pytest.raises(ServerError, match="boom"):
+        retry_sync(config, always_server_error)
+    assert len(calls) == 2  # initial + 1 retry
+
+
+@pytest.mark.asyncio
+async def test_retry_async_rate_limit_no_retry_after_uses_backoff() -> None:
+    """retry_async uses backoff when RateLimitError has no retry_after."""
+    config = CMLConfig(max_retries=1, retry_delay=0.01)
+    calls = []
+
+    async def rate_limited_no_after() -> str:
+        calls.append(1)
+        if len(calls) < 2:
+            raise RateLimitError("Too many requests", retry_after=None)
+        return "ok"
+
+    result = await retry_async(config, rate_limited_no_after)
+    assert result == "ok"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_async_retryable_exhausted_raises_last() -> None:
+    """retry_async raises the last retryable exception after all retries."""
+    config = CMLConfig(max_retries=1, retry_delay=0.01)
+    calls = []
+
+    async def always_connection_error() -> None:
+        calls.append(1)
+        raise ConnectionError("refused")
+
+    with pytest.raises(ConnectionError, match="refused"):
+        await retry_async(config, always_connection_error)
+    assert len(calls) == 2
