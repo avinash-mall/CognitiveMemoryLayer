@@ -22,6 +22,9 @@ class _NoModelPack:
     def predict_single(self, task: str, text: str):
         return None
 
+    def has_task_model(self, task: str) -> bool:
+        return False
+
 
 class TestWriteGate:
     def test_skip_low_importance(self):

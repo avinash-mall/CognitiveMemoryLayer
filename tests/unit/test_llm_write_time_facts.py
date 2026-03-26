@@ -94,3 +94,43 @@ def test_ner_write_time_fact_extractor_still_works(monkeypatch):
     facts = extractor.extract(chunk)
     assert len(facts) >= 1
     assert any(f.category == FactCategory.PREFERENCE for f in facts)
+
+
+def test_fact_type_model_can_suppress_named_heuristics(monkeypatch):
+    monkeypatch.setattr("src.extraction.write_time_facts.parse_text", lambda text: None)
+
+    class _FactTypeModelPack:
+        available = True
+
+        def predict_single(self, task: str, text: str):
+            if task == "fact_type":
+                return type("P", (), {"label": "none", "confidence": 0.95})()
+            return None
+
+    extractor = WriteTimeFactExtractor()
+    extractor.modelpack = _FactTypeModelPack()
+    chunk = _chunk("I prefer Italian food", chunk_type=ChunkType.PREFERENCE)
+    facts = extractor.extract(chunk)
+    assert facts == []
+
+
+def test_fact_type_model_can_target_location_heuristics(monkeypatch):
+    monkeypatch.setattr("src.extraction.write_time_facts.parse_text", lambda text: None)
+
+    class _FactTypeModelPack:
+        available = True
+
+        def predict_single(self, task: str, text: str):
+            if task == "fact_type":
+                return type("P", (), {"label": "location", "confidence": 0.95})()
+            return None
+
+    extractor = WriteTimeFactExtractor()
+    extractor.modelpack = _FactTypeModelPack()
+    chunk = _chunk(
+        "I prefer Italian food and I live in Paris.",
+        chunk_type=ChunkType.FACT,
+    )
+    facts = extractor.extract(chunk)
+    assert any(f.category == FactCategory.LOCATION for f in facts)
+    assert all(f.category != FactCategory.PREFERENCE for f in facts)

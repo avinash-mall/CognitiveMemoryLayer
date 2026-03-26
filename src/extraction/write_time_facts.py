@@ -47,6 +47,7 @@ _PREFERENCE_LEMMAS = {"prefer", "like", "love", "enjoy", "hate", "dislike"}
 _FIRST_PERSON_TOKENS = {"i", "my", "mine", "myself"}
 _WRITE_TIME_CONFIDENCE_BASE: float = 0.6
 _HASH_SUFFIX_RE = re.compile(r"^[0-9a-f]{12}$")
+_FACT_TYPE_CONFIDENCE_THRESHOLD = 0.6
 _DIRECT_NAME_PATTERNS = (
     r"\bmy name is\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)(?=\s+(?:and|but)\b|$)",
     r"\bcall me\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)(?=\s+(?:and|but)\b|$)",
@@ -78,6 +79,7 @@ class WriteTimeFactExtractor:
 
         facts: list[ExtractedFact] = []
         seen: set[tuple[str, str]] = set()
+        allowed_named_fact_types = self._allowed_named_fact_types(text)
 
         # --- model path: structured span extraction ---
         try:
@@ -109,18 +111,47 @@ class WriteTimeFactExtractor:
         except Exception:
             pass
 
+        if allowed_named_fact_types == set():
+            return facts
+
         # --- heuristic path (regex / spaCy) ---
         doc = parse_text(text)
         if doc is None or not _doc_supports_dependency_parse(doc):
-            self._extract_facts_without_nlp(text, facts, seen)
+            self._extract_facts_without_nlp(
+                text,
+                facts,
+                seen,
+                allowed_named_fact_types=allowed_named_fact_types,
+            )
             return facts
 
-        self._extract_preference_facts(doc, facts, seen)
-        self._extract_identity_facts(doc, facts, seen)
-        self._extract_location_facts(doc, facts, seen)
-        self._extract_occupation_facts(doc, facts, seen)
+        if allowed_named_fact_types is None or "preference" in allowed_named_fact_types:
+            self._extract_preference_facts(doc, facts, seen)
+        if allowed_named_fact_types is None or "identity" in allowed_named_fact_types:
+            self._extract_identity_facts(doc, facts, seen)
+        if allowed_named_fact_types is None or "location" in allowed_named_fact_types:
+            self._extract_location_facts(doc, facts, seen)
+        if allowed_named_fact_types is None or "occupation" in allowed_named_fact_types:
+            self._extract_occupation_facts(doc, facts, seen)
 
         return facts
+
+    def _allowed_named_fact_types(self, text: str) -> set[str] | None:
+        """Return named fact families to run, or None to run all heuristics."""
+        if not getattr(self.modelpack, "available", False):
+            return None
+        try:
+            pred = self.modelpack.predict_single("fact_type", text)
+        except Exception:
+            return None
+        if pred is None or not pred.label or pred.confidence < _FACT_TYPE_CONFIDENCE_THRESHOLD:
+            return None
+        label = pred.label.strip().lower()
+        if label in {"preference", "identity", "location", "occupation"}:
+            return {label}
+        if label in {"none", "other_fact"}:
+            return set()
+        return None
 
     def _append_fact(
         self,
@@ -362,107 +393,131 @@ class WriteTimeFactExtractor:
         text: str,
         facts: list[ExtractedFact],
         seen: set[tuple[str, str]],
+        *,
+        allowed_named_fact_types: set[str] | None,
     ) -> None:
         """Best-effort fallback extraction when spaCy model is unavailable."""
         normalized = " ".join(text.strip().split())
         if not normalized:
             return
 
-        hobby_match = re.search(
-            r"\bmy hobbies are\s+(.+)",
-            normalized,
-            flags=re.IGNORECASE,
-        )
-        if hobby_match:
-            value = self._clean_match_value(hobby_match.group(1))
-            if value:
+        if allowed_named_fact_types is None or "preference" in allowed_named_fact_types:
+            hobby_match = re.search(
+                r"\bmy hobbies are\s+(.+)",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            if hobby_match:
+                value = self._clean_match_value(hobby_match.group(1))
+                if value:
+                    self._append_fact(
+                        facts,
+                        seen,
+                        key="user:preference:hobby",
+                        category=FactCategory.PREFERENCE,
+                        predicate="hobby",
+                        value=value,
+                        confidence_boost=0.78,
+                    )
+
+            pref = re.search(
+                r"\b(?:i|we)\s+(?:really\s+|also\s+|just\s+|still\s+)*(?:prefer|like|love|enjoy|hate|dislike)\s+(.+)",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            if pref:
+                obj = self._clean_match_value(pref.group(1))
+                if obj:
+                    if "hobb" in normalized.lower():
+                        obj = re.sub(r"\s+as hobbies?\b", "", obj, flags=re.IGNORECASE).strip()
+                        predicate = "hobby"
+                    else:
+                        predicate = _derive_predicate(obj)
+                    self._append_fact(
+                        facts,
+                        seen,
+                        key=f"user:preference:{predicate}",
+                        category=FactCategory.PREFERENCE,
+                        predicate=predicate,
+                        value=obj,
+                        confidence_boost=0.75,
+                    )
+
+            favorite = re.search(
+                r"\bmy favou?rite\s+(.+?)\s+is\s+(.+)",
+                normalized,
+                flags=re.IGNORECASE,
+            )
+            if favorite:
+                descriptor = self._clean_match_value(favorite.group(1))
+                value = self._clean_match_value(favorite.group(2))
+                if descriptor and value:
+                    predicate = _derive_predicate(descriptor)
+                    self._append_fact(
+                        facts,
+                        seen,
+                        key=f"user:preference:{predicate}",
+                        category=FactCategory.PREFERENCE,
+                        predicate=predicate,
+                        value=value,
+                        confidence_boost=0.78,
+                    )
+
+        if allowed_named_fact_types is None or "identity" in allowed_named_fact_types:
+            for pattern in _DIRECT_NAME_PATTERNS:
+                match = re.search(pattern, normalized, flags=re.IGNORECASE)
+                if not match:
+                    continue
                 self._append_fact(
                     facts,
                     seen,
-                    key="user:preference:hobby",
-                    category=FactCategory.PREFERENCE,
-                    predicate="hobby",
-                    value=value,
+                    key="user:identity:name",
+                    category=FactCategory.IDENTITY,
+                    predicate="name",
+                    value=self._clean_match_value(match.group(1)),
+                    confidence_boost=0.9,
+                )
+                break
+
+        if allowed_named_fact_types is None or "location" in allowed_named_fact_types:
+            for pattern in (
+                r"\bi live in\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                r"\bi(?: am|'m)\s+from\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                r"\bi(?: am|'m)\s+based in\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+                r"\bi moved to\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
+            ):
+                match = re.search(pattern, normalized, flags=re.IGNORECASE)
+                if not match:
+                    continue
+                self._append_fact(
+                    facts,
+                    seen,
+                    key="user:location:current_city",
+                    category=FactCategory.LOCATION,
+                    predicate="current_city",
+                    value=self._clean_match_value(match.group(1)),
                     confidence_boost=0.78,
                 )
+                break
 
-        pref = re.search(
-            r"\b(?:i|we)\s+(?:really\s+|also\s+|just\s+|still\s+)*(?:prefer|like|love|enjoy|hate|dislike)\s+(.+)",
-            normalized,
-            flags=re.IGNORECASE,
-        )
-        if pref:
-            obj = self._clean_match_value(pref.group(1))
-            if obj:
-                if "hobb" in normalized.lower():
-                    obj = re.sub(r"\s+as hobbies?\b", "", obj, flags=re.IGNORECASE).strip()
-                    predicate = "hobby"
-                else:
-                    predicate = _derive_predicate(obj)
-                self._append_fact(
-                    facts,
-                    seen,
-                    key=f"user:preference:{predicate}",
-                    category=FactCategory.PREFERENCE,
-                    predicate=predicate,
-                    value=obj,
-                    confidence_boost=0.75,
-                )
-
-        favorite = re.search(
-            r"\bmy favou?rite\s+(.+?)\s+is\s+(.+)",
-            normalized,
-            flags=re.IGNORECASE,
-        )
-        if favorite:
-            descriptor = self._clean_match_value(favorite.group(1))
-            value = self._clean_match_value(favorite.group(2))
-            if descriptor and value:
-                predicate = _derive_predicate(descriptor)
-                self._append_fact(
-                    facts,
-                    seen,
-                    key=f"user:preference:{predicate}",
-                    category=FactCategory.PREFERENCE,
-                    predicate=predicate,
-                    value=value,
-                    confidence_boost=0.78,
-                )
-
-        for pattern in _DIRECT_NAME_PATTERNS:
-            match = re.search(pattern, normalized, flags=re.IGNORECASE)
-            if not match:
-                continue
-            self._append_fact(
-                facts,
-                seen,
-                key="user:identity:name",
-                category=FactCategory.IDENTITY,
-                predicate="name",
-                value=self._clean_match_value(match.group(1)),
-                confidence_boost=0.9,
+        if allowed_named_fact_types is None or "occupation" in allowed_named_fact_types:
+            match = re.search(
+                r"\bi(?:'m| am)\s+(?:an?|the)\s+(.+)",
+                normalized,
+                flags=re.IGNORECASE,
             )
-            break
-
-        for pattern in (
-            r"\bi live in\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
-            r"\bi(?: am|'m)\s+from\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
-            r"\bi(?: am|'m)\s+based in\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
-            r"\bi moved to\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)",
-        ):
-            match = re.search(pattern, normalized, flags=re.IGNORECASE)
-            if not match:
-                continue
-            self._append_fact(
-                facts,
-                seen,
-                key="user:location:current_city",
-                category=FactCategory.LOCATION,
-                predicate="current_city",
-                value=self._clean_match_value(match.group(1)),
-                confidence_boost=0.78,
-            )
-            break
+            if match:
+                role_text = self._clean_match_value(match.group(1))
+                if role_text and "favorite" not in role_text.lower():
+                    self._append_fact(
+                        facts,
+                        seen,
+                        key="user:occupation:role",
+                        category=FactCategory.OCCUPATION,
+                        predicate="role",
+                        value=role_text,
+                        confidence_boost=0.78,
+                    )
 
     @staticmethod
     def _clean_match_value(value: str) -> str:

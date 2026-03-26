@@ -70,6 +70,21 @@ class WriteGateConfig:
             ]
 
 
+_IMPORTANCE_BIN_MAP: dict[str, float] = {
+    "very_low": 0.1,
+    "low": 0.3,
+    "medium": 0.5,
+    "high": 0.75,
+    "critical": 0.9,
+}
+
+_SALIENCE_BIN_MAP: dict[str, float] = {
+    "low": 0.2,
+    "medium": 0.5,
+    "high": 0.8,
+}
+
+
 class WriteGate:
     """Decides whether to store information in long-term memory."""
 
@@ -280,26 +295,47 @@ class WriteGate:
             except Exception:
                 pass  # fall through to existing logic
 
-        # Existing importance_bin classifier path
+        # Blend family-level importance/salience signals with STM salience.
         if self.modelpack.available and chunk.text.strip():
-            class_pred = self.modelpack.predict_single("importance_bin", chunk.text)
-            if class_pred and class_pred.label:
-                mapping = {
-                    "very_low": 0.1,
-                    "low": 0.3,
-                    "medium": 0.5,
-                    "high": 0.75,
-                    "critical": 0.9,
-                }
-                label = class_pred.label.strip().lower()
-                if label in mapping:
-                    # Blend model estimate with STM salience to avoid pathological
-                    # down-ranking of high-salience chunks when the classifier drifts.
-                    model_score = mapping[label]
-                    return max(0.0, min(1.0, (model_score * 0.4) + (chunk.salience * 0.6)))
+            importance_score = self._predict_binned_score(
+                "importance_bin",
+                chunk.text,
+                _IMPORTANCE_BIN_MAP,
+            )
+            salience_score = self._predict_binned_score(
+                "salience_bin",
+                chunk.text,
+                _SALIENCE_BIN_MAP,
+            )
+            if importance_score is not None and salience_score is not None:
+                return max(
+                    0.0,
+                    min(
+                        1.0,
+                        (importance_score * 0.4) + (salience_score * 0.2) + (chunk.salience * 0.4),
+                    ),
+                )
+            if importance_score is not None:
+                return max(0.0, min(1.0, (importance_score * 0.4) + (chunk.salience * 0.6)))
+            if salience_score is not None:
+                return max(0.0, min(1.0, (salience_score * 0.5) + (chunk.salience * 0.5)))
 
         # No heuristic scoring path: use upstream salience directly.
         return max(0.0, min(1.0, chunk.salience))
+
+    def _predict_binned_score(
+        self,
+        task: str,
+        text: str,
+        mapping: dict[str, float],
+    ) -> float | None:
+        try:
+            pred = self.modelpack.predict_single(task, text)
+        except Exception:
+            return None
+        if pred is None or not pred.label:
+            return None
+        return mapping.get(pred.label.strip().lower())
 
     def _compute_novelty(
         self,

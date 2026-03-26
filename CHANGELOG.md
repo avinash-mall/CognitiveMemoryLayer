@@ -4,7 +4,21 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.5.0] — 2026-03-26
+
+### Added
+
+- **Write-gate importance blending** — `_predict_importance()` now blends `importance_bin` (40%), `salience_bin` (20%), and upstream chunk salience (40%) when both family models are available. Graceful degradation: importance-only, salience-only, or raw salience fallback.
+- **`fact_type` model gates named heuristic families** — `WriteTimeFactExtractor._allowed_named_fact_types()` uses the `fact_type` router model to decide which named heuristic families (preference, identity, location, occupation) to run. Model can suppress all heuristics (returning `none`/`other_fact`) or target a single family, reducing false-positive fact extractions.
+- **Write-gate model hook tests** — New `tests/unit/test_write_gate_model_hooks.py` with focused tests for salience_bin importance refinement.
+- **Fact-type model tests** — New tests in `test_llm_write_time_facts.py` verifying `fact_type` model can suppress or target named heuristics.
+
+### Fixed
+
+- **Circular import in `src/utils/ner.py`** — Moved top-level `from ..extraction.fact_span_adapter import build_user_relation_records` to a lazy import inside `extract_relations()`, breaking the `ner → extraction.__init__ → constraint_extractor → ner` cycle. This fixes test collection for `test_hippocampal_write_gate_redactor.py`.
+- **`_NoModelPack` test stub** — Added missing `has_task_model()` method to test stub in `test_hippocampal_write_gate_redactor.py` matching the updated `WriteGate` API.
+
+## [1.4.2] — 2026-03-25
 
 Resolves issues from [ProjectPlan/BaseCML/Issues.md](ProjectPlan/BaseCML/Issues.md). See below for issue ID mapping.
 

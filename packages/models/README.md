@@ -86,7 +86,9 @@ Modelpack inference is consumed from `src/utils/modelpack.py`.
 - `scope_match`: retriever/reranker
 - `constraint_stability`: reranker
 - `supersession`: constraint extraction/supersession checks
+- `fact_type`: write-time fact extractor gates named heuristic fact families (preference, identity, location, occupation); model can suppress all heuristics or target a single family
 - `pii_presence` + `importance_bin`: write gate non-LLM path
+- `salience_bin`: write gate non-LLM salience refinement; blended with `importance_bin` (40%/20%/40% importance/salience/chunk.salience weighting)
 - `confidence_bin`: write path content-derived confidence (via `LocalUnifiedWriteExtractor`)
 - `decay_profile`: write path per-memory decay rate (via `LocalUnifiedWriteExtractor`)
 

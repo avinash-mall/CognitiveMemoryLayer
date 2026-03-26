@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from ..extraction.fact_span_adapter import build_user_relation_records
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -311,6 +310,8 @@ def extract_relations(
         if getattr(mp, "has_task_model", lambda _: False)("fact_extraction_structured"):
             span_pred = mp.predict_spans("fact_extraction_structured", text)
             if span_pred is not None and span_pred.spans:
+                from ..extraction.fact_span_adapter import build_user_relation_records
+
                 span_relations = [
                     NERRelation(
                         subject=relation.subject,

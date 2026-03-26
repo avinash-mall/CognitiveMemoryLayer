@@ -12,7 +12,7 @@
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./ProjectPlan/UsageDocumentation.md)
 [![Tests](https://img.shields.io/badge/Tests-1233-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
-[![Version](https://img.shields.io/badge/version-1.4.2-blue?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue?style=for-the-badge)](#)
 
 <br/>
 
@@ -352,7 +352,7 @@ CML includes a custom model pipeline (`packages/models/`) that trains lightweigh
 | `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
 | `schema_match_pair` | Jaccard schema similarity | `src/consolidation/schema_aligner.py` |
 | `reconsolidation_candidate_pair` | Word-overlap top-k candidate selection | `src/reconsolidation/service.py` |
-| `write_importance_regression` | Fixed importance bins | `src/memory/hippocampal/write_gate.py` |
+| `write_importance_regression` | Fixed importance bins; family-level `importance_bin`/`salience_bin` blending | `src/memory/hippocampal/write_gate.py` |
 | `pii_span_detection` | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
 | `consolidation_gist_quality` | String-match gist blacklist | `src/consolidation/worker.py` |
 | `forgetting_action_policy` | Heuristic action choice | `src/forgetting/scorer.py` |
@@ -625,7 +625,7 @@ Or with the full stack via Docker (GPU auto-detected):
 
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok","version":"1.4.2"}
+# {"status":"ok","version":"1.5.0"}
 ```
 
 **Write and read a memory:**
