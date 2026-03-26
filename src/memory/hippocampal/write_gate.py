@@ -353,25 +353,43 @@ class WriteGate:
         _has_novelty = getattr(self.modelpack, "has_task_model", None)
         if _has_novelty and _has_novelty("novelty_pair"):
             try:
-                max_sim = 0.0
+                min_novelty = 1.0
                 scored_any = False
                 for mem in existing_memories:
                     mem_text = (mem.get("text") or "").strip()
                     if not mem_text:
                         continue
-                    pred = self.modelpack.predict_score_pair("novelty_pair", chunk.text, mem_text)
-                    if pred is not None:
-                        scored_any = True
-                        max_sim = max(max_sim, pred.score)
+                    probs = None
+                    predict_pair_proba = getattr(self.modelpack, "predict_pair_proba", None)
+                    if callable(predict_pair_proba):
+                        probs = predict_pair_proba("novelty_pair", chunk.text, mem_text)
+
+                    if probs is not None:
+                        pair_novelty = float(probs.get("changed", 0.0)) + float(
+                            probs.get("novel", 0.0)
+                        )
+                    else:
+                        pred = self.modelpack.predict_pair("novelty_pair", chunk.text, mem_text)
+                        if pred is None:
+                            continue
+
+                        label = pred.label.strip().lower()
+                        confidence = max(0.0, min(1.0, pred.confidence))
+                        pair_novelty = confidence if label in {"changed", "novel"} else (
+                            1.0 - confidence
+                        )
+
+                    scored_any = True
+                    min_novelty = min(min_novelty, max(0.0, min(1.0, pair_novelty)))
                 if scored_any:
-                    return max(0.0, min(1.0, 1.0 - max_sim))
+                    return min_novelty
             except Exception:
                 pass  # fall through to heuristic
 
         # Heuristic fallback: Jaccard word-overlap
         chunk_words = set(chunk_text_lower.split())
         for mem in existing_memories:
-            mem_text = (mem.get("text") or "").lower()
+            mem_text = (mem.get("text") or "").lower().strip()
             if chunk_text_lower == mem_text:
                 return 0.0
             mem_words = set(mem_text.split())

@@ -22,6 +22,12 @@ class _NoModelPack:
     def predict_single(self, task: str, text: str):
         return None
 
+    def predict_pair(self, task: str, text_a: str, text_b: str):
+        return None
+
+    def predict_score_pair(self, task: str, text_a: str, text_b: str):
+        return None
+
     def has_task_model(self, task: str) -> bool:
         return False
 
@@ -79,6 +85,56 @@ class TestWriteGate:
         existing = [{"text": "I prefer coffee."}]
         result = gate.evaluate(chunk, existing_memories=existing)
         assert result.novelty == 0.0
+
+    def test_changed_novelty_label_still_allows_store(self):
+        class _ChangedNoveltyModelPack(_NoModelPack):
+            available = True
+
+            def has_task_model(self, task: str) -> bool:
+                return task == "novelty_pair"
+
+            def predict_pair_proba(self, task: str, text_a: str, text_b: str):
+                if task == "novelty_pair":
+                    return {"duplicate": 0.05, "changed": 0.95, "novel": 0.0}
+                return None
+
+        gate = WriteGate(modelpack=_ChangedNoveltyModelPack())
+        chunk = SemanticChunk(
+            id="4b",
+            text="Bob is a professional chef who specializes in Italian cuisine",
+            chunk_type=ChunkType.STATEMENT,
+            salience=0.5,
+        )
+        existing = [{"text": "Alice works as a software engineer at a technology company"}]
+        result = gate.evaluate(chunk, existing_memories=existing)
+        assert result.novelty == 0.95
+        assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
+
+    def test_model_duplicate_probability_skips_without_heuristic_override(self):
+        class _DuplicateNoveltyModelPack(_NoModelPack):
+            available = True
+
+            def has_task_model(self, task: str) -> bool:
+                return task == "novelty_pair"
+
+            def predict_pair_proba(self, task: str, text_a: str, text_b: str):
+                if task == "novelty_pair":
+                    return {"duplicate": 0.97, "changed": 0.02, "novel": 0.01}
+                return None
+
+        gate = WriteGate(modelpack=_DuplicateNoveltyModelPack())
+        chunk = SemanticChunk(
+            id="4c",
+            text="Bob is a professional chef who specializes in Italian cuisine",
+            chunk_type=ChunkType.STATEMENT,
+            salience=0.5,
+        )
+        result = gate.evaluate(
+            chunk,
+            existing_memories=[{"text": "Alice works as a software engineer at a technology company"}],
+        )
+        assert result.novelty == 0.03
+        assert result.decision == WriteDecision.SKIP
 
     def test_pii_triggers_redaction(self):
         class _PIIModelPack:

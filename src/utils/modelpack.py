@@ -432,6 +432,34 @@ class ModelPackRuntime:
         feature = f"task={task} [a] {text_a.strip()} [b] {text_b.strip()}"
         return self._predict_from_model(model, task=task, feature=feature)
 
+    def predict_pair_proba(self, task: str, text_a: str, text_b: str) -> dict[str, float] | None:
+        """Return task-scoped class probabilities for a pair classifier."""
+        if not text_a.strip() or not text_b.strip():
+            return None
+
+        task_model = self._get_task_model(task)
+        if task_model is not None:
+            model = task_model
+        else:
+            family = _TASK_FAMILY.get(task)
+            if family != "pair" or _requires_dedicated_task_model(task):
+                return None
+            model = self._get_family_model(family)
+            if model is None:
+                return None
+
+        feature = f"task={task} [a] {text_a.strip()} [b] {text_b.strip()}"
+        probs = self._predict_proba(model, feature=feature)
+        if probs is None:
+            return None
+
+        filtered: dict[str, float] = {}
+        for class_name, prob in probs.items():
+            pred_task, pred_label = _split_composite_label(class_name)
+            if pred_task == task and pred_label:
+                filtered[pred_label] = float(prob)
+        return filtered or None
+
     def predict_score_pair(self, task: str, text_a: str, text_b: str) -> ScorePrediction | None:
         """Predict a relevance/ranking score for a text pair (ranking/regression tasks)."""
         if not text_a.strip() or not text_b.strip():
