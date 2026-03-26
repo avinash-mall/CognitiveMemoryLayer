@@ -44,6 +44,7 @@ cml_memory.db
 .vscode/
 .cursor/
 .claude/
+.agents/
 
 # Testing
 .pytest_cache/
