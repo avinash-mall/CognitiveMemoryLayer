@@ -27,6 +27,7 @@ COPY packages/py-cml ./packages/py-cml
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements-runtime.txt \
     && pip install --no-cache-dir "." \
+    && pip install --no-cache-dir "huggingface_hub>=0.25" \
     && python -m spacy download en_core_web_sm
 
 # Stage 2b: Dashboard frontend build (neovis.js bundle for offline graph)
@@ -47,13 +48,20 @@ COPY --from=dashboard /build/static/js/bundle.js ./src/dashboard/static/js/bundl
 COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations/
+COPY docker/entrypoint.sh /entrypoint.sh
 
 ENV PYTHONPATH=/app \
-    NER__MODEL=en_core_web_sm
+    NER__MODEL=en_core_web_sm \
+    CML_MODELS_DIR=/app/packages/models/trained_models
+
+# Create models directory so entrypoint can write to it.
+RUN mkdir -p /app/packages/models/trained_models
 
 # Non-root user for production
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Health check (override in compose if needed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -81,12 +89,16 @@ COPY packages ./packages
 COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations/
+COPY docker/entrypoint.sh /entrypoint.sh
 
 # Install package with the extras required by the full GitHub test suite.
 RUN pip install --no-cache-dir -e ".[embedded,eval,modeling]"
 
 ENV PYTHONPATH=/app \
-    NER__MODEL=en_core_web_sm
+    NER__MODEL=en_core_web_sm \
+    CML_MODELS_DIR=/app/packages/models/trained_models
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["pytest", "tests", "packages/py-cml/tests", "-v", "--tb=short"]
 

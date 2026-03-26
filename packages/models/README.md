@@ -76,6 +76,26 @@ Beyond the three family-level classifiers, the pipeline now ships dedicated task
 
 **`forgetting_action_policy`** - Mixed `structured`, `template_hardened`, and LLM-seeded supervision. Labels: `keep`, `decay`, `silence`, `compress`, `delete`. Inputs include text + metadata features (`importance`, `access_count`, `age`, `type`, `dependency_count`). Preparation injects near-boundary hardened examples, enforces train-source coverage, and caps template usage. Two compound metadata tokens sharpen class boundaries: `fap_keep_signal=yes` fires when `access_count ≥ 6 AND age_days < 21` (exclusive to keep); `fap_decay_signal=yes` fires when `access_count ∈ [2,5] AND age_days ∈ [21,89]` (exclusive to template-hardened decay rows). Hardened decay rows must use `support_count` base `≤ 2` so that odd-indexed rows (which get `support_count + 1`) stay in the medium bucket and do not overlap with the high-support-count profile of keep/compress rows.
 
+## Automatic Model Download
+
+Model weights are hosted at **[avinashm/CognitiveMemoryLayer-models](https://huggingface.co/avinashm/CognitiveMemoryLayer-models)** on HuggingFace Hub. They are automatically downloaded on first startup when the `trained_models/` directory is empty.
+
+**How it works:**
+
+1. `ModelPackRuntime._load_all()` calls `ensure_models()` before loading joblib files.
+2. If `manifest.json` or the three family models are missing, `huggingface_hub.snapshot_download()` fetches the artifacts.
+3. In Docker, `docker/entrypoint.sh` runs the download before the container CMD (e.g. `uvicorn`).
+4. Models are cached in a named Docker volume (`cml-models`) and persist across container restarts.
+
+**Configuration:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `CML_MODELS_DIR` | `packages/models/trained_models` | Local path to model weights |
+| `CML_MODELS_AUTO_DOWNLOAD` | `true` | Set `false` to skip auto-download |
+| `CML_MODELS_HF_REPO` | `avinashm/CognitiveMemoryLayer-models` | HuggingFace Hub repo ID |
+| `HF_TOKEN` | *(unset)* | HuggingFace token (only needed for private repos) |
+
 ## Runtime Wiring
 
 Modelpack inference is consumed from `src/utils/modelpack.py`.

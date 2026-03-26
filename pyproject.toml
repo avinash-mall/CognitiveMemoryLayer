@@ -55,6 +55,7 @@ server = [
     "einops>=0.7.0",
     "scikit-learn>=1.5",
     "joblib>=1.4",
+    "huggingface_hub>=0.25",
 ]
 embedded = [
     "aiosqlite>=0.20",
@@ -70,6 +71,7 @@ embedded = [
     "einops>=0.7.0",
     "scikit-learn>=1.5",
     "joblib>=1.4",
+    "huggingface_hub>=0.25",
 ]
 gemini = ["google-generativeai"]
 claude = ["anthropic"]

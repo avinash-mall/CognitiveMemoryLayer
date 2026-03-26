@@ -20,7 +20,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![Tests](https://img.shields.io/badge/Tests-323-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
 [![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
-**What's new (1.5.0):** write-gate importance blending with `importance_bin`/`salience_bin` models, `fact_type` model gating for named heuristic families, circular import fix. See [CHANGELOG](../../CHANGELOG.md).
+**What's new (1.5.0):** automatic model download from HuggingFace Hub on first startup, write-gate importance blending with `importance_bin`/`salience_bin` models, `fact_type` model gating for named heuristic families, Docker entrypoint with model bootstrap, circular import fix. See [CHANGELOG](../../CHANGELOG.md).
 
 **Previous (1.4.x):** session-scoped `write` route support in `SessionScope`/`AsyncSessionScope`, new dashboard/admin helpers (`dashboard_facts`, `dashboard_invalidate_fact`, `dashboard_export_memories`, `graph_overview`, `admin_consolidate`, `admin_forget`), embedded provider parity fixes, and wrapper parity updates for `user_timezone`/`timestamp`.
 

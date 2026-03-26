@@ -514,6 +514,14 @@ class ModelPackRuntime:
             return
         self._loaded = True
 
+        # Auto-download models from HF Hub when the directory is empty/missing.
+        try:
+            from .model_downloader import ensure_models
+
+            ensure_models(self.models_dir)
+        except Exception as exc:
+            logger.debug("model_auto_download_skipped", extra={"error": str(exc)})
+
         manifest_path = self.models_dir / "manifest.json"
         if manifest_path.exists():
             try:

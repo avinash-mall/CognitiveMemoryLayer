@@ -8,10 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Automatic model download from HuggingFace Hub** — Models are auto-downloaded on first startup when `packages/models/trained_models/` is empty. Works both in Docker (via `docker/entrypoint.sh`) and in the Python runtime (via `ModelPackRuntime._load_all()`). Controlled by `CML_MODELS_AUTO_DOWNLOAD` (default: true) and `CML_MODELS_HF_REPO` env vars. New module: `src/utils/model_downloader.py`.
+- **Docker entrypoint with model bootstrap** — New `docker/entrypoint.sh` downloads model weights before starting the server, making `docker compose up api` a zero-config experience. Models are stored in a named Docker volume (`cml-models`) so they persist across container restarts.
 - **Write-gate importance blending** — `_predict_importance()` now blends `importance_bin` (40%), `salience_bin` (20%), and upstream chunk salience (40%) when both family models are available. Graceful degradation: importance-only, salience-only, or raw salience fallback.
 - **`fact_type` model gates named heuristic families** — `WriteTimeFactExtractor._allowed_named_fact_types()` uses the `fact_type` router model to decide which named heuristic families (preference, identity, location, occupation) to run. Model can suppress all heuristics (returning `none`/`other_fact`) or target a single family, reducing false-positive fact extractions.
 - **Write-gate model hook tests** — New `tests/unit/test_write_gate_model_hooks.py` with focused tests for salience_bin importance refinement.
 - **Fact-type model tests** — New tests in `test_llm_write_time_facts.py` verifying `fact_type` model can suppress or target named heuristics.
+
+### Changed
+
+- **Docker model volumes** — Model mounts switched from read-only bind mounts (`../packages/models/trained_models:ro`) to a named Docker volume (`cml-models`) to support in-container auto-download.
+- **`huggingface_hub` added to server and embedded extras** — Required for automatic model download from HuggingFace Hub.
 
 ### Fixed
 

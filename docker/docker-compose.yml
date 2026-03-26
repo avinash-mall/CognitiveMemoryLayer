@@ -69,6 +69,8 @@ services:
       EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-mock}
       FEATURES__USE_LLM_ENABLED: ${FEATURES__USE_LLM_ENABLED:-false}
       LLM_STARTUP_VALIDATION_ENABLED: ${LLM_STARTUP_VALIDATION_ENABLED:-false}
+      CML_MODELS_AUTO_DOWNLOAD: ${CML_MODELS_AUTO_DOWNLOAD:-true}
+      CML_MODELS_HF_REPO: ${CML_MODELS_HF_REPO:-avinashm/CognitiveMemoryLayer-models}
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,8 +81,8 @@ services:
       api:
         condition: service_healthy
     volumes:
-      - ../packages/models/trained_models:/app/packages/models/trained_models:ro
-    command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"
+      - cml-models:/app/packages/models/trained_models
+    command: ["sh", "-c", "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"]
 
   # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
   api:
@@ -105,6 +107,8 @@ services:
       LLM_STARTUP_VALIDATION_ENABLED: ${LLM_STARTUP_VALIDATION_ENABLED:-true}
       LLM_STARTUP_VALIDATE_IN_CI: ${LLM_STARTUP_VALIDATE_IN_CI:-false}
       LLM_STARTUP_VALIDATION_TIMEOUT_SEC: ${LLM_STARTUP_VALIDATION_TIMEOUT_SEC:-3}
+      CML_MODELS_AUTO_DOWNLOAD: ${CML_MODELS_AUTO_DOWNLOAD:-true}
+      CML_MODELS_HF_REPO: ${CML_MODELS_HF_REPO:-avinashm/CognitiveMemoryLayer-models}
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,11 +119,15 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../packages/models/trained_models:/app/packages/models/trained_models:ro
-    command: sh -c "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
+      - cml-models:/app/packages/models/trained_models
+    command: ["sh", "-c", "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
+
+volumes:
+  cml-models:
+    driver: local

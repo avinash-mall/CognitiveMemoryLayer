@@ -434,6 +434,7 @@ For an SDK-only editable install, `pip install -e .` is enough; the API server/d
 
 ```bash
 # GPU auto-detected (requires nvidia-smi on PATH for GPU hosts)
+# Models are auto-downloaded from HuggingFace Hub on first start
 ./docker/up.sh up -d api
 ```
 
@@ -512,22 +513,25 @@ This installs the CML server, the `py-cml` client SDK, all runtime extras (FastA
 
 ---
 
-### Step 3 — Download Trained Models from Hugging Face
+### Step 3 — Model Weights
 
 All trained model weights (~25 GB) live at **[avinashm/CognitiveMemoryLayer-models](https://huggingface.co/avinashm/CognitiveMemoryLayer-models)**.
 
-**Option A — `huggingface-cli` (recommended):**
+**Automatic download (recommended):** Models are downloaded automatically on first startup — both when running via Docker and when using the Python server directly. The runtime checks `packages/models/trained_models/` and pulls any missing artifacts from HuggingFace Hub. No manual download step needed.
+
+To disable auto-download (e.g. air-gapped environments), set `CML_MODELS_AUTO_DOWNLOAD=false` in `.env`.
+
+**Manual download** (if you prefer):
 
 ```bash
 pip install "huggingface_hub[cli]"
 
-# Download all models into the expected location
 huggingface-cli download avinashm/CognitiveMemoryLayer-models \
   --repo-type model \
   --local-dir packages/models/trained_models
 ```
 
-**Option B — Python API:**
+**Python API:**
 
 ```python
 from huggingface_hub import snapshot_download
@@ -539,17 +543,16 @@ snapshot_download(
 )
 ```
 
-**Option C — Download only specific models** (saves disk space):
+**Partial download** (saves disk space):
 
 ```bash
-# Example: download only the reranker and extractor
 huggingface-cli download avinashm/CognitiveMemoryLayer-models \
   --repo-type model \
   --local-dir packages/models/trained_models \
   --include "memory_rerank_pair*" "extractor*" "manifest.json"
 ```
 
-> **Verify the download:** the `manifest.json` in `packages/models/trained_models/` lists all expected artifacts. The runtime will warn at startup if required models are missing and will fall back to heuristic paths.
+> **Note:** The `manifest.json` lists all expected artifacts. The runtime will warn at startup if required models are missing and will fall back to heuristic paths.
 
 ---
 
@@ -611,7 +614,7 @@ Verify all services are up:
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or with the full stack via Docker (GPU auto-detected):
+Or with the full stack via Docker (GPU auto-detected, models auto-downloaded):
 
 ```bash
 ./docker/up.sh up -d api
