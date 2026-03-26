@@ -40,14 +40,13 @@ htmlcov
 # examples/
 # ProjectPlan/
 
-# Large local model/data artifacts (datasets/prepared rows are not needed in the
-# runtime image; trained model runtime artifacts are allowed below).
+# Large local model/data artifacts — none of these are needed in the build
+# context.  The production image mkdir's the models directory and downloads
+# weights at runtime via HuggingFace Hub; the test image volume-mounts
+# cml-models over the same path.
 packages/models/datasets/
 packages/models/prepared_data/
-packages/models/trained_models/*_epoch_stats.json
-packages/models/trained_models/*_metrics_*.json
-packages/models/trained_models/*_report_*.json
-packages/models/trained_models/*_training_metadata.json
+packages/models/trained_models/
 
 # Local caches and databases
 .mypy_cache/

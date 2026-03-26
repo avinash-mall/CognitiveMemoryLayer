@@ -226,6 +226,7 @@ class TestWriteTimeFactExtractor:
         location_start = text.index("Paris")
         preference_start = text.index("comida vegetariana")
         self.extractor.modelpack = MagicMock()
+        self.extractor.modelpack.available = False
         self.extractor.modelpack.has_task_model.return_value = True
         self.extractor.modelpack.predict_spans.return_value = SimpleNamespace(
             spans=(

@@ -39,6 +39,12 @@ class _WrapperProbaModel:
         return [[0.1, 0.8, 0.1] for _ in x]
 
 
+@pytest.fixture(autouse=True)
+def _no_auto_download(monkeypatch):
+    """Prevent ModelPackRuntime from downloading models from HF Hub in unit tests."""
+    monkeypatch.setenv("CML_MODELS_AUTO_DOWNLOAD", "false")
+
+
 class TestModelPackCapabilityReporting:
     """Tests for available_families, available_tasks, and partial-load logging."""
 
