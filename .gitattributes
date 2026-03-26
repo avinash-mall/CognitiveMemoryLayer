@@ -1,4 +1,4 @@
 # Normalize line endings for CI (ruff format --check on Linux)
 *.py text eol=lf
-*.joblib filter=lfs diff=lfs merge=lfs -text
-*.safetensors filter=lfs diff=lfs merge=lfs -text
+# Model binaries are hosted on Hugging Face Hub — not tracked in git
+# See README.md § "Downloading Trained Models" for download instructions

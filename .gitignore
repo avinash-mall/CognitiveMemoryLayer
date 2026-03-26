@@ -123,6 +123,11 @@ packages/models/trained_models/*_training_metadata.json
 scripts/quality_test_results.json
 artifacts/
 
+# Model binaries — hosted on Hugging Face Hub (avinashm/CognitiveMemoryLayer-models)
+# Download with: huggingface-cli download avinashm/CognitiveMemoryLayer-models
+packages/models/trained_models/*.joblib
+packages/models/trained_models/**/*.safetensors
+
 # Local trainer scratch directories
 packages/models/trained_models/checkpoint-*/
 packages/models/trained_models/**/checkpoint-*/

@@ -460,6 +460,231 @@ Sync, async, and embedded (SQLite) modes. See [SDK docs](packages/py-cml/docs/).
 
 ---
 
+## Getting a Runnable Project
+
+This section covers the **full setup from scratch** — cloning the code from GitHub, downloading the 25 GB of trained model weights from Hugging Face Hub, configuring infrastructure, and verifying everything works.
+
+### Prerequisites
+
+| Requirement | Minimum version | Notes |
+| :--- | :--- | :--- |
+| Python | 3.11+ | 3.14 recommended |
+| Docker + Compose | 24+ | For Postgres, Neo4j, Redis |
+| `uv` or `pip` | any | `uv` strongly recommended for speed |
+| `huggingface-cli` | 0.19+ | `pip install huggingface_hub[cli]` |
+| Disk space | ~30 GB free | ~25 GB models + repo + venv |
+| RAM | 8 GB+ | 16 GB recommended for full model pack |
+
+---
+
+### Step 1 — Clone the Repository
+
+```bash
+git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
+cd CognitiveMemoryLayer
+```
+
+> The repository contains only **code, configs, and tokenizer metadata** (~100 MB). Model weights are stored separately on Hugging Face Hub (see Step 3).
+
+---
+
+### Step 2 — Set Up the Python Environment
+
+**With uv (recommended):**
+
+```bash
+pip install uv
+uv venv .venv --python 3.11
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+uv pip install -e ".[server,dev]"
+```
+
+**With pip:**
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[server,dev]"
+```
+
+This installs the CML server, the `py-cml` client SDK, all runtime extras (FastAPI, spaCy, pgvector, etc.), and dev tools (pytest, ruff, mypy).
+
+---
+
+### Step 3 — Download Trained Models from Hugging Face
+
+All trained model weights (~25 GB) live at **[avinashm/CognitiveMemoryLayer-models](https://huggingface.co/avinashm/CognitiveMemoryLayer-models)**.
+
+**Option A — `huggingface-cli` (recommended):**
+
+```bash
+pip install "huggingface_hub[cli]"
+
+# Download all models into the expected location
+huggingface-cli download avinashm/CognitiveMemoryLayer-models \
+  --repo-type model \
+  --local-dir packages/models/trained_models
+```
+
+**Option B — Python API:**
+
+```python
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="avinashm/CognitiveMemoryLayer-models",
+    repo_type="model",
+    local_dir="packages/models/trained_models",
+)
+```
+
+**Option C — Download only specific models** (saves disk space):
+
+```bash
+# Example: download only the reranker and extractor
+huggingface-cli download avinashm/CognitiveMemoryLayer-models \
+  --repo-type model \
+  --local-dir packages/models/trained_models \
+  --include "memory_rerank_pair*" "extractor*" "manifest.json"
+```
+
+> **Verify the download:** the `manifest.json` in `packages/models/trained_models/` lists all expected artifacts. The runtime will warn at startup if required models are missing and will fall back to heuristic paths.
+
+---
+
+### Step 4 — Configure the Environment
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in the required values:
+
+```dotenv
+# ── Required ──────────────────────────────────────────────────
+DATABASE__POSTGRES_URL=postgresql+asyncpg://cml:cml@localhost:5432/cml
+DATABASE__NEO4J_URI=bolt://localhost:7687
+DATABASE__NEO4J_USER=neo4j
+DATABASE__NEO4J_PASSWORD=your-neo4j-password
+DATABASE__REDIS_URL=redis://localhost:6379/0
+
+AUTH__API_KEY=your-api-key-here          # used by clients
+AUTH__ADMIN_API_KEY=your-admin-key-here  # dashboard + admin routes
+
+# ── Optional (enables LLM-assisted extraction) ─────────────────
+LLM__PROVIDER=anthropic
+LLM__API_KEY=sk-ant-...
+LLM__MODEL=claude-haiku-4-5-20251001
+
+# ── Optional (Hugging Face token for private model downloads) ──
+HF_TOKEN=hf_...
+```
+
+A minimal working config (no LLM, SQLite embedded mode) is in `.env.minimal`.
+
+---
+
+### Step 5 — Start Infrastructure
+
+```bash
+# Start Postgres (with pgvector), Neo4j, and Redis
+docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
+
+# Wait for Postgres to be ready, then run migrations
+alembic upgrade head
+```
+
+Verify all services are up:
+
+```bash
+docker compose -f docker/docker-compose.yml ps
+```
+
+---
+
+### Step 6 — Start the Server
+
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Or with the full stack (API + Celery workers) via Docker:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d api
+```
+
+---
+
+### Step 7 — Verify It Works
+
+**Health check:**
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok","version":"1.4.2"}
+```
+
+**Write and read a memory:**
+
+```bash
+# Write
+curl -X POST http://localhost:8000/memory/write \
+  -H "Authorization: Bearer your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "I never eat shellfish — severe allergy.", "tenant_id": "demo"}'
+
+# Read
+curl -X POST http://localhost:8000/memory/read \
+  -H "Authorization: Bearer your-api-key-here" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Recommend a restaurant for tonight", "tenant_id": "demo"}'
+```
+
+**Admin dashboard:** open [http://localhost:8000/dashboard/](http://localhost:8000/dashboard/) and authenticate with `AUTH__ADMIN_API_KEY`.
+
+**ModelPack status:** the dashboard's **Components** tab shows which trained models loaded successfully. All 13 task models should appear as `loaded`.
+
+---
+
+### Step 8 — Run the Test Suite
+
+```bash
+pytest tests/unit -v --tb=short        # 812 unit tests   (~60s)
+pytest tests/integration -v --tb=short  # 88 integration tests (requires running stack)
+pytest tests/e2e -v                     # 5 end-to-end API tests
+```
+
+---
+
+### Retrain Models (Optional)
+
+If you want to retrain the model pipeline from scratch rather than using the pre-trained weights:
+
+```bash
+# 1. Prepare datasets (downloads public NLP datasets via Hugging Face)
+cml-models prepare --config packages/models/model_pipeline.toml
+
+# 2. Train all models (strict mode — fails if any release gate fails)
+cml-models train --config packages/models/model_pipeline.toml --strict
+
+# 3. Trained artifacts land in packages/models/trained_models/
+```
+
+Full details: [packages/models/README.md](packages/models/README.md)
+
+---
+
+### Artifact Locations Summary
+
+| Artifact | Source | Local Path |
+| :--- | :--- | :--- |
+| Code & configs | [GitHub](https://github.com/avinash-mall/CognitiveMemoryLayer) | `./` (repo root) |
+| Trained model weights | [Hugging Face Hub](https://huggingface.co/avinashm/CognitiveMemoryLayer-models) | `packages/models/trained_models/` |
+| Python client SDK | [PyPI](https://pypi.org/project/cognitive-memory-layer/) | `pip install cognitive-memory-layer` |
+
+---
+
 ## Evaluation Highlights
 
 Evaluated on **LoCoMo-Plus** &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall:
