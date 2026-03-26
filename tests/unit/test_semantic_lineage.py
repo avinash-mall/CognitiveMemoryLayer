@@ -67,9 +67,7 @@ class TestGetFactLineage:
 
         store.get_fact_lineage = SemanticFactStore.get_fact_lineage.__get__(store)
 
-        result = asyncio.run(
-            store.get_fact_lineage("t1", key="user:pref:food")
-        )
+        result = asyncio.run(store.get_fact_lineage("t1", key="user:pref:food"))
         assert len(result) == 1
         assert result[0]["fact_id"] == "f1"
         assert result[0]["key"] == "user:pref:food"

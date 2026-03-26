@@ -273,54 +273,70 @@ _FAP_COLS = {"access_count", "age_days", "support_count", "dependency_count"}
 
 def test_fap_keep_signal_fires_for_high_access_low_age() -> None:
     rec = _fap_record(access_count=7, age_days=5)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_keep_signal=yes" in tokens
 
 
 def test_fap_keep_signal_does_not_fire_for_medium_access() -> None:
     rec = _fap_record(access_count=3, age_days=5)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_keep_signal=yes" not in tokens
 
 
 def test_fap_decay_signal_fires_for_medium_access_medium_age() -> None:
     rec = _fap_record(access_count=3, age_days=48)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_decay_signal=yes" in tokens
 
 
 def test_fap_decay_signal_does_not_fire_for_compress_profile() -> None:
     """compress: access=medium, age=high (≥90) — should NOT trigger decay signal."""
     rec = _fap_record(access_count=2, age_days=104)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_decay_signal=yes" not in tokens
 
 
 def test_fap_decay_signal_does_not_fire_for_keep_profile() -> None:
     """keep: access=high (≥6) — should NOT trigger decay signal."""
     rec = _fap_record(access_count=7, age_days=5)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_decay_signal=yes" not in tokens
 
 
 def test_fap_decay_signal_does_not_fire_for_silence_profile() -> None:
     """silence: access=low (1, <2) — should NOT trigger decay signal."""
     rec = _fap_record(access_count=1, age_days=132)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_decay_signal=yes" not in tokens
 
 
 def test_fap_decay_signal_does_not_fire_for_delete_profile() -> None:
     """delete: access=0 (none/low) — should NOT trigger decay signal."""
     rec = _fap_record(access_count=0, age_days=366)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_decay_signal=yes" not in tokens
 
 
 def test_fap_decay_signal_does_not_fire_for_none_access() -> None:
     """LLM rows have access_count=None — should NOT trigger decay signal."""
     rec = _fap_record(access_count=None, age_days=60)
-    tokens = train_module._single_metadata_tokens(rec, _FAP_COLS, task_name="forgetting_action_policy")
+    tokens = train_module._single_metadata_tokens(
+        rec, _FAP_COLS, task_name="forgetting_action_policy"
+    )
     assert "fap_decay_signal=yes" not in tokens
 
 

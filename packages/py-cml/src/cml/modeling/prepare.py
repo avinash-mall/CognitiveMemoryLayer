@@ -3278,7 +3278,9 @@ def _add_verification_pair_rows(
         return
     limit_key = limit_name or dataset_name
     for idx, ex in enumerate(
-        _iter_dataset_rows(ds, limit=registry.limit(limit_key), desc=f"Verification rows [{dataset_name}]")
+        _iter_dataset_rows(
+            ds, limit=registry.limit(limit_key), desc=f"Verification rows [{dataset_name}]"
+        )
     ):
         if not isinstance(ex, dict):
             continue
@@ -3337,9 +3339,7 @@ def _add_fever_schema_match_rows(
     if ds is None:
         return
     for idx, ex in enumerate(
-        _iter_dataset_rows(
-            ds, limit=registry.limit("fever"), desc="Reconsolidation rows [fever]"
-        )
+        _iter_dataset_rows(ds, limit=registry.limit("fever"), desc="Reconsolidation rows [fever]")
     ):
         if not isinstance(ex, dict):
             continue

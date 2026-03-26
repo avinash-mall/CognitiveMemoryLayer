@@ -197,31 +197,52 @@ _FORGETTING_POLICY_SYNTHETIC_META: dict[str, list[str]] = {
 # "Retention review…Reference note keeps" text format is label-agnostic and metadata must
 # be used for classification.
 _FAP_HARDENED_TOPIC_PACKS: tuple[dict[str, str], ...] = (
-    {"fact": "User preference: vegetarian meals without pork",
-     "gist": "the user consistently chooses vegetarian meals and avoids pork", "topic": "food"},
-    {"fact": "Travel preference: quiet hotels near rail stations",
-     "gist": "the user wants quiet hotels close to transit", "topic": "travel"},
-    {"fact": "Finance policy: keep emergency savings and avoid high-interest debt",
-     "gist": "the user prioritizes an emergency fund and avoids high-interest debt", "topic": "finance"},
-    {"fact": "Health constraint: avoid shellfish and favor low-sodium meals",
-     "gist": "the user must avoid shellfish and usually chooses low-sodium meals", "topic": "health"},
-    {"fact": "Work preference: written plans with weekly status summaries",
-     "gist": "the user prefers written plans and weekly status summaries", "topic": "work"},
-    {"fact": "Tech preference: Python tooling with reproducible CLI workflows",
-     "gist": "the user prefers python-based tooling and reproducible cli workflows", "topic": "tech"},
-    {"fact": "Social preference: practical gifts and handwritten notes",
-     "gist": "the user values practical gifts with a personal note", "topic": "social"},
+    {
+        "fact": "User preference: vegetarian meals without pork",
+        "gist": "the user consistently chooses vegetarian meals and avoids pork",
+        "topic": "food",
+    },
+    {
+        "fact": "Travel preference: quiet hotels near rail stations",
+        "gist": "the user wants quiet hotels close to transit",
+        "topic": "travel",
+    },
+    {
+        "fact": "Finance policy: keep emergency savings and avoid high-interest debt",
+        "gist": "the user prioritizes an emergency fund and avoids high-interest debt",
+        "topic": "finance",
+    },
+    {
+        "fact": "Health constraint: avoid shellfish and favor low-sodium meals",
+        "gist": "the user must avoid shellfish and usually chooses low-sodium meals",
+        "topic": "health",
+    },
+    {
+        "fact": "Work preference: written plans with weekly status summaries",
+        "gist": "the user prefers written plans and weekly status summaries",
+        "topic": "work",
+    },
+    {
+        "fact": "Tech preference: Python tooling with reproducible CLI workflows",
+        "gist": "the user prefers python-based tooling and reproducible cli workflows",
+        "topic": "tech",
+    },
+    {
+        "fact": "Social preference: practical gifts and handwritten notes",
+        "gist": "the user values practical gifts with a personal note",
+        "topic": "social",
+    },
 )
 # Label profiles: exact metadata values per label (from prepare.py policy_profiles).
 # access_count, age_days, dependency_count, support_count are included to align training
 # features with the template_hardened test distribution (prepare.py sets all four fields).
 # namespace is NOT included — adding namespace caused delete→decay regressions in prior runs.
 _FAP_HARDENED_PROFILES: dict[str, dict[str, int]] = {
-    "keep":     {"access_count": 7, "age_days": 5,   "dependency_count": 2, "support_count": 5},
-    "decay":    {"access_count": 3, "age_days": 48,  "dependency_count": 1, "support_count": 2},
-    "silence":  {"access_count": 1, "age_days": 132, "dependency_count": 0, "support_count": 1},
+    "keep": {"access_count": 7, "age_days": 5, "dependency_count": 2, "support_count": 5},
+    "decay": {"access_count": 3, "age_days": 48, "dependency_count": 1, "support_count": 2},
+    "silence": {"access_count": 1, "age_days": 132, "dependency_count": 0, "support_count": 1},
     "compress": {"access_count": 2, "age_days": 104, "dependency_count": 4, "support_count": 5},
-    "delete":   {"access_count": 0, "age_days": 366, "dependency_count": 0, "support_count": 1},
+    "delete": {"access_count": 0, "age_days": 366, "dependency_count": 0, "support_count": 1},
 }
 # Start idx well above the test range (test group_ids are in ~[0, 4000]).
 _FAP_HARDENED_TRAIN_IDX_START = 10001
@@ -251,16 +272,18 @@ def _build_forgetting_policy_hardened_rows() -> pd.DataFrame:
             f"Reference note keeps {pack['gist']} near {other['topic']} follow-up details."
         )
         for label, profile in _FAP_HARDENED_PROFILES.items():
-            rows.append({
-                "task": "forgetting_action_policy",
-                "text": text,
-                "label": label,
-                "source": f"template_hardened:forgetting_action_policy:{label}",
-                "access_count": profile["access_count"] + (idx % 2),
-                "age_days": profile["age_days"] + (idx % 18),
-                "dependency_count": profile["dependency_count"] + (idx % 2),
-                "support_count": profile["support_count"] + (idx % 2),
-            })
+            rows.append(
+                {
+                    "task": "forgetting_action_policy",
+                    "text": text,
+                    "label": label,
+                    "source": f"template_hardened:forgetting_action_policy:{label}",
+                    "access_count": profile["access_count"] + (idx % 2),
+                    "age_days": profile["age_days"] + (idx % 18),
+                    "dependency_count": profile["dependency_count"] + (idx % 2),
+                    "support_count": profile["support_count"] + (idx % 2),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -1287,9 +1310,7 @@ def _optimize_binary_threshold(
     for step in range(20, 96):
         threshold = step / 100.0
         pred = [positive_label if score >= threshold else negative_label for score in scores]
-        precision = float(
-            precision_score(targets, pred, pos_label=positive_label, zero_division=0)
-        )
+        precision = float(precision_score(targets, pred, pos_label=positive_label, zero_division=0))
         if precision_floor is not None and precision + 1e-9 < precision_floor:
             continue
         f1_value = float(f1_score(targets, pred, pos_label=positive_label, zero_division=0))
@@ -1675,8 +1696,10 @@ def _release_gate_results(task_name: str, summary: dict[str, Any]) -> dict[str, 
                 )
             if isinstance(label_payload, dict):
                 # Try exact metric name first; fall back to "f1-score" alias for "f1".
-                lookup_key = metric if metric in label_payload else (
-                    "f1-score" if metric == "f1" and "f1-score" in label_payload else metric
+                lookup_key = (
+                    metric
+                    if metric in label_payload
+                    else ("f1-score" if metric == "f1" and "f1-score" in label_payload else metric)
                 )
                 if lookup_key in label_payload:
                     try:
@@ -1933,7 +1956,10 @@ def _train_transformer_sequence_classifier(
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
-        stat: dict[str, Any] = {"epoch": epoch, "train_loss": float(epoch_loss / max(1, len(train_loader)))}
+        stat: dict[str, Any] = {
+            "epoch": epoch,
+            "train_loss": float(epoch_loss / max(1, len(train_loader))),
+        }
         if eval_features and eval_targets:
             model.eval()
             epoch_eval_logits = _transformer_logits(
@@ -2095,7 +2121,9 @@ def _train_transformer_pair_ranker(
     for epoch in range(1, num_epochs + 1):
         optimizer.zero_grad(set_to_none=True)
         epoch_loss = 0.0
-        step_bar = _progress(total=len(train_loader), desc=f"[{task_name}] epoch {epoch}/{num_epochs}", unit="step")
+        step_bar = _progress(
+            total=len(train_loader), desc=f"[{task_name}] epoch {epoch}/{num_epochs}", unit="step"
+        )
         for step, (batch_ids,) in enumerate(train_loader, start=1):
             batch_features = [features[int(idx)] for idx in batch_ids]
             labels = torch.tensor(
@@ -3907,11 +3935,15 @@ def _train_task(
         if spec.score_margin is not None:
             task_transformer_overrides["score_margin"] = spec.score_margin
         if spec.per_device_train_batch_size is not None:
-            task_transformer_overrides["per_device_train_batch_size"] = spec.per_device_train_batch_size
+            task_transformer_overrides["per_device_train_batch_size"] = (
+                spec.per_device_train_batch_size
+            )
         if spec.max_seq_length is not None:
             task_transformer_overrides["max_seq_length"] = spec.max_seq_length
         if spec.gradient_accumulation_steps is not None:
-            task_transformer_overrides["gradient_accumulation_steps"] = spec.gradient_accumulation_steps
+            task_transformer_overrides["gradient_accumulation_steps"] = (
+                spec.gradient_accumulation_steps
+            )
         if task_transformer_overrides:
             effective_cfg = dict(train_cfg)
             effective_cfg["transformer"] = {
