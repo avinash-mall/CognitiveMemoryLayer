@@ -375,8 +375,8 @@ class WriteGate:
 
                         label = pred.label.strip().lower()
                         confidence = max(0.0, min(1.0, pred.confidence))
-                        pair_novelty = confidence if label in {"changed", "novel"} else (
-                            1.0 - confidence
+                        pair_novelty = (
+                            confidence if label in {"changed", "novel"} else (1.0 - confidence)
                         )
 
                     scored_any = True

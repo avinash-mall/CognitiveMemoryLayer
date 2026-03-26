@@ -131,7 +131,9 @@ class TestWriteGate:
         )
         result = gate.evaluate(
             chunk,
-            existing_memories=[{"text": "Alice works as a software engineer at a technology company"}],
+            existing_memories=[
+                {"text": "Alice works as a software engineer at a technology company"}
+            ],
         )
         assert result.novelty == 0.03
         assert result.decision == WriteDecision.SKIP
