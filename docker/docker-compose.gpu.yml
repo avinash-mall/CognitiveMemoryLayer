@@ -1,0 +1,26 @@
+# GPU override — use this on hosts with NVIDIA Container Toolkit installed.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up api
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up app
+#
+# Requires: nvidia-container-toolkit installed and Docker daemon configured
+# with the nvidia runtime (https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/).
+services:
+  api:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  app:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

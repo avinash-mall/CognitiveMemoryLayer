@@ -80,13 +80,6 @@ services:
         condition: service_healthy
     volumes:
       - ../packages/models/trained_models:/app/packages/models/trained_models:ro
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"
 
   # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
@@ -123,13 +116,6 @@ services:
       - "8000:8000"
     volumes:
       - ../packages/models/trained_models:/app/packages/models/trained_models:ro
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     command: sh -c "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
