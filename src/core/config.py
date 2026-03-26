@@ -49,6 +49,7 @@ class EmbeddingInternalSettings(PydanticBaseModel):
     revision: str | None = Field(default="1066b6599d099fbb93dfcb64f9c37a7c9e503e85")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
+    local_batch_size: int = Field(default=8)
 
 
 # LLM config: LLM_INTERNAL__* (internal tasks) and LLM_EVAL__* (evaluation QA/judge).

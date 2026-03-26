@@ -171,12 +171,14 @@ class LocalEmbeddings(EmbeddingClient):
         self.model_name = name
         self.revision = model_revision
         self.device = device
+        self._batch_size = ei.local_batch_size
         self._dimensions = self.model.get_sentence_embedding_dimension()
         _logger.info(
             "local_embeddings_loaded",
             model=self.model_name,
             revision=self.revision,
             device=self.device,
+            batch_size=self._batch_size,
         )
 
     @property
@@ -199,7 +201,10 @@ class LocalEmbeddings(EmbeddingClient):
         import asyncio
 
         loop = asyncio.get_running_loop()
-        embeddings = await loop.run_in_executor(None, lambda: self.model.encode(texts).tolist())
+        bs = self._batch_size
+        embeddings = await loop.run_in_executor(
+            None, lambda: self.model.encode(texts, batch_size=bs).tolist()
+        )
         return [
             EmbeddingResult(
                 embedding=emb,
