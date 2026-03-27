@@ -11,8 +11,8 @@ import pytest
 
 from src.utils.model_downloader import (
     DEFAULT_HF_REPO_ID,
-    _permission_error_message,
     _needs_download,
+    _permission_error_message,
     ensure_models,
 )
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from itertools import chain
 import os
+from itertools import chain
 from pathlib import Path
 
 from .logging_config import get_logger
