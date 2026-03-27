@@ -85,7 +85,9 @@ Model weights are hosted at **[avinashm/CognitiveMemoryLayer-models](https://hug
 1. `ModelPackRuntime._load_all()` calls `ensure_models()` before loading joblib files.
 2. If `manifest.json` or the three family models are missing, `huggingface_hub.snapshot_download()` fetches the artifacts.
 3. In Docker, `docker/entrypoint.sh` runs the download before the container CMD (e.g. `uvicorn`).
-4. Models are cached in a named Docker volume (`cml-models`) and persist across container restarts.
+4. Local Docker services bind-mount the repo's `packages/models/` directory into `/app/packages/models`, so existing host artifacts are reused and any first-run download writes into `packages/models/trained_models/`.
+
+If a Docker download fails with `PermissionError`, the bind-mounted files are usually owned by `root` from an earlier container run. Fix ownership from the repo root with `sudo chown -R $(id -u):$(id -g) packages/models/trained_models`.
 
 **Configuration:**
 

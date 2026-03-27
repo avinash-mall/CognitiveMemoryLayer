@@ -288,6 +288,14 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _reset_runtime_state(model: Any) -> Any:
+    """Clear serialized HF runtime state so loaded artifacts resolve devices lazily."""
+    reset = getattr(model, "reset_runtime_state", None)
+    if callable(reset):
+        reset()
+    return model
+
+
 class ModelPackRuntime:
     """Loads trained models and serves task-level predictions.
 
@@ -527,6 +535,11 @@ class ModelPackRuntime:
         """Check whether a dedicated per-task model is available."""
         return self._get_task_model(task) is not None
 
+    def prime(self, *, fail_on_bootstrap_error: bool = False) -> ModelPackRuntime:
+        """Warm the runtime at startup so model downloads never begin on the request path."""
+        self._load_all(fail_on_bootstrap_error=fail_on_bootstrap_error)
+        return self
+
     def _get_task_model(self, task: str) -> Any | None:
         if not self._loaded:
             self._load_all()
@@ -537,7 +550,7 @@ class ModelPackRuntime:
             self._load_all()
         return self._models.get(family)
 
-    def _load_all(self) -> None:
+    def _load_all(self, *, fail_on_bootstrap_error: bool = False) -> None:
         if self._loaded:
             return
         self._loaded = True
@@ -546,8 +559,10 @@ class ModelPackRuntime:
         try:
             from .model_downloader import ensure_models
 
-            ensure_models(self.models_dir)
+            ensure_models(self.models_dir, raise_on_failure=fail_on_bootstrap_error)
         except Exception as exc:
+            if fail_on_bootstrap_error:
+                raise
             logger.debug("model_auto_download_skipped", extra={"error": str(exc)})
 
         manifest_path = self.models_dir / "manifest.json"
@@ -575,7 +590,7 @@ class ModelPackRuntime:
                 if model is None:
                     self._load_errors.append(f"{family}: missing model key")
                     continue
-                self._models[family] = model
+                self._models[family] = _reset_runtime_state(model)
             except Exception as exc:
                 self._load_errors.append(f"{family}: {exc}")
 
@@ -589,7 +604,7 @@ class ModelPackRuntime:
                 if model is None:
                     self._load_errors.append(f"task:{task_name}: missing model key")
                     continue
-                self._task_models[task_name] = model
+                self._task_models[task_name] = _reset_runtime_state(model)
             except Exception as exc:
                 self._load_errors.append(f"task:{task_name}: {exc}")
 
@@ -864,3 +879,9 @@ class ModelPackRuntime:
 def get_modelpack_runtime() -> ModelPackRuntime:
     """Return process-cached runtime modelpack loader."""
     return ModelPackRuntime()
+
+
+def prime_modelpack_runtime(*, fail_on_bootstrap_error: bool = False) -> ModelPackRuntime:
+    """Prime the cached runtime during startup so request-time bootstrap is avoided."""
+    runtime = get_modelpack_runtime()
+    return runtime.prime(fail_on_bootstrap_error=fail_on_bootstrap_error)

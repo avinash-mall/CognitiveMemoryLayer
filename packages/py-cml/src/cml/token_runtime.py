@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from cml.runtime_device import resolve_runtime_device_name
+
 _PII_FALLBACK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "EMAIL",
@@ -62,6 +64,23 @@ class HFTokenSpanPredictor:
     def __post_init__(self) -> None:
         pass
 
+    def reset_runtime_state(self) -> None:
+        """Drop loaded transformer state so deserialized artifacts can resolve devices again."""
+        self._tokenizer = None
+        self._model = None
+        self._device = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = dict(self.__dict__)
+        state["_tokenizer"] = None
+        state["_model"] = None
+        state["_device"] = None
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.reset_runtime_state()
+
     def _ensure_loaded(self) -> None:
         if self._tokenizer is not None and self._model is not None:
             return
@@ -78,7 +97,7 @@ class HFTokenSpanPredictor:
         if not model_path.exists():
             raise FileNotFoundError(f"Token model directory not found: {model_path}")
 
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = torch.device(resolve_runtime_device_name(torch))
         self._tokenizer = AutoTokenizer.from_pretrained(str(model_path), use_fast=True)
         self._model = AutoModelForTokenClassification.from_pretrained(str(model_path))
         self._model.to(self._device)

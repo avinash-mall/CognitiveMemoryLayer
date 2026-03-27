@@ -41,9 +41,9 @@ htmlcov
 # ProjectPlan/
 
 # Large local model/data artifacts — none of these are needed in the build
-# context.  The production image mkdir's the models directory and downloads
-# weights at runtime via HuggingFace Hub; the test image volume-mounts
-# cml-models over the same path.
+# context. The production image mkdir's the models directory and downloads
+# weights at runtime via HuggingFace Hub; local Docker services bind-mount
+# packages/models from the host instead of baking model weights into the image.
 packages/models/datasets/
 packages/models/prepared_data/
 packages/models/trained_models/

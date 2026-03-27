@@ -11,6 +11,7 @@ import pytest
 
 from src.utils.model_downloader import (
     DEFAULT_HF_REPO_ID,
+    _permission_error_message,
     _needs_download,
     ensure_models,
 )
@@ -98,6 +99,42 @@ class TestEnsureModels:
             result = ensure_models(empty_dir)
         assert result is False
 
+    def test_download_failure_raises_when_requested(self, empty_dir: Path) -> None:
+        mock_module = ModuleType("huggingface_hub")
+        mock_module.snapshot_download = MagicMock(side_effect=RuntimeError("network error"))  # type: ignore[attr-defined]
+
+        with (
+            patch.dict(sys.modules, {"huggingface_hub": mock_module}),
+            pytest.raises(RuntimeError, match="Unable to download CML model artifacts"),
+        ):
+            ensure_models(empty_dir, raise_on_failure=True)
+
+    def test_permission_failure_returns_false(self, empty_dir: Path) -> None:
+        mock_module = ModuleType("huggingface_hub")
+        mock_module.snapshot_download = MagicMock(  # type: ignore[attr-defined]
+            side_effect=PermissionError(13, "Permission denied", "/tmp/models/config.json")
+        )
+
+        with patch.dict(sys.modules, {"huggingface_hub": mock_module}):
+            result = ensure_models(empty_dir)
+        assert result is False
+
+    def test_permission_failure_raises_with_actionable_message(self, empty_dir: Path) -> None:
+        mock_module = ModuleType("huggingface_hub")
+        mock_module.snapshot_download = MagicMock(  # type: ignore[attr-defined]
+            side_effect=PermissionError(13, "Permission denied", "/tmp/models/config.json")
+        )
+
+        with (
+            patch.dict(sys.modules, {"huggingface_hub": mock_module}),
+            pytest.raises(RuntimeError, match="bind-mounted from the host"),
+        ):
+            ensure_models(empty_dir, raise_on_failure=True)
+
+    def test_disabled_auto_download_does_not_raise_when_requested(self, empty_dir: Path) -> None:
+        with patch.dict("os.environ", {"CML_MODELS_AUTO_DOWNLOAD": "false"}):
+            assert ensure_models(empty_dir, raise_on_failure=True) is False
+
     def test_force_redownload(self, tmp_path: Path) -> None:
         d = tmp_path / "models"
         d.mkdir()
@@ -127,3 +164,10 @@ class TestEnsureModels:
             (d / name).write_text("{}")
         with patch.dict("os.environ", {"CML_MODELS_HF_REPO": "custom/repo"}):
             assert ensure_models(d) is True
+
+
+def test_permission_error_message_includes_fix_hint(tmp_path: Path) -> None:
+    message = _permission_error_message(tmp_path / "models", target="/tmp/models/config.json")
+
+    assert "/tmp/models/config.json" in message
+    assert "sudo chown -R $(id -u):$(id -g) packages/models/trained_models" in message

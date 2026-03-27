@@ -44,6 +44,7 @@ services:
       retries: 5
 
   # App (test runner). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env (e.g. EMBEDDING_INTERNAL__BASE_URL for Ollama on host).
+  # Reuse repo-local model artifacts by bind-mounting packages/models into the container.
   app:
     build:
       context: ..
@@ -82,10 +83,11 @@ services:
       api:
         condition: service_healthy
     volumes:
-      - cml-models:/app/packages/models/trained_models
+      - ../packages/models:/app/packages/models
     command: ["sh", "-c", "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short"]
 
   # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
+  # Reuse repo-local model artifacts by bind-mounting packages/models into the container.
   api:
     build:
       context: ..
@@ -120,7 +122,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - cml-models:/app/packages/models/trained_models
+      - ../packages/models:/app/packages/models
     command: ["sh", "-c", "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -128,7 +130,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
-volumes:
-  cml-models:
-    driver: local

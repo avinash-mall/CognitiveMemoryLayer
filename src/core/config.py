@@ -2,6 +2,7 @@
 
 import re
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
@@ -50,6 +51,7 @@ class EmbeddingInternalSettings(PydanticBaseModel):
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
     local_batch_size: int = Field(default=8)
+    device: Literal["auto", "cpu", "cuda"] = Field(default="auto")
 
 
 # LLM config: LLM_INTERNAL__* (internal tasks) and LLM_EVAL__* (evaluation QA/judge).

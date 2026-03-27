@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -25,7 +26,7 @@ except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 _logger = structlog.get_logger(__name__)
-_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str, str], "EmbeddingClient"] = {}
+_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str, str, str], "EmbeddingClient"] = {}
 
 
 @dataclass
@@ -132,7 +133,12 @@ class OpenAIEmbeddings(EmbeddingClient):
 class LocalEmbeddings(EmbeddingClient):
     """Local sentence-transformers embeddings (optional dependency)."""
 
-    def __init__(self, model_name: str | None = None, revision: str | None = None) -> None:
+    def __init__(
+        self,
+        model_name: str | None = None,
+        revision: str | None = None,
+        device: str | None = None,
+    ) -> None:
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError:
@@ -151,16 +157,18 @@ class LocalEmbeddings(EmbeddingClient):
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
         if ":" in name:
             name = name.split(":")[0]
-        device = "cpu"
-        if torch is not None and getattr(torch, "cuda", None) is not None:
-            try:
-                if bool(torch.cuda.is_available()):
-                    device = "cuda"
-            except Exception:
-                device = "cpu"
+        device_preference = device or ei.device
+        resolved_device = "cpu"
+        if device_preference in {"auto", "cuda"}:
+            if torch is not None and getattr(torch, "cuda", None) is not None:
+                try:
+                    if bool(torch.cuda.is_available()):
+                        resolved_device = "cuda"
+                except Exception:
+                    resolved_device = "cpu"
         sentence_transformer_kwargs: dict[str, Any] = {
             "trust_remote_code": True,
-            "device": device,
+            "device": resolved_device,
             "model_kwargs": {"trust_remote_code": True},
             "tokenizer_kwargs": {"trust_remote_code": True},
             "config_kwargs": {"trust_remote_code": True},
@@ -170,14 +178,17 @@ class LocalEmbeddings(EmbeddingClient):
         self.model = SentenceTransformer(name, **sentence_transformer_kwargs)
         self.model_name = name
         self.revision = model_revision
-        self.device = device
+        self.device = resolved_device
+        self.device_preference = device_preference
         self._batch_size = ei.local_batch_size
+        self._encode_lock = threading.Lock()
         self._dimensions = self.model.get_sentence_embedding_dimension()
         _logger.info(
             "local_embeddings_loaded",
             model=self.model_name,
             revision=self.revision,
             device=self.device,
+            device_preference=self.device_preference,
             batch_size=self._batch_size,
         )
 
@@ -185,11 +196,37 @@ class LocalEmbeddings(EmbeddingClient):
     def dimensions(self) -> int:
         return self._dimensions or 0
 
-    async def embed(self, text: str) -> EmbeddingResult:
+    def _encode_sync(self, texts: str | list[str], *, batch_size: int | None = None) -> Any:
+        kwargs: dict[str, Any] = {}
+        if batch_size is not None:
+            kwargs["batch_size"] = batch_size
+        with self._encode_lock:
+            return self.model.encode(texts, **kwargs)
+
+    async def _encode_async(self, texts: str | list[str], *, batch_size: int | None = None) -> Any:
         import asyncio
 
         loop = asyncio.get_running_loop()
-        embedding = await loop.run_in_executor(None, lambda: self.model.encode(text).tolist())
+        try:
+            encoded = await loop.run_in_executor(
+                None,
+                lambda: self._encode_sync(texts, batch_size=batch_size),
+            )
+        except Exception:
+            _logger.exception(
+                "local_embeddings_encode_failed",
+                model=self.model_name,
+                revision=self.revision,
+                device=self.device,
+                device_preference=self.device_preference,
+                batch_size=batch_size,
+                input_count=1 if isinstance(texts, str) else len(texts),
+            )
+            raise
+        return encoded.tolist() if hasattr(encoded, "tolist") else encoded
+
+    async def embed(self, text: str) -> EmbeddingResult:
+        embedding = await self._encode_async(text)
         return EmbeddingResult(
             embedding=embedding,
             model=self.model_name,
@@ -198,13 +235,8 @@ class LocalEmbeddings(EmbeddingClient):
         )
 
     async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
-        import asyncio
-
-        loop = asyncio.get_running_loop()
         bs = self._batch_size
-        embeddings = await loop.run_in_executor(
-            None, lambda: self.model.encode(texts, batch_size=bs).tolist()
-        )
+        embeddings = await self._encode_async(texts, batch_size=bs)
         return [
             EmbeddingResult(
                 embedding=emb,
@@ -382,8 +414,9 @@ def get_embedding_client() -> EmbeddingClient:
     revision = ei.revision or ""
     api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or ""
     base_url = ei.base_url or ""
+    device = ei.device
 
-    cache_key = (provider, model, dims, local_model, revision, api_key, base_url)
+    cache_key = (provider, model, dims, local_model, revision, api_key, base_url, device)
     cached = _EMBEDDING_CLIENT_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -428,7 +461,7 @@ def get_embedding_client() -> EmbeddingClient:
         client = MockEmbeddingClient(dimensions=dims)
     else:
         # default: local (nomic-embed-text-v2-moe) when provider is local or unset
-        client = LocalEmbeddings(model_name=local_model, revision=ei.revision)
+        client = LocalEmbeddings(model_name=local_model, revision=ei.revision, device=device)
 
     _EMBEDDING_CLIENT_CACHE[cache_key] = client
     return client

@@ -37,6 +37,7 @@ async def test_dashboard_config_returns_sections_and_masks_secrets(monkeypatch: 
     assert items["auth.api_key"].is_editable is False
     assert items["database.neo4j_password"].value == "****"
     assert items["embedding_internal.provider"].is_editable is True
+    assert items["embedding_internal.device"].options == ["auto", "cpu", "cuda"]
     assert items["auth.api_key"].source == "env"
 
 
@@ -54,6 +55,7 @@ async def test_dashboard_config_update_persists_editable_values(
     body = ConfigUpdateRequest(
         updates={
             "embedding_internal.dimensions": 1536,
+            "embedding_internal.device": "cpu",
             "cors_origins": ["https://a.test", "https://b.test"],
             "debug": True,
         }
@@ -64,6 +66,7 @@ async def test_dashboard_config_update_persists_editable_values(
     assert result["success"] is True
     assert captured == {
         "EMBEDDING_INTERNAL__DIMENSIONS": 1536,
+        "EMBEDDING_INTERNAL__DEVICE": "cpu",
         "CORS_ORIGINS": "https://a.test,https://b.test",
         "DEBUG": True,
     }
@@ -94,6 +97,12 @@ async def test_dashboard_config_update_rejects_invalid_values() -> None:
     with pytest.raises(HTTPException, match="positive integer"):
         await config_routes.dashboard_config_update(
             body=ConfigUpdateRequest(updates={"embedding_internal.dimensions": 0}),
+            auth=ADMIN_AUTH,
+            db=MagicMock(),
+        )
+    with pytest.raises(HTTPException, match="auto, cpu, cuda"):
+        await config_routes.dashboard_config_update(
+            body=ConfigUpdateRequest(updates={"embedding_internal.device": "gpu"}),
             auth=ADMIN_AUTH,
             db=MagicMock(),
         )

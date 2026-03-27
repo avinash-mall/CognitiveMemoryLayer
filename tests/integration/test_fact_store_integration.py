@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import and_, update
+from sqlalchemy import and_, select, update
 
 from src.memory.neocortical.fact_store import SemanticFactStore
 from src.memory.neocortical.schemas import FactCategory
@@ -78,6 +78,44 @@ async def test_get_facts_by_category_respects_limit(pg_session_factory):
 
     facts = await store.get_facts_by_category(tenant_id, FactCategory.PREFERENCE, limit=10)
     assert len(facts) == 10
+
+
+@pytest.mark.asyncio
+async def test_invalidate_fact_marks_row_inactive_with_naive_utc_valid_to(pg_session_factory):
+    store = SemanticFactStore(pg_session_factory)
+    tenant_id = f"t-{uuid4().hex[:8]}"
+    key = "user:value:timezone_regression"
+
+    await store.upsert_fact(tenant_id, key, "consistency", confidence=0.9)
+
+    invalidated = await store.invalidate_fact(tenant_id, key)
+
+    assert invalidated is True
+
+    async with pg_session_factory() as session:
+        row = (
+            await session.execute(
+                select(SemanticFactModel).where(
+                    and_(
+                        SemanticFactModel.tenant_id == tenant_id,
+                        SemanticFactModel.key == key,
+                    )
+                )
+            )
+        ).scalar_one()
+
+    assert row.is_current is False
+    assert row.valid_to is not None
+    assert row.valid_to.tzinfo is None
+
+
+@pytest.mark.asyncio
+async def test_invalidate_fact_returns_false_for_missing_fact(pg_session_factory):
+    store = SemanticFactStore(pg_session_factory)
+
+    invalidated = await store.invalidate_fact("missing-tenant", "user:value:missing")
+
+    assert invalidated is False
 
 
 @pytest.mark.asyncio

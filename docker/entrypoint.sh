@@ -19,17 +19,36 @@ if [ "$AUTO_DOWNLOAD" = "true" ] || [ "$AUTO_DOWNLOAD" = "1" ]; then
     if ! models_present; then
         echo "[entrypoint] Models not found in $MODELS_DIR — downloading from $HF_REPO ..."
         mkdir -p "$MODELS_DIR"
-        python -c "
+        MODELS_DIR="$MODELS_DIR" HF_REPO="$HF_REPO" HF_TOKEN="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}" python - <<'PY' || echo "[entrypoint] WARNING: Model download failed; server will start with heuristic fallbacks."
+import os
+import sys
 from huggingface_hub import snapshot_download
-snapshot_download(
-    repo_id='${HF_REPO}',
-    local_dir='${MODELS_DIR}',
-    token=None,  # public repo; set HF_TOKEN env if private
-    allow_patterns=['*.joblib', '*.json', '*.safetensors', '*.txt', '*.bin'],
-    ignore_patterns=['*.parquet', '*.csv', '*.arrow', '*.md'],
-)
-print('[entrypoint] Model download complete.')
-" || echo "[entrypoint] WARNING: Model download failed; server will start with heuristic fallbacks."
+
+models_dir = os.environ["MODELS_DIR"]
+repo_id = os.environ["HF_REPO"]
+token = os.environ.get("HF_TOKEN") or None
+
+try:
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=models_dir,
+        token=token,
+        allow_patterns=["*.joblib", "*.json", "*.safetensors", "*.txt", "*.bin"],
+        ignore_patterns=["*.parquet", "*.csv", "*.arrow", "*.md"],
+    )
+except PermissionError as exc:
+    target = exc.filename or models_dir
+    print(
+        f"[entrypoint] ERROR: Model artifacts directory is not writable at {target}. "
+        "If this path is bind-mounted from the host, ensure the host files are writable by "
+        "the user running CML (for local Docker Compose from the repo root: "
+        "sudo chown -R $(id -u):$(id -g) packages/models/trained_models).",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from exc
+
+print("[entrypoint] Model download complete.")
+PY
     else
         echo "[entrypoint] Models already present in $MODELS_DIR — skipping download."
     fi

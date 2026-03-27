@@ -353,7 +353,7 @@ class SemanticFactStore:
     ) -> bool:
         """Mark a fact as no longer current. Holistic: tenant-only."""
         async with self.session_factory() as session:
-            now = datetime.now(UTC)
+            now = naive_utc(datetime.now(UTC))
             stmt = (
                 update(SemanticFactModel)
                 .where(

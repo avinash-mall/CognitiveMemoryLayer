@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Validate embedding dimensions match DB schema at startup
     validate_embedding_dimensions(settings)
 
+    from ..utils.modelpack import prime_modelpack_runtime
+
+    prime_modelpack_runtime(fail_on_bootstrap_error=True)
+
     db_manager = await DatabaseManager.create()
     app.state.db = db_manager
 

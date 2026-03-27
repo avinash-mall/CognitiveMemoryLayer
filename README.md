@@ -517,7 +517,9 @@ This installs the CML server, the `py-cml` client SDK, all runtime extras (FastA
 
 All trained model weights (~25 GB) live at **[avinashm/CognitiveMemoryLayer-models](https://huggingface.co/avinashm/CognitiveMemoryLayer-models)**.
 
-**Automatic download (recommended):** Models are downloaded automatically on first startup — both when running via Docker and when using the Python server directly. The runtime checks `packages/models/trained_models/` and pulls any missing artifacts from HuggingFace Hub. No manual download step needed.
+**Automatic download (recommended):** Models are downloaded automatically on first startup — both when running via Docker and when using the Python server directly. The runtime checks `packages/models/trained_models/` and pulls any missing artifacts from HuggingFace Hub. In Docker, the local repo's `packages/models/` directory is bind-mounted into the container, so existing host models are reused and any first-run download writes back to `packages/models/trained_models/`. No manual download step needed.
+
+If a Docker download fails with `PermissionError`, the host-mounted files under `packages/models/trained_models/` are usually owned by `root` from an earlier container run. Fix ownership from the repo root with `sudo chown -R $(id -u):$(id -g) packages/models/trained_models`.
 
 To disable auto-download (e.g. air-gapped environments), set `CML_MODELS_AUTO_DOWNLOAD=false` in `.env`.
 

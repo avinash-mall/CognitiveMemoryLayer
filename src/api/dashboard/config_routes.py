@@ -48,6 +48,9 @@ def _validate_config_updates(updates: dict[str, Any]) -> list[str]:
         if key == "embedding_internal.dimensions":
             if not isinstance(val, (int, float)) or val <= 0:
                 errors.append("embedding_internal.dimensions must be a positive integer")
+        elif key == "embedding_internal.device":
+            if str(val) not in {"auto", "cpu", "cuda"}:
+                errors.append("embedding_internal.device must be one of: auto, cpu, cuda")
         elif key == "chunker.chunk_size":
             if not isinstance(val, (int, float)) or val <= 0:
                 errors.append("chunker.chunk_size must be a positive integer")
@@ -310,10 +313,22 @@ async def dashboard_config(
                     default_value="nomic-ai/nomic-embed-text-v2-moe",
                     is_editable=True,
                     source=_config_source("EMBEDDING_INTERNAL__LOCAL_MODEL"),
-                    description="Model ID for provider=local (sentence-transformers). Auto-uses GPU (CUDA) when available, falls back to CPU.",
+                    description="Model ID for provider=local (sentence-transformers). Use embedding_internal.device to choose auto, CPU, or CUDA.",
                     requires_restart=True,
                     is_required=False,
                     env_var="EMBEDDING_INTERNAL__LOCAL_MODEL",
+                ),
+                ConfigItem(
+                    key="embedding_internal.device",
+                    value=emb.device,
+                    default_value="auto",
+                    is_editable=True,
+                    source=_config_source("EMBEDDING_INTERNAL__DEVICE"),
+                    description="Device for provider=local embeddings. auto prefers CUDA when available; cpu keeps the embedder off GPU; cuda requests GPU.",
+                    requires_restart=True,
+                    is_required=False,
+                    env_var="EMBEDDING_INTERNAL__DEVICE",
+                    options=["auto", "cpu", "cuda"],
                 ),
                 ConfigItem(
                     key="embedding_internal.base_url",

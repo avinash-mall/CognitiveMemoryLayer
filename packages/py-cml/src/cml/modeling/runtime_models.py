@@ -10,6 +10,7 @@ import numpy as np
 
 from cml.modeling.memory_type_features import append_memory_type_feature_tokens
 from cml.modeling.pair_features import build_pair_dense_features, parse_serialized_pair_feature
+from cml.runtime_device import resolve_runtime_device_name
 
 _PAIR_GROUP_TOP1_TASKS = {
     "retrieval_constraint_relevance_pair",
@@ -80,17 +81,32 @@ class EmbeddingPairClassifier:
 
     _encoder: Any = field(default=None, init=False, repr=False)
 
+    def reset_runtime_state(self) -> None:
+        """Drop loaded encoder state so deserialized artifacts respect current env/device settings."""
+        self._encoder = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = dict(self.__dict__)
+        state["_encoder"] = None
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.reset_runtime_state()
+
     def _ensure_encoder(self) -> Any:
         if self._encoder is not None:
             return self._encoder
         try:
+            import torch
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover - depends on optional extras
             raise ImportError(
                 "Embedding pair runtime requires sentence-transformers. "
                 'Install with: pip install "cognitive-memory-layer[modeling]"'
             ) from exc
-        self._encoder = SentenceTransformer(self.model_name_or_path)
+        device_name = resolve_runtime_device_name(torch)
+        self._encoder = SentenceTransformer(self.model_name_or_path, device=device_name)
         return self._encoder
 
     def _dense_matrix(self, features: list[str]) -> np.ndarray:
@@ -175,6 +191,23 @@ class TransformerTextClassifier:
     _model: Any = field(default=None, init=False, repr=False)
     _device: Any = field(default=None, init=False, repr=False)
 
+    def reset_runtime_state(self) -> None:
+        """Drop loaded transformer state so deserialized artifacts can resolve devices again."""
+        self._tokenizer = None
+        self._model = None
+        self._device = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = dict(self.__dict__)
+        state["_tokenizer"] = None
+        state["_model"] = None
+        state["_device"] = None
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.reset_runtime_state()
+
     def _ensure_loaded(self) -> None:
         if self._tokenizer is not None and self._model is not None:
             return
@@ -189,7 +222,7 @@ class TransformerTextClassifier:
         model_path = Path(self.model_dir)
         if not model_path.exists():
             raise FileNotFoundError(f"Transformer model directory not found: {model_path}")
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = torch.device(resolve_runtime_device_name(torch))
         self._tokenizer = AutoTokenizer.from_pretrained(str(model_path), use_fast=True)
         self._model = AutoModelForSequenceClassification.from_pretrained(str(model_path))
         self._model.to(self._device)
@@ -255,6 +288,23 @@ class TransformerPairClassifier:
     _model: Any = field(default=None, init=False, repr=False)
     _device: Any = field(default=None, init=False, repr=False)
 
+    def reset_runtime_state(self) -> None:
+        """Drop loaded transformer state so deserialized artifacts can resolve devices again."""
+        self._tokenizer = None
+        self._model = None
+        self._device = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = dict(self.__dict__)
+        state["_tokenizer"] = None
+        state["_model"] = None
+        state["_device"] = None
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        self.reset_runtime_state()
+
     def _ensure_loaded(self) -> None:
         if self._tokenizer is not None and self._model is not None:
             return
@@ -269,7 +319,7 @@ class TransformerPairClassifier:
         model_path = Path(self.model_dir)
         if not model_path.exists():
             raise FileNotFoundError(f"Transformer model directory not found: {model_path}")
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = torch.device(resolve_runtime_device_name(torch))
         self._tokenizer = AutoTokenizer.from_pretrained(str(model_path), use_fast=True)
         self._model = AutoModelForSequenceClassification.from_pretrained(str(model_path))
         self._model.to(self._device)
