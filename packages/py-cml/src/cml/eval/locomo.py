@@ -82,18 +82,29 @@ INGESTION_DELAY_SEC = 0.2
 
 # Shared HTTP session for connection reuse across threads
 _SESSION: Any = None
+_SESSION_REQUESTS_ID: int | None = None
 
 
 def _get_session() -> Any:
-    """Return a shared requests.Session with connection pooling."""
-    global _SESSION
-    if _SESSION is None and requests is not None:
-        requests_lib = cast("Any", requests)
-        adapter_cls = cast("type[Any]", HTTPAdapter)
-        _SESSION = requests_lib.Session()
-        adapter = adapter_cls(pool_connections=100, pool_maxsize=200)
-        _SESSION.mount("http://", adapter)
-        _SESSION.mount("https://", adapter)
+    """Return a shared requests.Session or a requests-like fallback client."""
+    global _SESSION, _SESSION_REQUESTS_ID
+    if requests is None:
+        return None
+
+    requests_lib = cast("Any", requests)
+    session_factory = getattr(requests_lib, "Session", None)
+    if not callable(session_factory):
+        return requests_lib
+
+    requests_id = id(requests_lib)
+    if _SESSION is None or requests_id != _SESSION_REQUESTS_ID:
+        _SESSION = session_factory()
+        _SESSION_REQUESTS_ID = requests_id
+        adapter_cls = cast("type[Any] | None", HTTPAdapter)
+        if adapter_cls is not None and hasattr(_SESSION, "mount"):
+            adapter = adapter_cls(pool_connections=100, pool_maxsize=200)
+            _SESSION.mount("http://", adapter)
+            _SESSION.mount("https://", adapter)
     return _SESSION
 
 

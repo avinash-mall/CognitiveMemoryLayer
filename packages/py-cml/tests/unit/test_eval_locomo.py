@@ -26,6 +26,10 @@ def test_dashboard_post_sends_csrf_header(monkeypatch) -> None:
         captured["timeout"] = timeout
         return _Resp()
 
+    def _stale_post(*args, **kwargs):
+        raise AssertionError("should not use stale cached session")
+
+    monkeypatch.setattr("cml.eval.locomo._SESSION", SimpleNamespace(post=_stale_post))
     monkeypatch.setattr("cml.eval.locomo.requests", SimpleNamespace(post=_fake_post))
 
     result = _dashboard_post(
