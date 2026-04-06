@@ -233,7 +233,9 @@ async def dashboard_job_detail(
     try:
         async with db.pg_session() as session:
             job = (
-                await session.execute(select(DashboardJobModel).where(DashboardJobModel.id == job_id))
+                await session.execute(
+                    select(DashboardJobModel).where(DashboardJobModel.id == job_id)
+                )
             ).scalar_one_or_none()
             if job is None:
                 raise HTTPException(status_code=404, detail="Job not found")

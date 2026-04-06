@@ -516,9 +516,7 @@ class ModelPackRuntime:
         valid_indices: list[int] = []
         for i, (text_a, text_b) in enumerate(pairs):
             if text_a.strip() and text_b.strip():
-                features.append(
-                    f"task={task} [a] {text_a.strip()} [b] {text_b.strip()}"
-                )
+                features.append(f"task={task} [a] {text_a.strip()} [b] {text_b.strip()}")
                 valid_indices.append(i)
 
         if not features:

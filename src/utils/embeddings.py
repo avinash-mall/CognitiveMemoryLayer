@@ -27,7 +27,9 @@ except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 _logger = structlog.get_logger(__name__)
-_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str, str, str, float], "EmbeddingClient"] = {}
+_EMBEDDING_CLIENT_CACHE: dict[
+    tuple[str, str, int, str, str, str, str, str, float], "EmbeddingClient"
+] = {}
 
 
 @dataclass
@@ -511,7 +513,17 @@ def get_embedding_client() -> EmbeddingClient:
     device = ei.device
     batch_wait_ms = getattr(ei, "batch_wait_ms", 10.0)
 
-    cache_key = (provider, model, dims, local_model, revision, api_key, base_url, device, batch_wait_ms)
+    cache_key = (
+        provider,
+        model,
+        dims,
+        local_model,
+        revision,
+        api_key,
+        base_url,
+        device,
+        batch_wait_ms,
+    )
     cached = _EMBEDDING_CLIENT_CACHE.get(cache_key)
     if cached is not None:
         return cached

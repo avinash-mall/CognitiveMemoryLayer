@@ -222,7 +222,9 @@ async def dashboard_write_simulate(
             try:
                 memory_type_override = MemoryType(body.memory_type)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Unknown memory_type: {body.memory_type}") from exc
+                raise HTTPException(
+                    status_code=400, detail=f"Unknown memory_type: {body.memory_type}"
+                ) from exc
 
         chunks = chunker.chunk(
             body.content,
@@ -239,7 +241,8 @@ async def dashboard_write_simulate(
         existing_dicts = [{"text": memory.text} for memory in existing]
 
         configured_uses_unified = (
-            bool(hippocampal._use_unified_write_path()) and hippocampal.unified_extractor is not None
+            bool(hippocampal._use_unified_write_path())
+            and hippocampal.unified_extractor is not None
         )
         compare_local = bool(body.compare_extractors)
         local_extractor = hippocampal.local_extractor
@@ -269,7 +272,9 @@ async def dashboard_write_simulate(
             redaction_result = None
             pii_spans = None
             if unified_result and getattr(unified_result, "pii_spans", None):
-                pii_spans = [(span.start, span.end, span.pii_type) for span in unified_result.pii_spans]
+                pii_spans = [
+                    (span.start, span.end, span.pii_type) for span in unified_result.pii_spans
+                ]
 
             if gate_result.redaction_required or pii_spans:
                 redaction_result = hippocampal.redactor.redact(
@@ -397,15 +402,26 @@ async def dashboard_write_simulate(
                 skip_count += 1
 
             extractor_outputs: dict[str, Any] = {
-                "configured_mode": "unified_llm" if configured_uses_unified else "local_modelpack_or_rules",
-                "rule_constraints": [constraint.to_dict() for constraint in hippocampal.constraint_extractor.extract(chunk)],
-                "rule_facts": [_serialize_fact(fact) for fact in write_fact_extractor.extract(chunk)],
+                "configured_mode": "unified_llm"
+                if configured_uses_unified
+                else "local_modelpack_or_rules",
+                "rule_constraints": [
+                    constraint.to_dict()
+                    for constraint in hippocampal.constraint_extractor.extract(chunk)
+                ],
+                "rule_facts": [
+                    _serialize_fact(fact) for fact in write_fact_extractor.extract(chunk)
+                ],
             }
             if configured_uses_unified and unified_result is not None:
                 extractor_outputs["unified_llm"] = {
                     "entities": [_safe_model_dump(entity) for entity in unified_result.entities],
-                    "relations": [_safe_model_dump(relation) for relation in unified_result.relations],
-                    "constraints": [constraint.to_dict() for constraint in unified_result.constraints],
+                    "relations": [
+                        _safe_model_dump(relation) for relation in unified_result.relations
+                    ],
+                    "constraints": [
+                        constraint.to_dict() for constraint in unified_result.constraints
+                    ],
                     "facts": [_serialize_fact(fact) for fact in unified_result.facts],
                     "importance": unified_result.importance,
                     "salience": unified_result.salience,
@@ -457,7 +473,9 @@ async def dashboard_write_simulate(
                     ],
                     entities=[_safe_model_dump(entity) for entity in entities],
                     relations=[_safe_model_dump(relation) for relation in relations],
-                    extracted_constraints=[constraint.to_dict() for constraint in extracted_constraints],
+                    extracted_constraints=[
+                        constraint.to_dict() for constraint in extracted_constraints
+                    ],
                     extracted_facts=[_serialize_fact(fact) for fact in extracted_facts],
                     extractor_outputs=extractor_outputs,
                 )
@@ -472,7 +490,9 @@ async def dashboard_write_simulate(
                 "would_store_count": store_count,
                 "skipped_count": skip_count,
                 "write_gate_acceptance_rate": acceptance_rate,
-                "configured_extractor": "unified_llm" if configured_uses_unified else "local_modelpack_or_rules",
+                "configured_extractor": "unified_llm"
+                if configured_uses_unified
+                else "local_modelpack_or_rules",
                 "compare_extractors": body.compare_extractors,
             },
         )
@@ -626,10 +646,14 @@ async def dashboard_quality_overview(
                 .limit(5)
             )
             low_conf_memories = (await session.execute(low_conf_memories_q)).scalars().all()
-            low_conf_count_q = select(func.count()).select_from(MemoryRecordModel).where(
-                MemoryRecordModel.confidence < 0.4,
-                MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
-                *mem_filters,
+            low_conf_count_q = (
+                select(func.count())
+                .select_from(MemoryRecordModel)
+                .where(
+                    MemoryRecordModel.confidence < 0.4,
+                    MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                    *mem_filters,
+                )
             )
             low_conf_count = (await session.execute(low_conf_count_q)).scalar() or 0
             issues.append(
@@ -651,10 +675,14 @@ async def dashboard_quality_overview(
                 .limit(5)
             )
             low_evidence = (await session.execute(low_evidence_q)).scalars().all()
-            low_evidence_count_q = select(func.count()).select_from(SemanticFactModel).where(
-                SemanticFactModel.is_current.is_(True),
-                SemanticFactModel.evidence_count <= 1,
-                *fact_filters,
+            low_evidence_count_q = (
+                select(func.count())
+                .select_from(SemanticFactModel)
+                .where(
+                    SemanticFactModel.is_current.is_(True),
+                    SemanticFactModel.evidence_count <= 1,
+                    *fact_filters,
+                )
             )
             low_evidence_count = (await session.execute(low_evidence_count_q)).scalar() or 0
             issues.append(
@@ -666,9 +694,13 @@ async def dashboard_quality_overview(
                 )
             )
 
-            orphan_facts_q = select(func.count()).select_from(SemanticFactModel).where(
-                func.cardinality(SemanticFactModel.evidence_ids) == 0,
-                *fact_filters,
+            orphan_facts_q = (
+                select(func.count())
+                .select_from(SemanticFactModel)
+                .where(
+                    func.cardinality(SemanticFactModel.evidence_ids) == 0,
+                    *fact_filters,
+                )
             )
             orphan_facts = (await session.execute(orphan_facts_q)).scalar() or 0
             issues.append(
@@ -681,8 +713,7 @@ async def dashboard_quality_overview(
 
             duplicate_hash_rows = (
                 await session.execute(
-                    select(func.count())
-                    .select_from(
+                    select(func.count()).select_from(
                         select(MemoryRecordModel.content_hash)
                         .where(
                             MemoryRecordModel.content_hash.isnot(None),
@@ -846,7 +877,11 @@ async def dashboard_ops_metrics(
                 elif sample.name == "cml_db_pool_checked_out":
                     highlights["db_pool_checked_out"] = value
                 elif sample.name == "cml_retrieval_fact_hit_total":
-                    bucket = "fact_hit_yes" if labels.get("hit") in {"1", "true", "yes"} else "fact_hit_no"
+                    bucket = (
+                        "fact_hit_yes"
+                        if labels.get("hit") in {"1", "true", "yes"}
+                        else "fact_hit_no"
+                    )
                     highlights[bucket] = highlights.get(bucket, 0.0) + value
 
         hit_yes = float(highlights.get("fact_hit_yes", 0.0))
@@ -917,7 +952,9 @@ async def dashboard_evaluation_summary(
             "evaluation_dir_present": evaluation_dir.is_dir(),
             "outputs_dir_present": outputs_dir.is_dir(),
             "scripts_present": (evaluation_dir / "scripts" / "run_full_eval.py").is_file(),
-            "locomo_data_present": (evaluation_dir / "locomo_plus" / "data" / "locomo10.json").is_file(),
+            "locomo_data_present": (
+                evaluation_dir / "locomo_plus" / "data" / "locomo10.json"
+            ).is_file(),
             "unified_samples_present": unified_samples.is_file(),
             "latest_summary_present": summary_path.is_file(),
             "llm_eval_provider": get_settings().llm_eval.provider,

@@ -362,6 +362,7 @@ class MemoryOrchestrator:
     ) -> dict[str, Any]:
         """Write new information to memory. Holistic: tenant-only."""
         import time as _time
+
         _t0 = _time.perf_counter()
 
         chunks_for_encoding = await self._phase_ingest(
@@ -426,7 +427,12 @@ class MemoryOrchestrator:
         if stored:
             graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
         _facts_coro = self._phase_write_time_facts(
-            tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc,
+            tenant_id,
+            chunks_for_encoding,
+            stored,
+            unified_results,
+            timestamp,
+            wpc,
             local_results=local_results,
         )
         _constraints_coro = self._phase_write_constraints(
@@ -655,9 +661,7 @@ class MemoryOrchestrator:
                     # Use pre-computed local results from Phase 3.5 when available,
                     # to avoid re-running the local extractor (saves ~10ms per chunk).
                     local_result = (
-                        local_results[idx]
-                        if local_results and idx < len(local_results)
-                        else None
+                        local_results[idx] if local_results and idx < len(local_results) else None
                     )
                     if local_result is None:
                         local_extractor = getattr(self.hippocampal, "local_extractor", None)

@@ -534,6 +534,7 @@ class HippocampalStore:
         Phase 4: Upsert records (bounded concurrency).
         """
         import time as _phase_time
+
         _t_scan_start = _phase_time.perf_counter()
         existing_dicts = await self._get_existing_for_gate(tenant_id)
         _t_scan_end = _phase_time.perf_counter()
@@ -561,21 +562,16 @@ class HippocampalStore:
                     _wg_ref = self.write_gate
                     # Quick regex pre-check — avoids GPU for obvious PII or empty texts
                     _pii_regex_hit = [
-                        (not c.text.strip())
-                        or any(p.search(c.text) for p in _wg_ref._pii_patterns)
+                        (not c.text.strip()) or any(p.search(c.text) for p in _wg_ref._pii_patterns)
                         for c in chunks
                     ]
-                    _needs_model_idx = [
-                        i for i, hit in enumerate(_pii_regex_hit) if not hit
-                    ]
+                    _needs_model_idx = [i for i, hit in enumerate(_pii_regex_hit) if not hit]
                     if _needs_model_idx:
                         _pii_texts = [chunks[i].text for i in _needs_model_idx]
                         _pii_spans = await self._pii_span_batcher.predict_batch(_pii_texts)
                         for _j, _i in enumerate(_needs_model_idx):
                             _pred = _pii_spans[_j] if _j < len(_pii_spans) else None
-                            _precomputed_pii_flags[_i] = bool(
-                                _pred is not None and _pred.spans
-                            )
+                            _precomputed_pii_flags[_i] = bool(_pred is not None and _pred.spans)
                     for _i, _hit in enumerate(_pii_regex_hit):
                         if _hit and chunks[_i].text.strip():
                             _precomputed_pii_flags[_i] = True
@@ -609,9 +605,7 @@ class HippocampalStore:
                     unified_result=_ur,
                     precomputed_novelty=_novelties[_idx],
                     precomputed_pii=(
-                        _pii_flags_for_gate[_idx]
-                        if _idx < len(_pii_flags_for_gate)
-                        else None
+                        _pii_flags_for_gate[_idx] if _idx < len(_pii_flags_for_gate) else None
                     ),
                 )
                 if _gate.decision == WriteDecision.SKIP:
@@ -729,10 +723,7 @@ class HippocampalStore:
         _redacted_span_task: asyncio.Task | None = None
         _redacted_indices: list[int] = []
         if self._span_batcher is not None:
-            _redacted_indices = [
-                i for i in range(len(final_texts))
-                if fact_spans_batch[i] is None
-            ]
+            _redacted_indices = [i for i in range(len(final_texts)) if fact_spans_batch[i] is None]
             if _redacted_indices:
                 _redacted_texts = [final_texts[i] for i in _redacted_indices]
                 _redacted_span_task = asyncio.get_running_loop().create_task(
@@ -794,6 +785,7 @@ class HippocampalStore:
 
             _local_future = _ev_loop.run_in_executor(None, _run_local_batch)
         else:
+
             def _run_constraints_only() -> tuple[list[dict[str, Any] | None], list[list[Any]]]:
                 constraint_out: list[list[Any]] = []
                 for _chunk in _surviving_chunks:
@@ -813,10 +805,7 @@ class HippocampalStore:
             entities_batch = await self.entity_extractor.extract_batch(texts_to_embed)
         else:
             _loop = asyncio.get_running_loop()
-            _spacy_indices = [
-                i for i, s in enumerate(fact_spans_batch)
-                if s is None
-            ]
+            _spacy_indices = [i for i, s in enumerate(fact_spans_batch) if s is None]
             entities_batch = [
                 _entities_from_fact_spans(texts_to_embed[i], fact_spans_batch[i])
                 if fact_spans_batch[i] is not None
@@ -828,12 +817,14 @@ class HippocampalStore:
                 _spacy_fn = (
                     _ent_extractor._spacy_extract if _ent_extractor else _ner_entities_for_text
                 )
-                _spacy_results = list(await asyncio.gather(
-                    *[
-                        _loop.run_in_executor(_SPACY_EXECUTOR, _spacy_fn, texts_to_embed[i])
-                        for i in _spacy_indices
-                    ]
-                ))
+                _spacy_results = list(
+                    await asyncio.gather(
+                        *[
+                            _loop.run_in_executor(_SPACY_EXECUTOR, _spacy_fn, texts_to_embed[i])
+                            for i in _spacy_indices
+                        ]
+                    )
+                )
                 for _j, _i in enumerate(_spacy_indices):
                     entities_batch[_i] = _spacy_results[_j]
         _t_p3r = _phase_time.perf_counter()
@@ -844,7 +835,9 @@ class HippocampalStore:
                 (text, [e.normalized for e in entities])
                 for text, entities in zip(texts_to_embed, entities_batch, strict=True)
             ]
-            if not getattr(self.relation_extractor, "llm", None) and hasattr(self.relation_extractor, "extract_batch_with_spans"):
+            if not getattr(self.relation_extractor, "llm", None) and hasattr(
+                self.relation_extractor, "extract_batch_with_spans"
+            ):
                 relations_batch = self.relation_extractor.extract_batch_with_spans(
                     relation_items, fact_spans_batch
                 )
@@ -857,7 +850,6 @@ class HippocampalStore:
         # ---- Await Phase 3.5 results ----
         local_results_batch, constraint_results_batch = await _local_future
         _t_p4 = _phase_time.perf_counter()
-
 
         # ---- Phase 4: Upsert (bounded concurrency) ----
         results: list[MemoryRecord] = []
@@ -1048,7 +1040,12 @@ class HippocampalStore:
             upsert_ms=round((_t_p4_end - _t_p4_start) * 1000, 1),
         )
 
-        return results, (gate_results_list if return_gate_results else None), unified_results, local_results_batch
+        return (
+            results,
+            (gate_results_list if return_gate_results else None),
+            unified_results,
+            local_results_batch,
+        )
 
     async def search(
         self,

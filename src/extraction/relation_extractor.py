@@ -113,7 +113,10 @@ class RelationExtractor:
             loop = asyncio.get_running_loop()
             return list(
                 await asyncio.gather(
-                    *[loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text) for text, _ in items]
+                    *[
+                        loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
+                        for text, _ in items
+                    ]
                 )
             )
         if len(items) == 1:

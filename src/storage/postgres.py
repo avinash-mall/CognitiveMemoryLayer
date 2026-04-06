@@ -35,7 +35,8 @@ class PostgresMemoryStore(MemoryStoreBase):
             existing_record = None
             if record.key:
                 existing_result = await session.execute(
-                    select(MemoryRecordModel).where(
+                    select(MemoryRecordModel)
+                    .where(
                         and_(
                             MemoryRecordModel.tenant_id == record.tenant_id,
                             MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
@@ -44,7 +45,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                                 MemoryRecordModel.content_hash == content_hash,
                             ),
                         )
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
                 existing_record = existing_result.scalar_one_or_none()
             else:

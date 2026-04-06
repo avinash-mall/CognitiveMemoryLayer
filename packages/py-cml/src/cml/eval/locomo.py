@@ -305,7 +305,9 @@ def _cml_write(
     for retry in range(write_retries):
         for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
             try:
-                resp = _get_session().post(url, json=payload, headers=headers, timeout=write_timeout)
+                resp = _get_session().post(
+                    url, json=payload, headers=headers, timeout=write_timeout
+                )
                 if resp.status_code in [429, 500]:
                     if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
                         resp.raise_for_status()
@@ -653,7 +655,9 @@ def phase_ab_consolidation(
             completed_tenants.add(tenant_id)
             try:
                 checkpoint_file.write_text(
-                    json.dumps({"completed_tenants": sorted(completed_tenants)}, ensure_ascii=False),
+                    json.dumps(
+                        {"completed_tenants": sorted(completed_tenants)}, ensure_ascii=False
+                    ),
                     encoding="utf-8",
                 )
             except OSError:

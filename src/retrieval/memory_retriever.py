@@ -70,7 +70,9 @@ class MemoryRetriever:
             if new_group:
                 kept_groups.append(new_group)
         plan.steps = kept_steps
-        plan.parallel_steps = kept_groups or ([[i for i in range(len(plan.steps))]] if plan.steps else [])
+        plan.parallel_steps = kept_groups or (
+            [[i for i in range(len(plan.steps))]] if plan.steps else []
+        )
 
     @staticmethod
     def _inject_step_filters(

@@ -175,9 +175,7 @@ class HybridRetriever:
                             elapsed_ms=result.elapsed_ms,
                             result_count=len(result.items),
                             error=result.error,
-                            timed_out=bool(
-                                result.error and "timeout" in result.error.lower()
-                            ),
+                            timed_out=bool(result.error and "timeout" in result.error.lower()),
                             context_filter=context_filter,
                             result_items=result.items,
                         )

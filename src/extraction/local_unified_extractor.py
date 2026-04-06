@@ -97,23 +97,23 @@ class LocalUnifiedWriteExtractor:
             else:
                 spans_pred = None
             if spans_pred is not None and spans_pred.spans:
-                    records = build_structured_fact_records(
-                        text,
-                        spans_pred,
-                        derive_predicate=_derive_predicate,
-                        label_to_category=_label_to_category,
-                        confidence=span_prediction_confidence(spans_pred),
+                records = build_structured_fact_records(
+                    text,
+                    spans_pred,
+                    derive_predicate=_derive_predicate,
+                    label_to_category=_label_to_category,
+                    confidence=span_prediction_confidence(spans_pred),
+                )
+                result["facts"] = [
+                    ExtractedFact(
+                        key=record.key,
+                        category=record.category,
+                        predicate=record.predicate,
+                        value=record.value,
+                        confidence=record.confidence,
                     )
-                    result["facts"] = [
-                        ExtractedFact(
-                            key=record.key,
-                            category=record.category,
-                            predicate=record.predicate,
-                            value=record.value,
-                            confidence=record.confidence,
-                        )
-                        for record in records
-                    ]
+                    for record in records
+                ]
         except Exception as exc:
             logger.debug("local_fact_extraction_failed", extra={"error": str(exc)})
 

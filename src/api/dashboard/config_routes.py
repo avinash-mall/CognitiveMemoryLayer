@@ -59,7 +59,9 @@ def _validate_config_updates(updates: dict[str, Any]) -> list[str]:
                 errors.append("chunker.overlap_percent must be between 0 and 1")
         elif key == "embedding_internal.local_batch_size":
             if not isinstance(val, (int, float)) or val < 1:
-                errors.append("embedding_internal.local_batch_size must be a positive integer (>= 1)")
+                errors.append(
+                    "embedding_internal.local_batch_size must be a positive integer (>= 1)"
+                )
         elif key == "auth.rate_limit_requests_per_minute":
             if not isinstance(val, (int, float)) or val < 0:
                 errors.append("auth.rate_limit_requests_per_minute must be non-negative")

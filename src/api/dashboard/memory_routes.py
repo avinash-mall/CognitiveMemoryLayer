@@ -252,28 +252,38 @@ async def dashboard_memory_lineage(
             same_key_versions: list[DashboardLineageMemory] = []
             if record.key:
                 same_key_rows = (
-                    await session.execute(
-                        select(MemoryRecordModel)
-                        .where(
-                            MemoryRecordModel.tenant_id == record.tenant_id,
-                            MemoryRecordModel.key == record.key,
+                    (
+                        await session.execute(
+                            select(MemoryRecordModel)
+                            .where(
+                                MemoryRecordModel.tenant_id == record.tenant_id,
+                                MemoryRecordModel.key == record.key,
+                            )
+                            .order_by(
+                                MemoryRecordModel.version.asc(), MemoryRecordModel.timestamp.asc()
+                            )
                         )
-                        .order_by(MemoryRecordModel.version.asc(), MemoryRecordModel.timestamp.asc())
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 same_key_versions = [_compact(row) for row in same_key_rows]
 
             fact_rows = (
-                await session.execute(
-                    select(SemanticFactModel)
-                    .where(
-                        SemanticFactModel.tenant_id == record.tenant_id,
-                        SemanticFactModel.evidence_ids.any(str(record.id)),
+                (
+                    await session.execute(
+                        select(SemanticFactModel)
+                        .where(
+                            SemanticFactModel.tenant_id == record.tenant_id,
+                            SemanticFactModel.evidence_ids.any(str(record.id)),
+                        )
+                        .order_by(SemanticFactModel.updated_at.desc())
+                        .limit(20)
                     )
-                    .order_by(SemanticFactModel.updated_at.desc())
-                    .limit(20)
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             evidence_facts = [
                 FactItem(
                     id=str(row.id),
@@ -292,13 +302,17 @@ async def dashboard_memory_lineage(
             ]
 
             recent_jobs = (
-                await session.execute(
-                    select(DashboardJobModel)
-                    .where(DashboardJobModel.tenant_id == record.tenant_id)
-                    .order_by(DashboardJobModel.started_at.desc())
-                    .limit(50)
+                (
+                    await session.execute(
+                        select(DashboardJobModel)
+                        .where(DashboardJobModel.tenant_id == record.tenant_id)
+                        .order_by(DashboardJobModel.started_at.desc())
+                        .limit(50)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         related_jobs = []
         lookup_terms = {str(record.id)}

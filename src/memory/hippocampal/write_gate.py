@@ -135,9 +135,7 @@ class WriteGate:
                 risk_flags.append("contains_pii")
         else:
             has_pii = (
-                precomputed_pii
-                if precomputed_pii is not None
-                else self._predict_pii(chunk.text)
+                precomputed_pii if precomputed_pii is not None else self._predict_pii(chunk.text)
             )
             if has_pii:
                 risk_flags.append("contains_pii")
@@ -364,16 +362,10 @@ class WriteGate:
         _has_novelty = getattr(self.modelpack, "has_task_model", None)
         if _has_novelty and _has_novelty("novelty_pair"):
             try:
-                mem_texts = [
-                    (mem.get("text") or "").strip() for mem in existing_memories
-                ]
-                valid_pairs = [
-                    (chunk.text, mt) for mt in mem_texts if mt
-                ]
+                mem_texts = [(mem.get("text") or "").strip() for mem in existing_memories]
+                valid_pairs = [(chunk.text, mt) for mt in mem_texts if mt]
                 if valid_pairs:
-                    predict_proba_batch = getattr(
-                        self.modelpack, "predict_pair_proba_batch", None
-                    )
+                    predict_proba_batch = getattr(self.modelpack, "predict_pair_proba_batch", None)
                     if callable(predict_proba_batch):
                         # Single sklearn call for all N memories — ~10ms vs Nx6ms
                         batch_results = predict_proba_batch("novelty_pair", valid_pairs)
@@ -494,9 +486,7 @@ class WriteGate:
                     for probs in batch_results[start:end]:
                         if probs is None:
                             continue
-                        pair_nov = float(probs.get("changed", 0.0)) + float(
-                            probs.get("novel", 0.0)
-                        )
+                        pair_nov = float(probs.get("changed", 0.0)) + float(probs.get("novel", 0.0))
                         min_nov = min(min_nov, max(0.0, min(1.0, pair_nov)))
                         if min_nov == 0.0:
                             break

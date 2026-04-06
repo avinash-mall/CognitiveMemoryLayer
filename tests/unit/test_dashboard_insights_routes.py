@@ -450,9 +450,7 @@ async def test_dashboard_ops_metrics_summarizes_registry_and_redis(
     ]
     family = SimpleNamespace(name="cml_dashboard_metrics", samples=samples)
     monkeypatch.setattr(insights_routes.REGISTRY, "collect", lambda: [family])
-    db, _ = make_db(
-        redis=RedisStub(info_value={"used_memory": 3 * 1024 * 1024}, db_size=9)
-    )
+    db, _ = make_db(redis=RedisStub(info_value={"used_memory": 3 * 1024 * 1024}, db_size=9))
 
     result = await insights_routes.dashboard_ops_metrics(auth=ADMIN_AUTH, db=db)
 
