@@ -1,5 +1,6 @@
 """FastAPI application factory and entry point."""
 
+import asyncio
 import pathlib
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text as sql_text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..core.config import get_settings, validate_embedding_dimensions
@@ -46,6 +48,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     db_manager = await DatabaseManager.create()
     app.state.db = db_manager
+
+    # Pre-warm the PostgreSQL connection pool so early requests don't pay
+    # the 150ms-per-connection cold-start cost under concurrent load.
+    async def _pg_ping() -> None:
+        async with db_manager.pg_session() as _s:
+            await _s.execute(sql_text("SELECT 1"))
+
+    await asyncio.gather(*[_pg_ping() for _ in range(20)])
 
     from ..memory.orchestrator import MemoryOrchestrator
 
@@ -118,7 +128,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    rpm = getattr(settings.auth, "rate_limit_requests_per_minute", 60)
+    rpm = getattr(settings.auth, "rate_limit_requests_per_minute", 0)
     if rpm > 0:
         app.add_middleware(RateLimitMiddleware, requests_per_minute=rpm)
     app.add_middleware(RequestLoggingMiddleware)

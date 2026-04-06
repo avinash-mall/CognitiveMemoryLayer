@@ -348,7 +348,7 @@ class TestBatchEmbeddings:
             _make_chunk("fact two"),
         ]
 
-        results, _gate, _unified = await store.encode_batch("tenant1", chunks)
+        results, _gate, _unified, _local = await store.encode_batch("tenant1", chunks)
         mock_embeddings.embed_batch.assert_called_once()
         assert len(results) == 2
 

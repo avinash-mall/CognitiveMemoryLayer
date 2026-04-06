@@ -7,22 +7,29 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from cml.eval.config import ensure_unified_eval_data, find_repo_root, load_repo_dotenv
 from cml.eval.types import LocomoEvalConfig
 
+requests: Any | None
+HTTPAdapter: type[Any] | None
+
 try:
     import requests as _requests
+    from requests.adapters import HTTPAdapter as _HTTPAdapter
 except ImportError:
-    requests: Any = None
+    requests = None
+    HTTPAdapter = None
 else:
     requests = _requests
+    HTTPAdapter = _HTTPAdapter
 
 try:
     from tqdm import tqdm
@@ -72,6 +79,24 @@ def _progress_write(msg: str) -> None:
 
 
 INGESTION_DELAY_SEC = 0.2
+
+# Shared HTTP session for connection reuse across threads
+_SESSION: Any = None
+
+
+def _get_session() -> Any:
+    """Return a shared requests.Session with connection pooling."""
+    global _SESSION
+    if _SESSION is None and requests is not None:
+        requests_lib = cast("Any", requests)
+        adapter_cls = cast("type[Any]", HTTPAdapter)
+        _SESSION = requests_lib.Session()
+        adapter = adapter_cls(pool_connections=100, pool_maxsize=200)
+        _SESSION.mount("http://", adapter)
+        _SESSION.mount("https://", adapter)
+    return _SESSION
+
+
 _CML_WRITE_MAX_429_ATTEMPTS = 15
 _CML_WRITE_BACKOFF_CAP_SEC = 65
 _CML_READ_MAX_429_ATTEMPTS = 15
@@ -264,6 +289,7 @@ def _cml_write(
     turn_id: str,
     timestamp: str | None = None,
 ) -> None:
+    requests_lib = cast("Any", requests)
     url = f"{base_url.rstrip('/')}/api/v1/memory/write"
     payload: dict = {
         "content": content,
@@ -279,7 +305,7 @@ def _cml_write(
     for retry in range(write_retries):
         for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
             try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=write_timeout)
+                resp = _get_session().post(url, json=payload, headers=headers, timeout=write_timeout)
                 if resp.status_code in [429, 500]:
                     if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
                         resp.raise_for_status()
@@ -288,7 +314,7 @@ def _cml_write(
                     continue
                 resp.raise_for_status()
                 return
-            except (requests.exceptions.ConnectionError, OSError):
+            except (requests_lib.exceptions.ConnectionError, OSError):
                 if retry < write_retries - 1:
                     time.sleep(5 * (retry + 1))
                     break
@@ -304,6 +330,7 @@ def _dashboard_post(
     backoff_cap_sec: int = 30,
 ) -> dict:
     """POST to a dashboard endpoint; raises on non-2xx. Used for consolidate and reconsolidate."""
+    requests_lib = cast("Any", requests)
     url = f"{base_url.rstrip('/')}/api/v1/dashboard{path}"
     headers = {
         "X-API-Key": api_key,
@@ -312,7 +339,7 @@ def _dashboard_post(
     }
     last_resp = None
     for attempt in range(max_attempts):
-        resp = requests.post(url, json=body, headers=headers, timeout=120)
+        resp = _get_session().post(url, json=body, headers=headers, timeout=120)
         last_resp = resp
         if resp.status_code == 429:
             if attempt == max_attempts - 1:
@@ -323,8 +350,8 @@ def _dashboard_post(
         resp.raise_for_status()
         return resp.json()
     if last_resp is not None:
-        raise requests.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
-    raise requests.exceptions.HTTPError("No attempts made (max_attempts=0)")
+        raise requests_lib.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
+    raise requests_lib.exceptions.HTTPError("No attempts made (max_attempts=0)")
 
 
 def _cml_read(
@@ -336,12 +363,13 @@ def _cml_read(
     return_full: bool = False,
 ) -> str | tuple[str, dict]:
     """Read memories from CML. If *return_full*, also return the raw JSON response."""
+    requests_lib = cast("Any", requests)
     url = f"{base_url.rstrip('/')}/api/v1/memory/read"
     payload = {"query": query, "format": "llm_context", "max_results": max_results}
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id}
     last_resp = None
     for attempt in range(_CML_READ_MAX_429_ATTEMPTS):
-        resp = requests.post(url, json=payload, headers=headers, timeout=60)
+        resp = _get_session().post(url, json=payload, headers=headers, timeout=60)
         last_resp = resp
         if resp.status_code == 429:
             if attempt == _CML_READ_MAX_429_ATTEMPTS - 1:
@@ -356,8 +384,8 @@ def _cml_read(
             return llm_context, data
         return llm_context
     if last_resp is not None:
-        raise requests.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
-    raise requests.exceptions.HTTPError("No attempts made")
+        raise requests_lib.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
+    raise requests_lib.exceptions.HTTPError("No attempts made")
 
 
 # Default OpenAI-compatible base URLs per provider (align with .env.example and src/utils/llm.py)
@@ -514,37 +542,69 @@ def phase_a_ingestion(
     cml_api_key: str,
     limit: int | None,
     ingestion_workers: int = 10,
+    checkpoint_file: Path | None = None,
 ) -> None:
     samples_to_ingest = samples[:limit] if limit else samples
+
+    # Load checkpoint — skip already-completed samples
+    completed: set[int] = set()
+    if checkpoint_file is not None and checkpoint_file.exists():
+        try:
+            data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+            completed = set(data.get("completed_indices", []))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    pending = [(i, s) for i, s in enumerate(samples_to_ingest) if i not in completed]
+
+    if not pending:
+        print("\n[Phase A] All samples already ingested (checkpoint). Skipping.", flush=True)
+        return
+
     # Apply per-turn delay only when single-threaded (rate limiting)
     ingestion_delay = INGESTION_DELAY_SEC if ingestion_workers == 1 else 0.0
+    checkpoint_lock = threading.Lock()
 
-    print(f"\n[Phase A] Parsing {len(samples_to_ingest)} samples to count turns...", flush=True)
-    total_turns = 0
-    for sample in samples_to_ingest:
-        input_prompt = sample.get("input_prompt", "")
-        turns = _parse_input_prompt_into_turns(input_prompt)
-        total_turns += len(turns)
+    def _save_checkpoint(idx: int) -> None:
+        if checkpoint_file is None:
+            return
+        with checkpoint_lock:
+            completed.add(idx)
+            try:
+                checkpoint_file.write_text(
+                    json.dumps({"completed_indices": sorted(completed)}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
 
+    total_turns = sum(
+        len(_parse_input_prompt_into_turns(s.get("input_prompt", ""))) for _, s in pending
+    )
+    skipped = len(samples_to_ingest) - len(pending)
+    skip_msg = f" ({skipped} already ingested)" if skipped else ""
     print(
-        f"\n[Phase A] Ingesting {len(samples_to_ingest)} samples ({total_turns} turns total) into CML ({ingestion_workers} workers)...",
+        f"\n[Phase A] Ingesting {len(pending)} samples ({total_turns} turns){skip_msg}"
+        f" into CML ({ingestion_workers} workers)...",
         flush=True,
     )
 
     with _tqdm(total=total_turns, desc="Ingestion", unit="turn", disable=False) as pbar:
         if ingestion_workers <= 1:
-            for i, sample in enumerate(samples_to_ingest):
+            for i, sample in pending:
                 _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay, pbar)
+                _save_checkpoint(i)
         else:
             with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
                 futures = {
                     executor.submit(
                         _ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay, pbar
                     ): i
-                    for i, sample in enumerate(samples_to_ingest)
+                    for i, sample in pending
                 }
                 for future in as_completed(futures):
                     future.result()  # Propagate any exception
+                    _save_checkpoint(futures[future])
 
 
 def phase_ab_consolidation(
@@ -552,25 +612,53 @@ def phase_ab_consolidation(
     cml_url: str,
     cml_api_key: str,
     limit: int | None,
+    checkpoint_file: Path | None = None,
 ) -> None:
     """Run consolidation then reconsolidation for each eval tenant (between Phase A and Phase B)."""
     samples_scope = samples[:limit] if limit else samples
     n = len(samples_scope)
     if n == 0:
         return
+
+    # Load checkpoint — skip already-consolidated tenants
+    completed_tenants: set[str] = set()
+    if checkpoint_file is not None and checkpoint_file.exists():
+        try:
+            data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+            completed_tenants = set(data.get("completed_tenants", []))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    pending_indices = [i for i in range(n) if f"lp-{i}" not in completed_tenants]
+    if not pending_indices:
+        print("\n[Phase A-B] All tenants already consolidated (checkpoint). Skipping.", flush=True)
+        return
+
+    skipped = n - len(pending_indices)
+    skip_msg = f" ({skipped} already done)" if skipped else ""
     print(
-        f"\n[Phase A-B] Consolidation and reconsolidation for {n} tenants...",
+        f"\n[Phase A-B] Consolidation and reconsolidation for {len(pending_indices)} tenants{skip_msg}...",
         flush=True,
     )
-    for i in _tqdm(range(n), desc="Phase A-B", unit="tenant", disable=False):
+    for i in _tqdm(pending_indices, desc="Phase A-B", unit="tenant", disable=False):
         tenant_id = f"lp-{i}"
         body = {"tenant_id": tenant_id, "user_id": None}
+        requests_lib = cast("Any", requests)
         try:
             _dashboard_post(cml_url, cml_api_key, "/consolidate", body)
             _dashboard_post(cml_url, cml_api_key, "/reconsolidate", body)
-        except requests.RequestException as e:
+        except requests_lib.RequestException as e:
             raise RuntimeError(f"Dashboard step failed for tenant {tenant_id}: {e}") from e
-    print(f"  Completed for {n} tenants.", flush=True)
+        if checkpoint_file is not None:
+            completed_tenants.add(tenant_id)
+            try:
+                checkpoint_file.write_text(
+                    json.dumps({"completed_tenants": sorted(completed_tenants)}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+    print(f"  Completed for {len(pending_indices)} tenants.", flush=True)
 
 
 def _count_memory_types(raw_response: dict) -> dict[str, int]:
@@ -859,10 +947,17 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
             config.cml_api_key,
             config.limit_samples,
             ingestion_workers=config.ingestion_workers,
+            checkpoint_file=out_dir / "locomo_ingestion_checkpoint.json",
         )
 
     if not config.skip_consolidation:
-        phase_ab_consolidation(samples, config.cml_url, config.cml_api_key, config.limit_samples)
+        phase_ab_consolidation(
+            samples,
+            config.cml_url,
+            config.cml_api_key,
+            config.limit_samples,
+            checkpoint_file=out_dir / "locomo_consolidation_checkpoint.json",
+        )
 
     records = phase_b_qa(
         samples,

@@ -645,13 +645,25 @@ class Neo4jGraphStore(GraphStoreBase):
 
 
 async def initialize_graph_schema(store: Neo4jGraphStore) -> None:
-    """Initialize Neo4j constraints and indexes."""
+    """Initialize Neo4j constraints and indexes.
+
+    Tries to create a unique constraint (best-case for correctness).
+    Falls back to a plain RANGE index if duplicates already exist.
+    """
     async with store.driver.session() as session:
-        await session.run("""
-            CREATE CONSTRAINT entity_unique IF NOT EXISTS
-            FOR (n:Entity)
-            REQUIRE (n.tenant_id, n.scope_id, n.entity) IS UNIQUE
-        """)
+        # Try unique constraint first; fall back to plain index if duplicates exist.
+        try:
+            await session.run("""
+                CREATE CONSTRAINT entity_unique IF NOT EXISTS
+                FOR (n:Entity)
+                REQUIRE (n.tenant_id, n.scope_id, n.entity) IS UNIQUE
+            """)
+        except Exception:
+            await session.run("""
+                CREATE INDEX entity_lookup IF NOT EXISTS
+                FOR (n:Entity)
+                ON (n.tenant_id, n.scope_id, n.entity)
+            """)
         await session.run("""
             CREATE INDEX entity_type_idx IF NOT EXISTS
             FOR (n:Entity)

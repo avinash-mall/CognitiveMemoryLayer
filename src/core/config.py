@@ -52,6 +52,7 @@ class EmbeddingInternalSettings(PydanticBaseModel):
     base_url: str | None = Field(default=None)
     local_batch_size: int = Field(default=8)
     device: Literal["auto", "cpu", "cuda"] = Field(default="auto")
+    batch_wait_ms: float = Field(default=10.0)  # Cross-request coalescing window in ms; 0 = disabled
 
 
 # LLM config: LLM_INTERNAL__* (internal tasks) and LLM_EVAL__* (evaluation QA/judge).
@@ -117,7 +118,7 @@ class AuthSettings(PydanticBaseModel):
     admin_api_key: str | None = Field(default=None)
     default_tenant_id: str = Field(default="default")
     rate_limit_requests_per_minute: int = Field(
-        default=60,
+        default=0,
         description="Rate limit per tenant (0 = disable). Use higher value for bulk eval (e.g. 600).",
     )
 

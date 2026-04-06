@@ -7,11 +7,12 @@ Fallback path:
 - spaCy NER for non-LLM mode.
 """
 
+import asyncio
 import json
 
 from ..core.schemas import EntityMention
 from ..utils.llm import LLMClient
-from ..utils.ner import extract_entities
+from ..utils.ner import _SPACY_EXECUTOR, extract_entities
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -58,7 +59,8 @@ class EntityExtractor:
         context: str | None = None,
     ) -> list[EntityMention]:
         if not self.llm:
-            return self._spacy_extract(text)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, text)
 
         prompt = ENTITY_EXTRACTION_PROMPT.format(text=text)
         if context:
@@ -78,7 +80,8 @@ class EntityExtractor:
                 if e.get("text")
             ]
         except (json.JSONDecodeError, KeyError, TypeError):
-            return self._spacy_extract(text)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, text)
 
     def _spacy_extract(self, text: str) -> list[EntityMention]:
         return [
@@ -102,7 +105,12 @@ class EntityExtractor:
         if not texts:
             return []
         if not self.llm:
-            return [self._spacy_extract(text) for text in texts]
+            loop = asyncio.get_running_loop()
+            return list(
+                await asyncio.gather(
+                    *[loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, t) for t in texts]
+                )
+            )
         if len(texts) == 1:
             return [await self.extract(texts[0])]
 
@@ -143,6 +151,4 @@ class EntityExtractor:
             return results
         except (json.JSONDecodeError, ValueError, KeyError, TypeError):
             # Fallback: individual calls (original behaviour)
-            import asyncio
-
             return list(await asyncio.gather(*[self.extract(t) for t in texts]))

@@ -296,6 +296,23 @@ def _reset_runtime_state(model: Any) -> Any:
     return model
 
 
+def _remap_model_dir(model: Any, models_dir: Path, task_name: str) -> None:
+    """Fix model_dir when the joblib was pickled with a different machine's absolute path.
+
+    The HFTokenSpanPredictor stores model_dir as an absolute path from training time.
+    If that path doesn't exist (e.g. container vs host), remap to the local equivalent:
+      {models_dir}/{task_name}_hf
+    """
+    if not hasattr(model, "model_dir"):
+        return
+    current = Path(str(getattr(model, "model_dir", "")))
+    if current.exists():
+        return  # already correct
+    candidate = models_dir / f"{task_name}_hf"
+    if candidate.exists():
+        model.model_dir = str(candidate)
+
+
 class ModelPackRuntime:
     """Loads trained models and serves task-level predictions.
 
@@ -468,6 +485,64 @@ class ModelPackRuntime:
                 filtered[pred_label] = float(prob)
         return filtered or None
 
+    def predict_pair_proba_batch(
+        self, task: str, pairs: list[tuple[str, str]]
+    ) -> list[dict[str, float] | None]:
+        """Batch variant of predict_pair_proba — one sklearn call for all pairs.
+
+        Returns a list the same length as `pairs`, with None for empty/invalid entries.
+        Replaces N x predict_pair_proba() calls (~6ms each) with a single
+        model.predict_proba(features) batch call (~10ms for N=10).
+        """
+        if not pairs:
+            return []
+
+        task_model = self._get_task_model(task)
+        if task_model is not None:
+            model = task_model
+        else:
+            family = _TASK_FAMILY.get(task)
+            if family != "pair" or _requires_dedicated_task_model(task):
+                return [None] * len(pairs)
+            model = self._get_family_model(family)
+            if model is None:
+                return [None] * len(pairs)
+
+        classes = self._classes(model)
+        if not classes or not hasattr(model, "predict_proba"):
+            return [None] * len(pairs)
+
+        features: list[str] = []
+        valid_indices: list[int] = []
+        for i, (text_a, text_b) in enumerate(pairs):
+            if text_a.strip() and text_b.strip():
+                features.append(
+                    f"task={task} [a] {text_a.strip()} [b] {text_b.strip()}"
+                )
+                valid_indices.append(i)
+
+        if not features:
+            return [None] * len(pairs)
+
+        try:
+            rows = model.predict_proba(features)
+        except Exception:
+            return [None] * len(pairs)
+
+        results: list[dict[str, float] | None] = [None] * len(pairs)
+        for batch_idx, orig_idx in enumerate(valid_indices):
+            row = rows[batch_idx]
+            filtered: dict[str, float] = {}
+            for class_idx, class_name in enumerate(classes):
+                pred_task, pred_label = _split_composite_label(class_name)
+                if pred_task == task and pred_label:
+                    try:
+                        filtered[pred_label] = float(row[class_idx])
+                    except Exception:
+                        continue
+            results[orig_idx] = filtered or None
+        return results
+
     def predict_score_pair(self, task: str, text_a: str, text_b: str) -> ScorePrediction | None:
         """Predict a relevance/ranking score for a text pair (ranking/regression tasks)."""
         if not text_a.strip() or not text_b.strip():
@@ -530,6 +605,43 @@ class ModelPackRuntime:
             return None
         except Exception:
             return None
+
+    def predict_spans_batch(self, task: str, texts: list[str]) -> list[SpanPrediction | None]:
+        """Predict labelled spans for a batch of texts in ONE GPU forward pass.
+
+        Equivalent to calling predict_spans() N times, but uses model.predict(texts)
+        to process all texts together — typically 10-15x faster than N individual calls.
+        """
+        if not texts:
+            return []
+        model = self._get_task_model(task)
+        if model is None:
+            return [None] * len(texts)
+        clean = [t.strip() for t in texts]
+        try:
+            results = model.predict(clean)
+            out: list[SpanPrediction | None] = []
+            for i, result in enumerate(results):
+                if not clean[i]:
+                    out.append(None)
+                    continue
+                if isinstance(result, (list, tuple)):
+                    spans = tuple(
+                        (int(s[0]), int(s[1]), str(s[2]))
+                        for s in result
+                        if isinstance(s, (list, tuple)) and len(s) >= 3
+                    )
+                    out.append(SpanPrediction(task=task, spans=spans))
+                else:
+                    out.append(SpanPrediction(task=task, spans=()))
+            return out
+        except ImportError as exc:
+            msg = f"task:{task}: {exc}"
+            if msg not in self._load_errors:
+                self._load_errors.append(msg)
+            return [None] * len(texts)
+        except Exception:
+            return [None] * len(texts)
 
     def has_task_model(self, task: str) -> bool:
         """Check whether a dedicated per-task model is available."""
@@ -604,7 +716,9 @@ class ModelPackRuntime:
                 if model is None:
                     self._load_errors.append(f"task:{task_name}: missing model key")
                     continue
-                self._task_models[task_name] = _reset_runtime_state(model)
+                model = _reset_runtime_state(model)
+                _remap_model_dir(model, self.models_dir, task_name)
+                self._task_models[task_name] = model
             except Exception as exc:
                 self._load_errors.append(f"task:{task_name}: {exc}")
 

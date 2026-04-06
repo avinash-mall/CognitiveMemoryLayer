@@ -59,7 +59,25 @@ Use the project root `.env` (copy from `.env.example` if needed).
 ### 2.2. Authentication
 
 - `AUTH__API_KEY=test-key` (match `CML_API_KEY` when running the eval script)
-- **`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE`**: Default 60 can cause 429 during bulk ingestion. Set to 600 or higher (e.g. 10000 for heavy bulk). Value is read from `.env`. Rebuild/restart the API after changing.
+- **`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE`**: Defaults to `0` (disabled). Keep it at `0` for local eval runs to avoid 429 backoff during bulk ingestion. Restart the API after changing it.
+
+### 2.2a. Performance tuning (recommended for bulk eval)
+
+The default server settings are tuned for normal usage, not bulk ingestion. For evaluation runs with many `--ingestion-workers`, add these to your `.env`:
+
+```bash
+AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0     # Disable rate limiting (biggest single speedup)
+EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE=64    # Larger GPU batches (default 8)
+UVICORN_WORKERS=4                          # Multiple server processes (default 1)
+```
+
+When running outside Docker, pass `--workers` to uvicorn:
+
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+With Docker, `UVICORN_WORKERS` is picked up automatically from `.env`. Each worker loads its own embedding model — reduce if GPU OOM occurs.
 
 ### 2.3. Embeddings (Ollama)
 
@@ -221,7 +239,8 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 
 | Issue | Action |
 |-------|--------|
-| **429 Too Many Requests** | Set `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` in `.env` to 600 or higher, restart API. |
+| **429 Too Many Requests** | Set `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0` in `.env` to disable rate limiting, restart API. |
+| **Low throughput / idle GPU** | Set `EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE=64`, `UVICORN_WORKERS=4`, and `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0` in `.env`. See Section 2.2a. |
 | **Embedding dimension mismatch** | Set `EMBEDDING_INTERNAL__DIMENSIONS` correctly, then run Section 3 again. |
 | **Judge fails (no OPENAI_API_KEY)** | Set `OPENAI_API_KEY` or `OPENAI_BASE_URL`. |
 | **CML API not reachable** | Use `CML_BASE_URL=http://localhost:8000` (or correct host). |
@@ -237,7 +256,7 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 - [ ] `EMBEDDING_INTERNAL__DIMENSIONS` set in `.env` to match your embedding model (e.g. 1024, 768)
 - [ ] `evaluation/locomo_plus/data/unified_input_samples_v2.json` exists
 - [ ] Python deps: `requests`, `tqdm`; `OPENAI_API_KEY` set
-- [ ] `.env`: DB, `AUTH__API_KEY`, `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE` set for bulk ingestion, `EMBEDDING_INTERNAL__*`, `LLM_EVAL__*` (optionally `LLM_INTERNAL__*` for faster ingestion)
+- [ ] `.env`: DB, `AUTH__API_KEY`, `AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0`, `EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE=64`, `UVICORN_WORKERS=4`, `EMBEDDING_INTERNAL__*`, `LLM_EVAL__*` (optionally `LLM_INTERNAL__*` for faster ingestion)
 - [ ] `docker compose -f docker/docker-compose.yml down -v`
 - [ ] `docker compose -f docker/docker-compose.yml up -d --build postgres neo4j redis api`
 - [ ] `curl -s http://localhost:8000/api/v1/health` OK
@@ -248,4 +267,3 @@ The table shows: Method | single-hop | multi-hop | temporal | commonsense | adve
 ## 9. Interpretation
 
 The table shows judge scores (0–100%) per category. **Average** is the mean of the five factual categories (LoCoMo). **LoCoMo-Plus** is the Cognitive score. **Gap** = Average − LoCoMo-Plus (positive = factual memory outperforms cognitive memory on this run).
-

@@ -21,9 +21,9 @@ Usage:
   python scripts/test_memory_quality.py --skip-ingestion --tenant <tenant-id>
   python scripts/test_memory_quality.py --verbose           # per-probe details
 
-Note: The CML API enforces per-tenant rate limiting (default: 60 req/min).
-For faster runs, set AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=600 in .env or
-pass a higher value when starting the API server.
+Note: Per-tenant rate limiting is disabled by default (`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0`).
+If you set a positive rate limit in `.env`, this script will automatically
+space requests to match it.
 """
 
 from __future__ import annotations
@@ -79,6 +79,17 @@ DEFAULT_RESULTS_PATH = (
 LEGACY_RESULTS_PATH = Path(__file__).resolve().with_name("quality_test_results.json")
 RESULTS_PATH = DEFAULT_RESULTS_PATH
 JUDGE_CONTEXT_LIMIT = 2000
+
+
+def _request_delay_seconds() -> float:
+    try:
+        rpm = int(os.environ.get("AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE", "0") or 0)
+    except ValueError:
+        return 0.0
+    return 60.0 / rpm if rpm > 0 else 0.0
+
+
+REQUEST_DELAY_SECONDS = _request_delay_seconds()
 
 # ---------------------------------------------------------------------------
 # Self-contained test corpus
@@ -675,7 +686,8 @@ def ingest_corpus() -> tuple[int, float]:
         except Exception as e:
             status = f"ERR: {e}"
         print(f"  [{i + 1:3d}/{len(CORPUS)}] {status:6s} | {content[:70]}...")
-        time.sleep(1.2)  # respect per-tenant rate limit (default: 60 req/min)
+        if REQUEST_DELAY_SECONDS > 0:
+            time.sleep(REQUEST_DELAY_SECONDS)
 
     elapsed = time.perf_counter() - t0
     print(f"\n  Ingested {success}/{len(CORPUS)} memories in {elapsed:.1f}s")
@@ -758,7 +770,8 @@ def run_probes(verbose: bool = False) -> list[ProbeResult]:
                     print(f"         Missing: {group}")
             print(f"         Retrieved: {combined[:200]}...")
             print()
-        time.sleep(1.2)  # respect rate limit
+        if REQUEST_DELAY_SECONDS > 0:
+            time.sleep(REQUEST_DELAY_SECONDS)
 
     return results
 

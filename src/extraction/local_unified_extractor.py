@@ -56,18 +56,23 @@ class LocalUnifiedWriteExtractor:
             or getattr(self.modelpack, "has_task_model", lambda _: False)("pii_span_detection")
         )
 
-    async def extract(self, text: str, *, context: str = "") -> dict:
-        """Run local extraction pipeline and return structured result.
+    def _sync_impl(
+        self,
+        text: str,
+        *,
+        precomputed_spans=None,
+        skip_pii: bool = False,
+        skip_slow_router: bool = False,
+    ) -> dict:
+        """Pure synchronous extraction — no asyncio overhead. Safe to call from executor threads.
 
-        Returns a dict compatible with the UnifiedWritePathExtractor output:
-        {
-            "facts": [ExtractedFact, ...],
-            "importance": float,
-            "pii_spans": [...],
-            "memory_type": str | None,
-            "constraints": [...],
-            "source": "local_unified",
-        }
+        If precomputed_spans is provided (a SpanPrediction from predict_spans_batch),
+        the fact_extraction_structured model call is skipped entirely.
+        If skip_pii is True, the pii_span_detection DeBERTa call is skipped (use this
+        in the encode_batch hot path where pii_spans are not consumed).
+        If skip_slow_router is True, the context_tag TransformerTextClassifier call is
+        skipped — it was non-functional (path mismatch) in prior container builds and
+        is not needed for encode_batch QA accuracy.
         """
         result: dict = {
             "facts": [],
@@ -81,13 +86,17 @@ class LocalUnifiedWriteExtractor:
             "source": "local_unified",
         }
 
-        # Fact extraction
+        # Fact extraction — use pre-computed spans when available (avoids a duplicate GPU call)
         try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)(
+            if precomputed_spans is not None:
+                spans_pred = precomputed_spans
+            elif getattr(self.modelpack, "has_task_model", lambda _: False)(
                 "fact_extraction_structured"
             ):
                 spans_pred = self.modelpack.predict_spans("fact_extraction_structured", text)
-                if spans_pred is not None and spans_pred.spans:
+            else:
+                spans_pred = None
+            if spans_pred is not None and spans_pred.spans:
                     records = build_structured_fact_records(
                         text,
                         spans_pred,
@@ -121,16 +130,17 @@ class LocalUnifiedWriteExtractor:
         except Exception as exc:
             logger.debug("local_importance_failed", extra={"error": str(exc)})
 
-        # PII span detection
-        try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)("pii_span_detection"):
-                pii_pred = self.modelpack.predict_spans("pii_span_detection", text)
-                if pii_pred is not None and pii_pred.spans:
-                    result["pii_spans"] = [
-                        {"start": s[0], "end": s[1], "label": s[2]} for s in pii_pred.spans
-                    ]
-        except Exception as exc:
-            logger.debug("local_pii_detection_failed", extra={"error": str(exc)})
+        # PII span detection — skip when caller signals pii_spans are not needed (batch hot path)
+        if not skip_pii:
+            try:
+                if getattr(self.modelpack, "has_task_model", lambda _: False)("pii_span_detection"):
+                    pii_pred = self.modelpack.predict_spans("pii_span_detection", text)
+                    if pii_pred is not None and pii_pred.spans:
+                        result["pii_spans"] = [
+                            {"start": s[0], "end": s[1], "label": s[2]} for s in pii_pred.spans
+                        ]
+            except Exception as exc:
+                logger.debug("local_pii_detection_failed", extra={"error": str(exc)})
 
         # Memory type from router model (if available)
         try:
@@ -141,13 +151,15 @@ class LocalUnifiedWriteExtractor:
             pass
 
         # Context tag from router (single label -> list)
-        try:
-            if getattr(self.modelpack, "available", False):
-                ct_pred = self.modelpack.predict_single("context_tag", text)
-                if ct_pred is not None and ct_pred.label and ct_pred.label.strip():
-                    result["context_tags"] = [ct_pred.label.strip()]
-        except Exception as exc:
-            logger.debug("local_context_tag_failed", extra={"error": str(exc)})
+        # Skip in batch hot path: TransformerTextClassifier is ~54ms and blocks event loop.
+        if not skip_slow_router:
+            try:
+                if getattr(self.modelpack, "available", False):
+                    ct_pred = self.modelpack.predict_single("context_tag", text)
+                    if ct_pred is not None and ct_pred.label and ct_pred.label.strip():
+                        result["context_tags"] = [ct_pred.label.strip()]
+            except Exception as exc:
+                logger.debug("local_context_tag_failed", extra={"error": str(exc)})
 
         # Confidence from router confidence_bin
         try:
@@ -176,3 +188,55 @@ class LocalUnifiedWriteExtractor:
             logger.debug("local_decay_profile_failed", extra={"error": str(exc)})
 
         return result
+
+    async def extract(
+        self,
+        text: str,
+        *,
+        context: str = "",
+        precomputed_spans=None,
+        skip_pii: bool = False,
+        skip_slow_router: bool = False,
+    ) -> dict:
+        """Run local extraction pipeline and return structured result.
+
+        Returns a dict compatible with the UnifiedWritePathExtractor output:
+        {
+            "facts": [ExtractedFact, ...],
+            "importance": float,
+            "pii_spans": [...],
+            "memory_type": str | None,
+            "constraints": [...],
+            "source": "local_unified",
+        }
+        If precomputed_spans is provided, skips the fact_extraction_structured GPU call.
+        If skip_pii is True, skips pii_span_detection (use in hot-path batch context).
+        If skip_slow_router is True, skips context_tag (54ms TransformerTextClassifier).
+        """
+        return self._sync_impl(
+            text,
+            precomputed_spans=precomputed_spans,
+            skip_pii=skip_pii,
+            skip_slow_router=skip_slow_router,
+        )
+
+    def extract_sync_direct(
+        self,
+        text: str,
+        *,
+        context: str = "",
+        precomputed_spans=None,
+        skip_pii: bool = False,
+        skip_slow_router: bool = False,
+    ) -> dict:
+        """Synchronous extraction without asyncio overhead — for use with run_in_executor."""
+        return self._sync_impl(
+            text,
+            precomputed_spans=precomputed_spans,
+            skip_pii=skip_pii,
+            skip_slow_router=skip_slow_router,
+        )
+
+    def extract_sync(self, text: str, *, context: str = "") -> dict:
+        """Synchronous wrapper for use with run_in_executor (called from worker threads)."""
+        return self._sync_impl(text)

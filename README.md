@@ -413,29 +413,30 @@ Full details: [packages/models/README.md](packages/models/README.md) &#8226; SDK
 ## Quick Start
 
 ```bash
-# 1. Install server/runtime deps (editable monorepo install)
-pip install -e ".[server,dev]"
+# 1. Clone and configure
+git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
+cd CognitiveMemoryLayer
+cp .env.minimal .env          # minimal config — works out of the box
 
-# 2. Configure
-cp .env.example .env   # Set DATABASE__POSTGRES_URL and AUTH__API_KEY
+# 2. Start everything (GPU auto-detected)
+./docker/up.sh up -d api
 
-# 3. Start infrastructure
-docker compose -f docker/docker-compose.yml up -d postgres neo4j redis
-
-# 4. Migrate and run
-alembic upgrade head
-uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+# 3. Verify
+curl http://localhost:8000/api/v1/health
+# {"status":"healthy", ...}
 ```
 
-For an SDK-only editable install, `pip install -e .` is enough; the API server/database stack lives in the `server` extra.
+`./docker/up.sh` wraps `docker compose` and automatically applies the GPU override when `nvidia-smi` is available. The `api` service starts Postgres, Neo4j, Redis, runs migrations, and serves the API — all in one command. Models are downloaded from HuggingFace Hub automatically on first start.
 
 <details>
-<summary><strong>Docker one-liner</strong></summary>
+<summary><strong>Python SDK (no Docker)</strong></summary>
 
 ```bash
-# GPU auto-detected (requires nvidia-smi on PATH for GPU hosts)
-# Models are auto-downloaded from HuggingFace Hub on first start
-./docker/up.sh up -d api
+pip install -e ".[server,dev]"
+cp .env.minimal .env
+./docker/up.sh up -d postgres neo4j redis
+alembic upgrade head
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 </details>
@@ -560,102 +561,103 @@ huggingface-cli download avinashm/CognitiveMemoryLayer-models \
 
 ### Step 4 — Configure the Environment
 
+**Minimal (recommended to get started):**
+
+```bash
+cp .env.minimal .env
+```
+
+`.env.minimal` works out of the box — it uses local GPU embeddings, connects to the Docker-managed Postgres/Neo4j/Redis, and requires no external API keys. Edit it only if you want to enable LLM-assisted extraction or change the default models.
+
+**Full config** (for production or custom setups):
+
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in the required values:
+Key variables to fill in:
 
 ```dotenv
 # ── Required ──────────────────────────────────────────────────
 DATABASE__POSTGRES_URL=postgresql+asyncpg://cml:cml@localhost:5432/cml
-DATABASE__NEO4J_URI=bolt://localhost:7687
-DATABASE__NEO4J_USER=neo4j
-DATABASE__NEO4J_PASSWORD=your-neo4j-password
-DATABASE__REDIS_URL=redis://localhost:6379/0
-
 AUTH__API_KEY=your-api-key-here          # used by clients
 AUTH__ADMIN_API_KEY=your-admin-key-here  # dashboard + admin routes
 
 # ── Optional (enables LLM-assisted extraction) ─────────────────
-LLM__PROVIDER=anthropic
-LLM__API_KEY=sk-ant-...
-LLM__MODEL=claude-haiku-4-5-20251001
+LLM_INTERNAL__PROVIDER=openai_compatible
+LLM_INTERNAL__BASE_URL=http://localhost:8001/v1
+LLM_INTERNAL__MODEL=your-model-name
 
 # ── Optional (Hugging Face token for private model downloads) ──
 HF_TOKEN=hf_...
 ```
 
-A minimal working config (no LLM, SQLite embedded mode) is in `.env.minimal`.
-
 ---
 
-### Step 5 — Start Infrastructure
+### Step 5 — Start All Services
 
 ```bash
-# Auto-detects GPU (NVIDIA) and applies the right compose config
-./docker/up.sh up -d postgres neo4j redis
-
-# Wait for Postgres to be ready, then run migrations
-alembic upgrade head
+# Starts Postgres, Neo4j, Redis, runs migrations, and serves the API.
+# GPU is auto-detected via nvidia-smi — no flags needed on GPU hosts.
+./docker/up.sh up -d api
 ```
 
-`docker/up.sh` wraps `docker compose` and automatically adds the GPU override when `nvidia-smi` is available. You can override detection with `GPU=1 ./docker/up.sh ...` or `GPU=0 ./docker/up.sh ...`.
+That single command is all you need. `docker/up.sh` wraps `docker compose` and automatically adds `-f docker/docker-compose.gpu.yml` when `nvidia-smi` is available on the host, giving the API container access to the GPU for local embeddings. You can override detection with `GPU=1 ./docker/up.sh ...` (force GPU) or `GPU=0 ./docker/up.sh ...` (force CPU-only).
 
-Verify all services are up:
+Verify all services are running:
 
 ```bash
 ./docker/up.sh ps
 ```
 
----
-
-### Step 6 — Start the Server
+<details>
+<summary><strong>Infrastructure only (run the server outside Docker)</strong></summary>
 
 ```bash
+# Start only Postgres, Neo4j, Redis
+./docker/up.sh up -d postgres neo4j redis
+
+# Run migrations and start the server locally
+alembic upgrade head
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or with the full stack via Docker (GPU auto-detected, models auto-downloaded):
-
-```bash
-./docker/up.sh up -d api
-```
+</details>
 
 ---
 
-### Step 7 — Verify It Works
+### Step 6 — Verify It Works
 
 **Health check:**
 
 ```bash
-curl http://localhost:8000/health
-# {"status":"ok","version":"1.5.0"}
+curl http://localhost:8000/api/v1/health
+# {"status":"healthy", ...}
 ```
 
 **Write and read a memory:**
 
 ```bash
 # Write
-curl -X POST http://localhost:8000/memory/write \
-  -H "Authorization: Bearer your-api-key-here" \
+curl -X POST http://localhost:8000/api/v1/memory/write \
+  -H "Authorization: Bearer test-key" \
   -H "Content-Type: application/json" \
   -d '{"content": "I never eat shellfish — severe allergy.", "tenant_id": "demo"}'
 
 # Read
-curl -X POST http://localhost:8000/memory/read \
-  -H "Authorization: Bearer your-api-key-here" \
+curl -X POST http://localhost:8000/api/v1/memory/read \
+  -H "Authorization: Bearer test-key" \
   -H "Content-Type: application/json" \
   -d '{"query": "Recommend a restaurant for tonight", "tenant_id": "demo"}'
 ```
 
-**Admin dashboard:** open [http://localhost:8000/dashboard/](http://localhost:8000/dashboard/) and authenticate with `AUTH__ADMIN_API_KEY`.
+**Admin dashboard:** open [http://localhost:8000/dashboard/](http://localhost:8000/dashboard/) and authenticate with `AUTH__ADMIN_API_KEY` (default `test-key` from `.env.minimal`).
 
 **ModelPack status:** the dashboard's **Components** tab shows which trained models loaded successfully. All 13 task models should appear as `loaded`.
 
 ---
 
-### Step 8 — Run the Test Suite
+### Step 7 — Run the Test Suite
 
 ```bash
 pytest tests/unit -v --tb=short        # 812 unit tests   (~60s)
@@ -724,24 +726,37 @@ Details: [tests/README.md](tests/README.md)
 
 ## Admin Dashboard
 
-CML ships a built-in admin dashboard at `/dashboard/`. It provides real-time observability and management across all subsystems:
+CML ships a built-in admin dashboard at **[http://localhost:8000/dashboard/](http://localhost:8000/dashboard/)** (or your configured host/port). It provides real-time observability and management across all subsystems with no external dependencies &mdash; a vanilla JS single-page application served by the API itself.
+
+### Pages
 
 | Page | What It Shows |
 | :--- | :--- |
 | **Overview** | KPI cards (memories, facts, events, tenants), request sparkline, reconsolidation queue status |
 | **Tenants** | Per-tenant memory/fact/event counts, last activity, quick-link filters |
 | **Sessions** | Active Redis sessions with TTL, memory counts per session |
-| **Memory Explorer** | Searchable memory list with bulk actions, JSON export, detail view with lineage chain |
-| **Facts Explorer** | Semantic facts with category/tenant filters, current-only toggle, inline invalidation |
+| **Memory Explorer** | Searchable memory list with bulk actions (archive, silence, delete), JSON export, inline write panel, detail view with lineage chain |
+| **Facts Explorer** | Semantic facts with category/tenant filters, current-only toggle, inline invalidation, JSON export |
 | **Knowledge Graph** | Interactive neovis.js graph with entity search, depth control, edge labels |
-| **Events** | Event log with type/tenant filters |
+| **Events** | Event log with type/operation/tenant filters, auto-refresh, JSON export |
 | **API Usage** | Rate-limit buckets, hourly request volume chart |
-| **Components** | Service health, custom model (ModelPack) status with family/task model details |
+| **Components** | PostgreSQL, Neo4j, Redis health with latency; Embedding model info (provider, model, dimensions, batch size); Server info (version, Python, workers); ModelPack status |
 | **Retrieval Test** | Interactive query tool with scored results, supersession badges, lineage links |
-| **Configuration** | Read-only config snapshot with inline editing for safe settings |
+| **Configuration** | Live config viewer with inline editing for safe settings (embedding batch size, rate limits, retrieval tuning, feature flags) |
 | **Management** | Consolidation, forgetting, reconsolidation triggers with job history |
 
-The dashboard requires admin authentication (`AUTH__ADMIN_API_KEY`). State-changing requests require a CSRF header (`X-Requested-With: XMLHttpRequest`). See [Usage Documentation](ProjectPlan/UsageDocumentation.md) for full API details.
+### Key Features
+
+- **Memory write from UI** &mdash; collapsible panel on Memory Explorer to write memories with content, session ID, namespace, memory type, and metadata fields
+- **Export** &mdash; one-click JSON export for memories, events, and semantic facts (with optional tenant filter)
+- **Infrastructure visibility** &mdash; Components page shows embedding model config (provider, model, dimensions, batch size, device) and server info (CML version, Python version, uvicorn workers) alongside database health
+- **Live config editing** &mdash; edit embedding batch size, rate limits, retrieval parameters, and feature flags directly from the dashboard (changes persist to `.env`)
+
+### Authentication
+
+The dashboard requires admin authentication via `AUTH__ADMIN_API_KEY`. Enter the key on first visit; it is stored in browser localStorage. State-changing requests require a CSRF header (`X-Requested-With: XMLHttpRequest`), which the dashboard sends automatically.
+
+See [Usage Documentation](ProjectPlan/UsageDocumentation.md) for full API details.
 
 ---
 

@@ -157,6 +157,13 @@ class MemoryOrchestrator:
         fact_store = SemanticFactStore(db_manager.pg_session)
         neocortical = NeocorticalStore(graph_store, fact_store)
 
+        from ..storage.neo4j import initialize_graph_schema
+
+        try:
+            await initialize_graph_schema(graph_store)
+        except Exception as exc:
+            logger.warning("neo4j_schema_init_failed", extra={"error": str(exc)})
+
         short_term_config = ShortTermMemoryConfig()
         short_term = ShortTermMemory(config=short_term_config)
         entity_extractor: EntityExtractor | None = EntityExtractor(
@@ -354,9 +361,14 @@ class MemoryOrchestrator:
         eval_mode: bool = False,
     ) -> dict[str, Any]:
         """Write new information to memory. Holistic: tenant-only."""
+        import time as _time
+        _t0 = _time.perf_counter()
+
         chunks_for_encoding = await self._phase_ingest(
             tenant_id, content, session_id, turn_id, timestamp
         )
+        _t_ingest = _time.perf_counter()
+
         if not chunks_for_encoding:
             return self._empty_write_response(eval_mode)
 
@@ -388,10 +400,14 @@ class MemoryOrchestrator:
             has_unified_extractor=getattr(self.hippocampal, "unified_extractor", None) is not None,
         )
         unified_results = await self._phase_unified_extraction(chunks_for_encoding, wpc)
+        _t_unified = _time.perf_counter()
+
         await self._phase_deactivate_constraints(
             tenant_id, chunks_for_encoding, unified_results, wpc
         )
-        stored, gate_results, unified_results = await self._phase_encode_and_store(
+        _t_deactivate = _time.perf_counter()
+
+        stored, gate_results, unified_results, local_results = await self._phase_encode_and_store(
             tenant_id=tenant_id,
             chunks=chunks_for_encoding,
             context_tags=context_tags,
@@ -404,20 +420,43 @@ class MemoryOrchestrator:
             eval_mode=eval_mode,
             unified_results=unified_results,
         )
+        _t_encode = _time.perf_counter()
+
         graph_task = None
         if stored:
             graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
-        await self._phase_write_time_facts(
+        _facts_coro = self._phase_write_time_facts(
+            tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc,
+            local_results=local_results,
+        )
+        _constraints_coro = self._phase_write_constraints(
             tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
         )
-        await self._phase_write_constraints(
-            tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
-        )
+        await asyncio.gather(_facts_coro, _constraints_coro)
+        _t_facts = _time.perf_counter()
+        _t_constraints = _t_facts
+
         if graph_task is not None and not graph_task.done():
             try:
                 await asyncio.wait_for(graph_task, timeout=2.0)
             except (TimeoutError, Exception):
                 pass
+        _t_graph = _time.perf_counter()
+
+        logger.info(
+            "write_phase_timing",
+            extra={
+                "tenant_id": tenant_id,
+                "ingest_ms": round((_t_ingest - _t0) * 1000, 1),
+                "unified_ms": round((_t_unified - _t_ingest) * 1000, 1),
+                "deactivate_ms": round((_t_deactivate - _t_unified) * 1000, 1),
+                "encode_ms": round((_t_encode - _t_deactivate) * 1000, 1),
+                "facts_ms": round((_t_facts - _t_encode) * 1000, 1),
+                "constraints_ms": round((_t_constraints - _t_facts) * 1000, 1),
+                "graph_ms": round((_t_graph - _t_constraints) * 1000, 1),
+                "total_ms": round((_t_graph - _t0) * 1000, 1),
+            },
+        )
         return self._build_write_response(stored, gate_results, eval_mode)
 
     async def _phase_ingest(
@@ -544,7 +583,7 @@ class MemoryOrchestrator:
         memory_type_override: Any,
         eval_mode: bool,
         unified_results: list | None,
-    ) -> tuple[list, list, list | None]:
+    ) -> tuple[list, list, list | None, list]:
         """Encode chunks and store in hippocampal vector store."""
         result = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
@@ -569,9 +608,15 @@ class MemoryOrchestrator:
         unified_results: list | None,
         timestamp: datetime | None,
         wpc: WritePathConfig,
+        local_results: list | None = None,
     ) -> None:
         """Write-time fact extraction: populate semantic store immediately."""
         if not wpc.write_time_facts or not chunks:
+            return
+        # Skip when the write gate rejected all chunks (stored=[]).
+        # If novelty was too low, facts from this content were already extracted
+        # when the original memory was stored — re-extracting is redundant.
+        if not stored:
             return
         try:
             fallback_evidence = [str(stored[0].id)] if stored else []
@@ -607,21 +652,31 @@ class MemoryOrchestrator:
                     evidence = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence
                     fact_map: dict[tuple[str, str], Any] = {}
 
-                    local_extractor = getattr(self.hippocampal, "local_extractor", None)
-                    if local_extractor and getattr(local_extractor, "available", False):
-                        try:
-                            local_result = await local_extractor.extract(getattr(chunk, "text", ""))
-                        except Exception:
-                            local_result = None
-                        local_facts = (
-                            list(local_result.get("facts", []))
-                            if isinstance(local_result, dict)
-                            else []
-                        )
-                        for fact in local_facts:
-                            key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))
-                            if key[0] and key[1]:
-                                fact_map[key] = fact
+                    # Use pre-computed local results from Phase 3.5 when available,
+                    # to avoid re-running the local extractor (saves ~10ms per chunk).
+                    local_result = (
+                        local_results[idx]
+                        if local_results and idx < len(local_results)
+                        else None
+                    )
+                    if local_result is None:
+                        local_extractor = getattr(self.hippocampal, "local_extractor", None)
+                        if local_extractor and getattr(local_extractor, "available", False):
+                            try:
+                                local_result = await local_extractor.extract(
+                                    getattr(chunk, "text", "")
+                                )
+                            except Exception:
+                                local_result = None
+                    local_facts = (
+                        list(local_result.get("facts", []))
+                        if isinstance(local_result, dict)
+                        else []
+                    )
+                    for fact in local_facts:
+                        key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))
+                        if key[0] and key[1]:
+                            fact_map[key] = fact
 
                     for fact in extractor.extract(chunk):
                         key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))
@@ -643,6 +698,10 @@ class MemoryOrchestrator:
     ) -> None:
         """Write-time constraint extraction: store constraints as semantic facts."""
         if not wpc.constraint_extraction or not chunks:
+            return
+        # Skip when all chunks were gate-rejected — constraints were already stored
+        # when the original (novel) content was written.
+        if not stored:
             return
         try:
             from ..extraction.constraint_extractor import ConstraintExtractor

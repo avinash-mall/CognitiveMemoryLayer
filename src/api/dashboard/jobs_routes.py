@@ -37,6 +37,25 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def _job_item(job: DashboardJobModel) -> DashboardJobItem:
+    duration = None
+    if job.started_at and job.completed_at:
+        duration = round((job.completed_at - job.started_at).total_seconds(), 2)
+    return DashboardJobItem(
+        id=cast("UUID", job.id),
+        job_type=cast("str", job.job_type),
+        tenant_id=cast("str", job.tenant_id),
+        user_id=cast("str | None", job.user_id),
+        dry_run=cast("bool", job.dry_run or False),
+        status=cast("str", job.status),
+        result=cast("dict[str, Any] | None", job.result),
+        error=cast("str | None", job.error),
+        started_at=cast("datetime | None", job.started_at),
+        completed_at=cast("datetime | None", job.completed_at),
+        duration_seconds=duration,
+    )
+
+
 @router.get("/labile", response_model=DashboardLabileResponse)
 async def dashboard_labile(
     tenant_id: str | None = Query(None),
@@ -197,30 +216,87 @@ async def dashboard_jobs(
                 q = q.where(f)
             rows = (await session.execute(q)).scalars().all()
 
-            items = []
-            for j in rows:
-                duration = None
-                if j.started_at and j.completed_at:
-                    duration = round((j.completed_at - j.started_at).total_seconds(), 2)
-                items.append(
-                    DashboardJobItem(
-                        id=cast("UUID", j.id),
-                        job_type=cast("str", j.job_type),
-                        tenant_id=cast("str", j.tenant_id),
-                        user_id=cast("str | None", j.user_id),
-                        dry_run=cast("bool", j.dry_run or False),
-                        status=cast("str", j.status),
-                        result=cast("dict[str, Any] | None", j.result),
-                        error=cast("str | None", j.error),
-                        started_at=cast("datetime | None", j.started_at),
-                        completed_at=cast("datetime | None", j.completed_at),
-                        duration_seconds=duration,
-                    )
-                )
-            return DashboardJobsResponse(items=items, total=total)
+            return DashboardJobsResponse(items=[_job_item(j) for j in rows], total=total)
     except Exception as e:
         logger.error("dashboard_jobs_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/jobs/{job_id}", response_model=DashboardJobItem)
+async def dashboard_job_detail(
+    job_id: UUID,
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """Get one tracked dashboard job with its persisted artifacts."""
+    _ = auth
+    try:
+        async with db.pg_session() as session:
+            job = (
+                await session.execute(select(DashboardJobModel).where(DashboardJobModel.id == job_id))
+            ).scalar_one_or_none()
+            if job is None:
+                raise HTTPException(status_code=404, detail="Job not found")
+            return _job_item(job)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("dashboard_job_detail_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/consolidation/runs", response_model=DashboardJobsResponse)
+async def dashboard_consolidation_runs(
+    tenant_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """List consolidation runs."""
+    return await dashboard_jobs(
+        tenant_id=tenant_id,
+        job_type="consolidate",
+        limit=limit,
+        auth=auth,
+        db=db,
+    )
+
+
+@router.get("/consolidation/runs/{job_id}", response_model=DashboardJobItem)
+async def dashboard_consolidation_run_detail(
+    job_id: UUID,
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """Alias for consolidation job detail."""
+    return await dashboard_job_detail(job_id=job_id, auth=auth, db=db)
+
+
+@router.get("/reconsolidation/runs", response_model=DashboardJobsResponse)
+async def dashboard_reconsolidation_runs(
+    tenant_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """List reconsolidation runs."""
+    return await dashboard_jobs(
+        tenant_id=tenant_id,
+        job_type="reconsolidate",
+        limit=limit,
+        auth=auth,
+        db=db,
+    )
+
+
+@router.get("/reconsolidation/runs/{job_id}", response_model=DashboardJobItem)
+async def dashboard_reconsolidation_run_detail(
+    job_id: UUID,
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """Alias for reconsolidation job detail."""
+    return await dashboard_job_detail(job_id=job_id, auth=auth, db=db)
 
 
 @router.post("/consolidate")
@@ -258,6 +334,7 @@ async def dashboard_consolidate(
             tenant_id=body.tenant_id,
             user_id=user_id,
         )
+        migration = getattr(report, "migration", None)
         result_data = {
             "status": "completed",
             "tenant_id": body.tenant_id,
@@ -265,7 +342,21 @@ async def dashboard_consolidate(
             "episodes_sampled": report.episodes_sampled,
             "clusters_formed": report.clusters_formed,
             "gists_extracted": report.gists_extracted,
+            "gists_processed": getattr(migration, "gists_processed", None),
+            "facts_created": getattr(migration, "facts_created", None),
+            "facts_updated": getattr(migration, "facts_updated", None),
+            "episodes_marked": getattr(migration, "episodes_marked", None),
+            "errors": getattr(migration, "errors", None),
             "elapsed_seconds": getattr(report, "elapsed_seconds", None),
+            "artifacts": {
+                "migration": {
+                    "gists_processed": getattr(migration, "gists_processed", None),
+                    "facts_created": getattr(migration, "facts_created", None),
+                    "facts_updated": getattr(migration, "facts_updated", None),
+                    "episodes_marked": getattr(migration, "episodes_marked", None),
+                    "errors": list(getattr(migration, "errors", []) or []),
+                }
+            },
         }
         try:
             async with db.pg_session() as session:

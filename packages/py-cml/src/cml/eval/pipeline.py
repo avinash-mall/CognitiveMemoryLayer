@@ -285,8 +285,6 @@ def run_full_eval(config: FullEvalConfig) -> int:
             cml_api_key=cml_api_key,
             limit_samples=config.limit_samples,
             ingestion_workers=config.ingestion_workers,
-            skip_ingestion=config.resume,
-            skip_consolidation=config.resume,
             score_only=config.score_only,
             judge_model=llm_model,
         )

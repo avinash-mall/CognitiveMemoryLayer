@@ -151,6 +151,20 @@ function buildComponentCard(comp) {
             ${detailRow('Memory Used', formatMB(comp.details?.used_memory_mb))}
             ${detailRow('Latency', formatLatency(comp.latency_ms))}
         `;
+    } else if (comp.name === 'Embedding') {
+        detailsHtml = `
+            ${detailRow('Provider', comp.details?.provider ?? '—')}
+            ${detailRow('Model', comp.details?.model ?? '—')}
+            ${detailRow('Dimensions', comp.details?.dimensions ?? '—')}
+            ${detailRow('Batch Size', comp.details?.batch_size ?? '—')}
+            ${detailRow('Device', comp.details?.device ?? '—')}
+        `;
+    } else if (comp.name === 'Server') {
+        detailsHtml = `
+            ${detailRow('CML Version', comp.details?.version ?? '—')}
+            ${detailRow('Python', comp.details?.python ?? '—')}
+            ${detailRow('Uvicorn Workers', comp.details?.uvicorn_workers ?? '—')}
+        `;
     } else {
         // Generic details
         if (comp.details && Object.keys(comp.details).length) {

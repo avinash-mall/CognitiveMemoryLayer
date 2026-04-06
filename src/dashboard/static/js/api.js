@@ -122,6 +122,10 @@ export function getMemoryDetail(memoryId) {
     return request('GET', `/memories/${memoryId}`);
 }
 
+export function getMemoryLineage(memoryId) {
+    return request('GET', `/memories/${memoryId}/lineage`);
+}
+
 export function bulkAction(memoryIds, action) {
     return request('POST', '/memories/bulk-action', {
         body: { memory_ids: memoryIds, action },
@@ -244,10 +248,73 @@ export function testRetrieval(tenantId, query, maxResults = 10, contextFilter = 
     });
 }
 
+export function explainRetrieval(tenantId, query, maxResults = 10, contextFilter = null, memoryTypes = null, format = 'list') {
+    return request('POST', '/retrieval/explain', {
+        body: {
+            tenant_id: tenantId,
+            query,
+            max_results: maxResults,
+            context_filter: contextFilter,
+            memory_types: memoryTypes,
+            format,
+        },
+    });
+}
+
 export function getJobs(tenantId, jobType, limit = 50) {
     return request('GET', '/jobs', {
         params: { tenant_id: tenantId, job_type: jobType, limit },
     });
+}
+
+export function getJobDetail(jobId) {
+    return request('GET', `/jobs/${jobId}`);
+}
+
+export function getConsolidationRuns(tenantId, limit = 50) {
+    return request('GET', '/consolidation/runs', {
+        params: { tenant_id: tenantId, limit },
+    });
+}
+
+export function getReconsolidationRuns(tenantId, limit = 50) {
+    return request('GET', '/reconsolidation/runs', {
+        params: { tenant_id: tenantId, limit },
+    });
+}
+
+export function getReconsolidationSessions(tenantId) {
+    return request('GET', '/reconsolidation/sessions', {
+        params: { tenant_id: tenantId },
+    });
+}
+
+export function simulateWrite(body) {
+    return request('POST', '/write/simulate', { body });
+}
+
+export function previewForgetting(tenantId, userId = null, maxMemories = 200) {
+    return request('POST', '/forgetting/preview', {
+        body: {
+            tenant_id: tenantId,
+            user_id: userId,
+            max_memories: maxMemories,
+        },
+    });
+}
+
+export function getQualityOverview(tenantId) {
+    return request('GET', '/quality/overview', {
+        params: { tenant_id: tenantId },
+    });
+}
+
+export function getOpsMetrics() {
+    return request('GET', '/ops/metrics');
+}
+
+export function getEvaluationSummary() {
+    return request('GET', '/evaluation/summary');
 }
 
 export function exportMemories(tenantId) {
@@ -255,10 +322,44 @@ export function exportMemories(tenantId) {
     window.open(`${API_BASE}/export/memories${params}`, '_blank');
 }
 
+export function exportEvents(tenantId) {
+    const params = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '';
+    window.open(`${API_BASE}/events/export${params}`, '_blank');
+}
+
+export function exportFacts(tenantId) {
+    const params = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '';
+    window.open(`${API_BASE}/facts/export${params}`, '_blank');
+}
+
+export async function writeMemory(data) {
+    // Call the main memory write API (not the dashboard API)
+    const resp = await fetch('/api/v1/memory/write', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(data),
+    });
+    if (!resp.ok) {
+        const raw = await resp.text();
+        let msg = raw;
+        try { const j = JSON.parse(raw); if (j.detail) msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch (_) {}
+        throw new Error(msg);
+    }
+    return resp.json();
+}
+
 export function getFacts({ tenantId, category, currentOnly = true, limit = 50, offset = 0 } = {}) {
     return request('GET', '/facts', {
         params: { tenant_id: tenantId, category, current_only: currentOnly, limit, offset },
     });
+}
+
+export function getFactDetail(factId) {
+    return request('GET', `/facts/${factId}`);
+}
+
+export function getFactEvidence(factId) {
+    return request('GET', `/facts/${factId}/evidence`);
 }
 
 export function invalidateFact(factId) {

@@ -111,7 +111,11 @@ async def test_dashboard_components_reports_ok_unknown_and_error() -> None:
     result = await overview_routes.dashboard_components(auth=ADMIN_AUTH, db=db)
 
     statuses = {component.name: component.status for component in result.components}
-    assert statuses == {"PostgreSQL": "ok", "Neo4j": "ok", "Redis": "ok"}
+    assert statuses["PostgreSQL"] == "ok"
+    assert statuses["Neo4j"] == "ok"
+    assert statuses["Redis"] == "ok"
+    assert statuses["Embedding"] == "ok"
+    assert statuses["Server"] == "ok"
     postgres = next(component for component in result.components if component.name == "PostgreSQL")
     assert postgres.details["memory_records"] == 9
 
@@ -133,7 +137,11 @@ async def test_dashboard_components_reports_ok_unknown_and_error() -> None:
     )
     error_result = await overview_routes.dashboard_components(auth=ADMIN_AUTH, db=error_db)
     statuses = {component.name: component.status for component in error_result.components}
-    assert statuses == {"PostgreSQL": "error", "Neo4j": "error", "Redis": "error"}
+    assert statuses["PostgreSQL"] == "error"
+    assert statuses["Neo4j"] == "error"
+    assert statuses["Redis"] == "error"
+    assert statuses["Embedding"] == "ok"
+    assert statuses["Server"] == "ok"
 
 
 @pytest.mark.asyncio
@@ -211,12 +219,12 @@ async def test_dashboard_ratelimits_parses_apikey_ip_and_other_entries(
     monkeypatch.setattr(
         overview_routes,
         "get_settings",
-        lambda: SimpleNamespace(auth=SimpleNamespace(rate_limit_requests_per_minute=60)),
+        lambda: SimpleNamespace(auth=SimpleNamespace(rate_limit_requests_per_minute=0)),
     )
 
     result = await overview_routes.dashboard_ratelimits(auth=ADMIN_AUTH, db=db)
 
-    assert result.configured_rpm == 60
+    assert result.configured_rpm == 0
     assert [entry.key_type for entry in result.entries] == ["apikey", "ip", "other"]
     assert result.entries[0].identifier == "abcdef12..."
     assert result.entries[0].utilization_pct == 50.0

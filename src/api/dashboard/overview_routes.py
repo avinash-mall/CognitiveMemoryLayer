@@ -1,6 +1,8 @@
 """Dashboard overview, timeline, components, tenants, sessions, rate limits, request stats."""
 
 import json
+import os
+import sys
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -312,6 +314,45 @@ async def dashboard_components(
             )
     except Exception as e:
         components.append(ComponentStatus(name="Redis", status="error", error=str(e)))
+
+    # Embedding model
+    try:
+        settings = get_settings()
+        emb = settings.embedding_internal
+        components.append(
+            ComponentStatus(
+                name="Embedding",
+                status="ok",
+                details={
+                    "provider": emb.provider or "local",
+                    "model": emb.local_model or emb.model or "—",
+                    "dimensions": emb.dimensions or 0,
+                    "batch_size": emb.local_batch_size,
+                    "device": emb.device,
+                },
+            )
+        )
+    except Exception as e:
+        components.append(ComponentStatus(name="Embedding", status="error", error=str(e)))
+
+    # Server info
+    try:
+        version = os.environ.get("VERSION", "unknown")
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        workers = os.environ.get("UVICORN_WORKERS", "1")
+        components.append(
+            ComponentStatus(
+                name="Server",
+                status="ok",
+                details={
+                    "version": version,
+                    "python": python_version,
+                    "uvicorn_workers": workers,
+                },
+            )
+        )
+    except Exception as e:
+        components.append(ComponentStatus(name="Server", status="error", error=str(e)))
 
     return DashboardComponentsResponse(components=components)
 

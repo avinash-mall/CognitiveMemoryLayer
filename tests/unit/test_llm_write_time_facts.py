@@ -102,6 +102,9 @@ def test_fact_type_model_can_suppress_named_heuristics(monkeypatch):
     class _FactTypeModelPack:
         available = True
 
+        def has_task_model(self, task: str) -> bool:
+            return task == "fact_type"
+
         def predict_single(self, task: str, text: str):
             if task == "fact_type":
                 return type("P", (), {"label": "none", "confidence": 0.95})()
@@ -119,6 +122,9 @@ def test_fact_type_model_can_target_location_heuristics(monkeypatch):
 
     class _FactTypeModelPack:
         available = True
+
+        def has_task_model(self, task: str) -> bool:
+            return task == "fact_type"
 
         def predict_single(self, task: str, text: str):
             if task == "fact_type":

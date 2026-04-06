@@ -57,6 +57,9 @@ def _validate_config_updates(updates: dict[str, Any]) -> list[str]:
         elif key == "chunker.overlap_percent":
             if not isinstance(val, (int, float)) or val < 0 or val > 1:
                 errors.append("chunker.overlap_percent must be between 0 and 1")
+        elif key == "embedding_internal.local_batch_size":
+            if not isinstance(val, (int, float)) or val < 1:
+                errors.append("embedding_internal.local_batch_size must be a positive integer (>= 1)")
         elif key == "auth.rate_limit_requests_per_minute":
             if not isinstance(val, (int, float)) or val < 0:
                 errors.append("auth.rate_limit_requests_per_minute must be non-negative")
@@ -181,7 +184,7 @@ async def dashboard_config(
                     default_value=60,
                     is_editable=True,
                     source=_config_source("AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE"),
-                    description="Per-tenant rate limit (requests/min). 0 disables. Raise to 600+ for bulk eval.",
+                    description="Per-tenant rate limit (requests/min). Set to 0 to disable (recommended for bulk eval runs).",
                     requires_restart=False,
                     is_required=False,
                     env_var="AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE",
@@ -340,6 +343,17 @@ async def dashboard_config(
                     requires_restart=True,
                     is_required=False,
                     env_var="EMBEDDING_INTERNAL__BASE_URL",
+                ),
+                ConfigItem(
+                    key="embedding_internal.local_batch_size",
+                    value=emb.local_batch_size,
+                    default_value=8,
+                    is_editable=True,
+                    source=_config_source("EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE"),
+                    description="Batch size for GPU embedding inference. Increase to 64+ for bulk eval on large GPUs. Reduce if GPU OOM.",
+                    requires_restart=True,
+                    is_required=False,
+                    env_var="EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE",
                 ),
                 ConfigItem(
                     key="embedding_internal.api_key",

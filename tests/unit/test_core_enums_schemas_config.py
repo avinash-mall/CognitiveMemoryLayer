@@ -175,6 +175,11 @@ class TestMemoryPacket:
 class TestConfig:
     """Configuration loading."""
 
+    def test_auth_rate_limit_default_disabled(self):
+        from src.core.config import AuthSettings
+
+        assert AuthSettings().rate_limit_requests_per_minute == 0
+
     def test_get_settings_returns_settings(self):
         s = get_settings()
         assert s.app_name == "CognitiveMemoryLayer"

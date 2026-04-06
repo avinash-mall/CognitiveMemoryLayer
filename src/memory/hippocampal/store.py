@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -21,6 +22,7 @@ from ...extraction.entity_extractor import EntityExtractor
 from ...extraction.relation_extractor import RelationExtractor
 from ...storage.base import MemoryStoreBase
 from ...utils.embeddings import EmbeddingClient
+from ...utils.ner import _SPACY_EXECUTOR
 from ...utils.ner import extract_entities as _ner_extract_entities
 from ...utils.ner import extract_relations as _ner_extract_relations
 from ..working.models import SemanticChunk
@@ -34,6 +36,105 @@ if TYPE_CHECKING:
         UnifiedExtractionResult,
         UnifiedWritePathExtractor,
     )
+
+
+# Dedicated executor for Phase 1 (write-gate novelty checks).
+# novelty_pair sklearn model takes ~6ms per call x 50 existing memories = ~300ms per chunk.
+# Running in a separate executor frees the event loop for embedding/DeBERTa batching.
+# 8 workers: with 10 concurrent encode_batch calls, 4 workers caused 2+ rounds of queuing
+# (~70ms p50). 8 workers -> 1 round -> ~35ms p50, halving gate latency.
+_GATE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=12, thread_name_prefix="write_gate"
+)
+
+
+class _BatchingSpanPredictor:
+    """Coalesce concurrent predict_spans_batch calls into one GPU forward pass.
+
+    Works like BatchingEmbeddingClient: texts from concurrent encode_batch calls
+    arriving within max_wait_ms are merged into a single modelpack.predict_spans_batch()
+    call, turning Nx(1-text batches) into one N-text batch - typically 5-10x faster.
+
+    Each instance owns a dedicated 1-worker ThreadPoolExecutor so that PII and fact
+    span batchers run in parallel (not serialized on a shared executor). Batches are
+    capped at max_batch_size texts; overflow is re-dispatched immediately, preventing
+    super-batches (120 texts -> 800ms) from stalling all concurrent callers.
+    """
+
+    def __init__(
+        self,
+        modelpack: Any,
+        task: str,
+        max_wait_ms: float = 10.0,
+        max_batch_size: int = 20,
+    ) -> None:
+        self._modelpack = modelpack
+        self._task = task
+        self._max_wait = max_wait_ms / 1000.0
+        self._max_batch_size = max_batch_size
+        self._lock: asyncio.Lock | None = None
+        self._pending: list[tuple[str, asyncio.Future[Any]]] = []
+        self._dispatch_task: asyncio.Task[None] | None = None
+        # Per-instance executor: PII and fact span batchers can run concurrently.
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"deberta_{task[:8]}"
+        )
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    async def predict_batch(self, texts: list[str]) -> list:
+        """Queue texts and await their SpanPrediction results."""
+        if not texts:
+            return []
+        loop = asyncio.get_running_loop()
+        futures: list[asyncio.Future[Any]] = [loop.create_future() for _ in texts]
+        lock = self._get_lock()
+        async with lock:
+            for text, fut in zip(texts, futures, strict=True):
+                self._pending.append((text, fut))
+            if self._dispatch_task is None or self._dispatch_task.done():
+                self._dispatch_task = loop.create_task(self._dispatch_after_wait())
+        return list(await asyncio.gather(*futures))
+
+    async def _dispatch_after_wait(self) -> None:
+        await asyncio.sleep(self._max_wait)
+        await self._drain()
+
+    async def _drain(self) -> None:
+        lock = self._get_lock()
+        async with lock:
+            if not self._pending:
+                return
+            # Cap batch size to prevent super-batches (e.g. 120 texts → 800ms).
+            # Overflow stays in _pending and is dispatched immediately after this batch.
+            batch = self._pending[: self._max_batch_size]
+            self._pending = self._pending[self._max_batch_size :]
+            if self._pending:
+                loop = asyncio.get_running_loop()
+                self._dispatch_task = loop.create_task(self._drain())
+            else:
+                self._dispatch_task = None
+
+        texts_in_batch = [t for t, _ in batch]
+        try:
+            _mp = self._modelpack
+            _task = self._task
+            results = await asyncio.get_running_loop().run_in_executor(
+                self._executor,
+                lambda: _mp.predict_spans_batch(_task, texts_in_batch),
+            )
+        except Exception as exc:
+            for _, fut in batch:
+                if not fut.done():
+                    fut.set_exception(exc)
+            return
+
+        for i, (_, fut) in enumerate(batch):
+            if not fut.done():
+                fut.set_result(results[i] if i < len(results) else None)
 
 
 def _gate_result_to_dict(g: WriteGateResult) -> dict:
@@ -51,6 +152,41 @@ def _ner_entities_for_text(text: str) -> list[EntityMention]:
             end_char=e.end_char,
         )
         for e in _ner_extract_entities(text)
+    ]
+
+
+# Mapping from fact_extraction_structured span labels to NER entity types.
+_FACT_LABEL_TO_ENTITY_TYPE: dict[str, str] = {
+    "identity": "PERSON",
+    "location": "LOCATION",
+    "occupation": "ATTRIBUTE",
+    "preference": "CONCEPT",
+    "attribute": "ATTRIBUTE",
+    "goal": "CONCEPT",
+    "value": "CONCEPT",
+    "state": "ATTRIBUTE",
+    "causal": "CONCEPT",
+    "policy": "CONCEPT",
+}
+
+
+def _entities_from_fact_spans(text: str, span_pred: Any) -> list[EntityMention]:
+    """Derive EntityMention objects from pre-computed DeBERTa fact spans.
+
+    Avoids a spaCy NER call for texts where Phase 2.5 already ran DeBERTa.
+    Uses span label → entity type mapping so downstream graph code still gets
+    typed entities; quality is slightly lower than spaCy NER but fast (O(spans)).
+    """
+    from ...extraction.fact_span_adapter import extract_structured_span_matches
+
+    return [
+        EntityMention(
+            text=m.value,
+            normalized=m.value.lower().strip(),
+            entity_type=_FACT_LABEL_TO_ENTITY_TYPE.get(m.label, "CONCEPT"),
+        )
+        for m in extract_structured_span_matches(text, span_pred)
+        if m.value
     ]
 
 
@@ -95,6 +231,13 @@ class HippocampalStore:
         self.constraint_extractor = constraint_extractor or _ConstraintExtractor()
         self.unified_extractor = unified_extractor
         self.local_extractor = local_extractor
+        self._span_batcher: _BatchingSpanPredictor | None = None
+        self._pii_span_batcher: _BatchingSpanPredictor | None = None
+        # Scan coalescing: avoids redundant DB queries for concurrent writes to the same tenant.
+        # _scan_cache: tenant_id -> (monotonic_ts, result_dicts)
+        # _scan_futures: tenant_id -> in-flight Future (deduplicate concurrent requests)
+        self._scan_cache: dict[str, tuple[float, list[dict]]] = {}
+        self._scan_futures: dict[str, asyncio.Future] = {}
 
     def _use_unified_write_path(self) -> bool:
         """True when use_llm_enabled and any write-path LLM flag is enabled and we have a unified extractor."""
@@ -110,6 +253,46 @@ class HippocampalStore:
             or s.use_llm_pii_redaction
             or s.use_llm_write_gate_importance
         )
+
+    _SCAN_CACHE_TTL = 2.0  # seconds — sufficient to coalesce a burst of concurrent writes
+
+    async def _get_existing_for_gate(self, tenant_id: str) -> list[dict]:
+        """Return recent active memories for write-gate novelty check.
+
+        Uses a 2-second TTL cache + in-flight coalescing so N concurrent writes to the
+        same tenant issue at most ONE DB scan instead of N, cutting scan_ms from
+        19-233 ms down to ~0 ms for all but the first request per burst.
+        """
+        loop = asyncio.get_running_loop()
+        now = loop.time()
+
+        # Fast path: warm cache hit
+        cached = self._scan_cache.get(tenant_id)
+        if cached and (now - cached[0]) < self._SCAN_CACHE_TTL:
+            return list(cached[1])  # return a copy so callers can append freely
+
+        # Coalesce: if a scan is already in-flight for this tenant, wait for it
+        if tenant_id in self._scan_futures:
+            try:
+                return list(await self._scan_futures[tenant_id])
+            except Exception:
+                pass  # fall through to issue a fresh query
+
+        # Issue a new DB scan and let all concurrent waiters share the result
+        fut: asyncio.Future[list[dict]] = loop.create_future()
+        self._scan_futures[tenant_id] = fut
+        try:
+            texts = await self.store.scan_texts_for_gate(tenant_id, limit=10)
+            result = [{"text": t} for t in texts]
+            self._scan_cache[tenant_id] = (loop.time(), result)
+            fut.set_result(result)
+            return list(result)
+        except Exception as exc:
+            if not fut.done():
+                fut.set_exception(exc)
+            raise
+        finally:
+            self._scan_futures.pop(tenant_id, None)
 
     async def encode_chunk(
         self,
@@ -350,47 +533,142 @@ class HippocampalStore:
         Phase 3: Batch-extract entities and relations (concurrent).
         Phase 4: Upsert records (bounded concurrency).
         """
-        existing = await self.store.scan(
-            tenant_id,
-            filters={"status": MemoryStatus.ACTIVE.value},
-            limit=50,
-            order_by="-timestamp",
-        )
-        existing_dicts = [{"text": m.text} for m in existing]
+        import time as _phase_time
+        _t_scan_start = _phase_time.perf_counter()
+        existing_dicts = await self._get_existing_for_gate(tenant_id)
+        _t_scan_end = _phase_time.perf_counter()
 
-        # ---- Phase 1: Gate + Redact (no network calls) ----
         from ...core.config import get_settings as _cfg_phase1
 
-        surviving: list[tuple[int, SemanticChunk, WriteGateResult, str]] = []
+        # ---- Phase 0.5: Batch PII span detection BEFORE gate (event-loop coalescing) ----
+        # Running pii_span_detection inside the gate thread causes N_chunks sequential GPU
+        # calls per request x 4 concurrent gate threads = heavy GPU serialization.
+        # By running it here via _BatchingSpanPredictor, all 10 concurrent callers'
+        # texts are batched into ONE DeBERTa forward pass (~20ms vs 300ms serialized).
+        _precomputed_pii_flags: list[bool] = [False] * len(chunks)
+        if (
+            not self._use_unified_write_path()
+            and self.local_extractor
+            and self.local_extractor.available
+        ):
+            _mp_pii = self.local_extractor.modelpack
+            if getattr(_mp_pii, "has_task_model", lambda _: False)("pii_span_detection"):
+                try:
+                    if self._pii_span_batcher is None:
+                        self._pii_span_batcher = _BatchingSpanPredictor(
+                            _mp_pii, "pii_span_detection"
+                        )
+                    _wg_ref = self.write_gate
+                    # Quick regex pre-check — avoids GPU for obvious PII or empty texts
+                    _pii_regex_hit = [
+                        (not c.text.strip())
+                        or any(p.search(c.text) for p in _wg_ref._pii_patterns)
+                        for c in chunks
+                    ]
+                    _needs_model_idx = [
+                        i for i, hit in enumerate(_pii_regex_hit) if not hit
+                    ]
+                    if _needs_model_idx:
+                        _pii_texts = [chunks[i].text for i in _needs_model_idx]
+                        _pii_spans = await self._pii_span_batcher.predict_batch(_pii_texts)
+                        for _j, _i in enumerate(_needs_model_idx):
+                            _pred = _pii_spans[_j] if _j < len(_pii_spans) else None
+                            _precomputed_pii_flags[_i] = bool(
+                                _pred is not None and _pred.spans
+                            )
+                    for _i, _hit in enumerate(_pii_regex_hit):
+                        if _hit and chunks[_i].text.strip():
+                            _precomputed_pii_flags[_i] = True
+                except Exception:
+                    pass  # fallback: gate will call _predict_pii per chunk
+
+        # ---- Phase 1: Gate + Redact in thread executor ----
+        # novelty_pair sklearn model takes ~6ms x 50 existing memories = 300ms per chunk.
+        # Running in _GATE_EXECUTOR frees the event loop for embedding/DeBERTa batching.
         gate_results_list: list[dict] = []
         _ur_list = unified_results if unified_results is not None else [None] * len(chunks)
         _cfg = _cfg_phase1().features
 
-        for idx, chunk in enumerate(chunks):
-            ur = _ur_list[idx] if idx < len(_ur_list) else None
-            gate_result = self.write_gate.evaluate(
-                chunk, existing_memories=existing_dicts, unified_result=ur
+        _wg = self.write_gate
+        _rd = self.redactor
+        _cfg_snap = _cfg
+        _pii_flags_for_gate = _precomputed_pii_flags
+
+        def _run_gate() -> list[tuple[int, SemanticChunk, WriteGateResult, str]]:
+            _surviving: list[tuple[int, SemanticChunk, WriteGateResult, str]] = []
+            # Mega-batch all chunk x memory novelty pairs in ONE sklearn call (~10ms total
+            # instead of N_chunks x predict_pair_proba_batch = N_chunks x ~10ms).
+            _novelties: list[float] = _wg.compute_novelty_batch(
+                list(chunks), existing_memories=existing_dicts
             )
+            for _idx, _chunk in enumerate(chunks):
+                _ur = _ur_list[_idx] if _idx < len(_ur_list) else None
+                _gate = _wg.evaluate(
+                    _chunk,
+                    existing_memories=existing_dicts,
+                    unified_result=_ur,
+                    precomputed_novelty=_novelties[_idx],
+                    precomputed_pii=(
+                        _pii_flags_for_gate[_idx]
+                        if _idx < len(_pii_flags_for_gate)
+                        else None
+                    ),
+                )
+                if _gate.decision == WriteDecision.SKIP:
+                    _surviving.append((_idx, _chunk, _gate, ""))  # empty text signals SKIP
+                    continue
+                _text = _chunk.text
+                if _gate.redaction_required and not (
+                    _cfg_snap.use_llm_enabled
+                    and _cfg_snap.use_llm_pii_redaction
+                    and _ur
+                    and getattr(_ur, "pii_spans", None)
+                ):
+                    _text = _rd.redact(_text).redacted_text
+                _surviving.append((_idx, _chunk, _gate, _text))
+            return _surviving
+
+        # ---- Phase 0.75: Pre-start span prediction BEFORE gate (overlap with gate) ----
+        # The gate runs for ~80ms in a thread; DeBERTa spans take ~130ms on the GPU.
+        # Starting spans BEFORE the gate means they complete DURING gate execution,
+        # effectively eliminating spans from the critical path (saves ~80ms).
+        # We predict spans on ALL pre-gate texts; after gate we map surviving chunk spans.
+        # Redacted chunks (text changed after gate) will fall back to spaCy.
+        _pre_gate_span_task: asyncio.Task | None = None
+        if (
+            self.local_extractor
+            and self.local_extractor.available
+            and not self._use_unified_write_path()
+        ):
+            _mp_pre = self.local_extractor.modelpack
+            if getattr(_mp_pre, "has_task_model", lambda _: False)("fact_extraction_structured"):
+                try:
+                    if self._span_batcher is None:
+                        self._span_batcher = _BatchingSpanPredictor(
+                            _mp_pre, "fact_extraction_structured"
+                        )
+                    _all_chunk_texts = [c.text for c in chunks]
+                    _pre_gate_span_task = asyncio.get_running_loop().create_task(
+                        self._span_batcher.predict_batch(_all_chunk_texts)
+                    )
+                except Exception:
+                    pass
+
+        _t_gate_start = _phase_time.perf_counter()
+        _all_gate_results = await asyncio.get_running_loop().run_in_executor(
+            _GATE_EXECUTOR, _run_gate
+        )
+        _t_gate_end = _phase_time.perf_counter()
+
+        surviving: list[tuple[int, SemanticChunk, WriteGateResult, str]] = []
+        for _idx, _chunk, _gate, _text in _all_gate_results:
             if return_gate_results:
-                gate_results_list.append(_gate_result_to_dict(gate_result))
-
-            if gate_result.decision == WriteDecision.SKIP:
-                continue
-
-            text = chunk.text
-            if gate_result.redaction_required and not (
-                _cfg.use_llm_enabled
-                and _cfg.use_llm_pii_redaction
-                and ur
-                and getattr(ur, "pii_spans", None)
-            ):
-                redaction_result = self.redactor.redact(text)
-                text = redaction_result.redacted_text
-
-            surviving.append((idx, chunk, gate_result, text))
+                gate_results_list.append(_gate_result_to_dict(_gate))
+            if _gate.decision != WriteDecision.SKIP:
+                surviving.append((_idx, _chunk, _gate, _text))
 
         if not surviving:
-            return ([], gate_results_list if return_gate_results else None, [])
+            return ([], gate_results_list if return_gate_results else None, [], [])
 
         # ---- Phase 1.5: Unified extraction (when LLM flags enabled) ----
         if unified_results is None:
@@ -431,16 +709,134 @@ class HippocampalStore:
                 text = self.redactor.redact(chunk.text, additional_spans=pii_spans).redacted_text
             final_texts.append(text)
 
-        # ---- Phase 2: Batch embed (ONE API call) ----
+        # ---- Phase 2 + 2.5: Embed + DeBERTa spans CONCURRENTLY ----
+        # Pre-gate task (Phase 0.75) predicted spans on original chunk.text.
+        # Map non-redacted texts from pre-gate, start DeBERTa for redacted-only.
+        # Run DeBERTa redacted + embedding concurrently.
+
+        # Step 1: Map pre-gate spans (fast — already done or near-instant await)
+        fact_spans_batch: list = [None] * len(final_texts)
+        if _pre_gate_span_task is not None:
+            try:
+                _pre_gate_spans = await _pre_gate_span_task  # ~0ms if gate took >100ms
+                for i, (orig_idx, chunk, _gate_result, text) in enumerate(surviving):
+                    if orig_idx < len(_pre_gate_spans) and text == chunk.text:
+                        fact_spans_batch[i] = _pre_gate_spans[orig_idx]
+            except Exception:
+                pass
+
+        # Step 2: Start DeBERTa for redacted texts only (typically ~few texts, not all)
+        _redacted_span_task: asyncio.Task | None = None
+        _redacted_indices: list[int] = []
+        if self._span_batcher is not None:
+            _redacted_indices = [
+                i for i in range(len(final_texts))
+                if fact_spans_batch[i] is None
+            ]
+            if _redacted_indices:
+                _redacted_texts = [final_texts[i] for i in _redacted_indices]
+                _redacted_span_task = asyncio.get_running_loop().create_task(
+                    self._span_batcher.predict_batch(_redacted_texts)
+                )
+
+        # Step 3: Embed (runs concurrently with redacted DeBERTa above)
+        _t_p2 = _phase_time.perf_counter()
         texts_to_embed = final_texts
         embedding_results = await self.embeddings.embed_batch(texts_to_embed)
+        _t_p3 = _phase_time.perf_counter()
 
-        # ---- Phase 3: Batch extract entities and relations ----
+        # Step 4: Await redacted DeBERTa spans
+        if _redacted_span_task is not None:
+            try:
+                _redacted_spans = await _redacted_span_task
+                for _j, _i in enumerate(_redacted_indices):
+                    if _j < len(_redacted_spans):
+                        fact_spans_batch[_i] = _redacted_spans[_j]
+            except Exception:
+                pass
+
+        _t_p25 = _phase_time.perf_counter()
+
+        # ---- Start Phase 3.5 early (concurrent with Phase 3 entity/relation extraction) ----
+        # Phase 3.5 only needs fact_spans_batch and final_texts (ready after Phase 2.5b),
+        # NOT entities_batch or relations_batch. Running it concurrently with Phase 3
+        # overlaps ~28ms of CPU-bound sklearn work.
+        _local_extractor = self.local_extractor
+        _surviving_chunks = [s[1] for s in surviving]
+        _ce = self.constraint_extractor
+        _ev_loop = asyncio.get_running_loop()
+        _n = len(surviving)
+
+        if _local_extractor is not None and _local_extractor.available:
+            _fb = fact_spans_batch
+
+            def _run_local_batch() -> tuple[list[dict[str, Any] | None], list[list[Any]]]:
+                local_out: list[dict[str, Any] | None] = []
+                for _i in range(_n):
+                    try:
+                        local_out.append(
+                            _local_extractor.extract_sync_direct(
+                                final_texts[_i],
+                                precomputed_spans=_fb[_i] if _i < len(_fb) else None,
+                                skip_pii=True,
+                                skip_slow_router=True,
+                            )
+                        )
+                    except Exception:
+                        local_out.append(None)
+                constraint_out: list[list[Any]] = []
+                for _chunk in _surviving_chunks:
+                    try:
+                        constraint_out.append(_ce.extract(_chunk))
+                    except Exception:
+                        constraint_out.append([])
+                return local_out, constraint_out
+
+            _local_future = _ev_loop.run_in_executor(None, _run_local_batch)
+        else:
+            def _run_constraints_only() -> tuple[list[dict[str, Any] | None], list[list[Any]]]:
+                constraint_out: list[list[Any]] = []
+                for _chunk in _surviving_chunks:
+                    try:
+                        constraint_out.append(_ce.extract(_chunk))
+                    except Exception:
+                        constraint_out.append([])
+                return ([None] * _n, constraint_out)
+
+            _local_future = _ev_loop.run_in_executor(None, _run_constraints_only)
+
+        # ---- Phase 3: Batch extract entities ----
+        # Fast path: derive entities from pre-computed DeBERTa spans (no spaCy call).
+        # Fallback to spaCy only for texts where DeBERTa found no spans.
         entities_batch: list[list[EntityMention]] = []
-        if self.entity_extractor:
+        if self.entity_extractor and getattr(self.entity_extractor, "llm", None):
             entities_batch = await self.entity_extractor.extract_batch(texts_to_embed)
         else:
-            entities_batch = [_ner_entities_for_text(text) for text in texts_to_embed]
+            _loop = asyncio.get_running_loop()
+            _spacy_indices = [
+                i for i, s in enumerate(fact_spans_batch)
+                if s is None
+            ]
+            entities_batch = [
+                _entities_from_fact_spans(texts_to_embed[i], fact_spans_batch[i])
+                if fact_spans_batch[i] is not None
+                else []
+                for i in range(len(texts_to_embed))
+            ]
+            if _spacy_indices:
+                _ent_extractor = self.entity_extractor
+                _spacy_fn = (
+                    _ent_extractor._spacy_extract if _ent_extractor else _ner_entities_for_text
+                )
+                _spacy_results = list(await asyncio.gather(
+                    *[
+                        _loop.run_in_executor(_SPACY_EXECUTOR, _spacy_fn, texts_to_embed[i])
+                        for i in _spacy_indices
+                    ]
+                ))
+                for _j, _i in enumerate(_spacy_indices):
+                    entities_batch[_i] = _spacy_results[_j]
+        _t_p3r = _phase_time.perf_counter()
 
         relations_batch: list[list[Relation]] = []
         if self.relation_extractor:
@@ -448,21 +844,20 @@ class HippocampalStore:
                 (text, [e.normalized for e in entities])
                 for text, entities in zip(texts_to_embed, entities_batch, strict=True)
             ]
-            relations_batch = await self.relation_extractor.extract_batch(relation_items)
+            if not getattr(self.relation_extractor, "llm", None) and hasattr(self.relation_extractor, "extract_batch_with_spans"):
+                relations_batch = self.relation_extractor.extract_batch_with_spans(
+                    relation_items, fact_spans_batch
+                )
+            else:
+                relations_batch = await self.relation_extractor.extract_batch(relation_items)
         else:
             relations_batch = [_ner_relations_for_text(text) for text in texts_to_embed]
+        _t_p35 = _phase_time.perf_counter()
 
-        # ---- Phase 3.5: Local extractor for surviving chunks (modelpack fallback) ----
-        local_results_batch: list[dict[str, Any] | None] = []
-        if self.local_extractor and self.local_extractor.available:
-            local_tasks = [
-                self.local_extractor.extract(final_texts[i]) for i in range(len(surviving))
-            ]
-            raw_local = await asyncio.gather(*local_tasks, return_exceptions=True)
-            for r in raw_local:
-                local_results_batch.append(r if not isinstance(r, BaseException) else None)
-        else:
-            local_results_batch = [None] * len(surviving)
+        # ---- Await Phase 3.5 results ----
+        local_results_batch, constraint_results_batch = await _local_future
+        _t_p4 = _phase_time.perf_counter()
+
 
         # ---- Phase 4: Upsert (bounded concurrency) ----
         results: list[MemoryRecord] = []
@@ -514,11 +909,17 @@ class HippocampalStore:
                     else MemoryType.EPISODIC_EVENT
                 )
 
-            # Constraint extraction: unified LLM or modelpack/NER path
+            # Constraint extraction: unified LLM or precomputed batch (Phase 3.5 thread)
             if unified_res and settings.use_llm_enabled and settings.use_llm_constraint_extractor:
                 extracted_constraints = unified_res.constraints
             else:
-                extracted_constraints = self.constraint_extractor.extract(chunk)
+                # Use precomputed result from Phase 3.5 thread batch to avoid blocking
+                # the event loop with 2 sklearn calls per chunk (saves ~30ms x N_chunks).
+                extracted_constraints = (
+                    constraint_results_batch[idx]
+                    if idx < len(constraint_results_batch)
+                    else self.constraint_extractor.extract(chunk)
+                )
             constraint_dicts = [c.to_dict() for c in extracted_constraints]
 
             # If high-confidence constraint extracted and no API/LLM override, override memory type
@@ -622,20 +1023,32 @@ class HippocampalStore:
             stored = await self.store.upsert(record_create)
             return stored
 
+        _t_p4_start = _phase_time.perf_counter()
         tasks = [_process_chunk(i) for i in range(len(surviving))]  # type: ignore[misc]
         stored_results = await asyncio.gather(*tasks, return_exceptions=True)
+        _t_p4_end = _phase_time.perf_counter()
 
         for res in stored_results:
             if isinstance(res, BaseException):
-                import structlog
-
                 structlog.get_logger(__name__).error("encode_batch_upsert_failed", error=str(res))
                 continue
             if res is not None:
                 results.append(cast("MemoryRecord", res))
                 existing_dicts.append({"text": cast("MemoryRecord", res).text})
 
-        return results, (gate_results_list if return_gate_results else None), unified_results
+        structlog.get_logger("encode_timing").info(
+            "encode_batch_full_timing",
+            scan_ms=round((_t_scan_end - _t_scan_start) * 1000, 1),
+            gate_ms=round((_t_gate_end - _t_gate_start) * 1000, 1),
+            embed_ms=round((_t_p3 - _t_p2) * 1000, 1),
+            spans_ms=round((_t_p25 - _t_p3) * 1000, 1),
+            ner_ms=round((_t_p3r - _t_p25) * 1000, 1),
+            rel_ms=round((_t_p35 - _t_p3r) * 1000, 1),
+            local_ms=round((_t_p4 - _t_p35) * 1000, 1),
+            upsert_ms=round((_t_p4_end - _t_p4_start) * 1000, 1),
+        )
+
+        return results, (gate_results_list if return_gate_results else None), unified_results, local_results_batch
 
     async def search(
         self,

@@ -7,6 +7,7 @@ import pytest
 
 try:
     from src.utils.embeddings import (
+        BatchingEmbeddingClient,
         LocalEmbeddings,
         clear_embedding_client_cache,
         get_embedding_client,
@@ -128,7 +129,9 @@ def test_get_embedding_client_cached_same_local_config(monkeypatch, _fake_local_
     c1 = get_embedding_client()
     c2 = get_embedding_client()
 
-    assert isinstance(c1, LocalEmbeddings)
+    # With batching enabled (default), client is wrapped in BatchingEmbeddingClient
+    assert isinstance(c1, BatchingEmbeddingClient)
+    assert isinstance(c1._inner, LocalEmbeddings)
     assert c1 is c2
 
 
@@ -144,8 +147,8 @@ def test_local_embedding_device_changes_cache_key(monkeypatch, _fake_local_runti
     get_settings.cache_clear()
     c2 = get_embedding_client()
 
-    assert isinstance(c1, LocalEmbeddings)
-    assert isinstance(c2, LocalEmbeddings)
+    assert isinstance(c1, BatchingEmbeddingClient)
+    assert isinstance(c2, BatchingEmbeddingClient)
     assert c1 is not c2
-    assert c1.device == "cpu"
-    assert c2.device == "cuda"
+    assert c1._inner.device == "cpu"
+    assert c2._inner.device == "cuda"

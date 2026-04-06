@@ -54,6 +54,8 @@ cml-eval run-locomo \
 | `--verbose` | off | Emit per-sample retrieval diagnostics |
 | `--ingestion-workers N` | 10 | Concurrent workers for Phase A |
 
+> **Performance tip:** Server-side rate limiting is disabled by default (`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0`). Keep it disabled for local eval runs, and also consider `EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE=64` plus `UVICORN_WORKERS=4` for higher throughput. See [evaluation/README.md](../../../evaluation/README.md) for details.
+
 ### `validate` — Validate evaluation output artifacts
 
 ```bash

@@ -13,7 +13,7 @@ import re
 
 from ..core.schemas import Relation
 from ..utils.llm import LLMClient
-from ..utils.ner import extract_relations
+from ..utils.ner import _SPACY_REL_EXECUTOR, extract_relations, extract_relations_from_spans
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -64,7 +64,8 @@ class RelationExtractor:
         entities: list[str] | None = None,
     ) -> list[Relation]:
         if not self.llm:
-            return self._spacy_extract(text)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
 
         prompt = RELATION_EXTRACTION_PROMPT.format(text=text)
         if entities:
@@ -85,7 +86,8 @@ class RelationExtractor:
                 if r.get("subject") and r.get("predicate") and r.get("object")
             ]
         except (json.JSONDecodeError, KeyError, TypeError):
-            return self._spacy_extract(text)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
 
     def _spacy_extract(self, text: str) -> list[Relation]:
         return [
@@ -108,7 +110,12 @@ class RelationExtractor:
         if not items:
             return []
         if not self.llm:
-            return [self._spacy_extract(text) for text, _entities in items]
+            loop = asyncio.get_running_loop()
+            return list(
+                await asyncio.gather(
+                    *[loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text) for text, _ in items]
+                )
+            )
         if len(items) == 1:
             text, entities = items[0]
             return [await self.extract(text, entities=entities)]
@@ -157,6 +164,36 @@ class RelationExtractor:
             # Fallback: individual calls (original behaviour)
             tasks = [self.extract(text, entities=entities) for text, entities in items]
             return list(await asyncio.gather(*tasks))
+
+    def extract_batch_with_spans(
+        self,
+        items: list[tuple[str, list[str]]],
+        spans_batch: list,
+    ) -> list[list[Relation]]:
+        """Extract relations using pre-computed SpanPredictions (no GPU call).
+
+        Uses extract_relations_from_spans for each text, which avoids a second
+        predict_spans() DeBERTa call.  Only valid when LLM is disabled.
+        """
+        results: list[list[Relation]] = []
+        for i, (text, _entities) in enumerate(items):
+            span_pred = spans_batch[i] if i < len(spans_batch) else None
+            try:
+                rels = extract_relations_from_spans(text, span_pred)
+                results.append(
+                    [
+                        Relation(
+                            subject=r.subject,
+                            predicate=self._normalize_predicate(r.predicate),
+                            object=r.object,
+                            confidence=r.confidence,
+                        )
+                        for r in rels
+                    ]
+                )
+            except Exception:
+                results.append([])
+        return results
 
     def _normalize_predicate(self, predicate: str) -> str:
         normalized = re.sub(r"[\s\-]+", "_", predicate.lower())

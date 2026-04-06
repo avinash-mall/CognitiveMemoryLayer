@@ -140,6 +140,11 @@ class WriteTimeFactExtractor:
         """Return named fact families to run, or None to run all heuristics."""
         if not getattr(self.modelpack, "available", False):
             return None
+        # Only call the 25ms family model when a dedicated task model exists.
+        # Without a task model, running all heuristics (~1ms total) is cheaper.
+        has_task_model = getattr(self.modelpack, "has_task_model", None)
+        if not (has_task_model and has_task_model("fact_type")):
+            return None
         try:
             pred = self.modelpack.predict_single("fact_type", text)
         except Exception:

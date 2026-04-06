@@ -1426,3 +1426,43 @@ tr.clickable-row {
 .toast {
     backdrop-filter: blur(8px);
 }
+
+/* --- Investigation / Explain Views --- */
+.compare-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 16px;
+}
+
+.compare-panel {
+    min-width: 0;
+}
+
+.stack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.stack-item {
+    display: block;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+
+.stack-item:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+}
+
+@media (max-width: 900px) {
+    .compare-grid {
+        grid-template-columns: 1fr;
+    }
+}

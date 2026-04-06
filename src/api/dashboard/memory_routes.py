@@ -1,5 +1,6 @@
 """Dashboard memory list, detail, bulk actions, export."""
 
+import json
 import math
 from datetime import datetime
 from typing import cast
@@ -9,13 +10,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
 
 from ...storage.connection import DatabaseManager
-from ...storage.models import EventLogModel, MemoryRecordModel
+from ...storage.models import DashboardJobModel, EventLogModel, MemoryRecordModel, SemanticFactModel
 from ..auth import AuthContext, require_admin_permission
 from ._shared import (
     BulkActionRequest,
+    DashboardLineageMemory,
     DashboardMemoryDetail,
+    DashboardMemoryLineageResponse,
     DashboardMemoryListItem,
     DashboardMemoryListResponse,
+    DashboardRelatedJob,
+    FactItem,
+    GraphSearchResult,
     _get_db,
     logger,
 )
@@ -171,6 +177,207 @@ async def dashboard_memory_detail(
         raise
     except Exception as e:
         logger.error("dashboard_memory_detail_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/memories/{memory_id}/lineage", response_model=DashboardMemoryLineageResponse)
+async def dashboard_memory_lineage(
+    memory_id: UUID,
+    auth: AuthContext = Depends(require_admin_permission),
+    db: DatabaseManager = Depends(_get_db),
+):
+    """Full lifecycle trace for a memory including lineage, facts, entities, and related jobs."""
+    _ = auth
+    try:
+        detail = await dashboard_memory_detail(memory_id=memory_id, auth=auth, db=db)
+
+        def _compact(record: MemoryRecordModel) -> DashboardLineageMemory:
+            return DashboardLineageMemory(
+                id=cast("UUID", record.id),
+                text=cast("str", record.text),
+                type=cast("str", record.type),
+                status=cast("str", record.status),
+                version=cast("int", record.version or 1),
+                key=cast("str | None", record.key),
+                confidence=cast("float", record.confidence or 0.0),
+                importance=cast("float", record.importance or 0.0),
+                timestamp=cast("datetime | None", record.timestamp),
+                written_at=cast("datetime | None", record.written_at),
+                supersedes_id=cast("UUID | None", record.supersedes_id),
+            )
+
+        async with db.pg_session() as session:
+            record = (
+                await session.execute(
+                    select(MemoryRecordModel).where(MemoryRecordModel.id == memory_id)
+                )
+            ).scalar_one_or_none()
+            if record is None:
+                raise HTTPException(status_code=404, detail="Memory not found")
+
+            ancestors: list[DashboardLineageMemory] = []
+            current = record
+            seen_ids: set[UUID] = set()
+            while current.supersedes_id and current.supersedes_id not in seen_ids:
+                seen_ids.add(cast("UUID", current.id))
+                parent = (
+                    await session.execute(
+                        select(MemoryRecordModel).where(
+                            MemoryRecordModel.id == current.supersedes_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if parent is None:
+                    break
+                ancestors.append(_compact(parent))
+                current = parent
+
+            descendants: list[DashboardLineageMemory] = []
+            current_id = record.id
+            seen_child_ids: set[UUID] = set()
+            while current_id and current_id not in seen_child_ids:
+                seen_child_ids.add(cast("UUID", current_id))
+                child = (
+                    await session.execute(
+                        select(MemoryRecordModel).where(
+                            MemoryRecordModel.supersedes_id == current_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if child is None:
+                    break
+                descendants.append(_compact(child))
+                current_id = child.id
+
+            same_key_versions: list[DashboardLineageMemory] = []
+            if record.key:
+                same_key_rows = (
+                    await session.execute(
+                        select(MemoryRecordModel)
+                        .where(
+                            MemoryRecordModel.tenant_id == record.tenant_id,
+                            MemoryRecordModel.key == record.key,
+                        )
+                        .order_by(MemoryRecordModel.version.asc(), MemoryRecordModel.timestamp.asc())
+                    )
+                ).scalars().all()
+                same_key_versions = [_compact(row) for row in same_key_rows]
+
+            fact_rows = (
+                await session.execute(
+                    select(SemanticFactModel)
+                    .where(
+                        SemanticFactModel.tenant_id == record.tenant_id,
+                        SemanticFactModel.evidence_ids.any(str(record.id)),
+                    )
+                    .order_by(SemanticFactModel.updated_at.desc())
+                    .limit(20)
+                )
+            ).scalars().all()
+            evidence_facts = [
+                FactItem(
+                    id=str(row.id),
+                    tenant_id=str(row.tenant_id),
+                    category=str(row.category),
+                    key=str(row.key),
+                    value=str(row.value),
+                    confidence=float(row.confidence),
+                    evidence_count=int(row.evidence_count),
+                    is_current=bool(row.is_current),
+                    version=int(row.version),
+                    created_at=row.created_at.isoformat() if row.created_at else None,
+                    updated_at=row.updated_at.isoformat() if row.updated_at else None,
+                )
+                for row in fact_rows
+            ]
+
+            recent_jobs = (
+                await session.execute(
+                    select(DashboardJobModel)
+                    .where(DashboardJobModel.tenant_id == record.tenant_id)
+                    .order_by(DashboardJobModel.started_at.desc())
+                    .limit(50)
+                )
+            ).scalars().all()
+
+        related_jobs = []
+        lookup_terms = {str(record.id)}
+        record_key = cast("str | None", record.key)
+        if record_key:
+            lookup_terms.add(record_key)
+        if detail.related_events:
+            lookup_terms.update(event["id"] for event in detail.related_events)
+        for job in recent_jobs:
+            payload = json.dumps(job.result or {}, default=str)
+            if any(term and term in payload for term in lookup_terms):
+                related_jobs.append(
+                    DashboardRelatedJob(
+                        id=cast("UUID", job.id),
+                        job_type=cast("str", job.job_type),
+                        status=cast("str", job.status),
+                        started_at=cast("datetime | None", job.started_at),
+                        completed_at=cast("datetime | None", job.completed_at),
+                        result=cast("dict | None", job.result),
+                    )
+                )
+
+        related_entities: list[GraphSearchResult] = []
+        entity_names: list[str] = []
+        if isinstance(record.entities, list):
+            for entity in record.entities:
+                if isinstance(entity, dict) and entity.get("normalized"):
+                    entity_names.append(str(entity["normalized"]))
+                elif isinstance(entity, dict) and entity.get("text"):
+                    entity_names.append(str(entity["text"]))
+        entity_names = list(dict.fromkeys(entity_names))[:10]
+        if entity_names and db.neo4j_driver:
+            async with db.neo4j_session() as neo_session:
+                result = await neo_session.run(
+                    """
+                    MATCH (n:Entity)
+                    WHERE n.tenant_id = $tenant_id AND n.entity IN $entities
+                    RETURN n.entity AS entity, n.entity_type AS entity_type,
+                           n.tenant_id AS tid, n.scope_id AS sid
+                    LIMIT 25
+                    """,
+                    tenant_id=record.tenant_id,
+                    entities=entity_names,
+                )
+                related_entities = [
+                    GraphSearchResult(
+                        entity=rec["entity"],
+                        entity_type=rec["entity_type"] or "",
+                        tenant_id=rec["tid"] or "",
+                        scope_id=rec["sid"] or "",
+                    )
+                    async for rec in result
+                ]
+
+        lifecycle_flags = [str(record.status)]
+        if record.labile:
+            lifecycle_flags.append("labile")
+        if record.supersedes_id:
+            lifecycle_flags.append("supersedes_previous_version")
+        metadata = cast("dict[str, object]", record.meta or {})
+        if metadata.get("consolidated"):
+            lifecycle_flags.append("consolidated")
+        if record.valid_to:
+            lifecycle_flags.append("temporal_window_closed")
+
+        return DashboardMemoryLineageResponse(
+            memory=detail,
+            ancestors=ancestors,
+            descendants=descendants,
+            same_key_versions=same_key_versions,
+            evidence_facts=evidence_facts,
+            related_entities=related_entities,
+            related_jobs=related_jobs,
+            lifecycle_flags=list(dict.fromkeys(lifecycle_flags)),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("dashboard_memory_lineage_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 

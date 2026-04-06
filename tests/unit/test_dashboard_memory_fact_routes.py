@@ -3,18 +3,30 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
 from src.api.dashboard import events_routes, fact_routes, memory_routes
+from src.core.enums import MemoryStatus, MemoryType
 
-from .dashboard_support import ADMIN_AUTH, ResultStub, SessionStub, make_db
+from .dashboard_support import (
+    ADMIN_AUTH,
+    NeoResultStub,
+    NeoSessionStub,
+    ResultStub,
+    SessionStub,
+    make_db,
+)
 
 
-def _request_with_db(db: object) -> SimpleNamespace:
-    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db=db)))
+def _request_with_db(db: object, orchestrator: object | None = None) -> SimpleNamespace:
+    state = SimpleNamespace(db=db)
+    if orchestrator is not None:
+        state.orchestrator = orchestrator
+    return SimpleNamespace(app=SimpleNamespace(state=state))
 
 
 @pytest.mark.asyncio
@@ -151,6 +163,127 @@ async def test_dashboard_memory_detail_404_when_missing() -> None:
         )
 
 
+@pytest.mark.asyncio
+async def test_dashboard_memory_lineage_maps_versions_entities_and_jobs() -> None:
+    memory_id = uuid4()
+    child_id = uuid4()
+    event_id = uuid4()
+    fact_id = uuid4()
+    job_id = uuid4()
+    now = datetime.now(UTC)
+    record = SimpleNamespace(
+        id=memory_id,
+        tenant_id="tenant-a",
+        agent_id="agent-1",
+        type="semantic_fact",
+        status="active",
+        text="Detailed memory",
+        key="pref:food",
+        namespace="ns-1",
+        context_tags=["conversation"],
+        source_session_id="sess-1",
+        entities=[{"normalized": "Paris"}],
+        relations=[{"predicate": "lives_in"}],
+        meta={"source": "write", "consolidated": True},
+        confidence=0.9,
+        importance=0.8,
+        access_count=4,
+        last_accessed_at=now,
+        decay_rate=0.01,
+        labile=True,
+        provenance={"origin": "api"},
+        version=3,
+        supersedes_id=None,
+        content_hash="hash",
+        timestamp=now,
+        written_at=now,
+        valid_from=now,
+        valid_to=now,
+    )
+    child = SimpleNamespace(
+        id=child_id,
+        text="Updated memory",
+        type="semantic_fact",
+        status="active",
+        version=4,
+        key="pref:food",
+        confidence=0.95,
+        importance=0.7,
+        timestamp=now,
+        written_at=now,
+        supersedes_id=memory_id,
+    )
+    fact = SimpleNamespace(
+        id=fact_id,
+        tenant_id="tenant-a",
+        category="identity",
+        key="pref:food",
+        value="pizza",
+        confidence=0.88,
+        evidence_count=1,
+        is_current=True,
+        version=2,
+        created_at=now,
+        updated_at=now,
+    )
+    job = SimpleNamespace(
+        id=job_id,
+        job_type="forget",
+        status="completed",
+        started_at=now,
+        completed_at=now,
+        result={"memory_id": str(memory_id), "key": "pref:food"},
+    )
+    event = SimpleNamespace(
+        id=event_id,
+        event_type="memory_op",
+        operation="write",
+        created_at=now,
+        payload={"source": "api"},
+    )
+    db, _ = make_db(
+        pg_results=[
+            ResultStub(one_or_none=record),
+            ResultStub(scalar_rows=[event]),
+            ResultStub(one_or_none=record),
+            ResultStub(one_or_none=None),
+            ResultStub(scalar_rows=[record, child]),
+            ResultStub(scalar_rows=[fact]),
+            ResultStub(scalar_rows=[job]),
+        ],
+        neo_session=NeoSessionStub(
+            [
+                NeoResultStub(
+                    items=[
+                        {
+                            "entity": "Paris",
+                            "entity_type": "city",
+                            "tid": "tenant-a",
+                            "sid": "scope-1",
+                        }
+                    ]
+                )
+            ]
+        ),
+    )
+
+    result = await memory_routes.dashboard_memory_lineage(
+        memory_id=memory_id,
+        auth=ADMIN_AUTH,
+        db=db,
+    )
+
+    assert result.memory.id == memory_id
+    assert [item.id for item in result.same_key_versions] == [memory_id, child_id]
+    assert result.evidence_facts[0].id == str(fact_id)
+    assert result.related_entities[0].entity == "Paris"
+    assert result.related_jobs[0].id == job_id
+    assert "active" in result.lifecycle_flags
+    assert "labile" in result.lifecycle_flags
+    assert "consolidated" in result.lifecycle_flags
+    assert "temporal_window_closed" in result.lifecycle_flags
+
+
 class _RowCountResult:
     def __init__(self, rowcount: int) -> None:
         self.rowcount = rowcount
@@ -279,6 +412,92 @@ async def test_dashboard_facts_wraps_errors() -> None:
             request=_request_with_db(db),
             auth=ADMIN_AUTH,
         )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_fact_detail_returns_lineage_and_supersession() -> None:
+    now = datetime.now(UTC)
+    fact = SimpleNamespace(
+        id="fact-1",
+        tenant_id="tenant-a",
+        category="identity",
+        key="user:name",
+        subject="user",
+        predicate="name",
+        value="Alice",
+        value_type="string",
+        context_tags=["profile"],
+        confidence=0.95,
+        evidence_count=2,
+        evidence_ids=["mem-1", "mem-2"],
+        valid_from=now,
+        valid_to=None,
+        is_current=True,
+        created_at=now,
+        updated_at=now,
+        version=2,
+        supersedes_id="fact-0",
+    )
+    db, _ = make_db(pg_results=[ResultStub(one_or_none=fact)])
+    fact_store = SimpleNamespace(
+        get_fact_lineage=AsyncMock(return_value=[{"id": "fact-0"}]),
+        get_superseded_chain=AsyncMock(return_value=[{"id": "fact-2"}]),
+    )
+    orchestrator = SimpleNamespace(neocortical=SimpleNamespace(facts=fact_store))
+
+    result = await fact_routes.dashboard_fact_detail(
+        request=_request_with_db(db, orchestrator=orchestrator),
+        fact_id="fact-1",
+        auth=ADMIN_AUTH,
+    )
+
+    assert result.id == "fact-1"
+    assert result.lineage == [{"id": "fact-0"}]
+    assert result.superseded_by == [{"id": "fact-2"}]
+    fact_store.get_fact_lineage.assert_awaited_once_with("tenant-a", fact_id="fact-1")
+    fact_store.get_superseded_chain.assert_awaited_once_with("tenant-a", "fact-1")
+
+
+@pytest.mark.asyncio
+async def test_dashboard_fact_evidence_returns_records_and_missing_ids() -> None:
+    memory_id = uuid4()
+    missing_memory_id = uuid4()
+    now = datetime.now(UTC)
+    fact = SimpleNamespace(
+        id="fact-1",
+        evidence_ids=[str(memory_id), "not-a-uuid", str(missing_memory_id)],
+    )
+    evidence_record = SimpleNamespace(
+        id=memory_id,
+        text="Supporting memory",
+        type=MemoryType.SEMANTIC_FACT,
+        status=MemoryStatus.ACTIVE,
+        confidence=0.88,
+        importance=0.67,
+        source_session_id="sess-1",
+        timestamp=now,
+        written_at=now,
+        supersedes_id=None,
+        metadata={"origin": "api"},
+    )
+    db, _ = make_db(pg_results=[ResultStub(one_or_none=fact)])
+    get_by_ids_batch = AsyncMock(return_value=[evidence_record])
+    orchestrator = SimpleNamespace(
+        hippocampal=SimpleNamespace(store=SimpleNamespace(get_by_ids_batch=get_by_ids_batch))
+    )
+
+    result = await fact_routes.dashboard_fact_evidence(
+        request=_request_with_db(db, orchestrator=orchestrator),
+        fact_id="fact-1",
+        auth=ADMIN_AUTH,
+    )
+
+    assert result.fact_id == "fact-1"
+    assert result.evidence[0].id == memory_id
+    assert result.evidence[0].type == MemoryType.SEMANTIC_FACT.value
+    assert set(result.missing_evidence_ids) == {"not-a-uuid", str(missing_memory_id)}
+    fetched_ids = get_by_ids_batch.await_args.args[0]
+    assert set(fetched_ids) == {memory_id, missing_memory_id}
 
 
 @pytest.mark.asyncio

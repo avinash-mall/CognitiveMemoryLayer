@@ -123,7 +123,14 @@ services:
       - "8000:8000"
     volumes:
       - ../packages/models:/app/packages/models
-    command: ["sh", "-c", "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: ["sh", "-c", "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s

@@ -30,22 +30,24 @@ class PostgresMemoryStore(MemoryStoreBase):
     async def upsert(self, record: MemoryRecordCreate) -> MemoryRecord:
         content_hash = self._hash_content(record.text, record.tenant_id)
         async with self.session_factory() as session:
-            # BUG-06: Check by key first if provided (stable identity), then by content_hash (deduplication)
+            # Single SELECT with OR clause — avoids a second round-trip vs the old
+            # sequential key-lookup + hash-lookup pattern (BUG-06 fix preserved).
             existing_record = None
-
             if record.key:
-                existing_key = await session.execute(
+                existing_result = await session.execute(
                     select(MemoryRecordModel).where(
                         and_(
                             MemoryRecordModel.tenant_id == record.tenant_id,
-                            MemoryRecordModel.key == record.key,
                             MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                            or_(
+                                MemoryRecordModel.key == record.key,
+                                MemoryRecordModel.content_hash == content_hash,
+                            ),
                         )
-                    )
+                    ).limit(1)
                 )
-                existing_record = existing_key.scalar_one_or_none()
-
-            if not existing_record:
+                existing_record = existing_result.scalar_one_or_none()
+            else:
                 existing_hash = await session.execute(
                     select(MemoryRecordModel).where(
                         and_(
@@ -76,7 +78,6 @@ class PostgresMemoryStore(MemoryStoreBase):
                     existing_record.meta = record.metadata
 
                 await session.commit()
-                await session.refresh(existing_record)
                 return cast("MemoryRecord", self._to_schema(existing_record))
 
             ts = _naive_utc(record.timestamp or datetime.now(UTC))
@@ -104,7 +105,6 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             session.add(model)
             await session.commit()
-            await session.refresh(model)
             return cast("MemoryRecord", self._to_schema(model))
 
     async def get_by_id(self, record_id: UUID) -> MemoryRecord | None:
@@ -320,6 +320,29 @@ class PostgresMemoryStore(MemoryStoreBase):
             q = q.offset(offset).limit(limit)
             r = await session.execute(q)
             return [rec for m in r.scalars().all() if (rec := self._to_schema(m)) is not None]
+
+    async def scan_texts_for_gate(
+        self,
+        tenant_id: str,
+        limit: int = 50,
+    ) -> list[str]:
+        """Fetch only text column for write-gate novelty check.
+
+        Avoids transferring 768-dim embedding vectors (150KB per 50 records)
+        that the gate discards immediately.
+        """
+        async with self.session_factory() as session:
+            q = (
+                select(MemoryRecordModel.text)
+                .where(
+                    MemoryRecordModel.tenant_id == tenant_id,
+                    MemoryRecordModel.status == "active",
+                )
+                .order_by(MemoryRecordModel.timestamp.desc())
+                .limit(limit)
+            )
+            r = await session.execute(q)
+            return [row[0] for row in r.all()]
 
     async def count(
         self,

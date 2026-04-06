@@ -97,6 +97,24 @@ class MemoryStoreBase(ABC):
         """Delete records matching filters. Holistic: tenant-only. Returns count of deleted records."""
         ...
 
+    async def scan_texts_for_gate(
+        self,
+        tenant_id: str,
+        limit: int = 50,
+    ) -> list[str]:
+        """Return recent active memory texts for the write-gate novelty check.
+
+        Default falls back to full scan; PostgresMemoryStore overrides with a
+        text-only query to avoid fetching 150KB of unused embedding vectors.
+        """
+        records = await self.scan(
+            tenant_id,
+            filters={"status": "active"},
+            order_by="-timestamp",
+            limit=limit,
+        )
+        return [r.text for r in records]
+
     async def count_references_to(self, record_id: UUID) -> int:
         """
         Count how many other records reference this one (e.g. supersedes_id, evidence_refs).

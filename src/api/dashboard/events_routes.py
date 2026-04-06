@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
+from starlette.responses import JSONResponse
 
 from ...storage.models import EventLogModel
 from ..auth import AuthContext, require_admin_permission
@@ -79,4 +80,40 @@ async def dashboard_events(
             )
     except Exception as e:
         logger.error("dashboard_events_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/events/export")
+async def dashboard_export_events(
+    tenant_id: str | None = Query(None),
+    auth: AuthContext = Depends(require_admin_permission),
+    db=Depends(_get_db),
+):
+    """Export events as JSON for download. Optionally filter by tenant."""
+    try:
+        async with db.pg_session() as session:
+            q = select(EventLogModel).order_by(EventLogModel.created_at.desc()).limit(10000)
+            if tenant_id:
+                q = q.where(EventLogModel.tenant_id == tenant_id)
+            rows = (await session.execute(q)).scalars().all()
+            data = [
+                {
+                    "id": str(e.id),
+                    "tenant_id": e.tenant_id,
+                    "scope_id": e.scope_id,
+                    "agent_id": e.agent_id,
+                    "event_type": e.event_type,
+                    "operation": e.operation,
+                    "payload": e.payload,
+                    "memory_ids": list(e.memory_ids or []),
+                    "created_at": e.created_at.isoformat() if e.created_at else None,
+                }
+                for e in rows
+            ]
+            return JSONResponse(
+                content=data,
+                headers={"Content-Disposition": "attachment; filename=events_export.json"},
+            )
+    except Exception as e:
+        logger.error("dashboard_export_events_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

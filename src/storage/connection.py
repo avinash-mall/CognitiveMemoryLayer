@@ -20,8 +20,8 @@ from ..core.config import ensure_asyncpg_url, get_settings
 _logger = structlog.get_logger(__name__)
 
 # Pool sizing: max persistent connections and extra under peak load
-_PG_POOL_SIZE = 20
-_PG_MAX_OVERFLOW = 10
+_PG_POOL_SIZE = 40
+_PG_MAX_OVERFLOW = 20
 
 
 def _neo4j_host_allows_empty_password(url: str) -> bool:

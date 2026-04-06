@@ -179,6 +179,87 @@ async def test_dashboard_jobs_returns_items_filters_and_duration() -> None:
     assert "ORDER BY" in rows_query
 
 
+@pytest.mark.asyncio
+async def test_dashboard_job_detail_returns_persisted_artifacts() -> None:
+    started = datetime(2025, 1, 1, 10, 0, 0)
+    completed = started + timedelta(seconds=5)
+    job = SimpleNamespace(
+        id=uuid4(),
+        job_type="consolidate",
+        tenant_id="tenant-a",
+        user_id="user-1",
+        dry_run=False,
+        status="completed",
+        result={"artifacts": {"migration": {"facts_created": 3}}},
+        error=None,
+        started_at=started,
+        completed_at=completed,
+    )
+    db, _ = make_db(pg_results=[ResultStub(one_or_none=job)])
+
+    result = await jobs_routes.dashboard_job_detail(
+        job_id=job.id,
+        auth=ADMIN_AUTH,
+        db=db,
+    )
+
+    assert result.id == job.id
+    assert result.duration_seconds == 5.0
+    assert result.result == {"artifacts": {"migration": {"facts_created": 3}}}
+
+
+@pytest.mark.asyncio
+async def test_dashboard_consolidation_and_reconsolidation_run_aliases() -> None:
+    consolidate_job = SimpleNamespace(
+        id=uuid4(),
+        job_type="consolidate",
+        tenant_id="tenant-a",
+        user_id="user-1",
+        dry_run=False,
+        status="completed",
+        result={"status": "completed"},
+        error=None,
+        started_at=datetime(2025, 1, 1, 10, 0, 0),
+        completed_at=datetime(2025, 1, 1, 10, 0, 2),
+    )
+    reconsolidate_job = SimpleNamespace(
+        id=uuid4(),
+        job_type="reconsolidate",
+        tenant_id="tenant-a",
+        user_id="user-1",
+        dry_run=False,
+        status="completed",
+        result={"status": "completed"},
+        error=None,
+        started_at=datetime(2025, 1, 1, 11, 0, 0),
+        completed_at=datetime(2025, 1, 1, 11, 0, 1),
+    )
+    db, _ = make_db(
+        pg_results=[
+            ResultStub(scalar=1),
+            ResultStub(scalar_rows=[consolidate_job]),
+            ResultStub(scalar=1),
+            ResultStub(scalar_rows=[reconsolidate_job]),
+        ]
+    )
+
+    consolidate_result = await jobs_routes.dashboard_consolidation_runs(
+        tenant_id="tenant-a",
+        limit=10,
+        auth=ADMIN_AUTH,
+        db=db,
+    )
+    reconsolidate_result = await jobs_routes.dashboard_reconsolidation_runs(
+        tenant_id="tenant-a",
+        limit=10,
+        auth=ADMIN_AUTH,
+        db=db,
+    )
+
+    assert consolidate_result.items[0].job_type == "consolidate"
+    assert reconsolidate_result.items[0].job_type == "reconsolidate"
+
+
 class _FailFirstCommitSession(SessionStub):
     async def commit(self) -> None:
         self.commits += 1
@@ -211,6 +292,37 @@ async def test_dashboard_consolidate_updates_tracking_and_returns_success() -> N
     assert session.added[0].job_type == "consolidate"
     assert session.commits == 2
     assert len(session.execute_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_dashboard_consolidate_includes_migration_artifacts() -> None:
+    report = SimpleNamespace(
+        episodes_sampled=5,
+        clusters_formed=2,
+        gists_extracted=3,
+        elapsed_seconds=1.5,
+        migration=SimpleNamespace(
+            gists_processed=7,
+            facts_created=11,
+            facts_updated=4,
+            episodes_marked=6,
+            errors=["warn"],
+        ),
+    )
+    orchestrator = SimpleNamespace(
+        consolidation=SimpleNamespace(consolidate=AsyncMock(return_value=report))
+    )
+    db, _ = make_db(session=SessionStub([ResultStub()]))
+
+    result = await jobs_routes.dashboard_consolidate(
+        body=jobs_routes.DashboardConsolidateRequest(tenant_id="tenant-a", user_id="user-1"),
+        request=_request(orchestrator=orchestrator, db=db),
+        auth=ADMIN_AUTH,
+    )
+
+    assert result["facts_created"] == 11
+    assert result["gists_processed"] == 7
+    assert result["artifacts"]["migration"]["episodes_marked"] == 6
 
 
 @pytest.mark.asyncio

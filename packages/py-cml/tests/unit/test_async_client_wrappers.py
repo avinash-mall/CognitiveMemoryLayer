@@ -169,7 +169,7 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
         if path == "/dashboard/sessions":
             return {"sessions": [], "total_active": 0, "total_memories_with_session": 0}
         if path == "/dashboard/ratelimits":
-            return {"entries": [], "configured_rpm": 60}
+            return {"entries": [], "configured_rpm": 0}
         if path == "/dashboard/request-stats":
             return {"points": [], "total_last_24h": 0}
         if path == "/dashboard/graph/stats":
@@ -255,7 +255,7 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
     assert (await client.dashboard_timeline()).total == 0
     assert (await client.component_health()).components[0].name == "PostgreSQL"
     assert (await client.get_sessions()).total_active == 0
-    assert (await client.get_rate_limits()).configured_rpm == 60
+    assert (await client.get_rate_limits()).configured_rpm == 0
     assert (await client.get_request_stats()).total_last_24h == 0
     assert (await client.get_graph_stats()).total_nodes == 1
     assert (await client.graph_overview()).center_entity is None

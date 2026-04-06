@@ -106,6 +106,8 @@ class WriteGate:
         existing_memories: list[dict[str, Any]] | None = None,
         context: dict[str, Any] | None = None,
         unified_result: "UnifiedExtractionResult | None" = None,
+        precomputed_novelty: float | None = None,
+        precomputed_pii: bool | None = None,
     ) -> WriteGateResult:
         risk_flags: list[str] = []
         settings = get_settings().features
@@ -132,7 +134,12 @@ class WriteGate:
             if redaction_required:
                 risk_flags.append("contains_pii")
         else:
-            if self._predict_pii(chunk.text):
+            has_pii = (
+                precomputed_pii
+                if precomputed_pii is not None
+                else self._predict_pii(chunk.text)
+            )
+            if has_pii:
                 risk_flags.append("contains_pii")
                 redaction_required = True
             else:
@@ -166,7 +173,11 @@ class WriteGate:
             importance = self._predict_importance(
                 chunk, context, effective_chunk_type=effective_chunk_type
             )
-        novelty = self._compute_novelty(chunk, existing_memories)
+        novelty = (
+            precomputed_novelty
+            if precomputed_novelty is not None
+            else self._compute_novelty(chunk, existing_memories)
+        )
         memory_types = self._determine_memory_types(
             chunk, effective_chunk_type=effective_chunk_type
         )
@@ -242,8 +253,8 @@ class WriteGate:
         if _has_pii_model and _has_pii_model("pii_span_detection"):
             try:
                 span_pred = self.modelpack.predict_spans("pii_span_detection", text)
-                if span_pred is not None and span_pred.spans:
-                    return True
+                # Trust the task model: spans present = PII, no spans = no PII
+                return bool(span_pred is not None and span_pred.spans)
             except Exception:
                 pass  # fall through to existing classifier
 
@@ -353,36 +364,65 @@ class WriteGate:
         _has_novelty = getattr(self.modelpack, "has_task_model", None)
         if _has_novelty and _has_novelty("novelty_pair"):
             try:
-                min_novelty = 1.0
-                scored_any = False
-                for mem in existing_memories:
-                    mem_text = (mem.get("text") or "").strip()
-                    if not mem_text:
-                        continue
-                    probs = None
-                    predict_pair_proba = getattr(self.modelpack, "predict_pair_proba", None)
-                    if callable(predict_pair_proba):
-                        probs = predict_pair_proba("novelty_pair", chunk.text, mem_text)
-
-                    if probs is not None:
-                        pair_novelty = float(probs.get("changed", 0.0)) + float(
-                            probs.get("novel", 0.0)
-                        )
+                mem_texts = [
+                    (mem.get("text") or "").strip() for mem in existing_memories
+                ]
+                valid_pairs = [
+                    (chunk.text, mt) for mt in mem_texts if mt
+                ]
+                if valid_pairs:
+                    predict_proba_batch = getattr(
+                        self.modelpack, "predict_pair_proba_batch", None
+                    )
+                    if callable(predict_proba_batch):
+                        # Single sklearn call for all N memories — ~10ms vs Nx6ms
+                        batch_results = predict_proba_batch("novelty_pair", valid_pairs)
+                        min_novelty = 1.0
+                        scored_any = False
+                        for probs in batch_results:
+                            if probs is None:
+                                continue
+                            pair_novelty = float(probs.get("changed", 0.0)) + float(
+                                probs.get("novel", 0.0)
+                            )
+                            scored_any = True
+                            min_novelty = min(min_novelty, max(0.0, min(1.0, pair_novelty)))
+                            if min_novelty == 0.0:
+                                break  # exact duplicate — no need to check more
+                        if scored_any:
+                            return min_novelty
                     else:
-                        pred = self.modelpack.predict_pair("novelty_pair", chunk.text, mem_text)
-                        if pred is None:
-                            continue
-
-                        label = pred.label.strip().lower()
-                        confidence = max(0.0, min(1.0, pred.confidence))
-                        pair_novelty = (
-                            confidence if label in {"changed", "novel"} else (1.0 - confidence)
-                        )
-
-                    scored_any = True
-                    min_novelty = min(min_novelty, max(0.0, min(1.0, pair_novelty)))
-                if scored_any:
-                    return min_novelty
+                        # Fallback: sequential predict_pair_proba calls
+                        predict_pair_proba = getattr(self.modelpack, "predict_pair_proba", None)
+                        min_novelty = 1.0
+                        scored_any = False
+                        for text_a, text_b in valid_pairs:
+                            probs = (
+                                predict_pair_proba("novelty_pair", text_a, text_b)
+                                if callable(predict_pair_proba)
+                                else None
+                            )
+                            if probs is not None:
+                                pair_novelty = float(probs.get("changed", 0.0)) + float(
+                                    probs.get("novel", 0.0)
+                                )
+                            else:
+                                pred = self.modelpack.predict_pair("novelty_pair", text_a, text_b)
+                                if pred is None:
+                                    continue
+                                label = pred.label.strip().lower()
+                                confidence = max(0.0, min(1.0, pred.confidence))
+                                pair_novelty = (
+                                    confidence
+                                    if label in {"changed", "novel"}
+                                    else (1.0 - confidence)
+                                )
+                            scored_any = True
+                            min_novelty = min(min_novelty, max(0.0, min(1.0, pair_novelty)))
+                            if min_novelty == 0.0:
+                                break
+                        if scored_any:
+                            return min_novelty
             except Exception:
                 pass  # fall through to heuristic
 
@@ -400,6 +440,75 @@ class WriteGate:
                 if overlap > 0.5:
                     return 0.5
         return 1.0
+
+    def compute_novelty_batch(
+        self,
+        chunks: "list[SemanticChunk]",
+        existing_memories: list[dict[str, Any]] | None = None,
+    ) -> list[float]:
+        """Compute novelty for all chunks in one mega-batch sklearn call.
+
+        Instead of N x predict_pair_proba_batch([M pairs]) = N x ~10ms,
+        calls predict_pair_proba_batch([N x M pairs]) once = ~10ms total.
+        """
+        if not chunks:
+            return []
+        if not existing_memories:
+            return [1.0] * len(chunks)
+
+        # Filter to chunks not in known_facts cache
+        needs_model: list[int] = []
+        novelties: list[float] = [1.0] * len(chunks)
+        for i, chunk in enumerate(chunks):
+            key = chunk.text.lower().strip()
+            if key in self._known_facts:
+                novelties[i] = 0.0
+            else:
+                needs_model.append(i)
+
+        if not needs_model:
+            return novelties
+
+        mem_texts = [(mem.get("text") or "").strip() for mem in existing_memories]
+        mem_texts = [t for t in mem_texts if t]
+        if not mem_texts:
+            return novelties
+
+        predict_proba_batch = getattr(self.modelpack, "predict_pair_proba_batch", None)
+        if callable(predict_proba_batch):
+            try:
+                # Build mega-batch: all (chunk_i, mem_j) pairs in order
+                mega_pairs: list[tuple[str, str]] = []
+                chunk_starts: list[int] = []
+                for idx in needs_model:
+                    chunk_starts.append(len(mega_pairs))
+                    for mt in mem_texts:
+                        mega_pairs.append((chunks[idx].text, mt))
+
+                batch_results = predict_proba_batch("novelty_pair", mega_pairs)
+
+                for pos, idx in enumerate(needs_model):
+                    start = chunk_starts[pos]
+                    end = start + len(mem_texts)
+                    min_nov = 1.0
+                    for probs in batch_results[start:end]:
+                        if probs is None:
+                            continue
+                        pair_nov = float(probs.get("changed", 0.0)) + float(
+                            probs.get("novel", 0.0)
+                        )
+                        min_nov = min(min_nov, max(0.0, min(1.0, pair_nov)))
+                        if min_nov == 0.0:
+                            break
+                    novelties[idx] = min_nov
+                return novelties
+            except Exception:
+                pass  # fall through to per-chunk fallback
+
+        # Fallback: call _compute_novelty per chunk
+        for idx in needs_model:
+            novelties[idx] = self._compute_novelty(chunks[idx], existing_memories)
+        return novelties
 
     def _determine_memory_types(
         self, chunk: SemanticChunk, effective_chunk_type: ChunkType | None = None

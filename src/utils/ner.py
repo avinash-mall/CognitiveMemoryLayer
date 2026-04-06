@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import re
 from dataclasses import dataclass
@@ -9,6 +10,17 @@ from functools import lru_cache
 from typing import Any
 
 from .logging_config import get_logger
+
+# Dedicated 2-worker executor for spaCy calls.  The default thread-pool
+# serializes poorly under concurrent load (10 threads → 741ms vs 71ms with 2).
+# max_workers=2 is the empirical sweet spot on this hardware (3+ hurts due
+# to GIL/cache contention).  NER and REL share this pool — separate executors
+# increase total thread count to 4, degrading per-call time from 7ms to 14ms.
+_SPACY_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2,
+    thread_name_prefix="spacy",
+)
+_SPACY_REL_EXECUTOR = _SPACY_EXECUTOR  # alias kept for import compatibility
 
 logger = get_logger(__name__)
 
@@ -302,41 +314,61 @@ def extract_relations(
     text: str,
     *,
     max_relations: int = 32,
+    use_modelpack: bool = True,
 ) -> list[NERRelation]:
-    try:
-        from .modelpack import get_modelpack_runtime
+    if use_modelpack:
+        try:
+            from .modelpack import get_modelpack_runtime
 
-        mp = get_modelpack_runtime()
-        if getattr(mp, "has_task_model", lambda _: False)("fact_extraction_structured"):
-            span_pred = mp.predict_spans("fact_extraction_structured", text)
-            if span_pred is not None and span_pred.spans:
-                from ..extraction.fact_span_adapter import build_user_relation_records
+            mp = get_modelpack_runtime()
+            if getattr(mp, "has_task_model", lambda _: False)("fact_extraction_structured"):
+                span_pred = mp.predict_spans("fact_extraction_structured", text)
+                if span_pred is not None and span_pred.spans:
+                    from ..extraction.fact_span_adapter import build_user_relation_records
 
-                span_relations = [
-                    NERRelation(
-                        subject=relation.subject,
-                        predicate=relation.predicate,
-                        object=relation.object,
-                        confidence=relation.confidence,
-                    )
-                    for relation in build_user_relation_records(
-                        text,
-                        span_pred,
-                        confidence=0.85,
-                        max_relations=max_relations,
-                    )
-                ]
-                if span_relations:
-                    return span_relations
-    except Exception:
-        pass  # fall through to existing dependency-based extraction
+                    span_relations = [
+                        NERRelation(
+                            subject=relation.subject,
+                            predicate=relation.predicate,
+                            object=relation.object,
+                            confidence=relation.confidence,
+                        )
+                        for relation in build_user_relation_records(
+                            text,
+                            span_pred,
+                            confidence=0.85,
+                            max_relations=max_relations,
+                        )
+                    ]
+                    if span_relations:
+                        return span_relations
+        except Exception:
+            pass  # fall through to existing dependency-based extraction
 
     doc = parse_text(text)
     if doc is None:
         return []
     if not _doc_has_dependency_parse(doc):
         return []
-    doc_entities = extract_entities(text)
+    # Extract entities from the already-parsed doc to avoid a second parse_text() call.
+    doc_entities: list[NEREntity] = []
+    _seen_ents: set[tuple[int, int, str]] = set()
+    for _ent in doc.ents:
+        _mapped = _ENTITY_LABEL_MAP.get(_ent.label_, "CONCEPT")
+        _key = (int(_ent.start_char), int(_ent.end_char), _mapped)
+        if _key not in _seen_ents:
+            _seen_ents.add(_key)
+            _tv = _ent.text.strip()
+            if _tv:
+                doc_entities.append(
+                    NEREntity(
+                        text=_tv,
+                        normalized=normalize_entity_name(_tv, _mapped),
+                        entity_type=_mapped,
+                        start_char=int(_ent.start_char),
+                        end_char=int(_ent.end_char),
+                    )
+                )
     relations: list[NERRelation] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -387,3 +419,42 @@ def extract_relations(
 
 def extract_entity_texts(text: str, *, max_entities: int = 16) -> list[str]:
     return [e.text for e in extract_entities(text, max_entities=max_entities)]
+
+
+def extract_relations_from_spans(
+    text: str,
+    span_pred: Any,
+    *,
+    max_relations: int = 32,
+) -> list[NERRelation]:
+    """Extract relations using a pre-computed SpanPrediction (no GPU call).
+
+    Avoids the duplicate predict_spans call that extract_relations() would make,
+    when the caller already has the spans from predict_spans_batch().
+    Falls back to spaCy dependency parsing when span_pred has no spans.
+    """
+    if span_pred is not None and getattr(span_pred, "spans", None):
+        try:
+            from ..extraction.fact_span_adapter import build_user_relation_records
+
+            span_relations = [
+                NERRelation(
+                    subject=relation.subject,
+                    predicate=relation.predicate,
+                    object=relation.object,
+                    confidence=relation.confidence,
+                )
+                for relation in build_user_relation_records(
+                    text,
+                    span_pred,
+                    confidence=0.85,
+                    max_relations=max_relations,
+                )
+            ]
+            if span_relations:
+                return span_relations
+        except Exception:
+            pass
+
+    # Fallback: spaCy dependency parse (use_modelpack=False to avoid a second DeBERTa call)
+    return extract_relations(text, max_relations=max_relations, use_modelpack=False)

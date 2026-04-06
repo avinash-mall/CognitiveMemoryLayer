@@ -29,7 +29,7 @@ class FullEvalConfig:
     repo_root: Path
     skip_docker: bool = False
     limit_samples: int | None = None
-    ingestion_workers: int = 5
+    ingestion_workers: int = 10
     resume: bool = False
     score_only: bool = False
     health_timeout_sec: int = 180

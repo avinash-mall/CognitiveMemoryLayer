@@ -3,7 +3,7 @@
  * Paginated event log with filtering, expandable rows, and auto-refresh.
  */
 
-import { getEvents } from '../api.js';
+import { getEvents, exportEvents } from '../api.js';
 import { formatDate, shortUuid, prettyJson, escapeHtml, formatNumber } from '../utils/formatters.js';
 
 const container = () => document.getElementById('page-events');
@@ -36,6 +36,7 @@ function buildShell() {
             <input type="text" id="evt-type-filter" class="input-sm" placeholder="Event type filter..." value="${escapeHtml(state.eventType)}">
             <input type="text" id="evt-op-filter" class="input-sm" placeholder="Operation filter..." value="${escapeHtml(state.operation)}">
             <button id="evt-apply" class="btn btn-primary btn-sm">Apply</button>
+            <button id="evt-export" class="btn btn-ghost btn-sm" title="Export events as JSON">&#8681; Export</button>
             <div style="margin-left:auto;" class="toggle-wrapper">
                 <div id="evt-auto-toggle" class="toggle-switch ${state.autoRefresh ? 'active' : ''}" title="Auto-refresh every 5s"></div>
                 <label style="cursor:pointer;font-size:0.82rem;" id="evt-auto-label">Auto-refresh</label>
@@ -55,6 +56,10 @@ function attachListeners() {
         state.operation = el.querySelector('#evt-op-filter')?.value || '';
         state.page = 1;
         loadData();
+    });
+
+    el.querySelector('#evt-export')?.addEventListener('click', () => {
+        exportEvents(state.tenantId || undefined);
     });
 
     el.querySelector('#evt-type-filter')?.addEventListener('keydown', (e) => {

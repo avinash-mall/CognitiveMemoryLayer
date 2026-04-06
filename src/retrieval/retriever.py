@@ -67,6 +67,7 @@ class HybridRetriever:
         plan: RetrievalPlan,
         context_filter: list[str] | None = None,
         query_embedding: list[float] | None = None,
+        debug: bool = False,
     ) -> list[RetrievedMemory]:
         """Execute a retrieval plan with enforced timeouts. Holistic: tenant-only."""
         from ..core.config import get_settings
@@ -82,6 +83,7 @@ class HybridRetriever:
         completed_sources: set[str] = set()
         timed_out_sources: set[str] = set()
         failed_sources: set[str] = set()
+        debug_steps: list[dict[str, Any]] = []
 
         for group_indices in plan.parallel_steps:
             if skip_remaining:
@@ -95,6 +97,18 @@ class HybridRetriever:
                     for idx in group_indices:
                         if idx < len(plan.steps):
                             timed_out_sources.add(plan.steps[idx].source.value)
+                            if debug:
+                                debug_steps.append(
+                                    self._step_debug(
+                                        plan.steps[idx],
+                                        success=False,
+                                        elapsed_ms=0.0,
+                                        result_count=0,
+                                        error="Plan budget exceeded before execution",
+                                        timed_out=True,
+                                        context_filter=context_filter,
+                                    )
+                                )
                     logger.info(
                         "retrieval_plan_budget_exceeded", extra={"elapsed_ms": elapsed * 1000}
                     )
@@ -120,6 +134,18 @@ class HybridRetriever:
                 except TimeoutError:
                     for step in group_steps:
                         timed_out_sources.add(step.source.value)
+                        if debug:
+                            debug_steps.append(
+                                self._step_debug(
+                                    step,
+                                    success=False,
+                                    elapsed_ms=float(step.timeout_ms),
+                                    result_count=0,
+                                    error="Retrieval group timed out",
+                                    timed_out=True,
+                                    context_filter=context_filter,
+                                )
+                            )
                     logger.info("retrieval_group_timeout", extra={"group": group_indices})
                     break
             else:
@@ -141,6 +167,21 @@ class HybridRetriever:
                     timed_out_sources.add(step.source.value)
                 else:
                     failed_sources.add(step.source.value)
+                if debug:
+                    debug_steps.append(
+                        self._step_debug(
+                            step,
+                            success=result.success,
+                            elapsed_ms=result.elapsed_ms,
+                            result_count=len(result.items),
+                            error=result.error,
+                            timed_out=bool(
+                                result.error and "timeout" in result.error.lower()
+                            ),
+                            context_filter=context_filter,
+                            result_items=result.items,
+                        )
+                    )
                 if result.success and result.items:
                     all_results.extend(result.items)
                     # Phase 3.2: cross-group skip
@@ -163,7 +204,32 @@ class HybridRetriever:
                 try:
                     graph_results = await self._retrieve_graph(tenant_id, graph_step)
                     all_results.extend(graph_results)
+                    if debug:
+                        debug_steps.append(
+                            self._step_debug(
+                                graph_step,
+                                success=True,
+                                elapsed_ms=0.0,
+                                result_count=len(graph_results),
+                                error=None,
+                                timed_out=False,
+                                context_filter=context_filter,
+                                result_items=graph_results,
+                            )
+                        )
                 except Exception as e:
+                    if debug:
+                        debug_steps.append(
+                            self._step_debug(
+                                graph_step,
+                                success=False,
+                                elapsed_ms=0.0,
+                                result_count=0,
+                                error=str(e),
+                                timed_out=False,
+                                context_filter=context_filter,
+                            )
+                        )
                     logger.warning(
                         "derived_graph_expansion_failed",
                         extra={"error": str(e), "seeds": derived_seeds[:5]},
@@ -243,7 +309,60 @@ class HybridRetriever:
             "sources_failed": sorted(failed_sources),
             "total_elapsed_ms": round(elapsed_ms, 2),
         }
+        if debug:
+            plan.analysis.metadata["retrieval_steps"] = debug_steps
         return self._to_retrieved_memories(all_results, plan.analysis)
+
+    def _step_debug(
+        self,
+        step: RetrievalStep,
+        *,
+        success: bool,
+        elapsed_ms: float,
+        result_count: int,
+        error: str | None,
+        timed_out: bool,
+        context_filter: list[str] | None,
+        result_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Build a serializable execution snapshot for explain mode."""
+        time_filter = dict(step.time_filter or {})
+        filters: dict[str, Any] = {}
+        if context_filter:
+            filters["context_tags"] = list(context_filter)
+        if step.memory_types:
+            filters["memory_types"] = list(step.memory_types)
+        if time_filter:
+            filters["time_filter"] = time_filter
+        if step.constraint_categories:
+            filters["constraint_categories"] = list(step.constraint_categories)
+        if step.seeds:
+            filters["seeds"] = list(step.seeds)
+        preview = []
+        for item in (result_items or [])[:5]:
+            rec = item.get("record")
+            preview.append(
+                {
+                    "id": str(getattr(rec, "id", "")) if rec is not None else "",
+                    "type": str(getattr(rec, "type", item.get("type", ""))),
+                    "text": str(getattr(rec, "text", item.get("text", "")))[:180],
+                    "relevance": float(item.get("relevance", 0.0) or 0.0),
+                    "confidence": float(
+                        getattr(rec, "confidence", item.get("confidence", 0.0)) or 0.0
+                    ),
+                }
+            )
+        return {
+            "source": step.source.value,
+            "success": success,
+            "elapsed_ms": round(elapsed_ms, 2),
+            "result_count": result_count,
+            "timed_out": timed_out,
+            "error": error,
+            "filters": filters,
+            "query_preview": step.query,
+            "result_preview": preview,
+        }
 
     async def _execute_step_with_timeout(
         self,

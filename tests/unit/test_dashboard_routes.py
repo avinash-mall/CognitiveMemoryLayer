@@ -1,6 +1,7 @@
 """Unit tests for dashboard API routes (auth and response shape with mocked DB)."""
 
 import os
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -108,6 +109,22 @@ def _override_get_db(mock_db):
         return mock_db
 
     app.dependency_overrides[_get_db] = _mock_get_db
+
+
+@pytest.fixture(autouse=True)
+def _disable_app_lifespan():
+    """Keep TestClient route tests fully mocked by skipping real app startup."""
+    original = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def _noop_lifespan(_app):
+        yield
+
+    app.router.lifespan_context = _noop_lifespan
+    try:
+        yield
+    finally:
+        app.router.lifespan_context = original
 
 
 class TestDashboardAuth:

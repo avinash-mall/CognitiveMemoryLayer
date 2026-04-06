@@ -187,6 +187,20 @@ class ConstraintExtractor:
         chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
         mapped = _CHUNK_TYPE_TO_CONSTRAINT.get(str(chunk_type).lower())
 
+        # Return early from heuristic/chunk-type if confident — avoids expensive family model
+        if heuristic and heuristic[1] >= 0.85:
+            return heuristic
+        if mapped:
+            return mapped, self._base_confidence
+
+        # Only call the (slow) family model when there's a weak heuristic signal or a
+        # task-level model is available.
+        has_task_model = getattr(self._modelpack, "has_task_model", None)
+        has_dedicated = has_task_model and has_task_model("constraint_type")
+        if not has_dedicated and heuristic is None:
+            # No task model and no heuristic signal — skip the expensive family model
+            return None, self._base_confidence
+
         supports_task = getattr(self._modelpack, "supports_task", None)
         can_constraint_type = (
             bool(supports_task("constraint_type"))
@@ -204,16 +218,11 @@ class ConstraintExtractor:
                         if heuristic[1] > model_confidence:
                             return heuristic
                         return label, model_confidence
-                    if mapped:
-                        return mapped, self._base_confidence
                     if raw_confidence >= self._base_confidence:
                         return label, raw_confidence
 
         if heuristic:
             return heuristic
-
-        if mapped:
-            return mapped, self._base_confidence
         return None, self._base_confidence
 
     # ------------------------------------------------------------------
@@ -237,28 +246,19 @@ class ConstraintExtractor:
             return False
 
         modelpack = get_modelpack_runtime()
-        supports_task = getattr(modelpack, "supports_task", None)
-        can_supersession = (
-            bool(supports_task("supersession"))
-            if callable(supports_task)
-            else bool(getattr(modelpack, "available", False))
-        )
-        if can_supersession:
+        # Only use the pair model when a dedicated task model exists — the family
+        # model (supports_task=True but has_task_model=False) costs ~9ms per call
+        # and with 20+ existing constraints per category this adds 180ms+ per write.
+        has_task_model = getattr(modelpack, "has_task_model", None)
+        if has_task_model and has_task_model("supersession"):
             sup_pred = modelpack.predict_pair("supersession", old.description, new.description)
             if sup_pred and sup_pred.confidence >= 0.55:
                 return sup_pred.label == "supersedes"
 
-            scope_pred = (
-                modelpack.predict_pair("scope_match", old.description, new.description)
-                if (
-                    bool(supports_task("scope_match"))
-                    if callable(supports_task)
-                    else bool(getattr(modelpack, "available", False))
-                )
-                else None
-            )
-            if scope_pred and scope_pred.label == "no_match" and scope_pred.confidence >= 0.8:
-                return False
+            if has_task_model("scope_match"):
+                scope_pred = modelpack.predict_pair("scope_match", old.description, new.description)
+                if scope_pred and scope_pred.label == "no_match" and scope_pred.confidence >= 0.8:
+                    return False
 
         if llm_client is None:
             return False
@@ -306,13 +306,10 @@ class ConstraintExtractor:
     def _extract_scope(self, text: str, chunk_entities: list[str] | None = None) -> list[str]:
         out: list[str] = []
 
-        supports_task = getattr(self._modelpack, "supports_task", None)
-        can_constraint_scope = (
-            bool(supports_task("constraint_scope"))
-            if callable(supports_task)
-            else bool(getattr(self._modelpack, "available", False))
-        )
-        if can_constraint_scope:
+        # Only call the 33ms extractor family model when a dedicated task model exists.
+        # Without it, NER entities below provide sufficient scope coverage.
+        has_task_model = getattr(self._modelpack, "has_task_model", None)
+        if has_task_model and has_task_model("constraint_scope"):
             pred = self._modelpack.predict_single("constraint_scope", text)
             if pred and pred.label:
                 label = pred.label.strip()

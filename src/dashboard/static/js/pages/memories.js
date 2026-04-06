@@ -3,7 +3,7 @@
  * Filterable, sortable, paginated table of memory records with bulk actions and export.
  */
 
-import { getMemories, bulkAction, exportMemories } from '../api.js';
+import { getMemories, bulkAction, exportMemories, writeMemory } from '../api.js';
 import { navigateTo, showToast } from '../app.js';
 import { formatDate, formatFloat, formatNumber, truncate, shortUuid, statusBadgeClass, escapeHtml } from '../utils/formatters.js';
 
@@ -50,6 +50,47 @@ export async function renderMemories({ tenantId } = {}) {
 function buildShell() {
     return `
         <p class="page-desc">Browse, filter, and manage all memory records. Use bulk actions to archive, silence, or delete memories. Click a row to view full details.</p>
+
+        <!-- Write Memory Panel -->
+        <div class="card" id="mem-write-panel" style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="mem-write-toggle">
+                <span class="card-title" style="margin:0;">Write Memory</span>
+                <span id="mem-write-arrow" style="font-size:0.9rem;color:var(--text-muted);">&#9654;</span>
+            </div>
+            <div id="mem-write-body" style="display:none;margin-top:12px;">
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div>
+                        <label style="font-size:0.82rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Content <span style="color:var(--danger)">*</span></label>
+                        <textarea id="mem-write-content" rows="3" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);font-family:var(--font-sans);font-size:0.88rem;" placeholder="Memory content..."></textarea>
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                        <div style="flex:1;min-width:180px;">
+                            <label style="font-size:0.82rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Session ID</label>
+                            <input type="text" id="mem-write-session" class="input-sm" style="width:100%;" placeholder="Optional session ID">
+                        </div>
+                        <div style="flex:1;min-width:180px;">
+                            <label style="font-size:0.82rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Namespace</label>
+                            <input type="text" id="mem-write-namespace" class="input-sm" style="width:100%;" placeholder="Optional namespace">
+                        </div>
+                        <div style="flex:1;min-width:180px;">
+                            <label style="font-size:0.82rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Memory Type</label>
+                            <select id="mem-write-type" class="select-sm" style="width:100%;">
+                                <option value="">Auto-detect</option>
+                                ${MEMORY_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:0.82rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Metadata (JSON, optional)</label>
+                        <textarea id="mem-write-metadata" rows="2" style="width:100%;resize:vertical;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);font-family:var(--font-mono);font-size:0.82rem;" placeholder='{"key": "value"}'></textarea>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;gap:8px;">
+                        <button id="mem-write-submit" class="btn btn-primary btn-sm">Write Memory</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="filter-bar">
             <input type="text" id="mem-search" class="input-sm" placeholder="Search memory text..." value="${escapeHtml(state.search)}">
             <select id="mem-type" class="select-sm">
@@ -97,6 +138,62 @@ function attachListeners() {
         state.order = el.querySelector('#mem-order')?.value || 'desc';
         state.page = 1;
         loadData();
+    });
+
+    // Write panel toggle
+    el.querySelector('#mem-write-toggle')?.addEventListener('click', () => {
+        const body = el.querySelector('#mem-write-body');
+        const arrow = el.querySelector('#mem-write-arrow');
+        if (body && arrow) {
+            const hidden = body.style.display === 'none';
+            body.style.display = hidden ? 'block' : 'none';
+            arrow.innerHTML = hidden ? '&#9660;' : '&#9654;';
+        }
+    });
+
+    // Write submit
+    el.querySelector('#mem-write-submit')?.addEventListener('click', async () => {
+        const content = el.querySelector('#mem-write-content')?.value?.trim();
+        if (!content) { showToast('Content is required', 'error'); return; }
+
+        const sessionId = el.querySelector('#mem-write-session')?.value?.trim() || undefined;
+        const namespace = el.querySelector('#mem-write-namespace')?.value?.trim() || undefined;
+        const memoryType = el.querySelector('#mem-write-type')?.value || undefined;
+        const metaRaw = el.querySelector('#mem-write-metadata')?.value?.trim();
+
+        let metadata = {};
+        if (metaRaw) {
+            try { metadata = JSON.parse(metaRaw); } catch { showToast('Invalid JSON in metadata', 'error'); return; }
+        }
+
+        const btn = el.querySelector('#mem-write-submit');
+        btn.disabled = true;
+        btn.textContent = 'Writing...';
+
+        try {
+            const result = await writeMemory({
+                content,
+                session_id: sessionId,
+                namespace,
+                memory_type: memoryType,
+                metadata,
+            });
+            showToast(`Memory written (${result.chunks_created || 0} chunks)`);
+            // Clear form
+            el.querySelector('#mem-write-content').value = '';
+            el.querySelector('#mem-write-session').value = '';
+            el.querySelector('#mem-write-namespace').value = '';
+            el.querySelector('#mem-write-type').value = '';
+            el.querySelector('#mem-write-metadata').value = '';
+            // Refresh list
+            state.page = 1;
+            await loadData();
+        } catch (err) {
+            showToast(`Write failed: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Write Memory';
+        }
     });
 
     el.querySelector('#mem-search')?.addEventListener('keydown', (e) => {

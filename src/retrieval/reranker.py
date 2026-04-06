@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
@@ -45,15 +46,26 @@ class MemoryReranker:
         max_results: int | None = None,
     ) -> list[RetrievedMemory]:
         """Rerank memories by combined score and diversity."""
+        ranked, _ = await self.rerank_with_breakdown(memories, query, max_results=max_results)
+        return ranked
+
+    async def rerank_with_breakdown(
+        self,
+        memories: list[RetrievedMemory],
+        query: str,
+        max_results: int | None = None,
+    ) -> tuple[list[RetrievedMemory], list[dict[str, Any]]]:
+        """Rerank memories and return score breakdowns for explain mode."""
         if not memories:
-            return []
+            return [], []
         max_results = max_results or self.config.max_results
 
         word_sets = {i: self._word_set(mem.record.text) for i, mem in enumerate(memories)}
-        base_scores = {
-            i: self._calculate_score(mem, memories, word_sets, i, query=query)
+        breakdowns = {
+            i: self._score_components(mem, memories, word_sets, i, query=query)
             for i, mem in enumerate(memories)
         }
+        base_scores = {i: breakdowns[i]["base_score"] for i in breakdowns}
 
         constraints = [
             (i, m) for i, m in enumerate(memories) if m.record.type == MemoryType.CONSTRAINT
@@ -62,13 +74,39 @@ class MemoryReranker:
             constraint_texts = [m.record.text for _, m in constraints]
             boosts = await self._score_constraints_batch(query, constraint_texts)
             for (idx, mem), boost in zip(constraints, boosts, strict=True):
+                _ = mem
+                breakdowns[idx]["constraint_boost"] = boost * 2.0
                 base_scores[idx] += boost * 2.0
 
-        scored = [(score, memories[idx]) for idx, score in base_scores.items()]
+        scored = [(score, memories[idx], idx) for idx, score in base_scores.items()]
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        diverse = self._apply_diversity(scored, max_results)
-        return [mem for _, mem in diverse]
+        diverse = self._apply_diversity_with_indices(scored, max_results)
+
+        ranked_memories: list[RetrievedMemory] = []
+        ranked_breakdowns: list[dict[str, Any]] = []
+        for rank, (score, mem, idx) in enumerate(diverse, start=1):
+            ranked_memories.append(mem)
+            ranked_breakdowns.append(
+                {
+                    "rank": rank,
+                    "memory_id": mem.record.id,
+                    "text": mem.record.text,
+                    "type": mem.record.type.value,
+                    "retrieval_source": mem.retrieval_source,
+                    "final_score": score,
+                    "breakdown": {
+                        "relevance": breakdowns[idx]["relevance"],
+                        "recency": breakdowns[idx]["recency"],
+                        "confidence": breakdowns[idx]["confidence"],
+                        "diversity": breakdowns[idx]["diversity"],
+                        "recency_weight": breakdowns[idx]["recency_weight"],
+                        "constraint_boost": breakdowns[idx].get("constraint_boost", 0.0),
+                    },
+                    "notes": list(breakdowns[idx].get("notes", [])),
+                }
+            )
+        return ranked_memories, ranked_breakdowns
 
     def _get_recency_weight(self, memory: RetrievedMemory) -> float:
         """Determine recency weight based on memory type stability.
@@ -114,15 +152,16 @@ class MemoryReranker:
 
         return recency_weight
 
-    def _calculate_score(
+    def _score_components(
         self,
         memory: RetrievedMemory,
         all_memories: list[RetrievedMemory],
         word_sets: dict[int, frozenset[str]] | None = None,
         mem_index: int = -1,
         query: str = "",
-    ) -> float:
-        """Calculate combined score for a memory."""
+    ) -> dict[str, Any]:
+        """Calculate score components for a memory."""
+        notes: list[str] = []
         relevance: float | None = None
         if query and memory.record.text:
             try:
@@ -132,11 +171,13 @@ class MemoryReranker:
                     )
                     if pred is not None:
                         relevance = pred.score
+                        notes.append("modelpack_rerank_pair")
             except Exception:
                 pass
 
         if relevance is None:
             relevance = memory.relevance_score
+            notes.append("retrieval_score_fallback")
         ts = memory.record.timestamp
         if isinstance(ts, datetime):
             now = datetime.now(UTC)
@@ -175,7 +216,15 @@ class MemoryReranker:
         )
         if recency_weight > 0:
             score += recency_weight * recency
-        return score
+        return {
+            "relevance": relevance,
+            "recency": recency,
+            "confidence": confidence,
+            "diversity": diversity,
+            "recency_weight": recency_weight,
+            "base_score": score,
+            "notes": notes,
+        }
 
     def _apply_diversity(
         self,
@@ -194,6 +243,34 @@ class MemoryReranker:
                 best_idx = 0
                 best_mmr = float("-inf")
                 for i, (score, mem) in enumerate(candidates):
+                    max_sim = max(
+                        self._text_similarity(mem.record.text, s[1].record.text) for s in selected
+                    )
+                    mmr = score - self.config.diversity_threshold * max_sim
+                    if mmr > best_mmr:
+                        best_mmr = mmr
+                        best_idx = i
+                selected.append(candidates.pop(best_idx))
+        return selected
+
+    def _apply_diversity_with_indices(
+        self,
+        scored: list[tuple[float, RetrievedMemory, int]],
+        max_results: int,
+    ) -> list[tuple[float, RetrievedMemory, int]]:
+        """Apply the same diversity strategy while preserving original indices."""
+        if len(scored) <= max_results:
+            return scored
+        selected: list[tuple[float, RetrievedMemory, int]] = []
+        candidates = list(scored)
+        while len(selected) < max_results and candidates:
+            if not selected:
+                selected.append(candidates.pop(0))
+            else:
+                best_idx = 0
+                best_mmr = float("-inf")
+                for i, (score, mem, idx) in enumerate(candidates):
+                    _ = idx
                     max_sim = max(
                         self._text_similarity(mem.record.text, s[1].record.text) for s in selected
                     )

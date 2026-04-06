@@ -16,6 +16,9 @@ import { renderApiUsage } from './pages/apiusage.js';
 import { renderGraph } from './pages/graph.js';
 import { renderFacts } from './pages/facts.js';
 import { renderConfig } from './pages/config.js';
+import { renderEvaluation } from './pages/evaluation.js';
+import { renderOps } from './pages/ops.js';
+import { renderQuality } from './pages/quality.js';
 import { renderRetrieval } from './pages/retrieval.js';
 
 // ---- State ----
@@ -46,9 +49,12 @@ const pages = {
     events: { title: 'Event Log', render: renderEvents },
     graph: { title: 'Knowledge Graph', render: renderGraph },
     facts: { title: 'Facts Explorer', render: renderFacts },
+    quality: { title: 'Data Quality', render: renderQuality },
+    ops: { title: 'Deep Operations', render: renderOps },
+    evaluation: { title: 'Evaluation', render: renderEvaluation },
     apiusage: { title: 'API Usage & Rate Limits', render: renderApiUsage },
     config: { title: 'Configuration', render: renderConfig },
-    retrieval: { title: 'Retrieval Test', render: renderRetrieval },
+    retrieval: { title: 'Retrieval Debugger', render: renderRetrieval },
     management: { title: 'Management', render: renderManagement },
 };
 

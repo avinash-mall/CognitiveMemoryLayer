@@ -1,5 +1,6 @@
 """Embedding service for memory content."""
 
+import asyncio
 import hashlib
 import re
 import threading
@@ -26,7 +27,7 @@ except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 _logger = structlog.get_logger(__name__)
-_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str, str, str], "EmbeddingClient"] = {}
+_EMBEDDING_CLIENT_CACHE: dict[tuple[str, str, int, str, str, str, str, str, float], "EmbeddingClient"] = {}
 
 
 @dataclass
@@ -400,6 +401,99 @@ class CachedEmbeddings(EmbeddingClient):
         return [r for _, r in results if r is not None]
 
 
+class BatchingEmbeddingClient(EmbeddingClient):
+    """Wraps any EmbeddingClient to coalesce concurrent embed calls into larger GPU batches.
+
+    Multiple concurrent ``embed`` / ``embed_batch`` calls that arrive within
+    ``max_wait_ms`` are merged into a single ``inner.embed_batch()`` call,
+    amortising per-request overhead and saturating GPU throughput.  Works for
+    all API paths (write, retrieval, evaluation) — not just bulk ingestion.
+
+    Thread-safety: asyncio-only (each uvicorn worker has its own event loop and
+    its own ``BatchingEmbeddingClient`` instance via the singleton cache).
+    """
+
+    def __init__(
+        self,
+        inner: EmbeddingClient,
+        max_wait_ms: float = 10.0,
+        max_batch_size: int = 512,
+    ) -> None:
+        self._inner = inner
+        self._max_wait = max_wait_ms / 1000.0
+        self._max_batch = max_batch_size
+        # Per-event-loop state — created lazily so the object is safe to
+        # construct outside of a running loop (e.g. at module import time).
+        self._lock: asyncio.Lock | None = None
+        self._pending: list[tuple[str, asyncio.Future]] = []
+        self._dispatch_task: asyncio.Task | None = None
+
+    @property
+    def dimensions(self) -> int:
+        return self._inner.dimensions
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    async def embed(self, text: str) -> EmbeddingResult:
+        results = await self.embed_batch([text])
+        return results[0]
+
+    async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
+        if not texts:
+            return []
+        loop = asyncio.get_running_loop()
+        futures: list[asyncio.Future] = [loop.create_future() for _ in texts]
+        lock = self._get_lock()
+        async with lock:
+            for text, fut in zip(texts, futures, strict=True):
+                self._pending.append((text, fut))
+            if self._dispatch_task is None or self._dispatch_task.done():
+                self._dispatch_task = loop.create_task(self._dispatch_after_wait())
+        return list(await asyncio.gather(*futures))
+
+    async def _dispatch_after_wait(self) -> None:
+        await asyncio.sleep(self._max_wait)
+        await self._drain()
+
+    async def _drain(self) -> None:
+        lock = self._get_lock()
+        async with lock:
+            if not self._pending:
+                return
+            batch = self._pending[: self._max_batch]
+            self._pending = self._pending[self._max_batch :]
+            if self._pending:
+                loop = asyncio.get_running_loop()
+                self._dispatch_task = loop.create_task(self._drain())
+            else:
+                self._dispatch_task = None
+
+        texts = [t for t, _ in batch]
+        try:
+            results = await self._inner.embed_batch(texts)
+        except Exception as exc:
+            for _, fut in batch:
+                if not fut.done():
+                    fut.set_exception(exc)
+            return
+
+        if len(results) != len(texts):
+            exc_val = ValueError(
+                f"embed_batch returned {len(results)} results for {len(texts)} texts"
+            )
+            for _, fut in batch:
+                if not fut.done():
+                    fut.set_exception(exc_val)
+            return
+
+        for (_, fut), result in zip(batch, results, strict=True):
+            if not fut.done():
+                fut.set_result(result)
+
+
 def get_embedding_client() -> EmbeddingClient:
     """Factory function to get configured embedding client. Reads EMBEDDING_INTERNAL__*.
     When not provided, defaults to LocalEmbeddings with nomic-ai/nomic-embed-text-v2-moe (768d)."""
@@ -415,8 +509,9 @@ def get_embedding_client() -> EmbeddingClient:
     api_key = ei.api_key or os.environ.get("OPENAI_API_KEY") or ""
     base_url = ei.base_url or ""
     device = ei.device
+    batch_wait_ms = getattr(ei, "batch_wait_ms", 10.0)
 
-    cache_key = (provider, model, dims, local_model, revision, api_key, base_url, device)
+    cache_key = (provider, model, dims, local_model, revision, api_key, base_url, device, batch_wait_ms)
     cached = _EMBEDDING_CLIENT_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -462,6 +557,10 @@ def get_embedding_client() -> EmbeddingClient:
     else:
         # default: local (nomic-embed-text-v2-moe) when provider is local or unset
         client = LocalEmbeddings(model_name=local_model, revision=ei.revision, device=device)
+
+    # Wrap with dynamic batcher for all non-mock clients when enabled
+    if batch_wait_ms > 0 and not isinstance(client, MockEmbeddingClient):
+        client = BatchingEmbeddingClient(client, max_wait_ms=batch_wait_ms)
 
     _EMBEDDING_CLIENT_CACHE[cache_key] = client
     return client

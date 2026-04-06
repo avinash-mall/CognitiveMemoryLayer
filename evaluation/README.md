@@ -26,6 +26,33 @@ For a step-by-step runbook (Ollama setup, env vars, DB setup), see [ProjectPlan/
 
 CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is read from the project root `.env`. See [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md) for full setup.
 
+### Performance tuning for bulk eval
+
+Rate limiting is disabled by default (`AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0`), but the default server worker count and embedding batch size are still conservative for bulk evaluation. For runs with many `--ingestion-workers`, add the following to your project root `.env`:
+
+```bash
+# Keep rate limiting disabled during bulk ingestion
+AUTH__RATE_LIMIT_REQUESTS_PER_MINUTE=0
+
+# Larger embedding batches for GPU (default 8)
+EMBEDDING_INTERNAL__LOCAL_BATCH_SIZE=64
+
+# Multiple uvicorn workers (default 1; each loads its own embedding model)
+UVICORN_WORKERS=4
+```
+
+When running outside Docker, start the server with multiple workers:
+
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+With Docker, the `UVICORN_WORKERS` env var is used automatically by `docker-compose.yml`. For GPU support, include the GPU override:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up api
+```
+
 ### Chunker (semchunk)
 
 CML uses [semchunk](https://github.com/isaacus-dev/semchunk) with a Hugging Face tokenizer for semantic chunking. Configure in `.env`:
@@ -38,8 +65,8 @@ CML uses [semchunk](https://github.com/isaacus-dev/semchunk) with a Hugging Face
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CML_BASE_URL` | `[REDACTED]` | CML API base URL |
-| `CML_API_KEY` | `[REDACTED]` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
+| `CML_BASE_URL` | `http://localhost:8000` | CML API base URL |
+| `CML_API_KEY` | `test-key` | API key (must match `AUTH__API_KEY`; for Phase A–B consolidation/reconsolidation must have dashboard/admin permission, e.g. `AUTH__ADMIN_API_KEY`) |
 | `LLM_EVAL__PROVIDER` | `openai` | LLM provider for QA: `openai` \| `[REDACTED]` \| `ollama` \| `gemini` \| `claude` (see project root [.env.example](../.env.example) lines 45–49) |
 | `LLM_EVAL__MODEL` | `gpt-4o-mini` | Model for QA (e.g. `gpt-4o-mini`, `[REDACTED]` for Ollama) |
 | `LLM_EVAL__BASE_URL` | — | OpenAI-compatible endpoint (e.g. `[REDACTED]` for Ollama) |
@@ -207,4 +234,3 @@ Run `python evaluation/scripts/compare_locomo_scores.py` for the full comparison
 - [LoCoMo repo](https://github.com/snap-research/locomo)
 - [Locomo-Plus repo](https://github.com/xjtuleeyf/Locomo-Plus)
 - [Runbook (full steps)](../ProjectPlan/LocomoEval/RunEvaluation.md)
-

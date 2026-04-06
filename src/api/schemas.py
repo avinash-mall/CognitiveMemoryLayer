@@ -623,3 +623,375 @@ class BulkActionRequest(BaseModel):
 
     memory_ids: list[UUID]
     action: Literal["archive", "silence", "delete"]
+
+
+# ---- Dashboard Explainability / Workbench Schemas ----
+
+
+class RetrievalExplainAnalysis(BaseModel):
+    """Query analysis used by the retrieval explain endpoint."""
+
+    intent: str
+    confidence: float
+    entities: list[str] = Field(default_factory=list)
+    key_phrases: list[str] = Field(default_factory=list)
+    time_reference: str | None = None
+    time_start: datetime | None = None
+    time_end: datetime | None = None
+    suggested_sources: list[str] = Field(default_factory=list)
+    suggested_top_k: int = 10
+    query_domain: str | None = None
+    constraint_dimensions: list[str] = Field(default_factory=list)
+    is_decision_query: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RetrievalExplainPlanStep(BaseModel):
+    """Single retrieval plan step for explain mode."""
+
+    source: str
+    priority: int = 0
+    key: str | None = None
+    query: str | None = None
+    seeds: list[str] = Field(default_factory=list)
+    memory_types: list[str] = Field(default_factory=list)
+    time_filter: dict[str, Any] | None = None
+    min_confidence: float = 0.0
+    top_k: int = 10
+    timeout_ms: int = 0
+    skip_if_found: bool = False
+    associative_expansion: bool = False
+    query_domain: str | None = None
+    constraint_categories: list[str] = Field(default_factory=list)
+
+
+class RetrievalExplainExecutionStep(BaseModel):
+    """Observed execution details for a retrieval step."""
+
+    source: str
+    success: bool
+    elapsed_ms: float = 0.0
+    result_count: int = 0
+    timed_out: bool = False
+    error: str | None = None
+    filters: dict[str, Any] = Field(default_factory=dict)
+    query_preview: str | None = None
+    result_preview: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RetrievalExplainRerankItem(BaseModel):
+    """Reranker score breakdown for a retrieved memory."""
+
+    id: UUID
+    text: str
+    source_type: str
+    retrieval_source: str = ""
+    rank: int
+    selected: bool = True
+    final_score: float
+    breakdown: dict[str, float] = Field(default_factory=dict)
+    notes: list[str] = Field(default_factory=list)
+
+
+class DashboardRetrievalExplainResponse(BaseModel):
+    """Detailed retrieval explain response."""
+
+    query: str
+    analysis: RetrievalExplainAnalysis
+    plan_steps: list[RetrievalExplainPlanStep] = Field(default_factory=list)
+    parallel_groups: list[list[int]] = Field(default_factory=list)
+    execution_steps: list[RetrievalExplainExecutionStep] = Field(default_factory=list)
+    retrieval_meta: dict[str, Any] = Field(default_factory=dict)
+    packet_warnings: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    llm_context: str | None = None
+    results: list[RetrievalResultItem] = Field(default_factory=list)
+    rerank: list[RetrievalExplainRerankItem] = Field(default_factory=list)
+    total_count: int = 0
+    elapsed_ms: float = 0.0
+
+
+class DashboardWriteSimulationRequest(BaseModel):
+    """Dry-run write simulation request."""
+
+    tenant_id: str
+    content: str = Field(..., min_length=1, max_length=100_000)
+    context_tags: list[str] | None = None
+    session_id: str | None = None
+    memory_type: str | None = None
+    namespace: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime | None = None
+    compare_extractors: bool = False
+
+
+class DashboardWriteSimulationChunk(BaseModel):
+    """Dry-run write simulation result for a single chunk."""
+
+    chunk_id: str
+    text: str
+    chunk_type: str
+    salience: float = 0.0
+    novelty: float = 0.0
+    confidence: float = 0.0
+    timestamp: datetime | None = None
+    write_decision: str
+    would_store: bool
+    reason: str = ""
+    chosen_memory_type: str | None = None
+    key: str | None = None
+    context_tags: list[str] = Field(default_factory=list)
+    importance: float = 0.0
+    decay_rate: float | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    redaction_required: bool = False
+    redacted_text: str = ""
+    redactions: list[dict[str, Any]] = Field(default_factory=list)
+    entities: list[dict[str, Any]] = Field(default_factory=list)
+    relations: list[dict[str, Any]] = Field(default_factory=list)
+    extracted_constraints: list[dict[str, Any]] = Field(default_factory=list)
+    extracted_facts: list[dict[str, Any]] = Field(default_factory=list)
+    extractor_outputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardWriteSimulationResponse(BaseModel):
+    """Dry-run write simulation response."""
+
+    tenant_id: str
+    chunks: list[DashboardWriteSimulationChunk] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class FactItem(BaseModel):
+    """Serialised semantic fact for dashboard display."""
+
+    id: str
+    tenant_id: str
+    category: str
+    key: str
+    value: str
+    confidence: float
+    evidence_count: int
+    is_current: bool
+    version: int
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class FactListResponse(BaseModel):
+    """List response for semantic facts."""
+
+    items: list[FactItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class DashboardFactDetail(BaseModel):
+    """Full semantic fact detail."""
+
+    id: str
+    tenant_id: str
+    category: str
+    key: str
+    subject: str
+    predicate: str
+    value: Any = None
+    value_type: str
+    context_tags: list[str] = Field(default_factory=list)
+    confidence: float
+    evidence_count: int
+    evidence_ids: list[str] = Field(default_factory=list)
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    is_current: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    version: int
+    supersedes_id: str | None = None
+    lineage: list[dict[str, Any]] = Field(default_factory=list)
+    superseded_by: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DashboardFactEvidenceItem(BaseModel):
+    """Evidence memory attached to a semantic fact."""
+
+    id: UUID
+    text: str
+    type: str
+    status: str
+    confidence: float
+    importance: float = 0.0
+    source_session_id: str | None = None
+    timestamp: datetime | None = None
+    written_at: datetime | None = None
+    supersedes_id: UUID | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardFactEvidenceResponse(BaseModel):
+    """Evidence breakdown for a fact."""
+
+    fact_id: str
+    evidence: list[DashboardFactEvidenceItem] = Field(default_factory=list)
+    missing_evidence_ids: list[str] = Field(default_factory=list)
+
+
+class DashboardLineageMemory(BaseModel):
+    """Compact memory summary used in lineage views."""
+
+    id: UUID
+    text: str
+    type: str
+    status: str
+    version: int = 1
+    key: str | None = None
+    confidence: float = 0.0
+    importance: float = 0.0
+    timestamp: datetime | None = None
+    written_at: datetime | None = None
+    supersedes_id: UUID | None = None
+
+
+class DashboardRelatedJob(BaseModel):
+    """Job reference linked from lineage views."""
+
+    id: UUID
+    job_type: str
+    status: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    result: dict[str, Any] | None = None
+
+
+class DashboardMemoryLineageResponse(BaseModel):
+    """Lifecycle and lineage view for a memory."""
+
+    memory: DashboardMemoryDetail
+    ancestors: list[DashboardLineageMemory] = Field(default_factory=list)
+    descendants: list[DashboardLineageMemory] = Field(default_factory=list)
+    same_key_versions: list[DashboardLineageMemory] = Field(default_factory=list)
+    evidence_facts: list[FactItem] = Field(default_factory=list)
+    related_entities: list[GraphSearchResult] = Field(default_factory=list)
+    related_jobs: list[DashboardRelatedJob] = Field(default_factory=list)
+    lifecycle_flags: list[str] = Field(default_factory=list)
+
+
+class DashboardReconsolidationSessionItem(BaseModel):
+    """Active labile session for reconsolidation workbench."""
+
+    session_id: str
+    tenant_id: str
+    scope_id: str
+    turn_id: str
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
+    query: str = ""
+    retrieved_texts: list[str] = Field(default_factory=list)
+    memories: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DashboardReconsolidationSessionsResponse(BaseModel):
+    """Reconsolidation workbench response."""
+
+    items: list[DashboardReconsolidationSessionItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class DashboardForgettingPreviewRequest(BaseModel):
+    """Request to preview forgetting without mutating storage."""
+
+    tenant_id: str
+    user_id: str | None = None
+    max_memories: int = Field(default=200, ge=1, le=5000)
+
+
+class DashboardForgettingPreviewItem(BaseModel):
+    """Preview item for forgetting decisions."""
+
+    memory_id: UUID
+    text: str
+    type: str
+    status: str
+    confidence: float
+    importance: float
+    access_count: int
+    dependency_count: int = 0
+    total_score: float
+    importance_score: float
+    recency_score: float
+    frequency_score: float
+    confidence_score: float
+    type_bonus_score: float
+    dependency_score: float
+    suggested_action: str
+    protected: bool = False
+    keep_reason: str | None = None
+    duplicate_matches: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DashboardForgettingPreviewResponse(BaseModel):
+    """Dry-run forgetting preview."""
+
+    tenant_id: str
+    user_id: str
+    scanned_count: int = 0
+    duplicates_found: int = 0
+    operations_planned: int = 0
+    items: list[DashboardForgettingPreviewItem] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardQualityIssue(BaseModel):
+    """Single data-quality or graph-hygiene issue."""
+
+    label: str
+    count: int
+    description: str = ""
+    sample_ids: list[str] = Field(default_factory=list)
+
+
+class DashboardQualityResponse(BaseModel):
+    """Aggregated data quality and graph hygiene summary."""
+
+    tenant_id: str | None = None
+    generated_at: datetime
+    issues: list[DashboardQualityIssue] = Field(default_factory=list)
+    invalidation_hotspots: list[dict[str, Any]] = Field(default_factory=list)
+    graph_hygiene: dict[str, Any] = Field(default_factory=dict)
+    labile_sessions: int = 0
+
+
+class DashboardOpsMetric(BaseModel):
+    """Single operational metric sample."""
+
+    name: str
+    labels: dict[str, str] = Field(default_factory=dict)
+    value: float | int | str | None = None
+
+
+class DashboardOpsResponse(BaseModel):
+    """Operational metrics view for the dashboard."""
+
+    generated_at: datetime
+    highlights: dict[str, Any] = Field(default_factory=dict)
+    metrics: list[DashboardOpsMetric] = Field(default_factory=list)
+
+
+class DashboardEvaluationArtifact(BaseModel):
+    """Evaluation file discovered on disk."""
+
+    name: str
+    path: str
+    kind: str
+    size_bytes: int = 0
+    updated_at: datetime | None = None
+
+
+class DashboardEvaluationSummary(BaseModel):
+    """Evaluation readiness and discovered results."""
+
+    generated_at: datetime
+    readiness: dict[str, Any] = Field(default_factory=dict)
+    latest_summary: dict[str, Any] | None = None
+    latest_report: str | None = None
+    artifacts: list[DashboardEvaluationArtifact] = Field(default_factory=list)
+    comparisons: list[dict[str, Any]] = Field(default_factory=list)
