@@ -88,7 +88,9 @@ class _BatchingSpanPredictor:
             perf = get_settings().performance
             _wait = max_wait_ms if max_wait_ms is not None else perf.resolved_span_batch_wait_ms()
             _batch = (
-                max_batch_size if max_batch_size is not None else perf.resolved_span_max_batch_size()
+                max_batch_size
+                if max_batch_size is not None
+                else perf.resolved_span_max_batch_size()
             )
         except Exception:
             _wait = max_wait_ms if max_wait_ms is not None else 10.0

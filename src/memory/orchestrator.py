@@ -675,6 +675,7 @@ class MemoryOrchestrator:
                         all_fact_pairs.append((fact, evidence))
 
             if all_fact_pairs:
+
                 async def _store_one(fact: Any, evidence: list[str]) -> None:
                     try:
                         await self.neocortical.store_fact(
@@ -717,7 +718,9 @@ class MemoryOrchestrator:
 
             extractor = ConstraintExtractor()
             fallback_evidence_c = [str(stored[0].id)] if stored else []
-            constraint_pairs: list[tuple[Any, str, list[str]]] = []  # (constraint, fact_key, evidence)
+            constraint_pairs: list[
+                tuple[Any, str, list[str]]
+            ] = []  # (constraint, fact_key, evidence)
 
             if wpc.use_llm_constraints and unified_results:
                 for idx, ur in enumerate(unified_results):
@@ -736,6 +739,7 @@ class MemoryOrchestrator:
                         constraint_pairs.append((constraint, fact_key, evidence_c))
 
             if constraint_pairs:
+
                 async def _store_constraint(c: Any, fk: str, ev: list[str]) -> bool:
                     try:
                         await self.neocortical.store_fact(
