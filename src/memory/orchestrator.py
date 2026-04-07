@@ -627,29 +627,15 @@ class MemoryOrchestrator:
         try:
             fallback_evidence = [str(stored[0].id)] if stored else []
 
-            async def _store_fact_batch(facts: list[Any], evidence: list[str]) -> None:
-                for fact in facts:
-                    try:
-                        await self.neocortical.store_fact(
-                            tenant_id=tenant_id,
-                            key=fact.key,
-                            value=fact.value,
-                            confidence=fact.confidence,
-                            evidence_ids=evidence,
-                            valid_from=timestamp,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "write_time_fact_store_failed",
-                            extra={"tenant_id": tenant_id, "fact_key": getattr(fact, "key", None)},
-                            exc_info=True,
-                        )
+            # Collect all (fact, evidence) pairs first, then store concurrently.
+            all_fact_pairs: list[tuple[Any, list[str]]] = []
 
             if wpc.use_llm_facts and unified_results:
                 for idx, ur in enumerate(unified_results):
                     if ur and hasattr(ur, "facts"):
                         evidence = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence
-                        await _store_fact_batch(list(ur.facts), evidence)
+                        for fact in ur.facts:
+                            all_fact_pairs.append((fact, evidence))
             else:
                 from ..extraction.write_time_facts import WriteTimeFactExtractor
 
@@ -658,8 +644,6 @@ class MemoryOrchestrator:
                     evidence = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence
                     fact_map: dict[tuple[str, str], Any] = {}
 
-                    # Use pre-computed local results from Phase 3.5 when available,
-                    # to avoid re-running the local extractor (saves ~10ms per chunk).
                     local_result = (
                         local_results[idx] if local_results and idx < len(local_results) else None
                     )
@@ -687,7 +671,28 @@ class MemoryOrchestrator:
                         if key[0] and key[1] and key not in fact_map:
                             fact_map[key] = fact
 
-                    await _store_fact_batch(list(fact_map.values()), evidence)
+                    for fact in fact_map.values():
+                        all_fact_pairs.append((fact, evidence))
+
+            if all_fact_pairs:
+                async def _store_one(fact: Any, evidence: list[str]) -> None:
+                    try:
+                        await self.neocortical.store_fact(
+                            tenant_id=tenant_id,
+                            key=fact.key,
+                            value=fact.value,
+                            confidence=fact.confidence,
+                            evidence_ids=evidence,
+                            valid_from=timestamp,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "write_time_fact_store_failed",
+                            extra={"tenant_id": tenant_id, "fact_key": getattr(fact, "key", None)},
+                            exc_info=True,
+                        )
+
+                await asyncio.gather(*[_store_one(f, e) for f, e in all_fact_pairs])
         except Exception:
             logger.warning("write_time_facts_skipped", exc_info=True)
 
@@ -711,8 +716,9 @@ class MemoryOrchestrator:
             from ..extraction.constraint_extractor import ConstraintExtractor
 
             extractor = ConstraintExtractor()
-            constraints_stored = 0
             fallback_evidence_c = [str(stored[0].id)] if stored else []
+            constraint_pairs: list[tuple[Any, str, list[str]]] = []  # (constraint, fact_key, evidence)
+
             if wpc.use_llm_constraints and unified_results:
                 for idx, ur in enumerate(unified_results):
                     if ur and hasattr(ur, "constraints"):
@@ -720,57 +726,45 @@ class MemoryOrchestrator:
                             [str(stored[idx].id)] if idx < len(stored) else fallback_evidence_c
                         )
                         for constraint in ur.constraints:
-                            try:
-                                fact_key = ConstraintExtractor.constraint_fact_key(constraint)
-                                await self.neocortical.store_fact(
-                                    tenant_id=tenant_id,
-                                    key=fact_key,
-                                    value=constraint.description,
-                                    confidence=constraint.confidence,
-                                    evidence_ids=evidence_c,
-                                    context_tags=constraint.scope,
-                                    valid_from=timestamp,
-                                )
-                                constraints_stored += 1
-                            except Exception:
-                                logger.warning(
-                                    "constraint_fact_store_failed",
-                                    extra={
-                                        "tenant_id": tenant_id,
-                                        "constraint_type": constraint.constraint_type,
-                                    },
-                                    exc_info=True,
-                                )
+                            fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                            constraint_pairs.append((constraint, fact_key, evidence_c))
             else:
                 for idx, chunk in enumerate(chunks):
                     evidence_c = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence_c
                     for constraint in extractor.extract(chunk):
-                        try:
-                            fact_key = ConstraintExtractor.constraint_fact_key(constraint)
-                            await self.neocortical.store_fact(
-                                tenant_id=tenant_id,
-                                key=fact_key,
-                                value=constraint.description,
-                                confidence=constraint.confidence,
-                                evidence_ids=evidence_c,
-                                context_tags=constraint.scope,
-                                valid_from=timestamp,
-                            )
-                            constraints_stored += 1
-                        except Exception:
-                            logger.warning(
-                                "constraint_fact_store_failed",
-                                extra={
-                                    "tenant_id": tenant_id,
-                                    "constraint_type": constraint.constraint_type,
-                                },
-                                exc_info=True,
-                            )
-            if constraints_stored > 0:
-                logger.info(
-                    "constraints_extracted",
-                    extra={"tenant_id": tenant_id, "count": constraints_stored},
+                        fact_key = ConstraintExtractor.constraint_fact_key(constraint)
+                        constraint_pairs.append((constraint, fact_key, evidence_c))
+
+            if constraint_pairs:
+                async def _store_constraint(c: Any, fk: str, ev: list[str]) -> bool:
+                    try:
+                        await self.neocortical.store_fact(
+                            tenant_id=tenant_id,
+                            key=fk,
+                            value=c.description,
+                            confidence=c.confidence,
+                            evidence_ids=ev,
+                            context_tags=c.scope,
+                            valid_from=timestamp,
+                        )
+                        return True
+                    except Exception:
+                        logger.warning(
+                            "constraint_fact_store_failed",
+                            extra={"tenant_id": tenant_id, "constraint_type": c.constraint_type},
+                            exc_info=True,
+                        )
+                        return False
+
+                results = await asyncio.gather(
+                    *[_store_constraint(c, fk, ev) for c, fk, ev in constraint_pairs]
                 )
+                constraints_stored = sum(1 for r in results if r)
+                if constraints_stored > 0:
+                    logger.info(
+                        "constraints_extracted",
+                        extra={"tenant_id": tenant_id, "count": constraints_stored},
+                    )
         except Exception:
             logger.warning("constraint_extraction_skipped", exc_info=True)
 

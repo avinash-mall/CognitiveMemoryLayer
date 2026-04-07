@@ -88,6 +88,7 @@ services:
 
   # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
   # Reuse repo-local model artifacts by bind-mounting packages/models into the container.
+  # GPU reservations live in docker-compose.gpu.yml so the base stack stays CPU-safe.
   api:
     build:
       context: ..
@@ -123,13 +124,6 @@ services:
       - "8000:8000"
     volumes:
       - ../packages/models:/app/packages/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     command: ["sh", "-c", "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]

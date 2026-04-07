@@ -1,5 +1,6 @@
 """Configuration management with pydantic-settings."""
 
+import os
 import re
 from functools import lru_cache
 from typing import Literal
@@ -7,6 +8,11 @@ from typing import Literal
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def _auto_cpu_count() -> int:
+    """Return usable CPU count, capped at physical cores."""
+    return os.cpu_count() or 4
 
 
 def ensure_asyncpg_url(url: str) -> str:
@@ -50,7 +56,11 @@ class EmbeddingInternalSettings(PydanticBaseModel):
     revision: str | None = Field(default="1066b6599d099fbb93dfcb64f9c37a7c9e503e85")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
-    local_batch_size: int = Field(default=8)
+    local_batch_size: int = Field(
+        default=0,
+        description="Batch size for local sentence-transformers encode(). "
+        "0 = auto (64 on CUDA, 8 on CPU). Increase for large GPUs; lower to avoid OOM.",
+    )
     device: Literal["auto", "cpu", "cuda"] = Field(default="auto")
     batch_wait_ms: float = Field(
         default=10.0
@@ -249,6 +259,56 @@ class RetrievalSettings(PydanticBaseModel):
     reranker: RerankerSettings = Field(default_factory=RerankerSettings)
 
 
+class PerformanceSettings(PydanticBaseModel):
+    """Write-path thread pool and batching tuning knobs. Env: PERFORMANCE__*.
+
+    All values default to 0 (auto-detect), which selects safe defaults based
+    on the host's CPU count.  Override in .env for specific hardware.
+    """
+
+    gate_executor_workers: int = Field(
+        default=0,
+        description="Thread-pool size for write-gate novelty checks. "
+        "0 = auto (min(cpu_count, 8)). Lower on small machines to reduce GIL contention.",
+    )
+    spacy_executor_workers: int = Field(
+        default=0,
+        description="Thread-pool size for spaCy NER calls. "
+        "0 = auto (min(cpu_count // 4, 2, but at least 1)). "
+        "spaCy + GIL means more threads rarely helps.",
+    )
+    span_batch_wait_ms: float = Field(
+        default=0,
+        description="DeBERTa span-predictor coalescing window (ms). "
+        "0 = auto (10ms). Higher = larger batches but more latency per request.",
+    )
+    span_max_batch_size: int = Field(
+        default=0,
+        description="Max texts per DeBERTa span-predictor batch. "
+        "0 = auto (20). Cap prevents super-batches from stalling callers.",
+    )
+
+    def resolved_gate_workers(self) -> int:
+        if self.gate_executor_workers > 0:
+            return self.gate_executor_workers
+        return min(_auto_cpu_count(), 8)
+
+    def resolved_spacy_workers(self) -> int:
+        if self.spacy_executor_workers > 0:
+            return self.spacy_executor_workers
+        return max(1, min(_auto_cpu_count() // 4, 2))
+
+    def resolved_span_batch_wait_ms(self) -> float:
+        if self.span_batch_wait_ms > 0:
+            return self.span_batch_wait_ms
+        return 10.0
+
+    def resolved_span_max_batch_size(self) -> int:
+        if self.span_max_batch_size > 0:
+            return self.span_max_batch_size
+        return 20
+
+
 class Settings(BaseSettings):
     """Application settings with nested configuration."""
 
@@ -269,6 +329,7 @@ class Settings(BaseSettings):
     chunker: ChunkerSettings = Field(default_factory=ChunkerSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    performance: PerformanceSettings = Field(default_factory=PerformanceSettings)
 
     model_config = {
         "env_file": ".env",

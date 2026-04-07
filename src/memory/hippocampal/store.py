@@ -41,10 +41,21 @@ if TYPE_CHECKING:
 # Dedicated executor for Phase 1 (write-gate novelty checks).
 # novelty_pair sklearn model takes ~6ms per call x 50 existing memories = ~300ms per chunk.
 # Running in a separate executor frees the event loop for embedding/DeBERTa batching.
-# 8 workers: with 10 concurrent encode_batch calls, 4 workers caused 2+ rounds of queuing
-# (~70ms p50). 8 workers -> 1 round -> ~35ms p50, halving gate latency.
+# Worker count is configurable via PERFORMANCE__GATE_EXECUTOR_WORKERS;
+# 0 = auto-detect based on CPU count (min(cpu_count, 8)).
+def _resolve_gate_workers() -> int:
+    try:
+        from ...core.config import get_settings
+
+        return get_settings().performance.resolved_gate_workers()
+    except Exception:
+        import os
+
+        return min(os.cpu_count() or 4, 8)
+
+
 _GATE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=12, thread_name_prefix="write_gate"
+    max_workers=_resolve_gate_workers(), thread_name_prefix="write_gate"
 )
 
 
@@ -65,13 +76,25 @@ class _BatchingSpanPredictor:
         self,
         modelpack: Any,
         task: str,
-        max_wait_ms: float = 10.0,
-        max_batch_size: int = 20,
+        max_wait_ms: float | None = None,
+        max_batch_size: int | None = None,
     ) -> None:
         self._modelpack = modelpack
         self._task = task
-        self._max_wait = max_wait_ms / 1000.0
-        self._max_batch_size = max_batch_size
+        # Resolve from settings when not explicitly provided
+        try:
+            from ...core.config import get_settings
+
+            perf = get_settings().performance
+            _wait = max_wait_ms if max_wait_ms is not None else perf.resolved_span_batch_wait_ms()
+            _batch = (
+                max_batch_size if max_batch_size is not None else perf.resolved_span_max_batch_size()
+            )
+        except Exception:
+            _wait = max_wait_ms if max_wait_ms is not None else 10.0
+            _batch = max_batch_size if max_batch_size is not None else 20
+        self._max_wait = _wait / 1000.0
+        self._max_batch_size = _batch
         self._lock: asyncio.Lock | None = None
         self._pending: list[tuple[str, asyncio.Future[Any]]] = []
         self._dispatch_task: asyncio.Task[None] | None = None

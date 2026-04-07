@@ -287,6 +287,8 @@ def run_full_eval(config: FullEvalConfig) -> int:
             ingestion_workers=config.ingestion_workers,
             score_only=config.score_only,
             judge_model=llm_model,
+            skip_ingestion=config.resume,
+            skip_consolidation=config.resume,
         )
         print(f"  QA LLM (from .env): LLM_EVAL__MODEL/LLM_INTERNAL__MODEL={llm_model}", flush=True)
         t0 = time.monotonic()

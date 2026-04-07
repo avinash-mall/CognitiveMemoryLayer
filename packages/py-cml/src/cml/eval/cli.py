@@ -94,6 +94,11 @@ def _add_run_locomo_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--ingestion-workers", type=int, default=10)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from where a previous run left off (skip ingestion + consolidation)",
+    )
 
 
 def _add_validate_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -195,8 +200,8 @@ def main(argv: list[str] | None = None) -> int:
                     if args.limit_samples is not None
                     else []
                 ),
-                *(["--skip-ingestion"] if args.skip_ingestion else []),
-                *(["--skip-consolidation"] if args.skip_consolidation else []),
+                *(["--skip-ingestion"] if args.skip_ingestion or args.resume else []),
+                *(["--skip-consolidation"] if args.skip_consolidation or args.resume else []),
                 *(["--score-only"] if args.score_only else []),
                 "--judge-model",
                 str(args.judge_model),

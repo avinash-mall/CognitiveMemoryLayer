@@ -183,7 +183,7 @@ class LocalEmbeddings(EmbeddingClient):
         self.revision = model_revision
         self.device = resolved_device
         self.device_preference = device_preference
-        self._batch_size = ei.local_batch_size
+        self._batch_size = ei.local_batch_size if ei.local_batch_size > 0 else (64 if resolved_device == "cuda" else 8)
         self._encode_lock = threading.Lock()
         self._dimensions = self.model.get_sentence_embedding_dimension()
         _logger.info(

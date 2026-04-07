@@ -64,6 +64,29 @@ def test_run_locomo_cli_routes_to_locomo(monkeypatch, tmp_path: Path) -> None:
     assert "--out-dir" in captured["argv"]
 
 
+def test_run_locomo_resume_sets_skip_flags(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def _fake(argv=None):
+        captured["argv"] = list(argv or [])
+        return 0
+
+    monkeypatch.setattr("cml.eval.locomo.main", _fake)
+    rc = cli.main(
+        [
+            "run-locomo",
+            "--unified-file",
+            str(tmp_path / "u.json"),
+            "--out-dir",
+            str(tmp_path),
+            "--resume",
+        ]
+    )
+    assert rc == 0
+    assert "--skip-ingestion" in captured["argv"]
+    assert "--skip-consolidation" in captured["argv"]
+
+
 def test_validate_cli_routes_to_validate(monkeypatch, tmp_path: Path) -> None:
     called = {"count": 0}
 

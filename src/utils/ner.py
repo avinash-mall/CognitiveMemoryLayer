@@ -11,13 +11,22 @@ from typing import Any
 
 from .logging_config import get_logger
 
-# Dedicated 2-worker executor for spaCy calls.  The default thread-pool
-# serializes poorly under concurrent load (10 threads → 741ms vs 71ms with 2).
-# max_workers=2 is the empirical sweet spot on this hardware (3+ hurts due
-# to GIL/cache contention).  NER and REL share this pool — separate executors
-# increase total thread count to 4, degrading per-call time from 7ms to 14ms.
+
+# Dedicated executor for spaCy calls.  The default thread-pool serializes
+# poorly under concurrent load (10 threads → 741ms vs 71ms with 2).
+# Worker count is configurable via PERFORMANCE__SPACY_EXECUTOR_WORKERS;
+# 0 = auto-detect based on CPU count (typically 1-2 workers).
+def _resolve_spacy_workers() -> int:
+    try:
+        from ..core.config import get_settings
+
+        return get_settings().performance.resolved_spacy_workers()
+    except Exception:
+        return max(1, min((os.cpu_count() or 4) // 4, 2))
+
+
 _SPACY_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=2,
+    max_workers=_resolve_spacy_workers(),
     thread_name_prefix="spacy",
 )
 _SPACY_REL_EXECUTOR = _SPACY_EXECUTOR  # alias kept for import compatibility

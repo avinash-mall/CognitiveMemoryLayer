@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Locomo resume mode in py-cml CLI** — `cml eval run-locomo` now accepts `--resume`, which forwards to the Locomo runner as `--skip-ingestion --skip-consolidation` so interrupted evaluation runs can continue from the scoring phase without replaying ingestion. Added regression coverage in `packages/py-cml/tests/unit/test_eval_cli.py`.
+
+### Changed
+
+- **Write-time fact and constraint persistence now batches before storing** — `MemoryOrchestrator` now collects extracted facts and constraints first, then stores them concurrently with `asyncio.gather()` instead of awaiting each write sequentially inside the extraction loops. This reduces write-path latency while preserving per-item error logging.
+- **Write-gate executor sizing** — `HippocampalStore` now uses 8 write-gate worker threads instead of 12, aligning the runtime setting with the documented queueing behavior and reducing excess executor fan-out.
+- **Docker Compose defaults are now CPU-safe** — the base `docker-compose.yml` no longer reserves NVIDIA devices for the `api` service. GPU reservations remain in `docker/docker-compose.gpu.yml`, and the CI override file no longer carries empty `devices: []` stanzas.
+
+### Fixed
+
+- **GitHub Actions Docker startup on non-GPU runners** — CI no longer inherits an `nvidia` device reservation from the base Compose file, fixing failures like `could not select device driver "nvidia" with capabilities: [[gpu]]` when bringing up the stack on standard GitHub-hosted runners.
+
 ## [1.5.0] — 2026-03-26
 
 ### Added
