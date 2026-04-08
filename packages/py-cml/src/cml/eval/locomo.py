@@ -152,7 +152,7 @@ def _extract_answer(raw: str) -> str:
         for marker in _ANSWER_MARKERS:
             idx = text.rfind(marker)
             if idx != -1:
-                answer = text[idx + len(marker):].strip()
+                answer = text[idx + len(marker) :].strip()
                 if answer:
                     return answer
         # Fallback: return last paragraph
@@ -523,9 +523,7 @@ def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_c
     # Suppress chain-of-thought for Qwen/thinking models
     _is_thinking_model = "qwen" in model.lower()
     _extra_body = (
-        {"chat_template_kwargs": {"enable_thinking": False}}
-        if _is_thinking_model
-        else None
+        {"chat_template_kwargs": {"enable_thinking": False}} if _is_thinking_model else None
     )
 
     def _do_request() -> str:
@@ -919,16 +917,16 @@ def phase_b_qa(
                     )
                 else:
                     user_content = (
-                        (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+                        (llm_context or "(No retrieved context.)")
+                        + "\n\n"
+                        + QA_PROMPT.format(trigger)
                     )
 
                 prediction = _extract_answer(_llm_chat(user_content, backend=backend))
             except Exception as exc:
                 sample_error_count += 1
                 prediction = f"[Error: {exc}]"
-                _progress_write(
-                    f"\n[Phase B] Warning: sample {i} ({category}) failed: {exc}"
-                )
+                _progress_write(f"\n[Phase B] Warning: sample {i} ({category}) failed: {exc}")
             ground_truth = sample.get("answer")
             if ground_truth is None or (
                 isinstance(ground_truth, str) and ground_truth.strip() == ""
