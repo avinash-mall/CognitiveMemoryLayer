@@ -11,7 +11,7 @@ from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
 from ..utils.modelpack import get_modelpack_runtime
 from ..utils.tracing import async_trace_span
-from .bm25_index import BM25Index, TenantBM25Manager, rrf_merge
+from .bm25_index import TenantBM25Manager, rrf_merge
 from .classifier import QueryClassifier
 from .packet_builder import MemoryPacketBuilder
 from .planner import RetrievalPlanner, RetrievalSource, RetrievalStep
@@ -225,7 +225,6 @@ class MemoryRetriever:
             # --- Improvement Report: HyDE augmentation ---
             settings = get_settings()
             if settings.features.hyde_retrieval_enabled and self._hyde_generator:
-                import asyncio
 
                 hyde_results = await self._hyde_augment(
                     tenant_id, query, plan, context_filter

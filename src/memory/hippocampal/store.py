@@ -1207,7 +1207,7 @@ class HippocampalStore:
         self,
         tenant_id: str,
         source_record: MemoryRecord,
-        unified_result: "UnifiedExtractionResult | None",
+        unified_result: UnifiedExtractionResult | None,
         context_tags: list[str],
         source_session_id: str | None,
         agent_id: str | None,
