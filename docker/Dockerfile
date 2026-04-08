@@ -1,47 +1,67 @@
 # Cognitive Memory Layer - Multi-stage build
-# Stage 1: base image and system deps
-FROM python:3.11-slim AS base
+# Stage 1: build image with CUDA toolkit (nvcc) for compiling megablocks kernels.
+# The devel variant includes nvcc, needed for megablocks CUDA extensions.
+FROM nvidia/cuda:12.8.1-devel-ubuntu24.04 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    CUDA_HOME=/usr/local/cuda \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;9.0;10.0;12.0"
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-dev python3-pip python3-venv \
     build-essential \
     libpq-dev \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Stage 2: runtime dependencies
-FROM base AS runtime-dependencies
-
 COPY requirements-runtime.txt ./
-# pyproject.toml + hatch_build.py + py-cml source needed to install the cml
-# package so joblib can deserialize modelpack sklearn pipelines at runtime.
 COPY pyproject.toml hatch_build.py ./
 COPY packages/py-cml ./packages/py-cml
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements-runtime.txt \
-    && pip install --no-cache-dir "." \
-    && pip install --no-cache-dir "huggingface_hub>=0.25" \
-    && python -m spacy download en_core_web_sm
+RUN pip install --no-cache-dir --break-system-packages -r requirements-runtime.txt \
+    && pip install --no-cache-dir --break-system-packages "." \
+    && pip install --no-cache-dir --break-system-packages "huggingface_hub>=0.25"
 
-# Stage 2b: Dashboard frontend build (neovis.js bundle for offline graph)
+RUN python3 -m spacy download en_core_web_sm
+
+RUN pip install --no-build-isolation --no-cache-dir --break-system-packages \
+       stanford-stk git+https://github.com/nomic-ai/megablocks.git
+
+# Stage 1b: Dashboard frontend build (neovis.js bundle for offline graph)
 FROM node:20-alpine AS dashboard
 WORKDIR /build
 COPY src/dashboard/package.json src/dashboard/vite.config.js ./
 COPY src/dashboard/static ./static
 RUN npm install && npm run build
 
-# Stage 3: production runtime image (no tests/training/evaluation tooling)
-FROM base AS production
+# Stage 2: production runtime image
+# Uses the runtime variant (smaller, no nvcc) — still has CUDA shared libs
+# so pre-compiled megablocks .so files work at runtime.
+FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04 AS production
 
-COPY --from=runtime-dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=runtime-dependencies /usr/local/bin /usr/local/bin
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy all installed Python packages from the builder stage.
+COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
+COPY --from=builder /usr/lib/python3/dist-packages /usr/lib/python3/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY src ./src
 COPY --from=dashboard /build/static/js/bundle.js ./src/dashboard/static/js/bundle.js
@@ -58,7 +78,7 @@ ENV PYTHONPATH=/app \
 RUN mkdir -p /app/packages/models/trained_models
 
 # Non-root user for production
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 ENTRYPOINT ["/entrypoint.sh"]
@@ -72,11 +92,11 @@ EXPOSE 8000
 # Default: run API server (compose overrides for app test runner)
 CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Stage 4: test image with test dependencies and test sources
-FROM runtime-dependencies AS test-dependencies
+# Stage 3: test image with test dependencies and test sources
+FROM builder AS test-dependencies
 
 COPY requirements-test.txt ./
-RUN pip install --no-cache-dir -r requirements-test.txt
+RUN pip install --no-cache-dir --break-system-packages -r requirements-test.txt
 
 FROM test-dependencies AS test
 
@@ -92,7 +112,7 @@ COPY migrations ./migrations/
 COPY docker/entrypoint.sh /entrypoint.sh
 
 # Install package with the extras required by the full GitHub test suite.
-RUN pip install --no-cache-dir -e ".[embedded,eval,modeling]"
+RUN pip install --no-cache-dir --break-system-packages -e ".[embedded,eval,modeling]"
 
 ENV PYTHONPATH=/app \
     NER__MODEL=en_core_web_sm \

@@ -8,13 +8,17 @@ from ..core.schemas import MemoryPacket
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.llm import LLMClient
+from ..utils.logging_config import get_logger
 from ..utils.modelpack import get_modelpack_runtime
 from ..utils.tracing import async_trace_span
+from .bm25_index import BM25Index, TenantBM25Manager, rrf_merge
 from .classifier import QueryClassifier
 from .packet_builder import MemoryPacketBuilder
 from .planner import RetrievalPlanner, RetrievalSource, RetrievalStep
 from .reranker import MemoryReranker, RerankerConfig
 from .retriever import HybridRetriever
+
+_logger = get_logger(__name__)
 
 
 def _reranker_config_from_settings() -> RerankerConfig:
@@ -48,6 +52,29 @@ class MemoryRetriever:
             modelpack=modelpack,
         )
         self.packet_builder = MemoryPacketBuilder()
+        self.llm_client = llm_client
+
+        # --- Improvement Report: BM25, HyDE, answer processing ---
+        self._bm25_manager = TenantBM25Manager()
+        self._hyde_generator = None
+        self._adversarial_verifier = None
+        self._answer_compressor = None
+        settings = get_settings()
+
+        if llm_client and settings.features.hyde_retrieval_enabled:
+            from .hyde import HyDEGenerator
+
+            self._hyde_generator = HyDEGenerator(llm_client)
+
+        if llm_client and settings.features.adversarial_verification_enabled:
+            from .answer_processing import AdversarialVerifier
+
+            self._adversarial_verifier = AdversarialVerifier(llm_client)
+
+        if llm_client and settings.features.answer_compression_enabled:
+            from .answer_processing import AnswerCompressor
+
+            self._answer_compressor = AnswerCompressor(llm_client)
 
     @staticmethod
     def _apply_session_scope_restrictions(
@@ -133,6 +160,35 @@ class MemoryRetriever:
             query_embedding = emb_result.embedding
         return plan, query_embedding
 
+    async def _hyde_augment(
+        self,
+        tenant_id: str,
+        query: str,
+        plan: Any,
+        context_filter: list[str] | None,
+    ) -> list[Any]:
+        """Run HyDE: generate a hypothetical memory and retrieve with it.
+
+        Returns additional results that should be RRF-merged with the main results.
+        """
+        if not self._hyde_generator:
+            return []
+        try:
+            hypo = await self._hyde_generator.generate_hypothetical_memory(query)
+            if not hypo:
+                return []
+            emb_result = await self.retriever.hippocampal.embeddings.embed(hypo)
+            hyde_results = await self.retriever.retrieve(
+                tenant_id,
+                plan,
+                context_filter=context_filter,
+                query_embedding=emb_result.embedding,
+            )
+            return hyde_results
+        except Exception as exc:
+            _logger.debug("hyde_augment_failed", error=str(exc))
+            return []
+
     async def retrieve(
         self,
         tenant_id: str,
@@ -165,6 +221,33 @@ class MemoryRetriever:
                 context_filter=context_filter,
                 query_embedding=query_embedding,
             )
+
+            # --- Improvement Report: HyDE augmentation ---
+            settings = get_settings()
+            if settings.features.hyde_retrieval_enabled and self._hyde_generator:
+                import asyncio
+
+                hyde_results = await self._hyde_augment(
+                    tenant_id, query, plan, context_filter
+                )
+                if hyde_results:
+                    # RRF merge: convert RetrievedMemory lists to dicts for merging
+                    main_dicts = [
+                        {"id": str(r.record.id), "mem": r} for r in raw_results
+                    ]
+                    hyde_dicts = [
+                        {"id": str(r.record.id), "mem": r} for r in hyde_results
+                    ]
+                    merged = rrf_merge([main_dicts, hyde_dicts], k=60)
+                    seen_ids: set[str] = set()
+                    deduped_results = []
+                    for item in merged:
+                        rid = item["id"]
+                        if rid not in seen_ids:
+                            seen_ids.add(rid)
+                            deduped_results.append(item["mem"])
+                    raw_results = deduped_results
+
             reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
             retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
             if return_packet:
@@ -300,3 +383,30 @@ class MemoryRetriever:
             recent_context=recent_context,
         )
         return self.packet_builder.to_llm_context(packet, max_tokens, format)
+
+    async def verify_answerable(self, question: str, context: str) -> bool:
+        """Check if the retrieved context can actually answer the question.
+
+        Used as an adversarial gate to prevent hallucination on
+        unanswerable questions.  Returns True if answerable.
+        """
+        if self._adversarial_verifier is None:
+            return True
+        return await self._adversarial_verifier.verify(question, context)
+
+    async def compress_answer(self, question: str, verbose_answer: str) -> str:
+        """Compress a verbose LLM answer to a short factual form for F1 scoring.
+
+        Returns the compressed answer, or the original if compression
+        is disabled or fails.
+        """
+        if self._answer_compressor is None:
+            return verbose_answer
+        return await self._answer_compressor.compress(question, verbose_answer)
+
+    @staticmethod
+    def unanswerable_response() -> str:
+        """Standard response for unanswerable questions."""
+        from .answer_processing import AdversarialVerifier
+
+        return AdversarialVerifier.unanswerable_response()

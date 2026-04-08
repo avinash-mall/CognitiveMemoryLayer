@@ -71,6 +71,11 @@ class UnifiedExtractionResult:
     confidence: float = 0.5
     context_tags: list[str] = field(default_factory=list)
     decay_rate: float | None = None
+    # --- Enhanced extraction fields (Improvement Report) ---
+    speaker: str | None = None
+    causal_chain: str | None = None
+    event_date: str | None = None  # ISO format absolute date if detected
+    prospective_implications: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +126,10 @@ EXCLUDE from entities and relations: system prompts, role instructions (e.g. "Yo
 **decay_rate**: optional float 0.01-0.5 — how fast to forget (0.01=stable, 0.1=medium, 0.5=ephemeral); omit for default 0.01
 **pii_spans**: optional array of objects with start, end, pii_type - only if PII detected
 **contains_secrets**: optional boolean
+**speaker**: optional string — who stated this ("user", "assistant", or a named person)
+**causal_chain**: optional string — if this fact was caused by another event, describe the causal link (e.g. "cousin's diabetes diagnosis → user cut sugary drinks")
+**event_date**: optional string — if a time reference is mentioned, resolve to ISO date (YYYY-MM-DD). Convert relative references ("yesterday", "last week") using the session date if available.
+**prospective_implications**: optional array of 2-4 strings — future scenarios where this memory would be relevant to a future query or decision. Focus on behavioral constraints, recommendations, and implicit needs. Example: for "I cut sugary drinks", generate ["Dietary recommendations should exclude high-sugar options", "User avoids sugary beverages for health reasons"]
 
 ### Few-shot example
 Input: "I live in Paris and work at Google. My friend Anna prefers Italian food."
@@ -142,7 +151,13 @@ Output:
   "memory_type": "semantic_fact",
   "confidence": 0.9,
   "context_tags": ["personal", "location", "occupation"],
-  "decay_rate": 0.01
+  "decay_rate": 0.01,
+  "speaker": "user",
+  "prospective_implications": [
+    "User is located in Paris — consider timezone and local context for recommendations",
+    "User works at Google — technology sector, likely familiar with tech topics",
+    "When recommending restaurants, consider Italian cuisine for Anna"
+  ]
 }}
 
 ### Input
@@ -394,6 +409,29 @@ class UnifiedWritePathExtractor:
         if isinstance(raw_decay, (int, float)) and 0.01 <= raw_decay <= 0.5:
             decay_rate = float(raw_decay)
 
+        # --- Enhanced extraction fields (Improvement Report) ---
+        speaker: str | None = None
+        raw_speaker = data.get("speaker")
+        if isinstance(raw_speaker, str) and raw_speaker.strip():
+            speaker = raw_speaker.strip()
+
+        causal_chain: str | None = None
+        raw_causal = data.get("causal_chain")
+        if isinstance(raw_causal, str) and raw_causal.strip():
+            causal_chain = raw_causal.strip()
+
+        event_date: str | None = None
+        raw_event_date = data.get("event_date")
+        if isinstance(raw_event_date, str) and raw_event_date.strip():
+            event_date = raw_event_date.strip()
+
+        prospective_implications: list[str] = []
+        raw_implications = data.get("prospective_implications")
+        if isinstance(raw_implications, list):
+            for imp in raw_implications:
+                if isinstance(imp, str) and imp.strip():
+                    prospective_implications.append(imp.strip())
+
         return UnifiedExtractionResult(
             entities=entities,
             relations=relations,
@@ -407,4 +445,8 @@ class UnifiedWritePathExtractor:
             confidence=confidence,
             context_tags=context_tags,
             decay_rate=decay_rate,
+            speaker=speaker,
+            causal_chain=causal_chain,
+            event_date=event_date,
+            prospective_implications=prospective_implications,
         )

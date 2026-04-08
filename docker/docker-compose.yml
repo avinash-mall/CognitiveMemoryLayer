@@ -63,8 +63,8 @@ services:
       AUTH__ADMIN_API_KEY: ${AUTH__ADMIN_API_KEY:-test-key}
       CML_API_KEY: ${CML_API_KEY:-test-key}
       CML_ADMIN_API_KEY: ${CML_ADMIN_API_KEY:-test-key}
-      CML_BASE_URL: http://api:8000
-      CML_TEST_URL: http://api:8000
+      CML_BASE_URL: http://api-test:8000
+      CML_TEST_URL: http://api-test:8000
       CML_TEST_API_KEY: ${CML_TEST_API_KEY:-test-key}
       DEBUG: ${DEBUG:-false}
       EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-mock}
@@ -80,7 +80,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      api:
+      api-test:
         condition: service_healthy
     volumes:
       - ../packages/models:/app/packages/models
@@ -89,6 +89,44 @@ services:
   # API server (Phase 9). Connection vars built from POSTGRES_*, NEO4J_USER/NEO4J_PASSWORD so container and app stay in sync. Rest from ../.env. Run: docker compose up api (after building).
   # Reuse repo-local model artifacts by bind-mounting packages/models into the container.
   # GPU reservations live in docker-compose.gpu.yml so the base stack stays CPU-safe.
+  api-test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    env_file:
+      - ../.env
+    environment:
+      DATABASE__POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-memory}:${POSTGRES_PASSWORD:-memory}@postgres:5432/${POSTGRES_DB:-memory}
+      DATABASE__NEO4J_URL: bolt://neo4j:7687
+      DATABASE__NEO4J_USER: ${NEO4J_USER:-neo4j}
+      DATABASE__NEO4J_PASSWORD: ${NEO4J_PASSWORD:-password}
+      DATABASE__NEO4J_BROWSER_URL: bolt://localhost:7687
+      DATABASE__REDIS_URL: redis://redis:6379
+      AUTH__API_KEY: ${AUTH__API_KEY:-test-key}
+      AUTH__ADMIN_API_KEY: ${AUTH__ADMIN_API_KEY:-test-key}
+      EMBEDDING_INTERNAL__PROVIDER: ${TEST_EMBEDDING_INTERNAL__PROVIDER:-mock}
+      CUDA_VISIBLE_DEVICES: ""
+      FEATURES__USE_LLM_ENABLED: ${FEATURES__USE_LLM_ENABLED:-false}
+      LLM_STARTUP_VALIDATION_ENABLED: ${LLM_STARTUP_VALIDATION_ENABLED:-false}
+      CML_MODELS_AUTO_DOWNLOAD: ${CML_MODELS_AUTO_DOWNLOAD:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../packages/models:/app/packages/models
+    command: ["sh", "-c", "python3 scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 1"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   api:
     build:
       context: ..
@@ -124,7 +162,7 @@ services:
       - "8000:8000"
     volumes:
       - ../packages/models:/app/packages/models
-    command: ["sh", "-c", "python scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
+    command: ["sh", "-c", "python3 scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s

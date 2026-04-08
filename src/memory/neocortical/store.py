@@ -312,6 +312,10 @@ class NeocorticalStore:
                 "value": f.value,
                 "confidence": f.confidence,
                 "category": f.category.value,
+                "context_tags": list(f.context_tags),
+                "valid_from": f.valid_from,
+                "updated_at": f.updated_at,
+                "created_at": f.created_at,
             }
             for f in facts
         ]

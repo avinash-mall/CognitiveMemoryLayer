@@ -221,6 +221,45 @@ class FeatureFlags(PydanticBaseModel):
         default=False,
         description="Bypass modelpack conflict detector and always use LLM for conflict detection",
     )
+    # --- Improvement Report features (LoCoMo-Plus / Kumiho-inspired) ---
+    prospective_indexing_enabled: bool = Field(
+        default=True,
+        description="Generate forward-looking implications at write time (Kumiho-inspired). "
+        "Bridges cue-trigger semantic disconnect for cognitive memory queries.",
+    )
+    prospective_index_count: int = Field(
+        default=4,
+        description="Number of prospective implications to generate per memory.",
+    )
+    bm25_retrieval_enabled: bool = Field(
+        default=True,
+        description="Add BM25 sparse retrieval as a second pathway with RRF fusion.",
+    )
+    hyde_retrieval_enabled: bool = Field(
+        default=True,
+        description="Use Hypothetical Document Embedding (HyDE) for cognitive memory queries.",
+    )
+    temporal_resolution_enabled: bool = Field(
+        default=True,
+        description="Resolve relative time references to absolute dates at extraction time.",
+    )
+    adversarial_verification_enabled: bool = Field(
+        default=True,
+        description="Add verification step to detect unanswerable questions.",
+    )
+    answer_compression_enabled: bool = Field(
+        default=True,
+        description="Post-process LLM answers to extract short factual core for F1 scoring.",
+    )
+    cross_encoder_reranking_enabled: bool = Field(
+        default=True,
+        description="Use cross-encoder model for reranking. "
+        "Auto-downloads BAAI/bge-reranker-v2-m3 (~568MB) on first use.",
+    )
+    cross_encoder_model: str = Field(
+        default="BAAI/bge-reranker-v2-m3",
+        description="Cross-encoder model for reranking.",
+    )
 
 
 class RerankerSettings(PydanticBaseModel):

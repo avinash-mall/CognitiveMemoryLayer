@@ -263,7 +263,7 @@ class MemoryPacketBuilder:
                 used += len(s)
                 remaining -= len(s)
 
-        # 4. Recent episodes
+        # 4. Recent episodes (with chronological timestamps for temporal reasoning)
         relevant_episodes = [
             e for e in packet.recent_episodes if getattr(e, "relevance_score", 1.0) > threshold
         ]
@@ -271,7 +271,17 @@ class MemoryPacketBuilder:
             header = "## Recent Events\n"
             ep_lines: list[str] = []
             for e in relevant_episodes[:episode_limit]:
-                line = f"- {e.record.text} (confidence: {e.record.confidence:.2f})\n"
+                # Include temporal metadata when available for temporal reasoning
+                meta = e.record.metadata or {}
+                date_str = ""
+                event_date = meta.get("event_date")
+                if event_date:
+                    date_str = f" [{event_date}]"
+                elif hasattr(e.record.timestamp, "strftime"):
+                    date_str = f" [{e.record.timestamp.strftime('%Y-%m-%d')}]"
+                speaker = meta.get("speaker", "")
+                speaker_prefix = f"({speaker}) " if speaker else ""
+                line = f"- {speaker_prefix}{e.record.text}{date_str} (confidence: {e.record.confidence:.2f})\n"
                 if len(header) + sum(len(x) for x in ep_lines) + len(line) <= remaining:
                     ep_lines.append(line)
                 else:

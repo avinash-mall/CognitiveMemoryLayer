@@ -19,7 +19,7 @@ if [ "$AUTO_DOWNLOAD" = "true" ] || [ "$AUTO_DOWNLOAD" = "1" ]; then
     if ! models_present; then
         echo "[entrypoint] Models not found in $MODELS_DIR — downloading from $HF_REPO ..."
         mkdir -p "$MODELS_DIR"
-        MODELS_DIR="$MODELS_DIR" HF_REPO="$HF_REPO" HF_TOKEN="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}" python - <<'PY' || echo "[entrypoint] WARNING: Model download failed; server will start with heuristic fallbacks."
+        MODELS_DIR="$MODELS_DIR" HF_REPO="$HF_REPO" HF_TOKEN="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}" python3 - <<'PY' || echo "[entrypoint] WARNING: Model download failed; server will start with heuristic fallbacks."
 import os
 import sys
 from huggingface_hub import snapshot_download

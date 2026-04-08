@@ -501,6 +501,8 @@ class HybridRetriever:
                         "value": f.get("value"),
                         "confidence": f.get("confidence", 0.5),
                         "relevance": 0.8,
+                        "context_tags": f.get("context_tags", []),
+                        "timestamp": f.get("valid_from") or f.get("updated_at"),
                         "record": f,
                     }
                 )
@@ -954,6 +956,8 @@ class HybridRetriever:
         if supersedes_id:
             metadata["supersedes_id"] = str(supersedes_id)
 
+        record_timestamp = valid_from or getattr(fact, "updated_at", None) or datetime.now(UTC)
+
         return MemoryRecord(
             id=UUID(fid) if fid else uuid4(),
             tenant_id=getattr(fact, "tenant_id", ""),
@@ -968,7 +972,7 @@ class HybridRetriever:
                 source=MemorySource.AGENT_INFERRED,
                 evidence_refs=list(evidence_ids),
             ),
-            timestamp=getattr(fact, "updated_at", datetime.now(UTC)),
+            timestamp=record_timestamp,
             written_at=getattr(fact, "created_at", datetime.now(UTC)),
             metadata=metadata,
         )

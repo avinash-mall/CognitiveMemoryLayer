@@ -115,17 +115,28 @@ _CML_READ_BACKOFF_CAP_SEC = 65
 QA_READ_DELAY_SEC = 0.05
 
 # QA prompt for all categories (aligned with Locomo-Plus task instructions)
-QA_PROMPT = """Based on the above context, write an answer in the form of a short phrase.
-Answer with exact words from the context whenever possible.
-Do NOT include any thinking, reasoning, analysis, or explanation.
-Output ONLY the final answer — nothing else.
+# Improvement Report Section 8.1: category-aware answering with conciseness rules.
+QA_PROMPT = """You are a conversational memory assistant. Answer the question using ONLY
+the provided context from past conversations.
+
+RULES:
+1. Be CONCISE. Answer in 1-2 sentences maximum. Aim for under 10 words when a short factual answer suffices.
+2. If the context contains timestamps, use them for temporal reasoning. Think step-by-step about dates and orderings.
+3. If the context does NOT contain information to answer the question, say exactly: "I don't have information about that from our previous conversations."
+4. Do NOT include any thinking, reasoning, analysis, or explanation.
+5. Output ONLY the final answer — nothing else.
 
 Question: {} Short answer:"""
 
-COGNITIVE_PROMPT = """Based on the above context, continue the conversation naturally.
-Respond to the following as you would in a real dialogue.
-Do NOT include any thinking, reasoning, analysis, or explanation.
-Output ONLY your conversational response — nothing else.
+COGNITIVE_PROMPT = """You are a conversational memory assistant. Based on the retrieved context
+from past conversations, respond naturally to the following.
+
+RULES:
+1. Use information from the context to inform your response.
+2. If the context contains relevant constraints, preferences, or past decisions, incorporate them.
+3. If the context does NOT contain relevant information, say: "I don't have information about that from our previous conversations."
+4. Do NOT include any thinking, reasoning, analysis, or explanation.
+5. Output ONLY your conversational response — nothing else.
 
 {}
 

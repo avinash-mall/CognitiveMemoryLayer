@@ -505,6 +505,7 @@ async def dashboard_ratelimits(
     """Current rate-limit usage per API key from Redis. Shows remaining requests and reset time."""
     settings = get_settings()
     rpm = settings.auth.rate_limit_requests_per_minute
+    entry_limit = rpm if rpm > 0 else int(RateLimitEntry.model_fields["limit"].default or 60)
     entries: list[RateLimitEntry] = []
 
     if db.redis:
@@ -531,9 +532,11 @@ async def dashboard_ratelimits(
                         key_type=key_type,
                         identifier=identifier,
                         current_count=count,
-                        limit=rpm,
+                        limit=entry_limit,
                         ttl_seconds=max(ttl, 0),
-                        utilization_pct=round((count / rpm) * 100, 1) if rpm > 0 else 0.0,
+                        utilization_pct=round((count / entry_limit) * 100, 1)
+                        if entry_limit > 0
+                        else 0.0,
                     )
                 )
             if cursor == 0:

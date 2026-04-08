@@ -82,6 +82,35 @@ def test_fact_to_record_fact_routing(mock_hippocampal, mock_neocortical):
     assert record.type == MemoryType.SEMANTIC_FACT
 
 
+def test_fact_to_record_prefers_valid_from_for_timestamp(mock_hippocampal, mock_neocortical):
+    """_fact_to_record preserves the fact's event time when valid_from is present."""
+    retriever = HybridRetriever(mock_hippocampal, mock_neocortical)
+    historical_ts = datetime(2023, 1, 15, 12, 0, tzinfo=UTC)
+    fact = SemanticFact(
+        id=str(uuid4()),
+        tenant_id="t",
+        category=FactCategory.LOCATION,
+        key="user:location:current_city",
+        subject="user",
+        predicate="current_city",
+        value="New York",
+        value_type="str",
+        confidence=0.9,
+        valid_from=historical_ts,
+        updated_at=datetime.now(UTC),
+    )
+    item = {
+        "type": MemoryType.SEMANTIC_FACT.value,
+        "source": "facts",
+        "text": "current_city: New York",
+        "relevance": 0.95,
+    }
+
+    record = retriever._fact_to_record(fact, item)
+
+    assert record.timestamp == historical_ts
+
+
 def test_fact_to_record_source_constraints_routes_to_constraint(mock_hippocampal, mock_neocortical):
     """_fact_to_record routes to CONSTRAINT when source=constraints even without type."""
     retriever = HybridRetriever(mock_hippocampal, mock_neocortical)

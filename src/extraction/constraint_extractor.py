@@ -250,12 +250,23 @@ class ConstraintExtractor:
         # model (supports_task=True but has_task_model=False) costs ~9ms per call
         # and with 20+ existing constraints per category this adds 180ms+ per write.
         has_task_model = getattr(modelpack, "has_task_model", None)
-        if has_task_model and has_task_model("supersession"):
+        predict_pair = getattr(modelpack, "predict_pair", None)
+        can_score_supersession = (
+            has_task_model("supersession")
+            if callable(has_task_model)
+            else callable(predict_pair)
+        )
+        if can_score_supersession:
             sup_pred = modelpack.predict_pair("supersession", old.description, new.description)
             if sup_pred and sup_pred.confidence >= 0.55:
                 return sup_pred.label == "supersedes"
 
-            if has_task_model("scope_match"):
+            can_score_scope_match = (
+                has_task_model("scope_match")
+                if callable(has_task_model)
+                else callable(predict_pair)
+            )
+            if can_score_scope_match:
                 scope_pred = modelpack.predict_pair("scope_match", old.description, new.description)
                 if scope_pred and scope_pred.label == "no_match" and scope_pred.confidence >= 0.8:
                     return False
