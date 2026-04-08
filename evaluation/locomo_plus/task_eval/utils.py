@@ -6,6 +6,8 @@ Evaluation framework utils.
 
 import json
 import os
+import random
+import time
 from pathlib import Path
 
 CONV_START_PROMPT = (
@@ -131,32 +133,66 @@ def _get_openai_client():
     return OpenAI(**kwargs)
 
 
+_CALL_MAX_RETRIES = 5
+_CALL_BACKOFF_BASE = 2.0
+_CALL_BACKOFF_CAP = 60.0
+
+_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ConnectionError, OSError)
+
+def _get_retryable_openai_exceptions() -> tuple[type[Exception], ...]:
+    """Return OpenAI exception types that are safe to retry."""
+    try:
+        import openai
+        return (
+            openai.RateLimitError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+            openai.InternalServerError,
+        )
+    except (ImportError, AttributeError):
+        return ()
+
+
 def call_llm(input_prompt: str, model: str, **kwargs) -> str:
-    """Call OpenAI-compatible API for prediction."""
+    """Call OpenAI-compatible API for prediction with retry logic."""
     client = _get_openai_client()
     temperature = kwargs.get("temperature", 0.3)
     max_tokens = kwargs.get("max_tokens", 2048)
     category = kwargs.get("category", "")
+    extra_body = kwargs.get("extra_body")
     content = (
         _build_model_input(input_prompt or "", category=category)
         if category
         else _prepend_conv_prefix(input_prompt or "")
     )
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": content}],
-            temperature=float(temperature),
-            max_tokens=int(max_tokens),
-        )
-        text = (response.choices[0].message.content or "").strip()
-        return text if text else "(empty)"
-    except Exception as e:
-        return f"[API Error: {e}]"
+    retryable = _RETRYABLE_EXCEPTIONS + _get_retryable_openai_exceptions()
+    last_error: Exception | None = None
+    for attempt in range(_CALL_MAX_RETRIES):
+        try:
+            create_kwargs: dict = {
+                "model": model,
+                "messages": [{"role": "user", "content": content}],
+                "temperature": float(temperature),
+                "max_tokens": int(max_tokens),
+            }
+            if extra_body:
+                create_kwargs["extra_body"] = extra_body
+            response = client.chat.completions.create(**create_kwargs)
+            text = (response.choices[0].message.content or "").strip()
+            return text if text else "(empty)"
+        except retryable as e:
+            last_error = e
+            if attempt < _CALL_MAX_RETRIES - 1:
+                delay = min(_CALL_BACKOFF_CAP, _CALL_BACKOFF_BASE * (2 ** attempt)) + random.uniform(0, 1)
+                time.sleep(delay)
+                continue
+        except Exception as e:
+            return f"[API Error: {e}]"
+    return f"[API Error: {last_error}]"
 
 
 def call_vllm(input_prompt: str, model: str, **kwargs) -> str:
-    """Call local vLLM in-process on GPU (single-prompt path; use generate_batch for bulk)."""
+    """Call local vLLM in-process on GPU with retry logic."""
     from task_eval.vllm_backend import generate_single
 
     temperature = kwargs.get("temperature", 0.3)
@@ -167,16 +203,25 @@ def call_vllm(input_prompt: str, model: str, **kwargs) -> str:
         if category
         else _prepend_conv_prefix(input_prompt or "")
     )
-    try:
-        result = generate_single(
-            model,
-            [{"role": "user", "content": content}],
-            temperature=float(temperature),
-            max_tokens=int(max_tokens),
-        )
-        return result if result else "(empty)"
-    except Exception as e:
-        return f"[vLLM Error: {e}]"
+    last_error: Exception | None = None
+    for attempt in range(_CALL_MAX_RETRIES):
+        try:
+            result = generate_single(
+                model,
+                [{"role": "user", "content": content}],
+                temperature=float(temperature),
+                max_tokens=int(max_tokens),
+            )
+            return result if result else "(empty)"
+        except (ConnectionError, OSError) as e:
+            last_error = e
+            if attempt < _CALL_MAX_RETRIES - 1:
+                delay = min(_CALL_BACKOFF_CAP, _CALL_BACKOFF_BASE * (2 ** attempt)) + random.uniform(0, 1)
+                time.sleep(delay)
+                continue
+        except Exception as e:
+            return f"[vLLM Error: {e}]"
+    return f"[vLLM Error: {last_error}]"
 
 
 def call_model(input_prompt: str, model: str, backend: str = "call_test", **kwargs) -> str:

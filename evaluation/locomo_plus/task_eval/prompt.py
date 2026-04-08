@@ -28,8 +28,8 @@ Model Prediction:
 Relevant Evidence:
 {evidence}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"partial"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"partial"|"wrong", "reason": "<brief_reason>"}}
 """,
     "single-hop": """
 You are a Fact-Checking Judge.
@@ -49,8 +49,8 @@ Model Prediction:
 Relevant Evidence:
 {evidence}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"partial"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"partial"|"wrong", "reason": "<brief_reason>"}}
 """,
     "temporal": """
 You are a Temporal Logic Judge.
@@ -69,8 +69,8 @@ Model Prediction:
 Relevant Evidence:
 {evidence}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"wrong", "reason": "<brief_reason>"}}
 """,
     "common-sense": """
 You are a Knowledge Logic Judge.
@@ -90,8 +90,8 @@ Model Prediction:
 Relevant Evidence:
 {evidence}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"partial"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"partial"|"wrong", "reason": "<brief_reason>"}}
 """,
     "adversarial": """
 You are a Skeptical Judge evaluating robustness.
@@ -105,8 +105,8 @@ Labels:
 Model Prediction:
 {pred}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"wrong", "reason": "<brief_reason>"}}
 """,
     "Cognitive": """
 You are a Memory Awareness Judge.
@@ -122,8 +122,8 @@ Memory/Evidence:
 Model Prediction:
 {pred}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"wrong", "reason": "<brief_reason>"}}
 """,
     "default": """
 You are an expert evaluator.
@@ -143,7 +143,7 @@ Model Prediction:
 Relevant Evidence:
 {evidence}
 
-Return your judgment strictly in JSON format:
-{{"label": "correct"|"partial"|"wrong", "reason": " "}}
+You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
+Format: {{"label": "correct"|"partial"|"wrong", "reason": "<brief_reason>"}}
 """,
 }

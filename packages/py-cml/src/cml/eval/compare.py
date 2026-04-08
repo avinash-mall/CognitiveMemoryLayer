@@ -10,7 +10,7 @@ COL_NAMES = ["single-hop", "multi-hop", "temporal", "commonsense", "adversarial"
 FACTUAL_CATEGORIES = ["single-hop", "multi-hop", "temporal", "common-sense", "adversarial"]
 COGNITIVE_CATEGORY = "Cognitive"
 
-PAPER_BASELINES: list[tuple[str, list[float], float]] = [
+PAPER_BASELINES: list[tuple[str, list[float], float]] = [  # (method, factual_scores, gap)
     ("Qwen2.5-3B-Instruct", [68.25, 38.65, 18.38, 48.44, 11.69], 10.82),
     ("Qwen2.5-7B-Instruct", [70.72, 39.54, 21.81, 37.50, 20.22], 9.57),
     ("Qwen2.5-14B-Instruct", [76.33, 48.23, 38.94, 57.29, 68.09], 19.24),
@@ -58,9 +58,9 @@ def compare_locomo_scores(summary_path: Path, method: str) -> str:
     current = fmt_row(cml_method, cml_factual, cml_lp, cml_gap)
     rows.append(current)
 
-    for baseline_method, factual, lp in PAPER_BASELINES:
+    for baseline_method, factual, gap in PAPER_BASELINES:
         avg = sum(factual) / len(factual)
-        rows.append(fmt_row(baseline_method, factual, lp, avg - lp))
+        rows.append(fmt_row(baseline_method, factual, avg - gap, gap))
 
     for row in rows:
         for i, value in enumerate(row):

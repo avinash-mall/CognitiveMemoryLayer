@@ -117,15 +117,52 @@ QA_READ_DELAY_SEC = 0.05
 # QA prompt for all categories (aligned with Locomo-Plus task instructions)
 QA_PROMPT = """Based on the above context, write an answer in the form of a short phrase.
 Answer with exact words from the context whenever possible.
+Do NOT include any thinking, reasoning, analysis, or explanation.
+Output ONLY the final answer — nothing else.
 
 Question: {} Short answer:"""
 
 COGNITIVE_PROMPT = """Based on the above context, continue the conversation naturally.
 Respond to the following as you would in a real dialogue.
+Do NOT include any thinking, reasoning, analysis, or explanation.
+Output ONLY your conversational response — nothing else.
 
 {}
 
 Respond (short):"""
+
+# Answer markers used by reasoning models (ordered by specificity)
+_ANSWER_MARKERS = ["Short answer:", "Final Answer:", "Answer:", "Therefore,", "In summary:"]
+
+
+def _extract_answer(raw: str) -> str:
+    """Strip chain-of-thought wrapper from a prediction, returning just the answer."""
+    if not raw:
+        return raw
+    text = raw.strip()
+    # Handle <think>...</think> blocks
+    if "<think>" in text:
+        parts = text.split("</think>")
+        if len(parts) > 1:
+            text = parts[-1].strip()
+            if text:
+                return text
+    # Handle "Thinking Process:" prefix
+    if text.startswith("Thinking Process:") or text.startswith("**Thinking Process"):
+        for marker in _ANSWER_MARKERS:
+            idx = text.rfind(marker)
+            if idx != -1:
+                answer = text[idx + len(marker):].strip()
+                if answer:
+                    return answer
+        # Fallback: return last paragraph
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        if paragraphs:
+            last = paragraphs[-1]
+            # Skip if last paragraph is still reasoning
+            if not last.startswith(("*", "-", "1.", "2.", "3.")):
+                return last
+    return text
 
 
 _DATE_FORMATS = [
@@ -380,25 +417,35 @@ def _cml_read(
     url = f"{base_url.rstrip('/')}/api/v1/memory/read"
     payload = {"query": query, "format": "llm_context", "max_results": max_results}
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id}
+    read_retries = 3
     last_resp = None
-    for attempt in range(_CML_READ_MAX_429_ATTEMPTS):
-        resp = _get_session().post(url, json=payload, headers=headers, timeout=60)
-        last_resp = resp
-        if resp.status_code == 429:
-            if attempt == _CML_READ_MAX_429_ATTEMPTS - 1:
+    for retry in range(read_retries):
+        for attempt in range(_CML_READ_MAX_429_ATTEMPTS):
+            try:
+                resp = _get_session().post(url, json=payload, headers=headers, timeout=60)
+                last_resp = resp
+                if resp.status_code == 429:
+                    if attempt == _CML_READ_MAX_429_ATTEMPTS - 1:
+                        resp.raise_for_status()
+                    wait = min(_CML_READ_BACKOFF_CAP_SEC, 5 * (2**attempt))
+                    time.sleep(wait)
+                    continue
                 resp.raise_for_status()
-            wait = min(_CML_READ_BACKOFF_CAP_SEC, 5 * (2**attempt))
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        data = resp.json()
-        llm_context = (data.get("llm_context") or "").strip()
-        if return_full:
-            return llm_context, data
-        return llm_context
-    if last_resp is not None:
-        raise requests_lib.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
-    raise requests_lib.exceptions.HTTPError("No attempts made")
+                data = resp.json()
+                llm_context = (data.get("llm_context") or "").strip()
+                if return_full:
+                    return llm_context, data
+                return llm_context
+            except (requests_lib.exceptions.ConnectionError, OSError):
+                if retry < read_retries - 1:
+                    time.sleep(5 * (retry + 1))
+                    break
+                raise
+        else:
+            # Inner loop completed without break (all 429 retries exhausted)
+            if last_resp is not None:
+                raise requests_lib.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
+            raise requests_lib.exceptions.HTTPError("No attempts made")
 
 
 # Default OpenAI-compatible base URLs per provider (align with .env.example and src/utils/llm.py)
@@ -473,17 +520,28 @@ def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_c
         )
 
     base_url, model, api_key = _get_llm_qa_config()
+    # Suppress chain-of-thought for Qwen/thinking models
+    _is_thinking_model = "qwen" in model.lower()
+    _extra_body = (
+        {"chat_template_kwargs": {"enable_thinking": False}}
+        if _is_thinking_model
+        else None
+    )
 
     def _do_request() -> str:
         client = OpenAI(base_url=base_url, api_key=api_key)
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": user_content}],
-                max_tokens=max_tokens,
-                temperature=0,
-            )
-        except Exception:
+            create_kwargs: dict = {
+                "model": model,
+                "messages": [{"role": "user", "content": user_content}],
+                "max_tokens": max_tokens,
+                "temperature": 0,
+            }
+            if _extra_body:
+                create_kwargs["extra_body"] = _extra_body
+            resp = client.chat.completions.create(**create_kwargs)
+        except Exception as e:
+            print(f"LLM API Error: {e}", flush=True)
             return ""
         choices = getattr(resp, "choices", None) or []
         if not choices:
@@ -802,7 +860,8 @@ def phase_b_qa(
         conversations = [[{"role": "user", "content": c}] for c in user_contents]
         predictions = generate_batch(qa_model, conversations, temperature=0.0, max_tokens=256)
 
-        for m, prediction in zip(meta, predictions, strict=False):
+        for m, raw_prediction in zip(meta, predictions, strict=False):
+            prediction = _extract_answer(raw_prediction)
             record: dict = {
                 "question_input": m["question_input"],
                 "evidence": m["evidence"],
@@ -818,6 +877,8 @@ def phase_b_qa(
 
     else:
         # --- Sequential HTTP path (default) ---
+        sample_error_count = 0
+        empty_context_count = 0
         for i in _tqdm(
             range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False
         ):
@@ -829,34 +890,45 @@ def phase_b_qa(
                 question_input = trigger or "Context dialogue (cue awareness)"
             else:
                 question_input = trigger
-            read_result = _cml_read(
-                cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
-            )
-            if verbose:
-                assert isinstance(read_result, tuple), "return_full=True yields tuple"
-                llm_context, raw_response = read_result
-                type_counts = _count_memory_types(raw_response)
+            ctx_len = 0
+            try:
+                read_result = _cml_read(
+                    cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+                )
+                if verbose:
+                    assert isinstance(read_result, tuple), "return_full=True yields tuple"
+                    llm_context, raw_response = read_result
+                    type_counts = _count_memory_types(raw_response)
+                    _progress_write(
+                        f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
+                    )
+                else:
+                    assert isinstance(read_result, str), "return_full=False yields str"
+                    llm_context = read_result
+                ctx_len = len(llm_context or "")
+                if not llm_context:
+                    empty_context_count += 1
+                if QA_READ_DELAY_SEC > 0:
+                    time.sleep(QA_READ_DELAY_SEC)
+
+                if category == "Cognitive":
+                    user_content = (
+                        (llm_context or "(No retrieved context.)")
+                        + "\n\n"
+                        + COGNITIVE_PROMPT.format(trigger)
+                    )
+                else:
+                    user_content = (
+                        (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+                    )
+
+                prediction = _extract_answer(_llm_chat(user_content, backend=backend))
+            except Exception as exc:
+                sample_error_count += 1
+                prediction = f"[Error: {exc}]"
                 _progress_write(
-                    f"  [{category}] sample={i} types={type_counts} context_len={len(llm_context)}"
+                    f"\n[Phase B] Warning: sample {i} ({category}) failed: {exc}"
                 )
-            else:
-                assert isinstance(read_result, str), "return_full=False yields str"
-                llm_context = read_result
-            if QA_READ_DELAY_SEC > 0:
-                time.sleep(QA_READ_DELAY_SEC)
-
-            if category == "Cognitive":
-                user_content = (
-                    (llm_context or "(No retrieved context.)")
-                    + "\n\n"
-                    + COGNITIVE_PROMPT.format(trigger)
-                )
-            else:
-                user_content = (
-                    (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
-                )
-
-            prediction = _llm_chat(user_content, backend=backend)
             ground_truth = sample.get("answer")
             if ground_truth is None or (
                 isinstance(ground_truth, str) and ground_truth.strip() == ""
@@ -869,12 +941,24 @@ def phase_b_qa(
                 "ground_truth": ground_truth,
                 "prediction": prediction,
                 "model": backend_label,
+                "context_length": ctx_len,
             }
             if sample.get("time_gap"):
                 record["time_gap"] = sample["time_gap"]
             records.append(record)
             pred_file.write_text(
                 json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        if empty_context_count:
+            print(
+                f"\n[Phase B] {empty_context_count}/{len(samples_qa)} samples had empty retrieval context.",
+                flush=True,
+            )
+        if sample_error_count:
+            print(
+                f"\n[Phase B] {sample_error_count}/{len(samples_qa)} samples had errors "
+                "(predictions stored as '[Error: ...]').",
+                flush=True,
             )
 
     empty_count = sum(1 for r in records if not (r.get("prediction") or "").strip())

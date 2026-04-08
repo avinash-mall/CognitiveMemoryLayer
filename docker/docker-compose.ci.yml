@@ -20,6 +20,8 @@ services:
       EMBEDDING_INTERNAL__PROVIDER: mock
       FEATURES__USE_LLM_ENABLED: false
       LLM_STARTUP_VALIDATION_ENABLED: false
+    volumes:
+      - cml-models:/app/packages/models
     command: sh -c "alembic upgrade head && pytest tests packages/py-cml/tests -v --tb=short -rs"
 
   api:
@@ -32,3 +34,8 @@ services:
       FEATURES__USE_LLM_ENABLED: false
       LLM_STARTUP_VALIDATION_ENABLED: false
       LLM_STARTUP_VALIDATE_IN_CI: false
+    volumes:
+      - cml-models:/app/packages/models
+
+volumes:
+  cml-models:

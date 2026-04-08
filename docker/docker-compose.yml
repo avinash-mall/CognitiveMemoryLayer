@@ -130,4 +130,5 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      # First startup may need a few minutes to download model artifacts.
+      start_period: 240s
