@@ -252,9 +252,7 @@ class ConstraintExtractor:
         has_task_model = getattr(modelpack, "has_task_model", None)
         predict_pair = getattr(modelpack, "predict_pair", None)
         can_score_supersession = (
-            has_task_model("supersession")
-            if callable(has_task_model)
-            else callable(predict_pair)
+            has_task_model("supersession") if callable(has_task_model) else callable(predict_pair)
         )
         if can_score_supersession:
             sup_pred = modelpack.predict_pair("supersession", old.description, new.description)

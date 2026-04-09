@@ -84,13 +84,15 @@ def resolve_temporal_references(
     # Exact relative patterns
     for pattern, delta in _RELATIVE_PATTERNS:
         for match in re.finditer(pattern, text_lower):
-            results.append({
-                "original": match.group(0),
-                "resolved_date": session_date + delta,
-                "approximate": False,
-                "start": match.start(),
-                "end": match.end(),
-            })
+            results.append(
+                {
+                    "original": match.group(0),
+                    "resolved_date": session_date + delta,
+                    "approximate": False,
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
 
     # Numeric relative patterns
     for pattern, unit in _NUMERIC_PATTERNS:
@@ -113,24 +115,28 @@ def resolve_temporal_references(
             else:
                 continue
 
-            results.append({
-                "original": match.group(0),
-                "resolved_date": session_date + delta,
-                "approximate": base_unit in ("months", "years"),
-                "start": match.start(),
-                "end": match.end(),
-            })
+            results.append(
+                {
+                    "original": match.group(0),
+                    "resolved_date": session_date + delta,
+                    "approximate": base_unit in ("months", "years"),
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
 
     # Vague patterns
     for pattern, delta in _VAGUE_PATTERNS:
         for match in re.finditer(pattern, text_lower):
-            results.append({
-                "original": match.group(0),
-                "resolved_date": session_date + delta,
-                "approximate": True,
-                "start": match.start(),
-                "end": match.end(),
-            })
+            results.append(
+                {
+                    "original": match.group(0),
+                    "resolved_date": session_date + delta,
+                    "approximate": True,
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
 
     # Deduplicate by span position (keep most specific match)
     results.sort(key=lambda r: (r["start"], -(r["end"] - r["start"])))

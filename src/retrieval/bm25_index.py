@@ -137,20 +137,20 @@ class BM25Index:
                 scores[i] += idf * tf_norm
 
         # Rank and return top_k
-        scored = [
-            (score, i) for i, score in enumerate(scores) if score > 0
-        ]
+        scored = [(score, i) for i, score in enumerate(scores) if score > 0]
         scored.sort(key=lambda x: x[0], reverse=True)
 
         results: list[dict[str, Any]] = []
         for score, idx in scored[:top_k]:
             doc = self._documents[idx]
-            results.append({
-                "id": doc.doc_id,
-                "text": doc.text,
-                "score": score,
-                "metadata": doc.metadata,
-            })
+            results.append(
+                {
+                    "id": doc.doc_id,
+                    "text": doc.text,
+                    "score": score,
+                    "metadata": doc.metadata,
+                }
+            )
 
         return results
 

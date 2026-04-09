@@ -1261,7 +1261,7 @@ class HippocampalStore:
 
         # Embed and store each implication
         try:
-            texts = implications[:features.prospective_index_count]
+            texts = implications[: features.prospective_index_count]
             embed_results = await self.embeddings.embed_batch(texts)
 
             for imp_text, emb_result in zip(texts, embed_results, strict=False):

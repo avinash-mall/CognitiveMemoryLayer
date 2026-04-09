@@ -142,10 +142,7 @@ class ProspectiveIndexer:
             return [result]
 
         n = count or self._max_implications
-        block = "\n".join(
-            f'[{i}] "{m.get("text", "").strip()}"'
-            for i, m in enumerate(memories)
-        )
+        block = "\n".join(f'[{i}] "{m.get("text", "").strip()}"' for i, m in enumerate(memories))
         prompt = _BATCH_PROSPECTIVE_PROMPT.format(
             count=n,
             memories_block=block,
@@ -160,20 +157,21 @@ class ProspectiveIndexer:
             for i, mem in enumerate(memories):
                 entry = raw.get(str(i))
                 if isinstance(entry, list):
-                    implications = [
-                        s.strip() for s in entry
-                        if isinstance(s, str) and s.strip()
-                    ][:n]
+                    implications = [s.strip() for s in entry if isinstance(s, str) and s.strip()][
+                        :n
+                    ]
                 else:
                     implications = []
-                results.append([
-                    ProspectiveIndex(
-                        implication=imp,
-                        source_memory_text=mem.get("text", ""),
-                        source_memory_id=mem.get("id"),
-                    )
-                    for imp in implications
-                ])
+                results.append(
+                    [
+                        ProspectiveIndex(
+                            implication=imp,
+                            source_memory_text=mem.get("text", ""),
+                            source_memory_id=mem.get("id"),
+                        )
+                        for imp in implications
+                    ]
+                )
             return results
         except Exception as exc:
             logger.warning(

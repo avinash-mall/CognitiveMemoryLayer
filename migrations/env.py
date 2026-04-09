@@ -12,7 +12,7 @@ if str(_project_root) not in sys.path:
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -59,9 +59,18 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
+    # Acquire a PostgreSQL advisory lock to serialize concurrent migration
+    # attempts from multiple containers (api, api-test, app) that all run
+    # "alembic upgrade head" at startup against the same database.
+    # Lock ID 742_8130 is arbitrary but stable; only one process holds it.
+    _MIGRATION_LOCK_ID = 742_8130
+    connection.execute(text(f"SELECT pg_advisory_lock({_MIGRATION_LOCK_ID})"))
+    try:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        connection.execute(text(f"SELECT pg_advisory_unlock({_MIGRATION_LOCK_ID})"))
 
 
 async def run_async_migrations() -> None:
@@ -71,7 +80,7 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    async with connectable.connect() as connection:
+    async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 

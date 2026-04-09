@@ -48,14 +48,17 @@ FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04 AS production
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_BREAK_SYSTEM_PACKAGES=1
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    CC=gcc \
+    CXX=g++
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip \
+    python3 python3-pip python3-dev \
     libpq5 \
     curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy all installed Python packages from the builder stage.

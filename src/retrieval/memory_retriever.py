@@ -225,18 +225,11 @@ class MemoryRetriever:
             # --- Improvement Report: HyDE augmentation ---
             settings = get_settings()
             if settings.features.hyde_retrieval_enabled and self._hyde_generator:
-
-                hyde_results = await self._hyde_augment(
-                    tenant_id, query, plan, context_filter
-                )
+                hyde_results = await self._hyde_augment(tenant_id, query, plan, context_filter)
                 if hyde_results:
                     # RRF merge: convert RetrievedMemory lists to dicts for merging
-                    main_dicts = [
-                        {"id": str(r.record.id), "mem": r} for r in raw_results
-                    ]
-                    hyde_dicts = [
-                        {"id": str(r.record.id), "mem": r} for r in hyde_results
-                    ]
+                    main_dicts = [{"id": str(r.record.id), "mem": r} for r in raw_results]
+                    hyde_dicts = [{"id": str(r.record.id), "mem": r} for r in hyde_results]
                     merged = rrf_merge([main_dicts, hyde_dicts], k=60)
                     seen_ids: set[str] = set()
                     deduped_results = []
