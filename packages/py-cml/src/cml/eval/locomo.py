@@ -529,7 +529,7 @@ def _cml_read(
             # Inner loop completed without break (all 429 retries exhausted)
             raise requests_lib.exceptions.HTTPError(
                 "429 Too Many Requests after all retries",
-                response=resp,  # type: ignore[possibly-undefined]
+                response=resp,
             )
         # Backoff before next retry
         wait = min(30, 3 * (2**retry))
