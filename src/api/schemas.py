@@ -51,6 +51,31 @@ class WriteMemoryResponse(BaseModel):
     eval_reason: str | None = None
 
 
+class WriteBatchTurn(BaseModel):
+    """A single turn within a batch write request."""
+
+    content: str = Field(..., min_length=1, max_length=100_000)
+    session_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    turn_id: str | None = None
+    timestamp: datetime | None = None
+
+
+class WriteBatchRequest(BaseModel):
+    """Request to write multiple turns in a single call."""
+
+    turns: list[WriteBatchTurn] = Field(..., min_length=1, max_length=500)
+
+
+class WriteBatchResponse(BaseModel):
+    """Response from batch write operation."""
+
+    success: bool
+    turns_processed: int = 0
+    chunks_created: int = 0
+    message: str = ""
+
+
 class ReadMemoryRequest(BaseModel):
     """Request to retrieve memories. Holistic: tenant-only."""
 

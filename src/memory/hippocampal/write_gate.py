@@ -125,7 +125,10 @@ class WriteGate:
             )
 
         redaction_required: bool
-        if (
+        # Master PII switch: when disabled, skip all PII detection (eval mode)
+        if not settings.pii_redaction_enabled:
+            redaction_required = False
+        elif (
             settings.use_llm_enabled
             and settings.use_llm_pii_redaction
             and unified_result is not None

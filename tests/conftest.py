@@ -33,8 +33,9 @@ _llm_flags = (
 for _f in _llm_flags:
     os.environ[_f] = "false"
 
-# Keep tests lightweight and deterministic unless a run explicitly overrides this env var.
-os.environ.setdefault("EMBEDDING_INTERNAL__PROVIDER", "mock")
+# Keep tests lightweight and deterministic — always override .env so we never
+# load a real SentenceTransformer model and hit CUDA OOM in unit tests.
+os.environ["EMBEDDING_INTERNAL__PROVIDER"] = "mock"
 
 # Allow importing src when run from project root or with PYTHONPATH
 try:

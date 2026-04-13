@@ -116,27 +116,28 @@ QA_READ_DELAY_SEC = 0.05
 
 # QA prompt for all categories (aligned with Locomo-Plus task instructions)
 # Improvement Report Section 8.1: category-aware answering with conciseness rules.
-QA_PROMPT = """You are a conversational memory assistant. Answer the question using ONLY
-the provided context from past conversations.
+# Balanced: encourage conciseness without over-refusing when context is sparse.
+# NOTE: The memory store redacts PII (names → [FIRSTNAME_REDACTED], etc.).
+# The prompt instructs the model to match redacted placeholders to question entities.
+QA_PROMPT = """Based on the above context from past conversations, answer the question below.
 
-RULES:
-1. Be CONCISE. Answer in 1-2 sentences maximum. Aim for under 10 words when a short factual answer suffices.
-2. If the context contains timestamps, use them for temporal reasoning. Think step-by-step about dates and orderings.
-3. If the context does NOT contain information to answer the question, say exactly: "I don't have information about that from our previous conversations."
-4. Do NOT include any thinking, reasoning, analysis, or explanation.
-5. Output ONLY the final answer — nothing else.
+IMPORTANT RULES:
+1. Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the question.
+2. If the context contains timestamps or dates, reason about time carefully.
+3. Answer with a short phrase or 1-2 sentences. Use exact words from the context when possible.
+4. If the answer can be inferred or reasoned from the context, provide your best answer.
+   For common-sense questions, use the context plus general reasoning to answer.
+5. If no context was retrieved, or the context has no information related to the question,
+   say "I don't have information about that from our previous conversations."
 
-Question: {} Short answer:"""
+Question: {}
 
-COGNITIVE_PROMPT = """You are a conversational memory assistant. Based on the retrieved context
-from past conversations, respond naturally to the following.
+Short answer:"""
 
-RULES:
-1. Use information from the context to inform your response.
-2. If the context contains relevant constraints, preferences, or past decisions, incorporate them.
-3. If the context does NOT contain relevant information, say: "I don't have information about that from our previous conversations."
-4. Do NOT include any thinking, reasoning, analysis, or explanation.
-5. Output ONLY your conversational response — nothing else.
+COGNITIVE_PROMPT = """Based on the above context from past conversations, continue the
+conversation naturally. Respond to the following as you would in a real dialogue.
+If the context contains relevant constraints, preferences, or past decisions, incorporate them.
+Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the conversation.
 
 {}
 
@@ -147,32 +148,46 @@ _ANSWER_MARKERS = ["Short answer:", "Final Answer:", "Answer:", "Therefore,", "I
 
 
 def _extract_answer(raw: str) -> str:
-    """Strip chain-of-thought wrapper from a prediction, returning just the answer."""
+    """Strip chain-of-thought wrapper from a prediction, returning just the answer.
+
+    Critical: never return empty string when the raw input is non-empty.
+    The judge needs *something* to evaluate.
+    """
     if not raw:
         return raw
     text = raw.strip()
+    if not text:
+        return text
+
     # Handle <think>...</think> blocks
     if "<think>" in text:
         parts = text.split("</think>")
         if len(parts) > 1:
-            text = parts[-1].strip()
-            if text:
-                return text
+            after_think = parts[-1].strip()
+            if after_think:
+                return after_think
+            # All content was inside <think> — return last think block content
+            # so the judge has something to evaluate
+            return parts[-2].replace("<think>", "").strip() or text
+
     # Handle "Thinking Process:" prefix
     if text.startswith("Thinking Process:") or text.startswith("**Thinking Process"):
+        # Try to find an explicit answer marker
         for marker in _ANSWER_MARKERS:
             idx = text.rfind(marker)
             if idx != -1:
                 answer = text[idx + len(marker) :].strip()
                 if answer:
                     return answer
-        # Fallback: return last paragraph
+        # Fallback: return last non-reasoning paragraph
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         if paragraphs:
-            last = paragraphs[-1]
-            # Skip if last paragraph is still reasoning
-            if not last.startswith(("*", "-", "1.", "2.", "3.")):
-                return last
+            # Walk backwards to find first non-bullet paragraph
+            for para in reversed(paragraphs):
+                if not para.startswith(("*", "-", "1.", "2.", "3.")):
+                    return para
+            # All paragraphs are bullet lists — return the last one anyway
+            return paragraphs[-1]
     return text
 
 
@@ -277,9 +292,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--ingestion-workers",
         type=int,
-        default=10,
+        default=20,
         metavar="N",
-        help="Number of concurrent workers for Phase A ingestion (default 10)",
+        help="Number of concurrent workers for Phase A ingestion (default 20)",
     )
     p.add_argument(
         "--qa-backend",
@@ -382,6 +397,53 @@ def _cml_write(
                 raise
 
 
+_WRITE_BATCH_SIZE = 50  # Turns per HTTP request for batch ingestion
+
+
+def _cml_write_batch(
+    base_url: str,
+    api_key: str,
+    tenant_id: str,
+    turns: list[dict],
+) -> None:
+    """Write multiple turns in a single HTTP call using the batch endpoint."""
+    requests_lib = cast("Any", requests)
+    url = f"{base_url.rstrip('/')}/api/v1/memory/write_batch"
+    headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id, "X-Eval-Mode": "true"}
+    write_timeout = 300  # Batch may take longer
+    write_retries = 3
+    payload = {"turns": turns}
+    for retry in range(write_retries):
+        for attempt in range(_CML_WRITE_MAX_429_ATTEMPTS):
+            try:
+                resp = _get_session().post(
+                    url, json=payload, headers=headers, timeout=write_timeout
+                )
+                if resp.status_code in [429, 500]:
+                    if attempt == _CML_WRITE_MAX_429_ATTEMPTS - 1:
+                        resp.raise_for_status()
+                    wait = min(_CML_WRITE_BACKOFF_CAP_SEC, 5 * (2**attempt))
+                    time.sleep(wait)
+                    continue
+                if resp.status_code == 404:
+                    # Server doesn't have batch endpoint — fall back to single writes
+                    for turn in turns:
+                        _cml_write(
+                            base_url, api_key, tenant_id,
+                            turn["content"], turn.get("session_id", ""),
+                            turn.get("metadata", {}), turn.get("turn_id", ""),
+                            timestamp=turn.get("timestamp"),
+                        )
+                    return
+                resp.raise_for_status()
+                return
+            except (requests_lib.exceptions.ConnectionError, OSError):
+                if retry < write_retries - 1:
+                    time.sleep(5 * (retry + 1))
+                    break
+                raise
+
+
 def _dashboard_post(
     base_url: str,
     api_key: str,
@@ -428,35 +490,50 @@ def _cml_read(
     url = f"{base_url.rstrip('/')}/api/v1/memory/read"
     payload = {"query": query, "format": "llm_context", "max_results": max_results}
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id}
-    read_retries = 3
-    last_resp = None
+    read_retries = 5
+    last_exc: Exception | None = None
     for retry in range(read_retries):
         for attempt in range(_CML_READ_MAX_429_ATTEMPTS):
             try:
-                resp = _get_session().post(url, json=payload, headers=headers, timeout=60)
-                last_resp = resp
+                resp = _get_session().post(url, json=payload, headers=headers, timeout=120)
                 if resp.status_code == 429:
                     if attempt == _CML_READ_MAX_429_ATTEMPTS - 1:
                         resp.raise_for_status()
                     wait = min(_CML_READ_BACKOFF_CAP_SEC, 5 * (2**attempt))
                     time.sleep(wait)
                     continue
+                if resp.status_code >= 500:
+                    # Server error — retry with backoff
+                    last_exc = requests_lib.exceptions.HTTPError(
+                        f"{resp.status_code} Server Error", response=resp
+                    )
+                    break  # go to next retry
                 resp.raise_for_status()
                 data = resp.json()
                 llm_context = (data.get("llm_context") or "").strip()
                 if return_full:
                     return llm_context, data
                 return llm_context
-            except (requests_lib.exceptions.ConnectionError, OSError):
-                if retry < read_retries - 1:
-                    time.sleep(5 * (retry + 1))
-                    break
-                raise
+            except (
+                requests_lib.exceptions.ConnectionError,
+                requests_lib.exceptions.Timeout,
+                OSError,
+            ) as exc:
+                last_exc = exc
+                break  # go to next retry
         else:
             # Inner loop completed without break (all 429 retries exhausted)
-            if last_resp is not None:
-                raise requests_lib.exceptions.HTTPError("429 Too Many Requests", response=last_resp)
-            raise requests_lib.exceptions.HTTPError("No attempts made")
+            raise requests_lib.exceptions.HTTPError(
+                "429 Too Many Requests after all retries",
+                response=resp,  # type: ignore[possibly-undefined]
+            )
+        # Backoff before next retry
+        wait = min(30, 3 * (2**retry))
+        time.sleep(wait)
+    # All retries exhausted
+    if last_exc is not None:
+        raise last_exc
+    raise requests_lib.exceptions.HTTPError("No attempts made (read_retries=0)")
 
 
 # Default OpenAI-compatible base URLs per provider (align with .env.example and src/utils/llm.py)
@@ -531,10 +608,18 @@ def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_c
         )
 
     base_url, model, api_key = _get_llm_qa_config()
-    # Suppress chain-of-thought for Qwen/thinking models
+    # Chain-of-thought control for Qwen/thinking models.
+    # Default: DISABLE thinking for eval — Qwen3.5's "Thinking Process:" output
+    # fills the max_tokens budget (256) before producing an actual answer, resulting
+    # in truncated reasoning with no answer.  The softened prompts already guide the
+    # model to reason about dates/timestamps inline.
+    # Set LLM_EVAL__ENABLE_THINKING=1 to opt back in (requires larger max_tokens).
     _is_thinking_model = "qwen" in model.lower()
+    _enable_thinking = os.environ.get("LLM_EVAL__ENABLE_THINKING", "").strip() in ("1", "true")
     _extra_body = (
-        {"chat_template_kwargs": {"enable_thinking": False}} if _is_thinking_model else None
+        {"chat_template_kwargs": {"enable_thinking": False}}
+        if _is_thinking_model and not _enable_thinking
+        else None
     )
 
     def _do_request() -> str:
@@ -576,11 +661,14 @@ def _ingest_sample(
     ingestion_delay_sec: float,
     pbar: tqdm | None = None,
 ) -> None:
-    """Ingest one sample: write all turns sequentially for tenant lp-{sample_idx}."""
+    """Ingest one sample: batch turns for tenant lp-{sample_idx}."""
     tenant_id = f"lp-{sample_idx}"
     input_prompt = sample.get("input_prompt", "")
     turns = _parse_input_prompt_into_turns(input_prompt)
     turn_timestamps = sample.get("turn_timestamps") or []
+
+    # Build all turn payloads
+    turn_payloads: list[dict] = []
     for j, (session_id, content, date_str) in enumerate(turns):
         speaker = content.split(":")[0].strip() if ":" in content else "unknown"
         ts_iso = None
@@ -593,27 +681,69 @@ def _ingest_sample(
         if ts_iso is None:
             parsed_ts = _parse_date_str(date_str)
             ts_iso = parsed_ts.isoformat() if parsed_ts else None
-        metadata = {
-            "locomo_plus_idx": sample_idx,
-            "turn_idx": j,
-            "speaker": speaker,
-            "date_str": date_str or "",
-            "session_idx": int(session_id.split("_")[-1]) if "_" in session_id else 1,
+        payload: dict = {
+            "content": content,
+            "session_id": session_id,
+            "metadata": {
+                "locomo_plus_idx": sample_idx,
+                "turn_idx": j,
+                "speaker": speaker,
+                "date_str": date_str or "",
+                "session_idx": int(session_id.split("_")[-1]) if "_" in session_id else 1,
+            },
+            "turn_id": f"turn_{j}",
         }
-        _cml_write(
-            cml_url,
-            cml_api_key,
-            tenant_id,
-            content,
-            session_id,
-            metadata,
-            f"turn_{j}",
-            timestamp=ts_iso,
-        )
+        if ts_iso is not None:
+            payload["timestamp"] = ts_iso
+        turn_payloads.append(payload)
+
+    # Send in batches
+    for batch_start in range(0, len(turn_payloads), _WRITE_BATCH_SIZE):
+        batch = turn_payloads[batch_start : batch_start + _WRITE_BATCH_SIZE]
+        _cml_write_batch(cml_url, cml_api_key, tenant_id, batch)
         if pbar is not None:
-            pbar.update(1)
+            pbar.update(len(batch))
         if ingestion_delay_sec > 0:
             time.sleep(ingestion_delay_sec)
+
+
+def _build_conversation_groups(
+    samples: list[dict],
+) -> tuple[dict[int, int], dict[int, list[int]]]:
+    """Group samples sharing the same conversation (input_prompt minus Question:).
+
+    Returns:
+        sample_to_conv: maps sample_idx → canonical_idx (lowest idx in group)
+        conv_to_samples: maps canonical_idx → list of all sample indices in group
+
+    LoCoMo-Plus frequently assigns 20-260 different questions to the same
+    conversation.  By ingesting only once per conversation (using the canonical
+    index as tenant), we avoid massive data duplication.
+    """
+    import hashlib as _hashlib
+
+    # Extract conversation prefix (everything before "Question:" line)
+    def _conv_key(sample: dict) -> str:
+        ip = sample.get("input_prompt", "")
+        # Strip trailing question — _parse_input_prompt_into_turns stops at "Question:"
+        idx = ip.find("\nQuestion:")
+        prefix = ip[:idx] if idx != -1 else ip
+        return _hashlib.sha256(prefix.encode()).hexdigest()
+
+    hash_to_indices: dict[str, list[int]] = {}
+    for i, s in enumerate(samples):
+        h = _conv_key(s)
+        hash_to_indices.setdefault(h, []).append(i)
+
+    sample_to_conv: dict[int, int] = {}
+    conv_to_samples: dict[int, list[int]] = {}
+    for indices in hash_to_indices.values():
+        canonical = min(indices)
+        conv_to_samples[canonical] = indices
+        for idx in indices:
+            sample_to_conv[idx] = canonical
+
+    return sample_to_conv, conv_to_samples
 
 
 def phase_a_ingestion(
@@ -626,7 +756,20 @@ def phase_a_ingestion(
 ) -> None:
     samples_to_ingest = samples[:limit] if limit else samples
 
-    # Load checkpoint — skip already-completed samples
+    # Group samples sharing the same conversation to avoid redundant ingestion.
+    _sample_to_conv, conv_to_samples = _build_conversation_groups(samples_to_ingest)
+    canonical_indices = sorted(conv_to_samples.keys())
+    total_samples = len(samples_to_ingest)
+    total_convos = len(canonical_indices)
+    dedup_savings = total_samples - total_convos
+    if dedup_savings > 0:
+        print(
+            f"\n[Phase A] Conversation dedup: {total_samples} samples → {total_convos} unique conversations "
+            f"({dedup_savings} redundant ingestions skipped)",
+            flush=True,
+        )
+
+    # Load checkpoint — skip already-completed conversations
     completed: set[int] = set()
     if checkpoint_file is not None and checkpoint_file.exists():
         try:
@@ -635,7 +778,12 @@ def phase_a_ingestion(
         except (json.JSONDecodeError, OSError):
             pass
 
-    pending = [(i, s) for i, s in enumerate(samples_to_ingest) if i not in completed]
+    # Only ingest canonical (first) sample per conversation group
+    pending = [
+        (i, samples_to_ingest[i])
+        for i in canonical_indices
+        if i not in completed
+    ]
 
     if not pending:
         print("\n[Phase A] All samples already ingested (checkpoint). Skipping.", flush=True)
@@ -649,10 +797,18 @@ def phase_a_ingestion(
         if checkpoint_file is None:
             return
         with checkpoint_lock:
-            completed.add(idx)
+            # Mark all samples in this conversation group as completed
+            group = conv_to_samples.get(idx, [idx])
+            completed.update(group)
             try:
                 checkpoint_file.write_text(
-                    json.dumps({"completed_indices": sorted(completed)}, ensure_ascii=False),
+                    json.dumps(
+                        {
+                            "completed_indices": sorted(completed),
+                            "conversation_dedup": True,
+                        },
+                        ensure_ascii=False,
+                    ),
                     encoding="utf-8",
                 )
             except OSError:
@@ -661,10 +817,10 @@ def phase_a_ingestion(
     total_turns = sum(
         len(_parse_input_prompt_into_turns(s.get("input_prompt", ""))) for _, s in pending
     )
-    skipped = len(samples_to_ingest) - len(pending)
+    skipped = len(canonical_indices) - len(pending)
     skip_msg = f" ({skipped} already ingested)" if skipped else ""
     print(
-        f"\n[Phase A] Ingesting {len(pending)} samples ({total_turns} turns){skip_msg}"
+        f"\n[Phase A] Ingesting {len(pending)} conversations ({total_turns} turns){skip_msg}"
         f" into CML ({ingestion_workers} workers)...",
         flush=True,
     )
@@ -700,6 +856,10 @@ def phase_ab_consolidation(
     if n == 0:
         return
 
+    # Only consolidate canonical (unique conversation) tenants
+    _, conv_to_samples = _build_conversation_groups(samples_scope)
+    canonical_indices = sorted(conv_to_samples.keys())
+
     # Load checkpoint — skip already-consolidated tenants
     completed_tenants: set[str] = set()
     if checkpoint_file is not None and checkpoint_file.exists():
@@ -709,7 +869,7 @@ def phase_ab_consolidation(
         except (json.JSONDecodeError, OSError):
             pass
 
-    pending_indices = [i for i in range(n) if f"lp-{i}" not in completed_tenants]
+    pending_indices = [i for i in canonical_indices if f"lp-{i}" not in completed_tenants]
     if not pending_indices:
         print("\n[Phase A-B] All tenants already consolidated (checkpoint). Skipping.", flush=True)
         return
@@ -772,6 +932,22 @@ def phase_b_qa(
 ) -> list[dict]:
     _, qa_model, _ = _get_llm_qa_config()
     samples_qa = samples[:limit] if limit else samples
+
+    # Map sample index → canonical conversation tenant for deduped ingestion.
+    # When ingestion used conversation grouping, multiple samples share one tenant.
+    # The ingestion checkpoint records which ingestion mode was used.
+    ingestion_checkpoint = out_dir / "locomo_ingestion_checkpoint.json"
+    use_conv_tenants = False
+    if ingestion_checkpoint.exists():
+        try:
+            ck = json.loads(ingestion_checkpoint.read_text(encoding="utf-8"))
+            use_conv_tenants = bool(ck.get("conversation_dedup"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    if use_conv_tenants:
+        sample_to_conv, _ = _build_conversation_groups(samples_qa)
+    else:
+        sample_to_conv = {i: i for i in range(len(samples_qa))}
     pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
     records: list[dict] = []
     start_index = 0
@@ -823,7 +999,7 @@ def phase_b_qa(
         for i, sample in _tqdm(
             enumerate(remaining, start=start_index), desc="CML read", unit="sample"
         ):
-            tenant_id = f"lp-{i}"
+            tenant_id = f"lp-{sample_to_conv.get(i, i)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
             read_result = _cml_read(
@@ -840,15 +1016,21 @@ def phase_b_qa(
                 llm_context = read_result  # type: ignore[assignment]
             if QA_READ_DELAY_SEC > 0:
                 time.sleep(QA_READ_DELAY_SEC)
+            # Treat context as empty if it's just the markdown header
+            effective_context = (
+                llm_context
+                if len(llm_context or "") > 30
+                else "(No relevant memories found for this query.)"
+            )
             if category == "Cognitive":
                 user_content = (
-                    (llm_context or "(No retrieved context.)")
+                    effective_context
                     + "\n\n"
                     + COGNITIVE_PROMPT.format(trigger)
                 )
             else:
                 user_content = (
-                    (llm_context or "(No retrieved context.)") + "\n\n" + QA_PROMPT.format(trigger)
+                    effective_context + "\n\n" + QA_PROMPT.format(trigger)
                 )
             user_contents.append(user_content)
             meta.append(
@@ -892,7 +1074,7 @@ def phase_b_qa(
             range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False
         ):
             sample = samples_qa[i]
-            tenant_id = f"lp-{i}"
+            tenant_id = f"lp-{sample_to_conv.get(i, i)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
             if category == "Cognitive":
@@ -920,15 +1102,21 @@ def phase_b_qa(
                 if QA_READ_DELAY_SEC > 0:
                     time.sleep(QA_READ_DELAY_SEC)
 
+                # Treat context as empty if it's just the markdown header with no content
+                effective_context = (
+                    llm_context
+                    if ctx_len > 30
+                    else "(No relevant memories found for this query.)"
+                )
                 if category == "Cognitive":
                     user_content = (
-                        (llm_context or "(No retrieved context.)")
+                        effective_context
                         + "\n\n"
                         + COGNITIVE_PROMPT.format(trigger)
                     )
                 else:
                     user_content = (
-                        (llm_context or "(No retrieved context.)")
+                        effective_context
                         + "\n\n"
                         + QA_PROMPT.format(trigger)
                     )

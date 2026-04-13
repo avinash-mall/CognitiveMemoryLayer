@@ -10,6 +10,22 @@ from src.memory.hippocampal.write_gate import (
 from src.memory.working.models import ChunkType, SemanticChunk
 
 
+def _patch_pii_enabled(monkeypatch) -> None:
+    """Enable PII redaction for tests that verify PII detection logic.
+
+    The .env disables PII globally (FEATURES__PII_REDACTION_ENABLED=false) for
+    benchmark use, so tests that specifically exercise the PII path must re-enable
+    it via this helper.
+    """
+    monkeypatch.setenv("FEATURES__PII_REDACTION_ENABLED", "true")
+    try:
+        from src.core.config import get_settings
+
+        get_settings.cache_clear()
+    except Exception:
+        pass
+
+
 def _chunk(
     chunk_type: ChunkType, text: str = "Some content.", salience: float = 0.8
 ) -> SemanticChunk:
@@ -138,7 +154,7 @@ class TestWriteGate:
         assert result.novelty == 0.03
         assert result.decision == WriteDecision.SKIP
 
-    def test_pii_triggers_redaction(self):
+    def test_pii_triggers_redaction(self, monkeypatch):
         class _PIIModelPack:
             available = True
 
@@ -147,6 +163,7 @@ class TestWriteGate:
                     return type("P", (), {"label": "pii", "confidence": 0.9})()
                 return None
 
+        _patch_pii_enabled(monkeypatch)
         gate = WriteGate(modelpack=_PIIModelPack())
         chunk = SemanticChunk(
             id="5",
@@ -158,13 +175,14 @@ class TestWriteGate:
         assert result.redaction_required is True
         assert "contains_pii" in result.risk_flags
 
-    def test_pii_regex_fallback_without_modelpack(self):
+    def test_pii_regex_fallback_without_modelpack(self, monkeypatch):
         class _NoModelPack:
             available = False
 
             def predict_single(self, task: str, text: str):  # pragma: no cover - never used
                 return None
 
+        _patch_pii_enabled(monkeypatch)
         gate = WriteGate(modelpack=_NoModelPack())
         chunk = SemanticChunk(
             id="6",

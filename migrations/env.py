@@ -63,7 +63,7 @@ def do_run_migrations(connection: Connection) -> None:
     # attempts from multiple containers (api, api-test, app) that all run
     # "alembic upgrade head" at startup against the same database.
     # Lock ID 742_8130 is arbitrary but stable; only one process holds it.
-    _MIGRATION_LOCK_ID = 742_8130
+    _MIGRATION_LOCK_ID = 742_8130  # noqa: N806
     connection.execute(text(f"SELECT pg_advisory_lock({_MIGRATION_LOCK_ID})"))
     try:
         context.configure(connection=connection, target_metadata=target_metadata)

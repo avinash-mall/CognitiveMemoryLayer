@@ -148,6 +148,7 @@ ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", 
 [tool.ruff.lint.per-file-ignores]
 "evaluation/locomo_plus/scripts/*.py" = ["E402"]
 "evaluation/locomo_plus/task_eval/*.py" = ["E402"]
+"evaluation/*.py" = ["E402"]
 "tests/unit/test_models_prepare_incremental.py" = ["E402"]
 "migrations/env.py" = ["E402"]
 "scripts/*.py" = ["E402"]

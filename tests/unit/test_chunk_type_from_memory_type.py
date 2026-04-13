@@ -43,6 +43,7 @@ def test_preference_memory_type_uses_chunk_type_preference_for_importance(monkey
                         "use_llm_write_gate_importance": False,
                         "use_llm_salience_refinement": False,
                         "use_llm_pii_redaction": False,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },
@@ -86,6 +87,7 @@ def test_constraint_memory_type_uses_chunk_type_constraint(monkeypatch):
                         "use_llm_write_gate_importance": False,
                         "use_llm_salience_refinement": False,
                         "use_llm_pii_redaction": False,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },
@@ -125,6 +127,7 @@ def test_unknown_memory_type_falls_back_to_statement(monkeypatch):
                         "use_llm_write_gate_importance": False,
                         "use_llm_salience_refinement": False,
                         "use_llm_pii_redaction": False,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },

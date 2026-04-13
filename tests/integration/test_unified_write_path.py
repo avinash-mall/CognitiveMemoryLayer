@@ -86,6 +86,7 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
                         "use_llm_confidence": True,
                         "use_llm_context_tags": True,
                         "use_llm_decay_rate": True,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },
@@ -172,6 +173,7 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
                         "use_llm_confidence": True,
                         "use_llm_context_tags": True,
                         "use_llm_decay_rate": True,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },
@@ -254,6 +256,7 @@ async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch
                         "use_llm_confidence": True,
                         "use_llm_context_tags": True,
                         "use_llm_decay_rate": True,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },
@@ -299,6 +302,7 @@ async def test_encode_batch_fallback_when_llm_memory_type_disabled(pg_session_fa
                         "use_llm_confidence": True,
                         "use_llm_context_tags": True,
                         "use_llm_decay_rate": True,
+                        "pii_redaction_enabled": True,
                     },
                 )()
             },

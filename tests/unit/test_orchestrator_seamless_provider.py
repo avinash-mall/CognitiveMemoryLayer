@@ -506,8 +506,8 @@ class TestMemoryOrchestrator:
         mock_dependencies["neocortical"].store_relations_batch.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_write_eval_mode_also_syncs_to_graph(self, orchestrator, mock_dependencies):
-        """In eval_mode, graph sync still runs before the eval result is returned."""
+    async def test_write_eval_mode_skips_graph_sync(self, orchestrator, mock_dependencies):
+        """In eval_mode, graph sync is skipped to reduce latency for bulk eval workloads."""
         entity = EntityMention(text="Tokyo", normalized="Tokyo", entity_type="LOCATION")
         stored_record = _make_memory_record(text="I traveled to Tokyo")
         stored_record.entities = [entity]
@@ -537,11 +537,7 @@ class TestMemoryOrchestrator:
             tenant_id="t1", content="I traveled to Tokyo", eval_mode=True
         )
         assert result["eval_outcome"] == "stored"
-        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_called_once_with(
-            tenant_id="t1",
-            scope_id="t1",
-            nodes=[{"entity": "Tokyo", "entity_type": "LOCATION"}],
-        )
+        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_not_called()
 
 
 class TestOrchestratorFactory:

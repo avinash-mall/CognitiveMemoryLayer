@@ -967,8 +967,18 @@ class TestPacketBuilderConstraints:
         # Should include provenance info
         assert "dairy" in ctx
 
-    def test_markdown_starts_with_active_constraints_and_filters_low_relevance_episodes(self):
+    def test_markdown_starts_with_active_constraints_and_filters_low_relevance_episodes(
+        self, monkeypatch
+    ):
         """Packet markdown starts with constraints section; episodes with relevance <= threshold omitted (BUG-02: default 0.5)."""
+        # .env overrides threshold to 0.1; pin to 0.5 for this test (the designed default)
+        monkeypatch.setenv("RETRIEVAL__EPISODE_RELEVANCE_THRESHOLD", "0.5")
+        try:
+            from src.core.config import get_settings
+
+            get_settings.cache_clear()
+        except Exception:
+            pass
         builder = MemoryPacketBuilder()
         memories = [
             _make_retrieved(

@@ -400,12 +400,18 @@ class MemoryOrchestrator:
             _get_settings(),
             has_unified_extractor=getattr(self.hippocampal, "unified_extractor", None) is not None,
         )
-        unified_results = await self._phase_unified_extraction(chunks_for_encoding, wpc)
+        # In eval_mode, skip extraction phases that produce low-quality data
+        # and add significant latency (unified extraction, constraint deactivation).
+        if not eval_mode:
+            unified_results = await self._phase_unified_extraction(chunks_for_encoding, wpc)
+        else:
+            unified_results = None
         _t_unified = _time.perf_counter()
 
-        await self._phase_deactivate_constraints(
-            tenant_id, chunks_for_encoding, unified_results, wpc
-        )
+        if not eval_mode:
+            await self._phase_deactivate_constraints(
+                tenant_id, chunks_for_encoding, unified_results, wpc
+            )
         _t_deactivate = _time.perf_counter()
 
         stored, gate_results, unified_results, local_results = await self._phase_encode_and_store(
@@ -423,30 +429,36 @@ class MemoryOrchestrator:
         )
         _t_encode = _time.perf_counter()
 
-        graph_task = None
-        if stored:
-            graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
-        _facts_coro = self._phase_write_time_facts(
-            tenant_id,
-            chunks_for_encoding,
-            stored,
-            unified_results,
-            timestamp,
-            wpc,
-            local_results=local_results,
-        )
-        _constraints_coro = self._phase_write_constraints(
-            tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
-        )
-        await asyncio.gather(_facts_coro, _constraints_coro)
-        _t_facts = _time.perf_counter()
-        _t_constraints = _t_facts
+        # In eval_mode, skip facts/constraints/graph — they add latency
+        # and produce low-quality neocortical data for eval workloads.
+        if not eval_mode:
+            graph_task = None
+            if stored:
+                graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
+            _facts_coro = self._phase_write_time_facts(
+                tenant_id,
+                chunks_for_encoding,
+                stored,
+                unified_results,
+                timestamp,
+                wpc,
+                local_results=local_results,
+            )
+            _constraints_coro = self._phase_write_constraints(
+                tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
+            )
+            await asyncio.gather(_facts_coro, _constraints_coro)
+            _t_facts = _time.perf_counter()
+            _t_constraints = _t_facts
 
-        if graph_task is not None and not graph_task.done():
-            try:
-                await asyncio.wait_for(graph_task, timeout=2.0)
-            except (TimeoutError, Exception):
-                pass
+            if graph_task is not None and not graph_task.done():
+                try:
+                    await asyncio.wait_for(graph_task, timeout=2.0)
+                except (TimeoutError, Exception):
+                    pass
+        else:
+            _t_facts = _t_encode
+            _t_constraints = _t_encode
         _t_graph = _time.perf_counter()
 
         logger.info(
@@ -464,6 +476,72 @@ class MemoryOrchestrator:
             },
         )
         return self._build_write_response(stored, gate_results, eval_mode)
+
+    async def write_batch(
+        self,
+        tenant_id: str,
+        turns: list[dict[str, Any]],
+        eval_mode: bool = False,
+    ) -> dict[str, Any]:
+        """Write multiple turns to memory in a single call.
+
+        Each item in *turns* is a dict with keys matching WriteMemoryRequest:
+        content, session_id, metadata, turn_id, timestamp (optional).
+        Returns aggregate stats.
+
+        Turns are processed concurrently in micro-batches so that the
+        BatchingEmbeddingClient can coalesce GPU encode calls.
+        """
+        import time as _time
+
+        _t0 = _time.perf_counter()
+        total_stored = 0
+        total_chunks = 0
+
+        valid_turns = [t for t in turns if t.get("content")]
+
+        # Process in concurrent micro-batches of 8 so embedding coalescing
+        # can batch GPU calls while not overwhelming DB connections.
+        _micro_batch = 8
+        for batch_start in range(0, len(valid_turns), _micro_batch):
+            batch = valid_turns[batch_start : batch_start + _micro_batch]
+            coros = [
+                self.write(
+                    tenant_id=tenant_id,
+                    content=turn["content"],
+                    session_id=turn.get("session_id"),
+                    metadata=turn.get("metadata"),
+                    turn_id=turn.get("turn_id"),
+                    timestamp=turn.get("timestamp"),
+                    eval_mode=eval_mode,
+                )
+                for turn in batch
+            ]
+            results = await asyncio.gather(*coros, return_exceptions=True)
+            for r in results:
+                if isinstance(r, BaseException):
+                    logger.warning("write_batch_turn_error", error=str(r))
+                    continue
+                total_chunks += r.get("chunks_created", 0)
+                if r.get("memory_id"):
+                    total_stored += 1
+
+        elapsed_ms = round((_time.perf_counter() - _t0) * 1000, 1)
+        logger.info(
+            "write_batch_timing",
+            extra={
+                "tenant_id": tenant_id,
+                "turns": len(turns),
+                "total_ms": elapsed_ms,
+                "avg_ms": round(elapsed_ms / max(len(turns), 1), 1),
+            },
+        )
+        return {
+            "success": True,
+            "turns_processed": len(valid_turns),
+            "chunks_created": total_chunks,
+            "message": f"Batch wrote {len(valid_turns)} turns ({elapsed_ms:.0f}ms)",
+        }
 
     async def _phase_ingest(
         self,

@@ -608,17 +608,29 @@ class HybridRetriever:
         results = await self.neocortical.multi_hop_query(
             tenant_id, seed_entities=step.seeds, max_hops=3
         )
-        return [
-            {
-                "type": "graph",
-                "source": "graph",
-                "entity": r.get("entity"),
-                "text": self._format_entity_info(r),
-                "relevance": r.get("relevance_score", 0.5),
-                "record": r,
-            }
-            for r in results
-        ]
+        items = []
+        for r in results:
+            text = self._format_entity_info(r)
+            # Skip entity profiles with garbage/short relations.
+            # Require at least 3 relations with meaningful related_entity (>= 3 words).
+            relations = r.get("relations", [])
+            meaningful = [
+                rel for rel in relations
+                if len(str(rel.get("related_entity", "")).split()) >= 3
+            ]
+            if len(meaningful) < 3:
+                continue
+            items.append(
+                {
+                    "type": "graph",
+                    "source": "graph",
+                    "entity": r.get("entity"),
+                    "text": text,
+                    "relevance": r.get("relevance_score", 0.5),
+                    "record": r,
+                }
+            )
+        return items
 
     async def _retrieve_constraints(
         self,
@@ -708,13 +720,17 @@ class HybridRetriever:
 
             existing_texts = {str(r.get("text", "")) for r in results}
             for fact in facts:
+                # Skip garbage facts: value must be a meaningful phrase (>3 words)
+                fact_val = str(fact.value).strip() if fact.value else ""
+                if len(fact_val.split()) < 4:
+                    continue
                 fact_category = getattr(fact, "category", None)
                 cat_label = (
                     fact_category.value
                     if isinstance(fact_category, FactCategory)
                     else str(fact_category or "fact")
                 )
-                fact_text = f"[{cat_label.title()}] {fact.value}"
+                fact_text = f"[{cat_label.title()}] {fact_val}"
                 if fact_text in existing_texts:
                     continue
                 existing_texts.add(fact_text)

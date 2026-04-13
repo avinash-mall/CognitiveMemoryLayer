@@ -119,8 +119,8 @@ def _judge_one_record(record: dict, args) -> dict:
     gold = r.get("ground_truth") or r.get("answer", "") or ""
     prompt = get_judge_prompt(cat, evidence, pred, gold)
 
-    import time
     import random
+    import time
 
     extra_body = getattr(args, "extra_body", None)
     label, reason = "_parse_failed", ""
@@ -274,13 +274,12 @@ def run_judge(args):
             future_to_idx = {
                 executor.submit(_judge_one_record, records[i], args): i for i in pending_indices
             }
-            done_count = 0
-            for future in tqdm(
-                as_completed(future_to_idx), total=len(pending_indices), desc="Judge", disable=False
+            for done_count, future in enumerate(
+                tqdm(as_completed(future_to_idx), total=len(pending_indices), desc="Judge", disable=False),
+                start=1,
             ):
                 idx = future_to_idx[future]
                 results[idx] = future.result()
-                done_count += 1
                 if done_count % _JUDGE_CHECKPOINT_INTERVAL == 0:
                     with open(out_path, "w", encoding="utf-8") as f:
                         json.dump(results, f, ensure_ascii=False, indent=2)

@@ -260,6 +260,11 @@ class FeatureFlags(PydanticBaseModel):
         default="BAAI/bge-reranker-v2-m3",
         description="Cross-encoder model for reranking.",
     )
+    pii_redaction_enabled: bool = Field(
+        default=True,
+        description="Master switch for PII redaction (regex + model). "
+        "Set to false for benchmark evaluation where entity names are critical for scoring.",
+    )
 
 
 class RerankerSettings(PydanticBaseModel):

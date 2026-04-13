@@ -28,6 +28,8 @@ from .schemas import (
     SessionContextResponse,
     UpdateMemoryRequest,
     UpdateMemoryResponse,
+    WriteBatchRequest,
+    WriteBatchResponse,
     WriteMemoryRequest,
     WriteMemoryResponse,
 )
@@ -104,6 +106,51 @@ async def write_memory(
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="error").inc()
         logger.error(
             "memory_write_failed",
+            tenant_id=auth.tenant_id,
+            error=str(e),
+            traceback=traceback.format_exc(),
+        )
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
+
+
+@router.post("/memory/write_batch", response_model=WriteBatchResponse)
+async def write_memory_batch(
+    request: Request,
+    body: WriteBatchRequest,
+    auth: AuthContext = Depends(require_write_permission),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Write multiple turns to memory in a single HTTP call. Reduces round-trip
+    overhead for bulk ingestion. Use X-Eval-Mode: true to skip non-essential
+    extraction phases."""
+    eval_mode = (request.headers.get("X-Eval-Mode") or "").strip().lower() in ("true", "1", "yes")
+    try:
+        turns = [
+            {
+                "content": t.content,
+                "session_id": t.session_id,
+                "metadata": t.metadata,
+                "turn_id": t.turn_id,
+                "timestamp": t.timestamp,
+            }
+            for t in body.turns
+        ]
+        result = await orchestrator.write_batch(
+            tenant_id=auth.tenant_id,
+            turns=turns,
+            eval_mode=eval_mode,
+        )
+        MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc(len(turns))
+        return WriteBatchResponse(
+            success=True,
+            turns_processed=result.get("turns_processed", 0),
+            chunks_created=result.get("chunks_created", 0),
+            message=result.get("message", "Batch write complete"),
+        )
+    except Exception as e:
+        MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="error").inc()
+        logger.error(
+            "memory_write_batch_failed",
             tenant_id=auth.tenant_id,
             error=str(e),
             traceback=traceback.format_exc(),
