@@ -615,8 +615,7 @@ class HybridRetriever:
             # Require at least 3 relations with meaningful related_entity (>= 3 words).
             relations = r.get("relations", [])
             meaningful = [
-                rel for rel in relations
-                if len(str(rel.get("related_entity", "")).split()) >= 3
+                rel for rel in relations if len(str(rel.get("related_entity", "")).split()) >= 3
             ]
             if len(meaningful) < 3:
                 continue

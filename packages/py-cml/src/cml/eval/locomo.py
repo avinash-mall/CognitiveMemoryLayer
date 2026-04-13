@@ -429,9 +429,13 @@ def _cml_write_batch(
                     # Server doesn't have batch endpoint — fall back to single writes
                     for turn in turns:
                         _cml_write(
-                            base_url, api_key, tenant_id,
-                            turn["content"], turn.get("session_id", ""),
-                            turn.get("metadata", {}), turn.get("turn_id", ""),
+                            base_url,
+                            api_key,
+                            tenant_id,
+                            turn["content"],
+                            turn.get("session_id", ""),
+                            turn.get("metadata", {}),
+                            turn.get("turn_id", ""),
                             timestamp=turn.get("timestamp"),
                         )
                     return
@@ -779,11 +783,7 @@ def phase_a_ingestion(
             pass
 
     # Only ingest canonical (first) sample per conversation group
-    pending = [
-        (i, samples_to_ingest[i])
-        for i in canonical_indices
-        if i not in completed
-    ]
+    pending = [(i, samples_to_ingest[i]) for i in canonical_indices if i not in completed]
 
     if not pending:
         print("\n[Phase A] All samples already ingested (checkpoint). Skipping.", flush=True)
@@ -1023,15 +1023,9 @@ def phase_b_qa(
                 else "(No relevant memories found for this query.)"
             )
             if category == "Cognitive":
-                user_content = (
-                    effective_context
-                    + "\n\n"
-                    + COGNITIVE_PROMPT.format(trigger)
-                )
+                user_content = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
             else:
-                user_content = (
-                    effective_context + "\n\n" + QA_PROMPT.format(trigger)
-                )
+                user_content = effective_context + "\n\n" + QA_PROMPT.format(trigger)
             user_contents.append(user_content)
             meta.append(
                 {
@@ -1104,22 +1098,12 @@ def phase_b_qa(
 
                 # Treat context as empty if it's just the markdown header with no content
                 effective_context = (
-                    llm_context
-                    if ctx_len > 30
-                    else "(No relevant memories found for this query.)"
+                    llm_context if ctx_len > 30 else "(No relevant memories found for this query.)"
                 )
                 if category == "Cognitive":
-                    user_content = (
-                        effective_context
-                        + "\n\n"
-                        + COGNITIVE_PROMPT.format(trigger)
-                    )
+                    user_content = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
                 else:
-                    user_content = (
-                        effective_context
-                        + "\n\n"
-                        + QA_PROMPT.format(trigger)
-                    )
+                    user_content = effective_context + "\n\n" + QA_PROMPT.format(trigger)
 
                 prediction = _extract_answer(_llm_chat(user_content, backend=backend))
             except Exception as exc:
