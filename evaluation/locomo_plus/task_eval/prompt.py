@@ -13,11 +13,15 @@ PROMPT_TEMPLATES = {
     "multi-hop": """
 You are a Fact-Checking Judge.
 Your task: Compare the model's prediction with the reference answer (multi-hop fact QA).
+Multi-hop questions require combining information from multiple parts of a conversation.
 
 Labels:
-- "correct": The answer matches the reference entities (names, places, times) exactly.
-- "partial": The answer misses some details or contains minor inaccuracies but gets the main entity right.
-- "wrong": The answer is factually incorrect or hallucinates details not in the reference.
+- "correct": The answer conveys the same meaning as the reference. Semantic equivalence counts
+  (e.g., "Lord of the Rings" and "LOTR trilogy" are equivalent; "2 times" and "twice" are equivalent).
+- "partial": The answer gets some of the required facts right but misses others, or is vague but
+  points in the right direction.
+- "wrong": The answer is factually incorrect, hallucinates details not in the reference, or
+  refuses to answer despite the information being available.
 
 Reference Answer:
 {gold}
@@ -36,9 +40,11 @@ You are a Fact-Checking Judge.
 Your task: Compare the model's prediction with the reference answer (single-hop fact QA).
 
 Labels:
-- "correct": The answer matches the reference entities exactly.
-- "partial": The answer misses some details but gets the main entity right.
-- "wrong": The answer is factually incorrect or hallucinates details not in the reference.
+- "correct": The answer conveys the same meaning as the reference. Semantic equivalence counts
+  (e.g., "running" and "jogging" are equivalent; paraphrases of the same fact are correct).
+- "partial": The answer is on the right topic and partially correct but misses key details.
+- "wrong": The answer is factually incorrect, hallucinates details not in the reference, or
+  refuses to answer despite the information being available.
 
 Reference Answer:
 {gold}
@@ -57,8 +63,12 @@ You are a Temporal Logic Judge.
 Your task: Check the calculation, duration, or sequence of events.
 
 Labels:
-- "correct": The calculated time, duration, or date matches the reference exactly (semantic equivalents are allowed).
+- "correct": The calculated time, duration, or date matches the reference (semantic equivalents
+  are allowed, e.g., "4 months" and "four months" are the same; "May 7" and "7 May 2023" match).
+- "partial": The answer demonstrates correct temporal reasoning but has a minor error (e.g.,
+  off by one day, or gives an approximate range that contains the correct answer).
 - "wrong": The calculation is incorrect, the sequence is reversed, or the specific time is wrong.
+  Also wrong if the model refuses to answer when temporal information is available.
 
 Reference Answer:
 {gold}
@@ -70,16 +80,20 @@ Relevant Evidence:
 {evidence}
 
 You MUST respond with ONLY a single JSON object. No explanation, no reasoning, no other text.
-Format: {{"label": "correct"|"wrong", "reason": "<brief_reason>"}}
+Format: {{"label": "correct"|"partial"|"wrong", "reason": "<brief_reason>"}}
 """,
     "common-sense": """
 You are a Knowledge Logic Judge.
 Your task: Assess if the prediction applies correct commonsense/world knowledge consistent with the reference.
+Common-sense questions require combining conversation context with general world knowledge.
 
 Labels:
-- "correct": The logic and inference are sound and match the reference conclusion.
-- "partial": The reasoning is mostly correct but the final conclusion is vague or slightly off.
-- "wrong": The reasoning contradicts commonsense or the reference.
+- "correct": The prediction reaches the same conclusion as the reference, even if worded differently.
+  Equivalent answers expressed differently are still correct (e.g., "Likely yes" and "Probably" match).
+- "partial": The reasoning is mostly correct and on topic but the final conclusion is vague,
+  incomplete, or slightly off from the reference.
+- "wrong": The reasoning contradicts commonsense or the reference, or the model refuses to answer
+  when the context provides enough information to reason about the question.
 
 Reference Answer:
 {gold}

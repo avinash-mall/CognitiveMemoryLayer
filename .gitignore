@@ -72,9 +72,9 @@ pnpm-debug.log*
 .npm/
 .yarn/
 
-# Evaluation (outputs, logs; large generated file)
+# Evaluation (outputs, logs; large generated files)
 evaluation/locomo_plus/data/unified_input_samples_v2.json
-evaluation/outputs/
+evaluation/outputs*/
 evaluation/**/*.log
 
 # Celery

@@ -31,9 +31,7 @@ TASKS = [
     "reconsolidation_candidate_pair",
 ]
 
-TEMPERATURE_GRID = [
-    0.7, 0.85, 1.0, 1.15, 1.3, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0
-]
+TEMPERATURE_GRID = [0.7, 0.85, 1.0, 1.15, 1.3, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0]
 
 
 def _load_sequence_inputs_from_features():
@@ -70,8 +68,7 @@ def get_raw_logits(
     model.to(device)
 
     features = [
-        f"task={row.task} [a] {row.text_a} [b] {row.text_b}"
-        for row in task_df.itertuples()
+        f"task={row.task} [a] {row.text_a} [b] {row.text_b}" for row in task_df.itertuples()
     ]
     sequence_inputs_from_features = _load_sequence_inputs_from_features()
     left, right = sequence_inputs_from_features(features, input_type="pair")
@@ -82,9 +79,7 @@ def get_raw_logits(
     for start in range(0, len(left), batch_size):
         bl = left[start : start + batch_size]
         br = right[start : start + batch_size]
-        enc = tokenizer(
-            bl, br, truncation=True, max_length=256, padding=True, return_tensors="pt"
-        )
+        enc = tokenizer(bl, br, truncation=True, max_length=256, padding=True, return_tensors="pt")
         enc = {k: v.to(device) for k, v in enc.items()}
         with torch.no_grad():
             logits = model(**enc).logits
@@ -131,12 +126,8 @@ def main() -> None:
         eval_df = eval_df_all[eval_df_all["task"] == task].copy()
         test_df = test_df_all[test_df_all["task"] == task].copy()
 
-        eval_binary = np.array(
-            [1.0 if lbl == "relevant" else 0.0 for lbl in eval_df["label"]]
-        )
-        test_binary = np.array(
-            [1.0 if lbl == "relevant" else 0.0 for lbl in test_df["label"]]
-        )
+        eval_binary = np.array([1.0 if lbl == "relevant" else 0.0 for lbl in eval_df["label"]])
+        test_binary = np.array([1.0 if lbl == "relevant" else 0.0 for lbl in test_df["label"]])
 
         print("  Computing eval logits...")
         eval_logits = get_raw_logits(model_dir, eval_df, task)
@@ -144,9 +135,7 @@ def main() -> None:
         test_logits = get_raw_logits(model_dir, test_df, task)
 
         # Find ECE-optimal temperature on eval set
-        best_t, best_eval_ece = find_optimal_temperature(
-            eval_logits, eval_binary, TEMPERATURE_GRID
-        )
+        best_t, best_eval_ece = find_optimal_temperature(eval_logits, eval_binary, TEMPERATURE_GRID)
         print(f"  ECE-optimal T={best_t:.2f}, eval ECE={best_eval_ece:.4f}")
 
         # Compute test ECE at optimal temperature
@@ -167,12 +156,8 @@ def main() -> None:
         print(f"  Updated joblib: temperature {old_temp} -> {best_t}")
 
         # Update metrics JSON files
-        update_metrics_file(
-            TRAINED_DIR / f"{task}_metrics_eval.json", best_eval_ece, best_t
-        )
-        update_metrics_file(
-            TRAINED_DIR / f"{task}_metrics_test.json", test_ece, best_t
-        )
+        update_metrics_file(TRAINED_DIR / f"{task}_metrics_eval.json", best_eval_ece, best_t)
+        update_metrics_file(TRAINED_DIR / f"{task}_metrics_test.json", test_ece, best_t)
 
 
 if __name__ == "__main__":

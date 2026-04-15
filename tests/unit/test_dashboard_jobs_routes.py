@@ -87,7 +87,7 @@ async def test_dashboard_retrieval_formats_results_and_llm_context(
 
     class _Builder:
         def to_llm_context(self, packet: object, max_tokens: int) -> str:
-            assert max_tokens == 2000
+            assert max_tokens == 3000
             assert packet is not None
             return "LLM context"
 

@@ -79,7 +79,7 @@ def _parse_judge_response(raw: str) -> tuple:
 
     # --- Strategy 3: find last JSON-like object (handles CoT + JSON) ---
     try:
-        candidates = re.findall(r'\{[^{}]*\}', raw)
+        candidates = re.findall(r"\{[^{}]*\}", raw)
         for candidate in reversed(candidates):
             try:
                 obj = json.loads(candidate)
@@ -94,7 +94,7 @@ def _parse_judge_response(raw: str) -> tuple:
 
     # --- Strategy 4: substring fallback with negative checks ---
     raw_lower = raw.lower()
-    if re.search(r'(?<!\bnot )(?<!\bin)correct', raw_lower) and "incorrect" not in raw_lower:
+    if re.search(r"(?<!\bnot )(?<!\bin)correct", raw_lower) and "incorrect" not in raw_lower:
         label = "correct"
     elif "wrong" in raw_lower:
         label = "wrong"
@@ -107,7 +107,7 @@ def _parse_judge_response(raw: str) -> tuple:
     return "_parse_failed", raw[:200] if raw else ""
 
 
-_JUDGE_MAX_RETRIES = 3
+_JUDGE_MAX_RETRIES = 5
 _JUDGE_BACKOFF_BASE = 2.0
 
 
@@ -117,6 +117,18 @@ def _judge_one_record(record: dict, args) -> dict:
     evidence = r.get("evidence", "")
     pred = r.get("prediction", "")
     gold = r.get("ground_truth") or r.get("answer", "") or ""
+
+    # Skip judging error predictions — they are pipeline failures, not model answers
+    if (
+        pred.startswith("[Error:")
+        or pred.startswith("[API Error:")
+        or pred.startswith("[vLLM Error:")
+    ):
+        r["judge_label"] = "_parse_failed"
+        r["judge_reason"] = f"Skipped: prediction is a pipeline error: {pred[:100]}"
+        r["judge_score"] = None
+        return r
+
     prompt = get_judge_prompt(cat, evidence, pred, gold)
 
     import random
@@ -141,7 +153,7 @@ def _judge_one_record(record: dict, args) -> dict:
         if label != "_parse_failed":
             break
         if attempt < _JUDGE_MAX_RETRIES - 1:
-            delay = min(30, _JUDGE_BACKOFF_BASE * (2 ** attempt)) + random.uniform(0, 0.5)
+            delay = min(30, _JUDGE_BACKOFF_BASE * (2**attempt)) + random.uniform(0, 0.5)
             time.sleep(delay)
 
     score = label_to_score(label)
@@ -208,7 +220,9 @@ def _print_summary(summary: dict) -> None:
     for cat, v in summary["by_category"].items():
         errs = v.get("errors", 0)
         err_str = f", {errs} errors" if errs else ""
-        print(f"  {cat}: score {v['score']} / {v.get('valid', v['count'])} valid samples, avg {v['avg']}{err_str}")
+        print(
+            f"  {cat}: score {v['score']} / {v.get('valid', v['count'])} valid samples, avg {v['avg']}{err_str}"
+        )
     print("=" * 60 + "\n")
 
 
@@ -275,7 +289,12 @@ def run_judge(args):
                 executor.submit(_judge_one_record, records[i], args): i for i in pending_indices
             }
             for done_count, future in enumerate(
-                tqdm(as_completed(future_to_idx), total=len(pending_indices), desc="Judge", disable=False),
+                tqdm(
+                    as_completed(future_to_idx),
+                    total=len(pending_indices),
+                    desc="Judge",
+                    disable=False,
+                ),
                 start=1,
             ):
                 idx = future_to_idx[future]

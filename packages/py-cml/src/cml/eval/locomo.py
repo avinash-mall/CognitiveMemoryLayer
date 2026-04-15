@@ -124,11 +124,16 @@ QA_PROMPT = """Based on the above context from past conversations, answer the qu
 IMPORTANT RULES:
 1. Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the question.
 2. If the context contains timestamps or dates, reason about time carefully.
+   Calculate durations by counting between dates. "Yesterday" means the day before the date shown.
 3. Answer with a short phrase or 1-2 sentences. Use exact words from the context when possible.
-4. If the answer can be inferred or reasoned from the context, provide your best answer.
-   For common-sense questions, use the context plus general reasoning to answer.
-5. If no context was retrieved, or the context has no information related to the question,
-   say "I don't have information about that from our previous conversations."
+4. ALWAYS attempt to answer from the context. Even if the context is incomplete, extract
+   whatever relevant information is available and provide your best answer.
+5. For common-sense questions, combine the context with general world knowledge to reason
+   about the answer. Think about what would logically follow from what was said.
+6. For multi-hop questions, connect information across multiple parts of the context.
+   Look for indirect references and combine facts to derive the answer.
+7. Only say "I don't have information about that from our previous conversations" if the
+   context is completely empty OR contains absolutely nothing related to the question.
 
 Question: {}
 
@@ -144,7 +149,17 @@ Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the con
 Respond (short):"""
 
 # Answer markers used by reasoning models (ordered by specificity)
-_ANSWER_MARKERS = ["Short answer:", "Final Answer:", "Answer:", "Therefore,", "In summary:"]
+_ANSWER_MARKERS = [
+    "Short answer:",
+    "Final Answer:",
+    "Answer:",
+    "Therefore,",
+    "In summary:",
+    "In conclusion:",
+    "The answer is:",
+    "Based on the context,",
+    "Based on the conversation,",
+]
 
 
 def _extract_answer(raw: str) -> str:
@@ -159,35 +174,65 @@ def _extract_answer(raw: str) -> str:
     if not text:
         return text
 
-    # Handle <think>...</think> blocks
+    # Handle <think>...</think> blocks (may be nested or repeated)
     if "<think>" in text:
         parts = text.split("</think>")
         if len(parts) > 1:
             after_think = parts[-1].strip()
             if after_think:
+                # Still check for answer markers in the post-think section
+                for marker in _ANSWER_MARKERS:
+                    idx = after_think.find(marker)
+                    if idx != -1:
+                        answer = after_think[idx + len(marker) :].strip()
+                        if answer:
+                            return answer
                 return after_think
             # All content was inside <think> — return last think block content
             # so the judge has something to evaluate
             return parts[-2].replace("<think>", "").strip() or text
 
-    # Handle "Thinking Process:" prefix
-    if text.startswith("Thinking Process:") or text.startswith("**Thinking Process"):
+    # Handle various reasoning prefixes
+    _reasoning_prefixes = (
+        "Thinking Process:",
+        "**Thinking Process",
+        "Let me think",
+        "Let me analyze",
+        "Step 1:",
+        "**Step 1",
+        "First, let me",
+        "I need to",
+    )
+    is_reasoning = any(text.startswith(p) for p in _reasoning_prefixes)
+
+    if is_reasoning:
         # Try to find an explicit answer marker
         for marker in _ANSWER_MARKERS:
             idx = text.rfind(marker)
             if idx != -1:
                 answer = text[idx + len(marker) :].strip()
+                # Clean trailing markers or bullet formatting
                 if answer:
                     return answer
         # Fallback: return last non-reasoning paragraph
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         if paragraphs:
-            # Walk backwards to find first non-bullet paragraph
+            # Walk backwards to find first non-bullet, non-reasoning paragraph
             for para in reversed(paragraphs):
-                if not para.startswith(("*", "-", "1.", "2.", "3.")):
+                if not para.startswith(("*", "-", "1.", "2.", "3.", "##", "**Step")):
                     return para
             # All paragraphs are bullet lists — return the last one anyway
             return paragraphs[-1]
+
+    # Even for non-reasoning text, check if there's an explicit answer marker
+    # (some models wrap short reasoning then give "Answer: X")
+    for marker in _ANSWER_MARKERS[:3]:  # Only check the most explicit markers
+        idx = text.rfind(marker)
+        if idx != -1 and idx > len(text) // 3:  # Marker should be in latter part
+            answer = text[idx + len(marker) :].strip()
+            if answer and len(answer) < len(text) * 0.8:  # Answer should be shorter than full text
+                return answer
+
     return text
 
 
@@ -586,7 +631,7 @@ def _get_llm_qa_config() -> tuple[str, str, str]:
     return base_url, model, api_key
 
 
-def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_compatible") -> str:
+def _llm_chat(user_content: str, max_tokens: int = 512, backend: str = "openai_compatible") -> str:
     """Call LLM for QA. backend='openai_compatible' uses HTTP API; backend='vllm' uses in-process GPU."""
     if backend == "vllm":
         _, model, _ = _get_llm_qa_config()
@@ -626,21 +671,23 @@ def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_c
         else None
     )
 
+    import random as _rand
+
+    _max_retries = 5
+    _backoff_base = 2.0
+    _backoff_cap = 30.0
+
     def _do_request() -> str:
         client = OpenAI(base_url=base_url, api_key=api_key)
-        try:
-            create_kwargs: dict = {
-                "model": model,
-                "messages": [{"role": "user", "content": user_content}],
-                "max_tokens": max_tokens,
-                "temperature": 0,
-            }
-            if _extra_body:
-                create_kwargs["extra_body"] = _extra_body
-            resp = client.chat.completions.create(**create_kwargs)
-        except Exception as e:
-            print(f"LLM API Error: {e}", flush=True)
-            return ""
+        create_kwargs: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": user_content}],
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
+        if _extra_body:
+            create_kwargs["extra_body"] = _extra_body
+        resp = client.chat.completions.create(**create_kwargs)
         choices = getattr(resp, "choices", None) or []
         if not choices:
             return ""
@@ -650,11 +697,42 @@ def _llm_chat(user_content: str, max_tokens: int = 256, backend: str = "openai_c
         content = getattr(msg, "content", None)
         return (content or "").strip()
 
-    out = _do_request()
-    if not out:
-        time.sleep(2.0)
-        out = _do_request()
-    return out or ""
+    # Retryable exception types
+    _retryable: tuple[type[Exception], ...] = (ConnectionError, OSError, TimeoutError)
+    try:
+        import openai as _openai_mod
+
+        _retryable = (
+            *_retryable,
+            _openai_mod.APIConnectionError,
+            _openai_mod.APITimeoutError,
+            _openai_mod.RateLimitError,
+            _openai_mod.InternalServerError,
+        )
+    except (ImportError, AttributeError):
+        pass
+
+    for attempt in range(_max_retries):
+        try:
+            out = _do_request()
+            if out:
+                return out
+            # Empty response — retry once after short delay
+            if attempt == 0:
+                time.sleep(2.0)
+                continue
+            return ""
+        except _retryable as e:
+            if attempt < _max_retries - 1:
+                delay = min(_backoff_cap, _backoff_base * (2**attempt)) + _rand.uniform(0, 1)
+                time.sleep(delay)
+                continue
+            print(f"LLM API Error after {_max_retries} retries: {e}", flush=True)
+            return ""
+        except Exception as e:
+            print(f"LLM API Error: {e}", flush=True)
+            return ""
+    return ""
 
 
 def _ingest_sample(
@@ -1043,7 +1121,7 @@ def phase_b_qa(
             flush=True,
         )
         conversations = [[{"role": "user", "content": c}] for c in user_contents]
-        predictions = generate_batch(qa_model, conversations, temperature=0.0, max_tokens=256)
+        predictions = generate_batch(qa_model, conversations, temperature=0.0, max_tokens=512)
 
         for m, raw_prediction in zip(meta, predictions, strict=False):
             prediction = _extract_answer(raw_prediction)
@@ -1127,9 +1205,11 @@ def phase_b_qa(
             if sample.get("time_gap"):
                 record["time_gap"] = sample["time_gap"]
             records.append(record)
-            pred_file.write_text(
-                json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            # Checkpoint every 50 samples instead of every sample for performance
+            if len(records) % 50 == 0 or i == len(samples_qa) - 1:
+                pred_file.write_text(
+                    json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
         if empty_context_count:
             print(
                 f"\n[Phase B] {empty_context_count}/{len(samples_qa)} samples had empty retrieval context.",

@@ -697,16 +697,20 @@ Full details: [packages/models/README.md](packages/models/README.md)
 
 ## Evaluation Highlights
 
-Evaluated on **LoCoMo-Plus** &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall:
+Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall. CML uses a **fully local** `google/gemma-4-31b-it` model via vLLM &mdash; **zero API dependency**, zero per-query cost.
 
-| Metric | CML | Mem0 | SeCom | RAG Baselines |
+| Category | CML (local 31B) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Cognitive score** | **21.45%** | 15.80% | 14.90% | 12-15% |
-| **Factual-Cognitive gap** | **10.04%** | ~30% | ~27% | ~18-45% |
+| **Adversarial** | **64.80%** | 48.99% | 30.50% | 35.20% |
+| **Temporal** | **48.60%** | 45.79% | 39.40% | 49.30% |
+| **Single-hop** | 56.96% | 78.13% | 80.20% | 76.90% |
+| **Overall** | **48.58%** | 62.99% | 57.24% | 59.64% |
 
-> CML's gap between factual and cognitive performance is the **smallest** of any system tested &mdash; meaning it retains constraint-consistency better than alternatives.
+> **Adversarial robustness:** CML more than doubles Mem0's adversarial score (64.80% vs 30.50%) and beats GPT-4o full-context by +15.81% &mdash; using a local 31B model vs closed-source APIs. This demonstrates that CML's constraint-aware retrieval architecture provides real robustness, independent of model size.
 
-Full results: [evaluation/README.md](evaluation/README.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
+> **Temporal reasoning:** CML outperforms GPT-4o full-context (48.60% vs 45.79%) through explicit timestamp handling and temporal context in retrieval.
+
+Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
 
 ---
 

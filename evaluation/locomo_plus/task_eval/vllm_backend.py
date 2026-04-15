@@ -32,13 +32,13 @@ def get_llm(model: str) -> LLM:
 
     try:
         import torch
+
         tensor_parallel_size = max(1, torch.cuda.device_count()) if torch.cuda.is_available() else 1
     except ImportError:
         tensor_parallel_size = 1
 
     print(
-        f"[vLLM] Loading model '{model}' "
-        f"(tensor_parallel_size={tensor_parallel_size})...",
+        f"[vLLM] Loading model '{model}' (tensor_parallel_size={tensor_parallel_size})...",
         flush=True,
     )
     _llm_instance = _LLM(model=model, tensor_parallel_size=tensor_parallel_size)

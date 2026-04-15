@@ -140,7 +140,9 @@ If the context contains relevant constraints, preferences, or past decisions, in
 Respond (short):"""
 
 
-def judge_single(prediction: str, ground_truth: str, evidence: str, category: str) -> tuple[float, str]:
+def judge_single(
+    prediction: str, ground_truth: str, evidence: str, category: str
+) -> tuple[float, str]:
     """Simple judge: for adversarial, check if model correctly refuses.
     For others, check if prediction contains key terms from ground_truth."""
     pred = prediction.strip().lower()
@@ -149,12 +151,25 @@ def judge_single(prediction: str, ground_truth: str, evidence: str, category: st
     if category == "adversarial":
         # Adversarial: ground_truth is empty, model should refuse
         refusal_phrases = [
-            "no information", "not mentioned", "not enough context",
-            "not available", "none provided", "i don't have", "no context",
-            "no relevant", "cannot answer", "unanswerable",
-            "does not contain", "does not mention", "does not specify",
-            "does not state", "does not include", "not found in",
-            "haven't included", "no specific", "not provided",
+            "no information",
+            "not mentioned",
+            "not enough context",
+            "not available",
+            "none provided",
+            "i don't have",
+            "no context",
+            "no relevant",
+            "cannot answer",
+            "unanswerable",
+            "does not contain",
+            "does not mention",
+            "does not specify",
+            "does not state",
+            "does not include",
+            "not found in",
+            "haven't included",
+            "no specific",
+            "not provided",
         ]
         if any(p in pred for p in refusal_phrases) or not pred:
             return 1.0, "correct_refusal"
@@ -162,7 +177,10 @@ def judge_single(prediction: str, ground_truth: str, evidence: str, category: st
 
     if category == "Cognitive":
         # Cognitive: ground_truth is empty, judge checks if prediction connects to evidence
-        if not pred or pred in ("", "i don't have information about that from our previous conversations."):
+        if not pred or pred in (
+            "",
+            "i don't have information about that from our previous conversations.",
+        ):
             return 0.0, "empty_or_refusal"
         # If prediction has substance, give partial credit
         if len(pred) > 20:
@@ -233,7 +251,9 @@ def run_short_test(
 
     # Load baseline predictions for comparison
     baseline_preds = {}
-    baseline_file = REPO_ROOT / "evaluation" / "outputs" / "locomo_plus_qa_cml_predictions_baseline.json"
+    baseline_file = (
+        REPO_ROOT / "evaluation" / "outputs" / "locomo_plus_qa_cml_predictions_baseline.json"
+    )
     if baseline_file.exists():
         with open(baseline_file, encoding="utf-8") as f:
             bl = json.load(f)
@@ -242,9 +262,9 @@ def run_short_test(
 
     # Run eval
     results = []
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("Running short eval...")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     for idx, (sample_idx, sample) in enumerate(selected):
         tenant_id = f"lp-{sample_idx}"
@@ -255,14 +275,20 @@ def run_short_test(
         has_db_data = sample_idx < 1968
 
         # Step 1: CML Read
-        print(f"[{idx+1}/{len(selected)}] {category} (idx={sample_idx}, data={'YES' if has_db_data else 'NO'})...", end=" ", flush=True)
+        print(
+            f"[{idx + 1}/{len(selected)}] {category} (idx={sample_idx}, data={'YES' if has_db_data else 'NO'})...",
+            end=" ",
+            flush=True,
+        )
         llm_context = cml_read(cml_url, cml_api_key, tenant_id, trigger)
         ctx_len = len(llm_context)
         ctx_useful = ctx_len > 30  # More than just header
 
         # Step 2: LLM QA
         # Treat context as empty if it's just the markdown header with no content
-        effective_context = llm_context if ctx_useful else "(No relevant memories found for this query.)"
+        effective_context = (
+            llm_context if ctx_useful else "(No relevant memories found for this query.)"
+        )
         if category == "Cognitive":
             user_content = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
         else:
@@ -279,32 +305,36 @@ def run_short_test(
         bl_score, _bl_reason = judge_single(bl_pred, ground_truth, evidence, category)
 
         delta = score - bl_score
-        delta_str = f"{'+'if delta>0 else ''}{delta:.1f}" if delta != 0 else "="
-        print(f"ctx={ctx_len:>4}{'*' if ctx_useful else ' '} score={score:.1f} (bl={bl_score:.1f}, Δ={delta_str}) [{reason}]")
+        delta_str = f"{'+' if delta > 0 else ''}{delta:.1f}" if delta != 0 else "="
+        print(
+            f"ctx={ctx_len:>4}{'*' if ctx_useful else ' '} score={score:.1f} (bl={bl_score:.1f}, Δ={delta_str}) [{reason}]"
+        )
 
         if prediction[:80] != bl_pred[:80]:
-            print(f"    pred: \"{prediction[:100]}\"")
-            print(f"    base: \"{bl_pred[:100]}\"")
+            print(f'    pred: "{prediction[:100]}"')
+            print(f'    base: "{bl_pred[:100]}"')
 
-        results.append({
-            "sample_idx": sample_idx,
-            "category": category,
-            "has_db_data": has_db_data,
-            "context_length": ctx_len,
-            "context_useful": ctx_useful,
-            "prediction": prediction,
-            "ground_truth": str(ground_truth),
-            "score": score,
-            "reason": reason,
-            "baseline_score": bl_score,
-            "baseline_prediction": bl_pred[:200],
-            "delta": delta,
-        })
+        results.append(
+            {
+                "sample_idx": sample_idx,
+                "category": category,
+                "has_db_data": has_db_data,
+                "context_length": ctx_len,
+                "context_useful": ctx_useful,
+                "prediction": prediction,
+                "ground_truth": str(ground_truth),
+                "score": score,
+                "reason": reason,
+                "baseline_score": bl_score,
+                "baseline_prediction": bl_pred[:200],
+                "delta": delta,
+            }
+        )
 
     # Summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("SHORT TEST SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     cat_scores = defaultdict(list)
     cat_bl_scores = defaultdict(list)
@@ -333,7 +363,9 @@ def run_short_test(
     overall = total_score / total_n if total_n else 0
     bl_overall = total_bl / total_n if total_n else 0
     print("-" * 50)
-    print(f"{'OVERALL':<16} {total_n:>3} {overall:>8.3f} {bl_overall:>8.3f} {overall-bl_overall:>+8.3f}")
+    print(
+        f"{'OVERALL':<16} {total_n:>3} {overall:>8.3f} {bl_overall:>8.3f} {overall - bl_overall:>+8.3f}"
+    )
 
     # Retrieval diagnostics
     print("\n--- Retrieval Diagnostics ---")
@@ -346,8 +378,11 @@ def run_short_test(
     # Prediction diagnostics
     empty_preds = sum(1 for r in results if not r["prediction"].strip())
     refusal_preds = sum(
-        1 for r in results
-        if any(x in r["prediction"].lower() for x in ["no information", "not mentioned", "not enough"])
+        1
+        for r in results
+        if any(
+            x in r["prediction"].lower() for x in ["no information", "not mentioned", "not enough"]
+        )
     )
     print(f"\nEmpty predictions: {empty_preds}/{len(results)}")
     print(f"Refusal predictions: {refusal_preds}/{len(results)}")
@@ -365,7 +400,9 @@ def run_short_test(
         "by_category": {
             cat: {
                 "avg": sum(cat_scores[cat]) / len(cat_scores[cat]) if cat_scores[cat] else 0,
-                "baseline_avg": sum(cat_bl_scores[cat]) / len(cat_bl_scores[cat]) if cat_bl_scores[cat] else 0,
+                "baseline_avg": sum(cat_bl_scores[cat]) / len(cat_bl_scores[cat])
+                if cat_bl_scores[cat]
+                else 0,
             }
             for cat in categories
         },

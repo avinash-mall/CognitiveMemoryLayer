@@ -97,8 +97,9 @@ def main() -> None:
 
         def fmt_val(v):
             return f"{v:.4f}" if isinstance(v, float) else str(v)
+
         checks_str = ", ".join(
-            f'{c["metric"]}={fmt_val(c["actual"])}({"✓" if c["passed"] else "✗"})'
+            f"{c['metric']}={fmt_val(c['actual'])}({'✓' if c['passed'] else '✗'})"
             for c in gate_result["checks"]
         )
         status = "PASS" if gate_result["passed"] else "FAIL"

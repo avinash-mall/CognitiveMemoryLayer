@@ -173,7 +173,7 @@ async def dashboard_retrieval(
                 from ...retrieval.packet_builder import MemoryPacketBuilder
 
                 builder = MemoryPacketBuilder()
-                llm_context = builder.to_llm_context(packet, max_tokens=2000)
+                llm_context = builder.to_llm_context(packet, max_tokens=3000)
             except Exception as e:
                 logger.warning("dashboard_retrieval_llm_context_failed", error=str(e))
 

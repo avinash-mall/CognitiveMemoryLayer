@@ -289,7 +289,7 @@ class MemoryRetriever:
             )
             packet = self.packet_builder.build(reranked, query)
             packet.retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
-            llm_context = self.packet_builder.to_llm_context(packet, max_tokens=2000)
+            llm_context = self.packet_builder.to_llm_context(packet, max_tokens=3000)
 
             results = []
             for mem in packet.all_memories:

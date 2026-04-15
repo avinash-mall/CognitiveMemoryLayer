@@ -6,6 +6,7 @@ from pathlib import Path
 try:
     from hatchling.metadata.plugin.interface import MetadataHookInterface
 except ImportError:
+
     class MetadataHookInterface:  # type: ignore[no-redef]
         """Fallback shim so helper functions remain importable outside hatch builds."""
 

@@ -749,8 +749,8 @@ class TestFeatureFlags:
 
     def test_retrieval_settings_defaults(self):
         rs = RetrievalSettings()
-        assert rs.default_step_timeout_ms == 500
-        assert rs.total_timeout_ms == 2000
+        assert rs.default_step_timeout_ms == 800
+        assert rs.total_timeout_ms == 5000
         assert rs.hnsw_ef_search == 64
 
     def test_settings_include_features(self):

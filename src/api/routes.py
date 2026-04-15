@@ -237,7 +237,7 @@ async def read_memory(
             from ..retrieval.packet_builder import MemoryPacketBuilder
 
             builder = MemoryPacketBuilder()
-            llm_context = builder.to_llm_context(packet, max_tokens=2000)
+            llm_context = builder.to_llm_context(packet, max_tokens=3000)
 
         return ReadMemoryResponse(
             query=body.query,
@@ -456,7 +456,7 @@ async def session_read(
             from ..retrieval.packet_builder import MemoryPacketBuilder
 
             builder = MemoryPacketBuilder()
-            llm_context = builder.to_llm_context(packet, max_tokens=2000)
+            llm_context = builder.to_llm_context(packet, max_tokens=3000)
 
         return ReadMemoryResponse(
             query=body.query,

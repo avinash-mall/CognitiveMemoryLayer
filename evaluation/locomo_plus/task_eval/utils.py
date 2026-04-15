@@ -139,10 +139,12 @@ _CALL_BACKOFF_CAP = 60.0
 
 _RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (ConnectionError, OSError)
 
+
 def _get_retryable_openai_exceptions() -> tuple[type[Exception], ...]:
     """Return OpenAI exception types that are safe to retry."""
     try:
         import openai
+
         return (
             openai.RateLimitError,
             openai.APIConnectionError,
@@ -183,7 +185,9 @@ def call_llm(input_prompt: str, model: str, **kwargs) -> str:
         except retryable as e:
             last_error = e
             if attempt < _CALL_MAX_RETRIES - 1:
-                delay = min(_CALL_BACKOFF_CAP, _CALL_BACKOFF_BASE * (2 ** attempt)) + random.uniform(0, 1)
+                delay = min(_CALL_BACKOFF_CAP, _CALL_BACKOFF_BASE * (2**attempt)) + random.uniform(
+                    0, 1
+                )
                 time.sleep(delay)
                 continue
         except Exception as e:
@@ -216,7 +220,9 @@ def call_vllm(input_prompt: str, model: str, **kwargs) -> str:
         except (ConnectionError, OSError) as e:
             last_error = e
             if attempt < _CALL_MAX_RETRIES - 1:
-                delay = min(_CALL_BACKOFF_CAP, _CALL_BACKOFF_BASE * (2 ** attempt)) + random.uniform(0, 1)
+                delay = min(_CALL_BACKOFF_CAP, _CALL_BACKOFF_BASE * (2**attempt)) + random.uniform(
+                    0, 1
+                )
                 time.sleep(delay)
                 continue
         except Exception as e:

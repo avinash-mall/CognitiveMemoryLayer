@@ -9,8 +9,8 @@ from ..utils.modelpack import get_modelpack_runtime
 
 # Fallback constants when config unavailable (BUG-02: avoid diluting constraints)
 EPISODE_RELEVANCE_THRESHOLD = 0.5
-MAX_EPISODES_WHEN_CONSTRAINTS = 3
-MAX_EPISODES_DEFAULT = 5
+MAX_EPISODES_WHEN_CONSTRAINTS = 5
+MAX_EPISODES_DEFAULT = 8
 MAX_CONSTRAINT_TOKENS = 400
 
 
@@ -128,7 +128,7 @@ class MemoryPacketBuilder:
     def to_llm_context(
         self,
         packet: MemoryPacket,
-        max_tokens: int = 2000,
+        max_tokens: int = 3000,
         format: str = "markdown",
     ) -> str:
         """Format packet for LLM context injection."""
@@ -234,7 +234,7 @@ class MemoryPacketBuilder:
         if packet.facts and remaining > 100:
             header = "## Known Facts\n"
             fact_lines: list[str] = []
-            for f in packet.facts[:5]:
+            for f in packet.facts[:8]:
                 conf = f"[{f.record.confidence:.0%}]" if f.record.confidence < 1.0 else ""
                 line = f"- {f.record.text} {conf}\n"
                 if len(header) + sum(len(x) for x in fact_lines) + len(line) <= remaining:
@@ -251,7 +251,7 @@ class MemoryPacketBuilder:
         if packet.preferences and remaining > 100:
             header = "## User Preferences\n"
             pref_lines: list[str] = []
-            for p in packet.preferences[:5]:
+            for p in packet.preferences[:8]:
                 line = f"- {p.record.text}\n"
                 if len(header) + sum(len(x) for x in pref_lines) + len(line) <= remaining:
                     pref_lines.append(line)
@@ -309,9 +309,9 @@ class MemoryPacketBuilder:
         """Format as JSON string."""
         data = {
             "facts": [
-                {"text": f.record.text, "confidence": f.record.confidence} for f in packet.facts[:5]
+                {"text": f.record.text, "confidence": f.record.confidence} for f in packet.facts[:8]
             ],
-            "preferences": [{"text": p.record.text} for p in packet.preferences[:5]],
+            "preferences": [{"text": p.record.text} for p in packet.preferences[:8]],
             "recent": [
                 {
                     "text": e.record.text,
@@ -321,7 +321,7 @@ class MemoryPacketBuilder:
                         else str(e.record.timestamp)
                     ),
                 }
-                for e in packet.recent_episodes[:5]
+                for e in packet.recent_episodes[:8]
             ],
             "constraints": [
                 {
