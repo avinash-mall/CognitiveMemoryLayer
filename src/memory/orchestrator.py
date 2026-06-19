@@ -414,7 +414,13 @@ class MemoryOrchestrator:
             )
         _t_deactivate = _time.perf_counter()
 
-        stored, gate_results, unified_results, local_results = await self._phase_encode_and_store(
+        (
+            stored,
+            gate_results,
+            unified_results,
+            local_results,
+            stored_chunks,
+        ) = await self._phase_encode_and_store(
             tenant_id=tenant_id,
             chunks=chunks_for_encoding,
             context_tags=context_tags,
@@ -435,9 +441,13 @@ class MemoryOrchestrator:
             graph_task = None
             if stored:
                 graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
+            # stored_chunks is positionally aligned with stored / unified_results /
+            # local_results (one entry per stored record), so stored[idx] always
+            # corresponds to chunks[idx] in both phases — even when the write gate
+            # skipped some chunks or an upsert was dropped.
             _facts_coro = self._phase_write_time_facts(
                 tenant_id,
-                chunks_for_encoding,
+                stored_chunks,
                 stored,
                 unified_results,
                 timestamp,
@@ -445,7 +455,7 @@ class MemoryOrchestrator:
                 local_results=local_results,
             )
             _constraints_coro = self._phase_write_constraints(
-                tenant_id, chunks_for_encoding, stored, unified_results, timestamp, wpc
+                tenant_id, stored_chunks, stored, unified_results, timestamp, wpc
             )
             await asyncio.gather(_facts_coro, _constraints_coro)
             _t_facts = _time.perf_counter()
@@ -667,8 +677,14 @@ class MemoryOrchestrator:
         memory_type_override: Any,
         eval_mode: bool,
         unified_results: list | None,
-    ) -> tuple[list, list, list | None, list]:
-        """Encode chunks and store in hippocampal vector store."""
+    ) -> tuple[list, list, list | None, list, list]:
+        """Encode chunks and store in hippocampal vector store.
+
+        Returns ``(stored, gate_results, unified_results, local_results, stored_chunks)``
+        where ``unified_results``, ``local_results`` and ``stored_chunks`` are all
+        positionally aligned with ``stored`` (one entry per successfully stored
+        record), so callers can correlate each stored record with its source chunk.
+        """
         result = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
             chunks=chunks,

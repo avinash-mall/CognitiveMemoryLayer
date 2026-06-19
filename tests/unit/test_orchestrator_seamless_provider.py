@@ -248,7 +248,7 @@ class TestMemoryOrchestrator:
             }
         )
         deps["hippocampal"].unified_extractor = None
-        deps["hippocampal"].encode_batch = AsyncMock(return_value=([], None, [], []))
+        deps["hippocampal"].encode_batch = AsyncMock(return_value=([], None, [], [], []))
         # Setup store mock for update operations and scan (used by get_session_context)
         deps["hippocampal"].store = MagicMock()
         deps["hippocampal"].store.get_by_id = AsyncMock(return_value=None)
@@ -377,7 +377,7 @@ class TestMemoryOrchestrator:
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
-            return_value=([stored_record], None, [], [])
+            return_value=([stored_record], None, [], [], [])
         )
 
         # Setup neocortical graph mock
@@ -424,7 +424,7 @@ class TestMemoryOrchestrator:
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
-            return_value=([stored_record], None, [], [])
+            return_value=([stored_record], None, [], [], [])
         )
 
         # Make Neo4j entity batch merge explode
@@ -458,7 +458,7 @@ class TestMemoryOrchestrator:
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
-            return_value=([stored_record], None, [], [])
+            return_value=([stored_record], None, [], [], [])
         )
 
         # Make store_relations_batch explode
@@ -491,7 +491,7 @@ class TestMemoryOrchestrator:
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
-            return_value=([stored_record], None, [], [])
+            return_value=([stored_record], None, [], [], [])
         )
 
         mock_dependencies["neocortical"].graph = MagicMock()
@@ -524,7 +524,7 @@ class TestMemoryOrchestrator:
             }
         )
         mock_dependencies["hippocampal"].encode_batch = AsyncMock(
-            return_value=([stored_record], [gate_result], [], [])
+            return_value=([stored_record], [gate_result], [], [], [])
         )
 
         mock_dependencies["neocortical"].graph = MagicMock()

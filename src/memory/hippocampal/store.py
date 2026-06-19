@@ -736,7 +736,7 @@ class HippocampalStore:
                 surviving.append((_idx, _chunk, _gate, _text))
 
         if not surviving:
-            return ([], gate_results_list if return_gate_results else None, [], [])
+            return ([], gate_results_list if return_gate_results else None, [], [], [])
 
         # ---- Phase 1.5: Unified extraction (when LLM flags enabled) ----
         if unified_results is None:
@@ -1094,13 +1094,27 @@ class HippocampalStore:
         stored_results = await asyncio.gather(*tasks, return_exceptions=True)
         _t_p4_end = _phase_time.perf_counter()
 
-        for res in stored_results:
+        # Co-align stored records with their source chunk + extraction results.
+        # stored_results[i] corresponds to surviving[i] / unified_results[i] /
+        # local_results_batch[i]. Dropping failed upserts from `results` alone
+        # would desync those indices, so build all aligned lists together — the
+        # write-time facts/constraints phases rely on stored[k] <-> chunk[k].
+        aligned_unified: list[UnifiedExtractionResult | None] = []
+        aligned_local: list[dict[str, Any] | None] = []
+        aligned_chunks: list[SemanticChunk] = []
+        for i, res in enumerate(stored_results):
             if isinstance(res, BaseException):
                 structlog.get_logger(__name__).error("encode_batch_upsert_failed", error=str(res))
                 continue
             if res is not None:
-                results.append(cast("MemoryRecord", res))
-                existing_dicts.append({"text": cast("MemoryRecord", res).text})
+                rec = cast("MemoryRecord", res)
+                results.append(rec)
+                aligned_unified.append(unified_results[i] if i < len(unified_results) else None)
+                aligned_local.append(
+                    local_results_batch[i] if i < len(local_results_batch) else None
+                )
+                aligned_chunks.append(surviving[i][1])
+                existing_dicts.append({"text": rec.text})
 
         structlog.get_logger("encode_timing").info(
             "encode_batch_full_timing",
@@ -1117,8 +1131,9 @@ class HippocampalStore:
         return (
             results,
             (gate_results_list if return_gate_results else None),
-            unified_results,
-            local_results_batch,
+            aligned_unified,
+            aligned_local,
+            aligned_chunks,
         )
 
     async def search(

@@ -104,7 +104,7 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
             timestamp=datetime.now(UTC),
         )
     ]
-    results, _gate_results, unified_results, _local_results = await store.encode_batch(
+    results, _gate_results, unified_results, _local_results, _chunks = await store.encode_batch(
         tenant_id, chunks, return_gate_results=True
     )
     assert len(results) >= 1
@@ -196,7 +196,7 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
             timestamp=datetime.now(UTC),
         )
     ]
-    results, _, _, _ = await store.encode_batch(tenant_id, chunks)
+    results, _, _, _, _ = await store.encode_batch(tenant_id, chunks)
     assert len(results) >= 1
     record = results[0]
     assert record.confidence == 0.85
@@ -274,7 +274,7 @@ async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch
             timestamp=datetime.now(UTC),
         )
     ]
-    results, _, _, _ = await store.encode_batch(tenant_id, chunks)
+    results, _, _, _, _ = await store.encode_batch(tenant_id, chunks)
     assert len(results) >= 1
     assert results[0].type == MemoryType.PREFERENCE
 
@@ -320,6 +320,6 @@ async def test_encode_batch_fallback_when_llm_memory_type_disabled(pg_session_fa
             timestamp=datetime.now(UTC),
         )
     ]
-    results, _, _, _ = await store.encode_batch(tenant_id, chunks)
+    results, _, _, _, _ = await store.encode_batch(tenant_id, chunks)
     assert len(results) >= 1
     assert results[0].type == MemoryType.EPISODIC_EVENT
