@@ -83,9 +83,12 @@ class RelationExtractor:
                     confidence=float(r.get("confidence", 0.8)),
                 )
                 for r in data
-                if r.get("subject") and r.get("predicate") and r.get("object")
+                if isinstance(r, dict)
+                and r.get("subject")
+                and r.get("predicate")
+                and r.get("object")
             ]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
 

@@ -13,8 +13,28 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
 
-# Retryable exceptions for embedding API calls (transient network/rate-limit)
-_RETRY_EXCEPTIONS = (TimeoutError, ConnectionError, OSError)
+# Retryable exceptions for embedding API calls (transient network/rate-limit).
+# The OpenAI SDK raises APITimeoutError/APIConnectionError/RateLimitError/
+# InternalServerError — none subclass the builtins below, so they must be listed
+# explicitly or the @retry decorators never actually fire on a transient error.
+_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (TimeoutError, ConnectionError, OSError)
+try:
+    from openai import (
+        APIConnectionError,
+        APITimeoutError,
+        InternalServerError,
+        RateLimitError,
+    )
+
+    _RETRY_EXCEPTIONS = (
+        APITimeoutError,
+        APIConnectionError,
+        RateLimitError,
+        InternalServerError,
+        *_RETRY_EXCEPTIONS,
+    )
+except ImportError:
+    pass
 
 # Default when EMBEDDING_INTERNAL__* not provided: Sentence Transformer
 # nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max sequence length)
@@ -318,7 +338,15 @@ class CachedEmbeddings(EmbeddingClient):
 
     def _cache_key(self, text: str) -> str:
         h = hashlib.sha256(text.encode()).hexdigest()[:32]
-        return f"emb:{getattr(self.client, 'model', 'default')}:{h}"
+        # Namespace by resolved model + dimensions so changing the embedding
+        # model never returns a stale cached vector of the wrong length. The
+        # client may be wrapped (e.g. BatchingEmbeddingClient) — unwrap it, and
+        # fall back to "default" only when no string model id is available.
+        inner = getattr(self.client, "_inner", self.client)
+        model_id = getattr(inner, "model_name", None) or getattr(inner, "model", None)
+        if not isinstance(model_id, str):
+            model_id = "default"
+        return f"emb:{model_id}:{self.dimensions}:{h}"
 
     async def embed(self, text: str) -> EmbeddingResult:
         import json

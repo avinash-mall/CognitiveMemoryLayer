@@ -105,20 +105,25 @@ class Neo4jGraphStore(GraphStoreBase):
             properties["namespace"] = namespace
         now = datetime.now(UTC).isoformat()
 
+        # Node identity is (tenant_id, scope_id, entity) — matching the unique
+        # constraint and merge_edge(). entity_type is a mutable property, NOT part
+        # of identity; including it here would fork nodes and violate the
+        # constraint when an edge first created the node as 'UNKNOWN'.
         query = """
         MERGE (n:Entity {
             tenant_id: $tenant_id,
             scope_id: $scope_id,
-            entity: $entity,
-            entity_type: $entity_type
+            entity: $entity
         })
         ON CREATE SET
             n.created_at = $now,
             n.updated_at = $now,
-            n += $properties
+            n += $properties,
+            n.entity_type = $entity_type
         ON MATCH SET
             n.updated_at = $now,
-            n += $properties
+            n += $properties,
+            n.entity_type = coalesce($entity_type, n.entity_type)
         RETURN elementId(n) AS node_id
         """
 
@@ -154,21 +159,23 @@ class Neo4jGraphStore(GraphStoreBase):
             for n in nodes
         ]
 
+        # Identity is (tenant_id, scope_id, entity) only — see merge_node().
         query = """
         UNWIND $batch AS item
         MERGE (n:Entity {
             tenant_id: $tenant_id,
             scope_id: $scope_id,
-            entity: item.entity,
-            entity_type: item.entity_type
+            entity: item.entity
         })
         ON CREATE SET
             n.created_at = $now,
             n.updated_at = $now,
-            n += item.properties
+            n += item.properties,
+            n.entity_type = item.entity_type
         ON MATCH SET
             n.updated_at = $now,
-            n += item.properties
+            n += item.properties,
+            n.entity_type = coalesce(item.entity_type, n.entity_type)
         RETURN count(n) AS cnt
         """
 

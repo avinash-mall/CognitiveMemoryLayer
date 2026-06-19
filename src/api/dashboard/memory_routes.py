@@ -237,13 +237,24 @@ async def dashboard_memory_lineage(
             seen_child_ids: set[UUID] = set()
             while current_id and current_id not in seen_child_ids:
                 seen_child_ids.add(cast("UUID", current_id))
+                # supersedes_id has no unique constraint, so a parent can be
+                # superseded by more than one record (a fork). Pick the earliest
+                # deterministically instead of raising MultipleResultsFound.
                 child = (
-                    await session.execute(
-                        select(MemoryRecordModel).where(
-                            MemoryRecordModel.supersedes_id == current_id
+                    (
+                        await session.execute(
+                            select(MemoryRecordModel)
+                            .where(MemoryRecordModel.supersedes_id == current_id)
+                            .order_by(
+                                MemoryRecordModel.version.asc(),
+                                MemoryRecordModel.timestamp.asc(),
+                            )
+                            .limit(1)
                         )
                     )
-                ).scalar_one_or_none()
+                    .scalars()
+                    .first()
+                )
                 if child is None:
                     break
                 descendants.append(_compact(child))

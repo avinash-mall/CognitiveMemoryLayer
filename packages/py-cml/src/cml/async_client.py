@@ -1430,7 +1430,10 @@ class AsyncNamespacedClient:
         until: datetime | None = None,
         user_timezone: str | None = None,
     ) -> AsyncIterator[MemoryItem]:
-        return self._parent.read_stream(
+        # Must be a real async generator (yield), not an ``async def`` that
+        # returns the parent generator — the latter produces a coroutine that
+        # ``async for`` cannot iterate.
+        async for item in self._parent.read_stream(
             query,
             max_results=max_results,
             context_filter=context_filter,
@@ -1438,7 +1441,8 @@ class AsyncNamespacedClient:
             since=since,
             until=until,
             user_timezone=user_timezone,
-        )
+        ):
+            yield item
 
     async def turn(
         self,

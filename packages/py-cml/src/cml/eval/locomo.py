@@ -191,6 +191,9 @@ def _extract_answer(raw: str) -> str:
             # All content was inside <think> — return last think block content
             # so the judge has something to evaluate
             return parts[-2].replace("<think>", "").strip() or text
+        # Unclosed <think> (model truncated before emitting </think>): strip the
+        # opening marker so the judge never receives a raw <think> tag as the answer.
+        return text.split("<think>", 1)[-1].strip() or text
 
     # Handle various reasoning prefixes
     _reasoning_prefixes = (

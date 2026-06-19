@@ -73,6 +73,51 @@ async def dashboard_facts(
         raise HTTPException(status_code=500, detail=f"Failed to list facts: {e}")
 
 
+# NOTE: This literal-path route MUST be declared before "/facts/{fact_id}",
+# otherwise FastAPI matches "export" as a fact_id and the endpoint is dead.
+@router.get("/facts/export")
+async def dashboard_export_facts(
+    request: Request,
+    tenant_id: str | None = Query(None),
+    auth: AuthContext = Depends(require_admin_permission),
+) -> JSONResponse:
+    """Export semantic facts as JSON for download. Optionally filter by tenant."""
+    db: DatabaseManager = request.app.state.db
+    try:
+        from sqlalchemy import select
+
+        from ...storage.models import SemanticFactModel
+
+        async with db.pg_session() as session:
+            q = select(SemanticFactModel).order_by(SemanticFactModel.updated_at.desc()).limit(10000)
+            if tenant_id:
+                q = q.where(SemanticFactModel.tenant_id == tenant_id)
+            rows = (await session.execute(q)).scalars().all()
+            data = [
+                {
+                    "id": str(r.id),
+                    "tenant_id": r.tenant_id,
+                    "category": r.category,
+                    "key": r.key,
+                    "value": r.value,
+                    "confidence": float(r.confidence),
+                    "evidence_count": int(r.evidence_count),
+                    "is_current": bool(r.is_current),
+                    "version": int(r.version),
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                }
+                for r in rows
+            ]
+            return JSONResponse(
+                content=data,
+                headers={"Content-Disposition": "attachment; filename=facts_export.json"},
+            )
+    except Exception as e:
+        logger.error("dashboard_export_facts_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to export facts: {e}")
+
+
 @router.get("/facts/{fact_id}", response_model=DashboardFactDetail)
 async def dashboard_fact_detail(
     request: Request,
@@ -234,46 +279,3 @@ async def dashboard_invalidate_fact(
     except Exception as e:
         logger.error("dashboard_invalidate_fact_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to invalidate fact: {e}")
-
-
-@router.get("/facts/export")
-async def dashboard_export_facts(
-    request: Request,
-    tenant_id: str | None = Query(None),
-    auth: AuthContext = Depends(require_admin_permission),
-) -> JSONResponse:
-    """Export semantic facts as JSON for download. Optionally filter by tenant."""
-    db: DatabaseManager = request.app.state.db
-    try:
-        from sqlalchemy import select
-
-        from ...storage.models import SemanticFactModel
-
-        async with db.pg_session() as session:
-            q = select(SemanticFactModel).order_by(SemanticFactModel.updated_at.desc()).limit(10000)
-            if tenant_id:
-                q = q.where(SemanticFactModel.tenant_id == tenant_id)
-            rows = (await session.execute(q)).scalars().all()
-            data = [
-                {
-                    "id": str(r.id),
-                    "tenant_id": r.tenant_id,
-                    "category": r.category,
-                    "key": r.key,
-                    "value": r.value,
-                    "confidence": float(r.confidence),
-                    "evidence_count": int(r.evidence_count),
-                    "is_current": bool(r.is_current),
-                    "version": int(r.version),
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-                }
-                for r in rows
-            ]
-            return JSONResponse(
-                content=data,
-                headers={"Content-Disposition": "attachment; filename=facts_export.json"},
-            )
-    except Exception as e:
-        logger.error("dashboard_export_facts_error", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to export facts: {e}")

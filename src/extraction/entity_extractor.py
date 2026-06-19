@@ -73,13 +73,13 @@ class EntityExtractor:
             return [
                 EntityMention(
                     text=e.get("text", ""),
-                    normalized=e.get("normalized", e.get("text", "")),
+                    normalized=str(e.get("normalized") or e.get("text", "")),
                     entity_type=e.get("type", "CONCEPT"),
                 )
                 for e in data
-                if e.get("text")
+                if isinstance(e, dict) and e.get("text")
             ]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, text)
 
