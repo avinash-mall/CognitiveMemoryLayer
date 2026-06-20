@@ -63,7 +63,7 @@ class TestSchemas:
             context_filter=["conversation"],
         )
         assert req.max_results == 10
-        assert req.format == "packet"
+        assert req.response_format == "packet"
         assert req.user_timezone is None
 
     def test_read_memory_request_user_timezone(self):

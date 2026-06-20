@@ -156,7 +156,7 @@ class TestAPISchemas:
 
         req = ReadMemoryRequest(query="test query")
         assert req.max_results == 10
-        assert req.format == "packet"
+        assert req.response_format == "packet"
 
     def test_read_memory_request_custom_values(self):
         """ReadMemoryRequest accepts custom values."""
@@ -169,7 +169,7 @@ class TestAPISchemas:
             format="list",
         )
         assert req.max_results == 5
-        assert req.format == "list"
+        assert req.response_format == "list"
 
     def test_read_memory_request_accepts_user_timezone(self):
         """ReadMemoryRequest accepts optional user_timezone for timezone-aware retrieval."""
