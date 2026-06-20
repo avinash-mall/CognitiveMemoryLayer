@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .enums import MemoryType
+
 
 class MemoryItem(BaseModel):
     """A single memory item."""
@@ -452,3 +454,137 @@ class BulkActionRequest(BaseModel):
 
     memory_ids: list[UUID]
     action: Literal["archive", "silence", "delete"]
+
+
+class WriteMemoryRequest(BaseModel):
+    """Request to store a memory. Holistic: tenant-only."""
+
+    content: str = Field(..., min_length=1, max_length=100_000)
+    context_tags: list[str] | None = None
+    session_id: str | None = None
+    memory_type: MemoryType | None = None
+    namespace: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    turn_id: str | None = None
+    agent_id: str | None = None
+    timestamp: datetime | None = None  # Optional event timestamp (defaults to now)
+
+
+class CreateSessionRequest(BaseModel):
+    """Request to create a new memory session."""
+
+    name: str | None = None
+    ttl_hours: int | None = 24
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CreateSessionResponse(BaseModel):
+    """Response from session creation."""
+
+    session_id: str
+    created_at: datetime
+    expires_at: datetime | None = None
+
+
+class WriteMemoryResponse(BaseModel):
+    """Response from write operation."""
+
+    success: bool
+    memory_id: UUID | None = None
+    chunks_created: int = 0
+    message: str = ""
+    # Eval mode (when X-Eval-Mode: true): outcome and reason from write gate
+    eval_outcome: Literal["stored", "skipped"] | None = None
+    eval_reason: str | None = None
+
+
+class ReadMemoryResponse(BaseModel):
+    """Response from read operation."""
+
+    query: str
+    memories: list[MemoryItem]
+    facts: list[MemoryItem] = Field(default_factory=list)
+    preferences: list[MemoryItem] = Field(default_factory=list)
+    episodes: list[MemoryItem] = Field(default_factory=list)
+    constraints: list[MemoryItem] = Field(default_factory=list)
+    llm_context: str | None = None
+    retrieval_meta: dict | None = None
+    total_count: int
+    elapsed_ms: float
+
+
+class ProcessTurnRequest(BaseModel):
+    """Request to process a conversation turn with seamless memory (auto-retrieve + optional auto-store)."""
+
+    user_message: str
+    assistant_response: str | None = None
+    session_id: str | None = None
+    max_context_tokens: int = 1500
+    timestamp: datetime | None = None  # Optional event timestamp for the turn (defaults to now)
+    user_timezone: str | None = (
+        None  # IANA timezone for retrieval "today"/"yesterday" (e.g. "America/New_York")
+    )
+
+
+class ProcessTurnResponse(BaseModel):
+    """Response from process_turn: memory context ready to inject into prompt."""
+
+    memory_context: str
+    memories_retrieved: int
+    memories_stored: int
+    reconsolidation_applied: bool = False
+
+
+class UpdateMemoryRequest(BaseModel):
+    """Request to update a memory. Holistic: tenant-only."""
+
+    memory_id: UUID
+    text: str | None = None
+    confidence: float | None = None
+    importance: float | None = None
+    metadata: dict[str, Any] | None = None
+    feedback: str | None = None  # "correct", "incorrect", "outdated"
+
+
+class UpdateMemoryResponse(BaseModel):
+    """Response from update operation."""
+
+    success: bool
+    memory_id: UUID
+    version: int
+    message: str = ""
+
+
+class ForgetRequest(BaseModel):
+    """Request to forget memories. Holistic: tenant-only."""
+
+    memory_ids: list[UUID] | None = None
+    query: str | None = None
+    before: datetime | None = None
+    action: Literal["delete", "archive", "silence"] = "delete"
+
+
+class MemoryStats(BaseModel):
+    """Memory statistics for tenant. Holistic: tenant-only."""
+
+    total_memories: int
+    active_memories: int
+    silent_memories: int
+    archived_memories: int
+    by_type: dict[str, int]
+    avg_confidence: float
+    avg_importance: float
+    oldest_memory: datetime | None = None
+    newest_memory: datetime | None = None
+    estimated_size_mb: float
+
+
+class DashboardRetrievalRequest(BaseModel):
+    """Request to test memory retrieval."""
+
+    tenant_id: str
+    query: str
+    max_results: int = Field(default=10, le=50)
+    context_filter: list[str] | None = None
+    memory_types: list[str] | None = None
+    format: Literal["packet", "list", "llm_context"] = "list"

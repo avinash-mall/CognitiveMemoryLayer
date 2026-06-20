@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, TypedDict
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +11,7 @@ from cml_contracts.models import (
     ComponentStatus,
     ConfigItem,
     ConfigSection,
+    CreateSessionResponse,
     DashboardComponentsResponse,
     DashboardConfigResponse,
     DashboardEventItem,
@@ -38,7 +38,10 @@ from cml_contracts.models import (
     GraphStatsResponse,
     HourlyRequestCount,
     MemoryItem,
+    MemoryStats,
+    ProcessTurnResponse,
     RateLimitEntry,
+    ReadMemoryResponse,
     RequestStatsResponse,
     RetrievalResultItem,
     SessionContextResponse,
@@ -46,6 +49,8 @@ from cml_contracts.models import (
     TenantInfo,
     TenantLabileInfo,
     TimelinePoint,
+    UpdateMemoryResponse,
+    WriteMemoryResponse,
 )
 
 __all__ = [
@@ -129,35 +134,40 @@ class ReconsolidationResult(TypedDict, total=False):
     sessions_released: int
 
 
-class WriteResponse(BaseModel):
-    """Response from write operation. When server receives X-Eval-Mode: true, includes eval_outcome and eval_reason."""
+# Renamed SDK twins of the canonical server contracts, unified in
+# ``cml_contracts.models`` (field-identical / value-compatible). Plain twins are
+# kept as importable aliases; twins that carried a custom ``__str__`` are thin
+# subclasses so that representation is preserved (fields stay single-source).
+TurnResponse = ProcessTurnResponse
+UpdateResponse = UpdateMemoryResponse
+SessionResponse = CreateSessionResponse
 
-    success: bool
-    memory_id: UUID | None = None
-    chunks_created: int = 0
-    message: str = ""
-    eval_outcome: str | None = None  # "stored" | "skipped" when X-Eval-Mode header was set
-    eval_reason: str | None = None  # Write-gate reason when X-Eval-Mode header was set
+
+class WriteResponse(WriteMemoryResponse):
+    """SDK twin of canonical ``WriteMemoryResponse``; preserves the SDK ``__str__``."""
 
     def __str__(self) -> str:
         return f"WriteResponse(success={self.success}, chunks={self.chunks_created})"
 
 
-class ReadResponse(BaseModel):
-    """Response from read operation."""
+class StatsResponse(MemoryStats):
+    """SDK twin of canonical ``MemoryStats``; preserves the SDK ``__str__``."""
 
-    query: str
-    memories: list[MemoryItem]
-    facts: list[MemoryItem] = Field(default_factory=list)
-    preferences: list[MemoryItem] = Field(default_factory=list)
-    episodes: list[MemoryItem] = Field(default_factory=list)
-    constraints: list[MemoryItem] = Field(default_factory=list)
-    llm_context: str | None = None
-    total_count: int
-    elapsed_ms: float
-    retrieval_meta: dict | None = (
-        None  # Server: sources_completed, sources_timed_out, total_elapsed_ms
-    )
+    def __str__(self) -> str:
+        return (
+            f"Memory Stats: {self.total_memories} total "
+            f"({self.active_memories} active, {self.silent_memories} silent, "
+            f"{self.archived_memories} archived)"
+        )
+
+
+class ReadResponse(ReadMemoryResponse):
+    """Response from read operation.
+
+    Field schema is the canonical ``ReadMemoryResponse`` from ``cml_contracts``;
+    this SDK subclass adds the convenience ``context`` property and ``__str__``
+    that SDK callers rely on.
+    """
 
     @property
     def context(self) -> str:
@@ -172,60 +182,12 @@ class ReadResponse(BaseModel):
         return "\n".join(lines)
 
 
-class TurnResponse(BaseModel):
-    """Response from seamless turn processing."""
-
-    memory_context: str
-    memories_retrieved: int
-    memories_stored: int
-    reconsolidation_applied: bool = False
-
-
-class UpdateResponse(BaseModel):
-    """Response from update operation."""
-
-    success: bool
-    memory_id: UUID
-    version: int
-    message: str = ""
-
-
-class StatsResponse(BaseModel):
-    """Memory statistics response."""
-
-    total_memories: int
-    active_memories: int
-    silent_memories: int
-    archived_memories: int
-    by_type: dict[str, int]
-    avg_confidence: float
-    avg_importance: float
-    oldest_memory: datetime | None = None
-    newest_memory: datetime | None = None
-    estimated_size_mb: float
-
-    def __str__(self) -> str:
-        return (
-            f"Memory Stats: {self.total_memories} total "
-            f"({self.active_memories} active, {self.silent_memories} silent, "
-            f"{self.archived_memories} archived)"
-        )
-
-
 class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str
     version: str | None = None
     components: dict[str, Any] = Field(default_factory=dict)
-
-
-class SessionResponse(BaseModel):
-    """Session creation response."""
-
-    session_id: str
-    created_at: datetime
-    expires_at: datetime | None = None
 
 
 class DashboardFactItem(BaseModel):
