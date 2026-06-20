@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
@@ -28,6 +27,8 @@ from cml_contracts.models import (
     DashboardSessionsResponse,
     DashboardTenantsResponse,
     DashboardTimelineResponse,
+    FactItem,
+    FactListResponse,
     ForgetResponse,
     GraphEdgeInfo,
     GraphExploreResponse,
@@ -190,24 +191,6 @@ class HealthResponse(BaseModel):
     components: dict[str, Any] = Field(default_factory=dict)
 
 
-class DashboardFactItem(BaseModel):
-    """Semantic fact row for dashboard facts view."""
-
-    id: str
-    tenant_id: str
-    category: str
-    key: str
-    value: str
-    confidence: float
-    evidence_count: int
-    is_current: bool
-    version: int
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-
-class DashboardFactListResponse(BaseModel):
-    """List response for dashboard semantic facts."""
-
-    items: list[DashboardFactItem] = Field(default_factory=list)
-    total: int = 0
+# SDK twins of the canonical fact models (unified in cml_contracts.models).
+DashboardFactItem = FactItem
+DashboardFactListResponse = FactListResponse

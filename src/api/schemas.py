@@ -1,7 +1,7 @@
 """API request/response schemas. Holistic: no scopes, tenant-only."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -38,6 +38,8 @@ from cml_contracts.models import (
     DashboardSessionsResponse,
     DashboardTenantsResponse,
     DashboardTimelineResponse,
+    FactItem,
+    FactListResponse,
     ForgetRequest,
     ForgetResponse,
     GraphEdgeInfo,
@@ -53,6 +55,7 @@ from cml_contracts.models import (
     ProcessTurnRequest,
     ProcessTurnResponse,
     RateLimitEntry,
+    ReadMemoryRequest,
     ReadMemoryResponse,
     RequestStatsResponse,
     RetrievalResultItem,
@@ -66,8 +69,6 @@ from cml_contracts.models import (
     WriteMemoryRequest,
     WriteMemoryResponse,
 )
-
-from ..core.enums import MemoryType
 
 
 class WriteBatchTurn(BaseModel):
@@ -93,24 +94,6 @@ class WriteBatchResponse(BaseModel):
     turns_processed: int = 0
     chunks_created: int = 0
     message: str = ""
-
-
-class ReadMemoryRequest(BaseModel):
-    """Request to retrieve memories. Holistic: tenant-only."""
-
-    query: str
-    max_results: int = Field(default=10, le=50)
-    context_filter: list[str] | None = None
-    memory_types: list[MemoryType] | None = None
-    since: datetime | None = None
-    until: datetime | None = None
-    format: Literal["packet", "list", "llm_context"] = "packet"
-    user_timezone: str | None = (
-        None  # IANA timezone (e.g. "America/New_York") for "today"/"yesterday" filters
-    )
-
-
-# ---- Retrieval / Read Test Schemas ----
 
 
 # ---- Dashboard Explainability / Workbench Schemas ----
@@ -248,29 +231,6 @@ class DashboardWriteSimulationResponse(BaseModel):
     tenant_id: str
     chunks: list[DashboardWriteSimulationChunk] = Field(default_factory=list)
     summary: dict[str, Any] = Field(default_factory=dict)
-
-
-class FactItem(BaseModel):
-    """Serialised semantic fact for dashboard display."""
-
-    id: str
-    tenant_id: str
-    category: str
-    key: str
-    value: str
-    confidence: float
-    evidence_count: int
-    is_current: bool
-    version: int
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-class FactListResponse(BaseModel):
-    """List response for semantic facts."""
-
-    items: list[FactItem] = Field(default_factory=list)
-    total: int = 0
 
 
 class DashboardFactDetail(BaseModel):

@@ -220,7 +220,7 @@ async def read_memory(
 
         all_memories = [_to_memory_item(m) for m in packet.all_memories]
 
-        if body.format == "list":
+        if body.response_format == "list":
             # "list" format: flat list only, no categorized buckets
             facts = []
             preferences = []
@@ -233,7 +233,7 @@ async def read_memory(
             constraints = [_to_memory_item(m) for m in packet.constraints]
 
         llm_context = None
-        if body.format == "llm_context":
+        if body.response_format == "llm_context":
             from ..retrieval.packet_builder import MemoryPacketBuilder
 
             builder = MemoryPacketBuilder()
@@ -440,7 +440,7 @@ async def session_read(
 
         all_memories = [_to_memory_item(m) for m in packet.all_memories]
 
-        if body.format == "list":
+        if body.response_format == "list":
             facts = []
             preferences = []
             episodes = []
@@ -452,7 +452,7 @@ async def session_read(
             constraints = [_to_memory_item(m) for m in packet.constraints]
 
         llm_context = None
-        if body.format == "llm_context":
+        if body.response_format == "llm_context":
             from ..retrieval.packet_builder import MemoryPacketBuilder
 
             builder = MemoryPacketBuilder()

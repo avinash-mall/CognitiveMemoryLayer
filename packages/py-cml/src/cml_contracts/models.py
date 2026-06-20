@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .enums import MemoryType
 
@@ -588,3 +588,58 @@ class DashboardRetrievalRequest(BaseModel):
     context_filter: list[str] | None = None
     memory_types: list[str] | None = None
     format: Literal["packet", "list", "llm_context"] = "list"
+
+
+# --- Wave 3b: reconciled formerly-drifted models (canonical = SDK's richer shape) ---
+
+
+class ReadMemoryRequest(BaseModel):
+    """Request to retrieve memories. Holistic: tenant-only.
+
+    Reconciled canonical: the response-format field is ``response_format`` with
+    input alias ``format`` (populate_by_name), and ``max_results`` carries
+    ``ge=1``. The wire input key stays ``format`` (via the alias).
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    query: str
+    max_results: int = Field(default=10, ge=1, le=50)
+    context_filter: list[str] | None = None
+    memory_types: list[MemoryType] | None = None
+    since: datetime | None = None
+    until: datetime | None = None
+    response_format: Literal["packet", "list", "llm_context"] = Field(
+        default="packet", alias="format"
+    )
+    user_timezone: str | None = (
+        None  # IANA timezone (e.g. "America/New_York") for "today"/"yesterday"
+    )
+
+
+class FactItem(BaseModel):
+    """Serialised semantic fact for dashboard display.
+
+    Reconciled canonical: timestamps are ``datetime`` (the SDK's type). Server
+    routes pass ISO-8601 strings, which pydantic coerces; the JSON wire output
+    (ISO-8601) is unchanged.
+    """
+
+    id: str
+    tenant_id: str
+    category: str
+    key: str
+    value: str
+    confidence: float
+    evidence_count: int
+    is_current: bool
+    version: int
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class FactListResponse(BaseModel):
+    """List response for semantic facts."""
+
+    items: list[FactItem] = Field(default_factory=list)
+    total: int = 0
