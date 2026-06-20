@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .logging_config import get_logger
+from .parsing import safe_float, safe_int
 
 _math_exp = _math_module.exp
 
@@ -240,24 +241,6 @@ def _count_bucket(value: int, *, high: int, medium: int, zero_label: str = "none
     if value > 0:
         return "low"
     return zero_label
-
-
-def _safe_float(value: object) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)  # type: ignore[arg-type]
-    except Exception:
-        return None
-
-
-def _safe_int(value: object) -> int | None:
-    try:
-        if value is None:
-            return None
-        return int(value)  # type: ignore[call-overload]
-    except Exception:
-        return None
 
 
 def _normalize_tags(value: object) -> list[str]:
@@ -846,17 +829,17 @@ class ModelPackRuntime:
             elif key == "context_tags":
                 tokens.extend(f"context_tag={tag}" for tag in _normalize_tags(value)[:3])
             elif key in {"importance", "confidence"}:
-                ratio = _safe_float(value)
+                ratio = safe_float(value)
                 if ratio is not None:
                     tokens.append(f"{key}_bin={_ratio_bucket(ratio)}")
             elif key in {"access_count", "dependency_count", "support_count"}:
-                count = _safe_int(value)
+                count = safe_int(value)
                 if count is not None:
                     tokens.append(
                         f"{key}={_count_bucket(count, high=6 if key == 'access_count' else 4, medium=2 if key != 'dependency_count' else 1)}"
                     )
             elif key == "age_days":
-                age_days = _safe_int(value)
+                age_days = safe_int(value)
                 if age_days is not None:
                     tokens.append(
                         f"age_days={_count_bucket(age_days, high=90, medium=21, zero_label='fresh')}"

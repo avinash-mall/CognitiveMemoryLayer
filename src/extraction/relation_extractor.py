@@ -14,20 +14,7 @@ import re
 from ..core.schemas import Relation
 from ..utils.llm import LLMClient
 from ..utils.ner import _SPACY_REL_EXECUTOR, extract_relations, extract_relations_from_spans
-
-
-def _strip_markdown_fences(text: str) -> str:
-    """Strip markdown code block fences from LLM output (LOW-12)."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        if lines[-1].strip() == "```":
-            lines = lines[1:-1]
-        elif lines[0].startswith("```"):
-            lines = lines[1:]
-        text = "\n".join(lines).strip()
-    return text
-
+from ..utils.parsing import strip_markdown_fences
 
 RELATION_EXTRACTION_PROMPT = """Extract relationships from the following text using Open Information Extraction.
 
@@ -72,7 +59,7 @@ class RelationExtractor:
             prompt += f"\n\nKnown entities: {', '.join(entities)}"
         try:
             response = await self.llm.complete(prompt, temperature=0.0, max_tokens=500)
-            data = json.loads(_strip_markdown_fences(response))
+            data = json.loads(strip_markdown_fences(response))
             if not isinstance(data, list):
                 data = [data]
             return [
@@ -144,7 +131,7 @@ class RelationExtractor:
         )
         try:
             raw = await self.llm.complete(batch_prompt, temperature=0.0, max_tokens=2000)
-            data = json.loads(_strip_markdown_fences(raw))
+            data = json.loads(strip_markdown_fences(raw))
             if not isinstance(data, dict):
                 raise ValueError("Expected dict")
 

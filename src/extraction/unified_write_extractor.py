@@ -17,29 +17,9 @@ from ..core.schemas import EntityMention, Relation
 from ..memory.neocortical.schemas import FactCategory
 from ..memory.working.models import SemanticChunk
 from ..utils.llm import LLMClient
+from ..utils.parsing import safe_float, safe_int
 from .constraint_extractor import ConstraintObject
 from .write_time_facts import ExtractedFact
-
-
-def _safe_float(value: Any, default: float) -> float:
-    """Coerce an LLM-supplied value to float, falling back on malformed input.
-
-    LLMs routinely emit non-numeric values (e.g. ``"high"``) where a float is
-    expected; without this guard ``_parse_result`` raises and aborts the write.
-    """
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(value: Any, default: int) -> int:
-    """Coerce an LLM-supplied value to int, falling back on malformed input."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
 
 # ---------------------------------------------------------------------------
 # Result schema
@@ -330,7 +310,7 @@ class UnifiedWritePathExtractor:
                 subj = r.get("subject", r.get("source", ""))
                 obj = r.get("object", r.get("target", ""))
                 pred = r.get("predicate", r.get("type", "related_to"))
-                conf = _safe_float(r.get("confidence", 0.8), 0.8)
+                conf = safe_float(r.get("confidence", 0.8), 0.8)
                 if isinstance(subj, str) and isinstance(obj, str) and subj and obj:
                     pred = str(pred).strip() if pred else "related_to"
                     relations.append(
@@ -356,7 +336,7 @@ class UnifiedWritePathExtractor:
                     scope=scope_list,
                     activation="",
                     status="active",
-                    confidence=_safe_float(item.get("confidence", 0.7), 0.7),
+                    confidence=safe_float(item.get("confidence", 0.7), 0.7),
                     valid_from=chunk.timestamp,
                     valid_to=None,
                     provenance=[chunk.source_turn_id] if chunk.source_turn_id else [],
@@ -384,20 +364,20 @@ class UnifiedWritePathExtractor:
                     category=category,
                     predicate=predicate,
                     value=str(item.get("value", "")),
-                    confidence=_safe_float(item.get("confidence", 0.6), 0.6),
+                    confidence=safe_float(item.get("confidence", 0.6), 0.6),
                 )
             )
 
-        salience = _safe_float(data.get("salience", 0.5), 0.5)
+        salience = safe_float(data.get("salience", 0.5), 0.5)
         salience = max(0.0, min(1.0, salience))
-        importance = _safe_float(data.get("importance", 0.5), 0.5)
+        importance = safe_float(data.get("importance", 0.5), 0.5)
         importance = max(0.0, min(1.0, importance))
 
         pii_spans: list[PIISpan] = []
         for span in data.get("pii_spans") or []:
             if isinstance(span, dict) and "start" in span and "end" in span:
-                start = _safe_int(span.get("start"), -1)
-                end = _safe_int(span.get("end"), -1)
+                start = safe_int(span.get("start"), -1)
+                end = safe_int(span.get("end"), -1)
                 if start < 0 or end < 0:
                     continue
                 pii_spans.append(
@@ -417,7 +397,7 @@ class UnifiedWritePathExtractor:
             if val in _ALLOWED_MEMORY_TYPES:
                 memory_type = val
 
-        confidence = _safe_float(data.get("confidence", 0.5), 0.5)
+        confidence = safe_float(data.get("confidence", 0.5), 0.5)
         confidence = max(0.0, min(1.0, confidence))
 
         context_tags: list[str] = []

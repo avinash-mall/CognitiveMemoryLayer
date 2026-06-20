@@ -12,6 +12,7 @@ import structlog
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
+from .micro_batcher import AsyncMicroBatcher
 
 # Retryable exceptions for embedding API calls (transient network/rate-limit).
 # The OpenAI SDK raises APITimeoutError/APIConnectionError/RateLimitError/
@@ -435,7 +436,7 @@ class CachedEmbeddings(EmbeddingClient):
         return [r for _, r in results if r is not None]
 
 
-class BatchingEmbeddingClient(EmbeddingClient):
+class BatchingEmbeddingClient(EmbeddingClient, AsyncMicroBatcher[str, EmbeddingResult]):
     """Wraps any EmbeddingClient to coalesce concurrent embed calls into larger GPU batches.
 
     Multiple concurrent ``embed`` / ``embed_batch`` calls that arrive within
@@ -453,76 +454,37 @@ class BatchingEmbeddingClient(EmbeddingClient):
         max_wait_ms: float = 10.0,
         max_batch_size: int = 512,
     ) -> None:
+        AsyncMicroBatcher.__init__(self, max_wait_ms / 1000.0, max_batch_size)
         self._inner = inner
-        self._max_wait = max_wait_ms / 1000.0
-        self._max_batch = max_batch_size
-        # Per-event-loop state — created lazily so the object is safe to
-        # construct outside of a running loop (e.g. at module import time).
-        self._lock: asyncio.Lock | None = None
-        self._pending: list[tuple[str, asyncio.Future]] = []
-        self._dispatch_task: asyncio.Task | None = None
 
     @property
     def dimensions(self) -> int:
         return self._inner.dimensions
-
-    def _get_lock(self) -> asyncio.Lock:
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        return self._lock
 
     async def embed(self, text: str) -> EmbeddingResult:
         results = await self.embed_batch([text])
         return results[0]
 
     async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
-        if not texts:
-            return []
-        loop = asyncio.get_running_loop()
-        futures: list[asyncio.Future] = [loop.create_future() for _ in texts]
-        lock = self._get_lock()
-        async with lock:
-            for text, fut in zip(texts, futures, strict=True):
-                self._pending.append((text, fut))
-            if self._dispatch_task is None or self._dispatch_task.done():
-                self._dispatch_task = loop.create_task(self._dispatch_after_wait())
-        return list(await asyncio.gather(*futures))
+        return await self._submit(texts)
 
-    async def _dispatch_after_wait(self) -> None:
-        await asyncio.sleep(self._max_wait)
-        await self._drain()
+    async def _run_batch(self, items: list[str]) -> list[EmbeddingResult]:
+        return await self._inner.embed_batch(items)
 
-    async def _drain(self) -> None:
-        lock = self._get_lock()
-        async with lock:
-            if not self._pending:
-                return
-            batch = self._pending[: self._max_batch]
-            self._pending = self._pending[self._max_batch :]
-            if self._pending:
-                loop = asyncio.get_running_loop()
-                self._dispatch_task = loop.create_task(self._drain())
-            else:
-                self._dispatch_task = None
-
-        texts = [t for t, _ in batch]
-        try:
-            results = await self._inner.embed_batch(texts)
-        except Exception as exc:
-            for _, fut in batch:
-                if not fut.done():
-                    fut.set_exception(exc)
-            return
-
-        if len(results) != len(texts):
+    def _distribute(
+        self,
+        batch: list[tuple[str, asyncio.Future[EmbeddingResult]]],
+        results: list[EmbeddingResult],
+    ) -> None:
+        # Strict 1:1 contract — surface a backend mismatch rather than None-fill.
+        if len(results) != len(batch):
             exc_val = ValueError(
-                f"embed_batch returned {len(results)} results for {len(texts)} texts"
+                f"embed_batch returned {len(results)} results for {len(batch)} texts"
             )
             for _, fut in batch:
                 if not fut.done():
                     fut.set_exception(exc_val)
             return
-
         for (_, fut), result in zip(batch, results, strict=True):
             if not fut.done():
                 fut.set_result(result)

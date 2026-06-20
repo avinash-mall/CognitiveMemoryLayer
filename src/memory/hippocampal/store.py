@@ -22,6 +22,7 @@ from ...extraction.entity_extractor import EntityExtractor
 from ...extraction.relation_extractor import RelationExtractor
 from ...storage.base import MemoryStoreBase
 from ...utils.embeddings import EmbeddingClient
+from ...utils.micro_batcher import AsyncMicroBatcher
 from ...utils.ner import _SPACY_EXECUTOR
 from ...utils.ner import extract_entities as _ner_extract_entities
 from ...utils.ner import extract_relations as _ner_extract_relations
@@ -59,7 +60,7 @@ _GATE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 )
 
 
-class _BatchingSpanPredictor:
+class _BatchingSpanPredictor(AsyncMicroBatcher[str, Any]):
     """Coalesce concurrent predict_spans_batch calls into one GPU forward pass.
 
     Works like BatchingEmbeddingClient: texts from concurrent encode_batch calls
@@ -95,71 +96,23 @@ class _BatchingSpanPredictor:
         except Exception:
             _wait = max_wait_ms if max_wait_ms is not None else 10.0
             _batch = max_batch_size if max_batch_size is not None else 20
-        self._max_wait = _wait / 1000.0
-        self._max_batch_size = _batch
-        self._lock: asyncio.Lock | None = None
-        self._pending: list[tuple[str, asyncio.Future[Any]]] = []
-        self._dispatch_task: asyncio.Task[None] | None = None
+        super().__init__(_wait / 1000.0, _batch)
         # Per-instance executor: PII and fact span batchers can run concurrently.
         self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix=f"deberta_{task[:8]}"
         )
 
-    def _get_lock(self) -> asyncio.Lock:
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        return self._lock
-
     async def predict_batch(self, texts: list[str]) -> list:
         """Queue texts and await their SpanPrediction results."""
-        if not texts:
-            return []
-        loop = asyncio.get_running_loop()
-        futures: list[asyncio.Future[Any]] = [loop.create_future() for _ in texts]
-        lock = self._get_lock()
-        async with lock:
-            for text, fut in zip(texts, futures, strict=True):
-                self._pending.append((text, fut))
-            if self._dispatch_task is None or self._dispatch_task.done():
-                self._dispatch_task = loop.create_task(self._dispatch_after_wait())
-        return list(await asyncio.gather(*futures))
+        return await self._submit(texts)
 
-    async def _dispatch_after_wait(self) -> None:
-        await asyncio.sleep(self._max_wait)
-        await self._drain()
-
-    async def _drain(self) -> None:
-        lock = self._get_lock()
-        async with lock:
-            if not self._pending:
-                return
-            # Cap batch size to prevent super-batches (e.g. 120 texts → 800ms).
-            # Overflow stays in _pending and is dispatched immediately after this batch.
-            batch = self._pending[: self._max_batch_size]
-            self._pending = self._pending[self._max_batch_size :]
-            if self._pending:
-                loop = asyncio.get_running_loop()
-                self._dispatch_task = loop.create_task(self._drain())
-            else:
-                self._dispatch_task = None
-
-        texts_in_batch = [t for t, _ in batch]
-        try:
-            _mp = self._modelpack
-            _task = self._task
-            results = await asyncio.get_running_loop().run_in_executor(
-                self._executor,
-                lambda: _mp.predict_spans_batch(_task, texts_in_batch),
-            )
-        except Exception as exc:
-            for _, fut in batch:
-                if not fut.done():
-                    fut.set_exception(exc)
-            return
-
-        for i, (_, fut) in enumerate(batch):
-            if not fut.done():
-                fut.set_result(results[i] if i < len(results) else None)
+    async def _run_batch(self, items: list[str]) -> list[Any]:
+        _mp = self._modelpack
+        _task = self._task
+        return await asyncio.get_running_loop().run_in_executor(
+            self._executor,
+            lambda: _mp.predict_spans_batch(_task, items),
+        )
 
 
 def _gate_result_to_dict(g: WriteGateResult) -> dict:
