@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 try:
-    from src.core.enums import (
+    from cml_contracts.enums import (
         MemorySource,
         MemoryStatus,
         MemoryType,

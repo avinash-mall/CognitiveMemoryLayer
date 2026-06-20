@@ -133,7 +133,7 @@ Issues = "https://github.com/avinash-mall/CognitiveMemoryLayer/issues"
 Changelog = "https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
-packages = ["packages/py-cml/src/cml"]
+packages = ["packages/py-cml/src/cml", "packages/py-cml/src/cml_contracts"]
 
 [tool.ruff]
 line-length = 100
@@ -157,7 +157,7 @@ ignore = ["E501", "TC001", "TC003", "B007", "B008", "B904", "SIM102", "SIM105", 
 "packages/py-cml/src/cml/modeling/memory_type_features.py" = ["RUF001"]
 "packages/py-cml/src/cml/modeling/pair_features.py" = ["RUF001"]
 [tool.ruff.lint.isort]
-known-first-party = ["cml", "src"]
+known-first-party = ["cml", "cml_contracts", "src"]
 
 [tool.black]
 line-length = 100
