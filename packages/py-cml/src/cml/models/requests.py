@@ -8,7 +8,30 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from cml_contracts.models import (
+    BulkActionRequest,
+    ConfigUpdateRequest,
+    DashboardConsolidateRequest,
+    DashboardForgetRequest,
+    DashboardReconsolidateRequest,
+)
+
 from .enums import MemoryType
+
+__all__ = [
+    "BulkActionRequest",
+    "ConfigUpdateRequest",
+    "CreateSessionRequest",
+    "DashboardConsolidateRequest",
+    "DashboardForgetRequest",
+    "DashboardReconsolidateRequest",
+    "DashboardRetrievalRequest",
+    "ForgetRequest",
+    "ReadRequest",
+    "TurnRequest",
+    "UpdateRequest",
+    "WriteRequest",
+]
 
 
 class WriteRequest(BaseModel):
@@ -83,35 +106,6 @@ class CreateSessionRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class DashboardConsolidateRequest(BaseModel):
-    """Request to trigger consolidation."""
-
-    tenant_id: str
-    user_id: str | None = None
-
-
-class DashboardForgetRequest(BaseModel):
-    """Request to trigger forgetting."""
-
-    tenant_id: str
-    user_id: str | None = None
-    dry_run: bool = True
-    max_memories: int = 5000
-
-
-class DashboardReconsolidateRequest(BaseModel):
-    """Request to trigger reconsolidation."""
-
-    tenant_id: str
-    user_id: str | None = None
-
-
-class ConfigUpdateRequest(BaseModel):
-    """Request to update config settings."""
-
-    updates: dict[str, Any] = Field(default_factory=dict)
-
-
 class DashboardRetrievalRequest(BaseModel):
     """Request to test memory retrieval."""
 
@@ -121,10 +115,3 @@ class DashboardRetrievalRequest(BaseModel):
     context_filter: list[str] | None = None
     memory_types: list[str] | None = None
     format: Literal["packet", "list", "llm_context"] = "list"
-
-
-class BulkActionRequest(BaseModel):
-    """Request for bulk memory actions."""
-
-    memory_ids: list[UUID]
-    action: Literal["archive", "silence", "delete"]
