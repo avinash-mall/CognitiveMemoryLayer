@@ -34,7 +34,8 @@ class ResultStub:
         return list(self._all_rows)
 
     def scalars(self) -> SimpleNamespace:
-        return SimpleNamespace(all=lambda: list(self._scalar_rows))
+        rows = list(self._scalar_rows)
+        return SimpleNamespace(all=lambda: rows, first=lambda: rows[0] if rows else None)
 
 
 class SessionStub:
