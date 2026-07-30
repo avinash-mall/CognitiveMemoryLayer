@@ -4,6 +4,21 @@ Current snapshot of active work. Update this file as work progresses; add
 sibling notes (`docs/<topic>.md`) for anything too big to inline here, and
 link them below. Delete notes when they stop being true.
 
+## Where things stand
+
+- **CI is green** (lint + test + build, plus py-cml and CodeQL) as of `215da0f`. That is
+  the first passing `CI/CD Pipeline` run in the visible history — every run back through
+  2026-06-20 failed at the Docker build, so the integration suite had not executed in six
+  weeks. If CI goes red, it was genuinely green here.
+- Suite sizes, so drift is visible: **759** unit (hermetic), **338** integration + e2e +
+  py-cml against a live server, of which py-cml alone is 241.
+- The modelpack removal (`51afd15`) and its follow-up cleanup are complete: dead code,
+  stale docs, dead env keys, vendored assets, cache volumes.
+
+## Active work
+
+(nothing in flight)
+
 ## Architecture facts (load-bearing)
 
 - Single LLM path: `FEATURES__USE_LLM_ENABLED` is the only LLM switch.
@@ -18,38 +33,61 @@ link them below. Delete notes when they stop being true.
   disabled via `LLM_INTERNAL__EXTRA_BODY`) internal; Qwen3.6-27B-FP8
   (`http://localhost:8002/v1`) eval. Embeddings: local nomic-embed-text-v2-moe.
 
-## Active work
+## Invariants — do not "simplify" these
 
-(nothing in flight)
+Each of these was a real bug. They look like tidy-up targets and are not.
 
-## Known issues
+- **`vector_search(min_similarity=-1.0)`** must stay at −1.0. Cosine similarity is valid
+  on [−1, 1], so a `0.0` default is a *filter*, not "unset": it silently discards every
+  negatively-correlated row. Invisible with nomic-embed (effectively non-negative vectors);
+  with the hashed mock embeddings CI uses, real matches vanish. Guarded by
+  `tests/unit/test_vector_search_similarity_floor.py`.
+- **Retrieval sources do not share a relevance scale.** Vector/fact prongs emit cosine-like
+  0..1; the graph prong passes through a raw, unbounded Neo4j co-occurrence score (245.5
+  observed). `MemoryReranker._score_components` clamps relevance to [0,1] and records the
+  clamp in `notes` — keep that guard.
+- **Reranker breakdown keys** must match `RetrievalExplainRerankItem` (`id`,
+  `source_type`, …). The dashboard renders them directly and the response model validates
+  them, so renaming one returns HTTP 500 from the explain endpoint.
+- **`encode_batch` returns a 4-tuple on every path**, including the early return taken when
+  the write gate skips every chunk. Callers unpack a fixed arity, so a stale early return
+  only breaks writes where nothing survives — which the main-path tests never reach.
+  Guarded by an arity-stability test that compares the two paths rather than hard-coding 4.
+- **`get_internal_llm_client()` never returns `None`** — it raises (OpenAIError without
+  credentials, ValueError for a provider needing a key). Guarding on `is None` leaves a
+  mock fallback unreachable in exactly the credential-less environment it exists for.
+- **Judge/JSON calls to a reasoning model** must disable thinking or budget 2000+ tokens.
+  `LLM_EVAL` (Qwen3.6-27B) otherwise spends the whole budget on `reasoning_content` and
+  returns empty `content` with `finish_reason=length`, which reads downstream as a score of
+  0. `src/utils/llm.py` logs `llm_empty_content` whenever a completion comes back empty.
 
-(none open)
+## Measured baselines
 
-## Measured baselines (2026-07-30, commit 8304f8f)
+Throughput at `485ad77`, quality at `8304f8f`, both on this host (4× A100 80GB shared with
+resident vLLM servers).
 
-- Write path: 0.33 turns/s with the LLM on (mean 3.03 s/turn, qwen35-4b); 17.31 turns/s
-  heuristic-only. Method + hardware in `evaluation/EVALUATION_REPORT.md` §5.
-- Retrieval quality: 9.8/10 judge, 100% recall, 6/6 constraint consistency, p50 1055 ms
-  (`scripts/test_memory_quality.py`; artifact committed under `evaluation/results/`).
+- Write path: **0.33 turns/s** with the LLM on (mean 3.03 s/turn, qwen35-4b);
+  **17.31 turns/s** heuristic-only. Method + hardware in `evaluation/EVALUATION_REPORT.md` §5.
+- Retrieval quality: **9.8/10** judge, **100%** recall, 6/6 constraint consistency,
+  p50 1055 ms (`scripts/test_memory_quality.py`; artifact committed under
+  `evaluation/results/`).
 - The LoCoMo-Plus scores in `evaluation/` are pre-51afd15 history and are NOT reproducible
   — their source artifacts were never committed. Don't cite them as current.
-- **Judge gotcha:** `LLM_EVAL` (Qwen3.6-27B) is a reasoning model. Any judge/JSON call to
-  it must disable thinking or budget 2000+ tokens, or `content` comes back empty with
-  `finish_reason=length` and the score silently reads as 0. `src/utils/llm.py` logs
-  `llm_empty_content` when this happens.
 
-## Retrieval notes
+## Known issues / open decisions
 
-- **Sources do not share a relevance scale.** Vector/fact prongs emit cosine-like 0..1;
-  the graph prong passes through a raw Neo4j co-occurrence score that is unbounded.
-  `MemoryReranker._score_components` clamps relevance to [0,1] and notes the clamp — do
-  not remove that guard. A proper per-source normalization is still an open improvement:
-  today every graph hit lands at exactly 1.0, so graph hits no longer dominate but are
-  also no longer ordered among themselves.
-- Reranker breakdown rows must keep the key names in `RetrievalExplainRerankItem`
-  (`id`, `source_type`, ...) — the dashboard renders them directly and the response model
-  validates them, so renaming a key 500s the explain endpoint.
+- **LoCoMo-Plus has not been re-run** against the current write path. ~10.7k LLM calls
+  (5,882 turn ingests + 2,387 QA + 2,387 judge) on shared GPUs; datasets are committed so
+  it needs no downloads, only time. Opt-in, not scheduled.
+- **Graph relevance is clamped, not normalized.** Every graph hit now lands at exactly 1.0,
+  so graph results no longer dominate but are also no longer ordered among themselves. A
+  proper per-source normalization is an open improvement.
+- **`packages/models/trained_models/` still exists locally** — 241 untracked files
+  (15 `.joblib`) with absolute paths from another host. Nothing can load them. Left in
+  place deliberately: not in git, so deleting is unrecoverable. Needs an explicit call.
+- Heuristic query classification is keyword-sensitive: `\bcareer\b` sits in the goal
+  pattern, so "profession job career" classifies as `constraint_check`. Correct-ish but
+  worth knowing when a retrieval result looks oddly constraint-shaped.
 
 ## Dashboard notes
 
@@ -58,6 +96,11 @@ link them below. Delete notes when they stop being true.
   directory's README. There is **no build step** — `src/api/app.py` serves the static
   tree verbatim, so any CDN URL added to it ships straight to users. Keep
   `grep -rn "https://" src/dashboard/static` (excluding `vendor/`) empty.
+- Dashboard POST routes require `X-Requested-With: XMLHttpRequest` (CSRF middleware in
+  `src/api/app.py`) — without it you get 403, which is easy to misread as a real failure.
+- The API resolves the tenant from the API key, plus `X-Tenant-Id` for admin keys. A
+  `tenant_id` in a request body is ignored, so a curl that passes it there silently reads
+  the default tenant.
 
 ## Model artifacts (offline posture)
 
@@ -78,6 +121,8 @@ link them below. Delete notes when they stop being true.
 - `torch` must stay an exact `+cu128` pin in `requirements-runtime.txt` — with
   `--extra-index-url` pip takes the highest version across indexes, and PyPI's
   default-CUDA build outranks every cu128 wheel. That is what broke CI for six weeks.
+- `ci.yml` runs the suite with `compose run --no-deps`; without it, `app`'s `depends_on`
+  drags in `api-test`, which has no CI `image:` override and triggers a fresh build.
 
 ## Notes index
 
