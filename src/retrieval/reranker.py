@@ -78,10 +78,12 @@ class MemoryReranker:
             ranked_memories.append(mem)
             ranked_breakdowns.append(
                 {
+                    # Keys must match RetrievalExplainRerankItem (src/api/schemas.py),
+                    # which is also what the dashboard's rerank list renders.
                     "rank": rank,
-                    "memory_id": mem.record.id,
+                    "id": mem.record.id,
                     "text": mem.record.text,
-                    "type": mem.record.type.value,
+                    "source_type": mem.record.type.value,
                     "retrieval_source": mem.retrieval_source,
                     "final_score": score,
                     "breakdown": {
@@ -133,7 +135,13 @@ class MemoryReranker:
         """Calculate score components for a memory."""
         _ = query
         notes: list[str] = []
-        relevance = memory.relevance_score
+        # Clamp to [0,1]: retrieval sources do not share a scale. Vector/fact prongs
+        # emit cosine-like 0..1, but the graph prong passes through a raw Neo4j
+        # co-occurrence score that is unbounded (observed 245.5), which would let a
+        # single graph hit dominate every other signal in the weighted sum below.
+        relevance = max(0.0, min(1.0, memory.relevance_score))
+        if memory.relevance_score > 1.0:
+            notes.append(f"relevance_clamped_from_{memory.relevance_score:.3g}")
         ts = memory.record.timestamp
         if isinstance(ts, datetime):
             now = datetime.now(UTC)

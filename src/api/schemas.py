@@ -111,7 +111,6 @@ class RetrievalExplainAnalysis(BaseModel):
     time_end: datetime | None = None
     suggested_sources: list[str] = Field(default_factory=list)
     suggested_top_k: int = 10
-    query_domain: str | None = None
     constraint_dimensions: list[str] = Field(default_factory=list)
     is_decision_query: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -132,7 +131,6 @@ class RetrievalExplainPlanStep(BaseModel):
     timeout_ms: int = 0
     skip_if_found: bool = False
     associative_expansion: bool = False
-    query_domain: str | None = None
     constraint_categories: list[str] = Field(default_factory=list)
 
 

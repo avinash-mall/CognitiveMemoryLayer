@@ -317,7 +317,6 @@ class MemoryRetriever:
                         "timeout_ms": step.timeout_ms,
                         "skip_if_found": step.skip_if_found,
                         "associative_expansion": step.associative_expansion,
-                        "query_domain": step.query_domain,
                         "constraint_categories": list(step.constraint_categories or []),
                     }
                 )
@@ -335,7 +334,6 @@ class MemoryRetriever:
                     "time_end": analysis.time_end,
                     "suggested_sources": list(analysis.suggested_sources),
                     "suggested_top_k": analysis.suggested_top_k,
-                    "query_domain": analysis.query_domain,
                     "constraint_dimensions": list(analysis.constraint_dimensions or []),
                     "is_decision_query": analysis.is_decision_query,
                     "metadata": dict(analysis.metadata),

@@ -183,7 +183,6 @@ function buildExplainPanel(title, data) {
                 <div class="card">
                     <div class="card-title">Query Analysis</div>
                     ${kv('Confidence', formatFloat(analysis.confidence || 0, 3))}
-                    ${kv('Domain', analysis.query_domain || '—')}
                     ${kv('Constraint Dimensions', (analysis.constraint_dimensions || []).join(', ') || '—')}
                     ${kv('Entities', (analysis.entities || []).join(', ') || '—')}
                     ${kv('Key Phrases', (analysis.key_phrases || []).join(', ') || '—')}

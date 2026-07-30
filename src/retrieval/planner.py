@@ -38,7 +38,6 @@ class RetrievalStep:
     skip_if_found: bool = False
     constraint_categories: list[str] | None = None
     associative_expansion: bool = False
-    query_domain: str | None = None
 
 
 @dataclass
@@ -74,7 +73,6 @@ class RetrievalPlanner:
                     top_k=5,
                     priority=1,
                     constraint_categories=analysis.constraint_dimensions,
-                    query_domain=analysis.query_domain,
                 )
             )
             steps.append(
@@ -134,7 +132,6 @@ class RetrievalPlanner:
                     top_k=3,
                     priority=0,
                     constraint_categories=analysis.constraint_dimensions,
-                    query_domain=analysis.query_domain,
                 )
             )
             parallel_groups = [[0, 1]]
@@ -162,7 +159,6 @@ class RetrievalPlanner:
                         "causal",
                         "policy",
                     ],
-                    query_domain=analysis.query_domain,
                 )
             )
             steps.append(
@@ -182,8 +178,6 @@ class RetrievalPlanner:
                 )
             )
             graph_seeds = list(analysis.entities) if analysis.entities else []
-            if analysis.query_domain and analysis.query_domain not in graph_seeds:
-                graph_seeds.append(analysis.query_domain)
             if graph_seeds:
                 steps.append(
                     RetrievalStep(
@@ -205,7 +199,6 @@ class RetrievalPlanner:
                     priority=1,
                     constraint_categories=analysis.constraint_dimensions,
                     associative_expansion=True,
-                    query_domain=analysis.query_domain,
                 )
             )
             steps.append(

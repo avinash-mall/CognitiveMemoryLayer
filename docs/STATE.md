@@ -26,6 +26,18 @@ link them below. Delete notes when they stop being true.
 
 (none open)
 
+## Retrieval notes
+
+- **Sources do not share a relevance scale.** Vector/fact prongs emit cosine-like 0..1;
+  the graph prong passes through a raw Neo4j co-occurrence score that is unbounded.
+  `MemoryReranker._score_components` clamps relevance to [0,1] and notes the clamp — do
+  not remove that guard. A proper per-source normalization is still an open improvement:
+  today every graph hit lands at exactly 1.0, so graph hits no longer dominate but are
+  also no longer ordered among themselves.
+- Reranker breakdown rows must keep the key names in `RetrievalExplainRerankItem`
+  (`id`, `source_type`, ...) — the dashboard renders them directly and the response model
+  validates them, so renaming a key 500s the explain endpoint.
+
 ## Dashboard notes
 
 - All third-party assets are vendored in `src/dashboard/static/vendor/` (chart.js,

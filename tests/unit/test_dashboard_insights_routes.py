@@ -61,7 +61,6 @@ async def test_dashboard_retrieval_explain_returns_live_debug_payload() -> None:
             "time_end": None,
             "suggested_sources": ["vector"],
             "suggested_top_k": 5,
-            "query_domain": "preferences",
             "constraint_dimensions": ["food"],
             "is_decision_query": False,
             "metadata": {"planner": "hybrid"},
@@ -80,7 +79,6 @@ async def test_dashboard_retrieval_explain_returns_live_debug_payload() -> None:
                 "timeout_ms": 50,
                 "skip_if_found": False,
                 "associative_expansion": False,
-                "query_domain": "preferences",
                 "constraint_categories": ["food"],
             }
         ],

@@ -18,6 +18,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Dashboard "Retrieval Explain" returned HTTP 500** — the reranker emitted
+  `memory_id`/`type` in its breakdown rows while `RetrievalExplainRerankItem` (and the
+  dashboard UI) require `id`/`source_type`, so the response failed validation with 12-16
+  errors. The producer now matches the contract. The drift dates to the model-unification
+  refactor in eba7638.
+- **A single graph hit could dominate retrieval ranking** — the graph prong passes through
+  a raw, unbounded Neo4j co-occurrence score (245.5 observed) while every other source
+  emits cosine-like 0..1 values. `relevance_weight * 245.5` swamped recency, confidence,
+  diversity and the constraint boost combined, so any graph result outranked everything
+  else. The reranker now clamps relevance to [0,1] and records the clamp in the row's
+  `notes`. On a decision query the two matching constraints moved from ranks 2-3 to 1-2,
+  and the top score fell from 123.0 to 2.16.
+
 - **Docker image build (CI red since 2026-06-20)** — `torch` is now pinned to an exact
   `2.10.0+cu128` wheel. With `--extra-index-url`, pip merges both indexes and takes the
   highest version, so PyPI's default-CUDA torch outranked every cu128 wheel; the resulting
@@ -48,6 +61,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **`query_domain` retrieval signal** — the field was never assigned by any code path
+  (all four `QueryAnalysis` constructions set explicit kwargs and none included it), so
+  `_domain_bonus` always returned 0.0, the graph-seed branch never fired, and
+  `RetrievalExplain*` API responses carried a permanently-null field the dashboard
+  rendered as an empty row. Removed end to end, including the field on those response
+  models.
 - **CUDA toolkit base images and the megablocks build** — the Docker builder/production
   stages now use `python:3.12-slim`. The `nvidia/cuda:12.8.1-{devel,runtime}` bases existed
   only to supply `nvcc` for compiling `megablocks`, an *optional* accelerator for the

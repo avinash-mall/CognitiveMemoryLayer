@@ -160,3 +160,43 @@ class TestMemoryPacketBuilder:
         ctx = builder.to_llm_context(packet, max_tokens=500, format="markdown")
         assert "Retrieved Memory" in ctx
         assert "coffee" in ctx
+
+
+class TestRerankerScoreScale:
+    """Retrieval sources don't share a relevance scale; the reranker must not assume one."""
+
+    @pytest.mark.asyncio
+    async def test_out_of_scale_relevance_cannot_dominate_ranking(self):
+        """A graph hit carries a raw unbounded Neo4j co-occurrence score (observed 245.5).
+
+        Unclamped, relevance_weight * 245.5 swamps every other signal and the graph hit
+        outranks everything regardless of recency, confidence or diversity.
+        """
+
+        def _hit(text: str, relevance: float, confidence: float) -> RetrievedMemory:
+            return RetrievedMemory(
+                record=MemoryRecord(
+                    tenant_id="t",
+                    context_tags=[],
+                    type=MemoryType.EPISODIC_EVENT,
+                    text=text,
+                    provenance=Provenance(source=MemorySource.AGENT_INFERRED),
+                    timestamp=datetime.now(UTC),
+                    confidence=confidence,
+                ),
+                relevance_score=relevance,
+                retrieval_source="graph" if relevance > 1.0 else "vector",
+            )
+
+        reranker = MemoryReranker()
+        graph_hit = _hit("graph blob", 245.5, 0.5)
+        good_hit = _hit("a genuinely relevant memory", 0.95, 1.0)
+
+        _ranked, breakdowns = await reranker.rerank_with_breakdown(
+            [graph_hit, good_hit], "query", max_results=2
+        )
+        scores = [b["final_score"] for b in breakdowns]
+        assert max(scores) <= 3.0, f"score escaped the expected range: {scores}"
+        clamped = [b for b in breakdowns if any("relevance_clamped" in n for n in b["notes"])]
+        assert len(clamped) == 1
+        assert clamped[0]["breakdown"]["relevance"] == 1.0

@@ -2,7 +2,6 @@
 
 import asyncio
 import inspect
-import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,16 +17,6 @@ from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
 
 logger = get_logger(__name__)
-
-_DOMAIN_KEYWORDS: dict[str, set[str]] = {
-    "food": {"food", "eat", "meal", "diet", "restaurant", "allergy", "nutrition", "cuisine"},
-    "travel": {"travel", "trip", "flight", "hotel", "vacation", "destination"},
-    "finance": {"finance", "bank", "money", "budget", "loan", "invest", "expense"},
-    "health": {"health", "medical", "doctor", "medicine", "sleep", "exercise", "allergy"},
-    "work": {"work", "job", "career", "project", "deadline", "meeting", "office"},
-    "tech": {"tech", "software", "code", "api", "database", "python", "app"},
-    "social": {"friend", "family", "social", "party", "relationship", "people"},
-}
 
 
 @dataclass
@@ -185,9 +174,7 @@ class HybridRetriever:
 
         # AUD-07: Post-retrieval graph expansion from derived seeds and domain anchors
         if not any(s.source == RetrievalSource.GRAPH for s in plan.steps):
-            derived_seeds = self._derive_graph_seeds(
-                all_results, query_domain=plan.analysis.query_domain
-            )
+            derived_seeds = self._derive_graph_seeds(all_results)
             if derived_seeds:
                 graph_step = RetrievalStep(
                     source=RetrievalSource.GRAPH,
@@ -547,13 +534,12 @@ class HybridRetriever:
     def _derive_graph_seeds(
         all_results: list[dict[str, Any]],
         max_seeds: int = 10,
-        query_domain: str | None = None,
     ) -> list[str]:
         """Derive entity seeds from top constraint/fact retrieval results.
 
         Looks at entity mentions, subjects, and scope values from constraint
         and fact results so graph expansion can fire even when the original
-        query had no recognised entities.  Also seeds from ``query_domain``
+        query had no recognised entities.
         when provided (e.g. "food", "finance") so domain-anchored graph
         traversal can bridge semantic disconnect.
         """
@@ -565,9 +551,6 @@ class HybridRetriever:
             if normalised and normalised not in seen and len(normalised) > 1:
                 seen.add(normalised)
                 seeds.append(name.strip())
-
-        if query_domain:
-            _add(query_domain)
 
         for item in all_results:
             if len(seeds) >= max_seeds:
@@ -745,28 +728,12 @@ class HybridRetriever:
         except Exception:
             logger.warning("constraint_fact_search_failed", exc_info=True)
 
-        rescored = self._rescore_constraints(
-            query=step.query or "",
-            query_domain=step.query_domain,
-            rows=results,
-        )
+        rescored = self._rescore_constraints(rows=results)
         return rescored[: step.top_k]
 
-    def _rescore_constraints(
-        self,
-        *,
-        query: str,
-        query_domain: str | None,
-        rows: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
+    def _rescore_constraints(self, *, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not rows:
             return rows
-
-        _ = query
-        for row in rows:
-            base = float(row.get("relevance", 0.7))
-            score = base + self._domain_bonus(query_domain=query_domain, row=row)
-            row["relevance"] = max(0.0, min(1.5, score))
 
         rows.sort(
             key=lambda x: (
@@ -776,40 +743,6 @@ class HybridRetriever:
             reverse=True,
         )
         return rows
-
-    def _domain_bonus(self, *, query_domain: str | None, row: dict[str, Any]) -> float:
-        domain = (query_domain or "").strip().lower()
-        if not domain or domain == "general":
-            return 0.0
-
-        bonus = 0.0
-        text = str(row.get("text", "") or "").lower()
-
-        # Prefer constraints already tagged with matching scope/context.
-        row_tags: set[str] = set()
-        record = row.get("record")
-        record_tags = getattr(record, "context_tags", None)
-        if isinstance(record_tags, list):
-            row_tags.update(str(t).strip().lower() for t in record_tags if str(t).strip())
-
-        metadata = getattr(record, "metadata", None) or {}
-        constraints_meta = metadata.get("constraints", []) if isinstance(metadata, dict) else []
-        if constraints_meta and isinstance(constraints_meta, list):
-            scope_vals = constraints_meta[0].get("scope", [])
-            if isinstance(scope_vals, list):
-                row_tags.update(str(t).strip().lower() for t in scope_vals if str(t).strip())
-
-        if domain in row_tags:
-            bonus += 0.25
-
-        keywords = _DOMAIN_KEYWORDS.get(domain, set())
-        if keywords and text:
-            words = set(re.findall(r"[a-z0-9_]+", text))
-            overlap = len(words & keywords)
-            if overlap > 0:
-                bonus += min(0.18, 0.06 * overlap)
-
-        return bonus
 
     async def _retrieve_cache(
         self,
