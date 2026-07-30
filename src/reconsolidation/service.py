@@ -16,11 +16,6 @@ from .labile_tracker import LabileStateTracker
 logger = get_logger(__name__)
 
 try:
-    from ..extraction.fact_extractor import FactExtractor
-except ImportError:
-    FactExtractor = None  # type: ignore
-
-try:
     from ..utils.llm import LLMClient
 except ImportError:
     LLMClient = None  # type: ignore

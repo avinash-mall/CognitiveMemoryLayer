@@ -44,10 +44,7 @@ class MemoryRetriever:
         self.classifier = QueryClassifier(llm_client)
         self.planner = RetrievalPlanner()
         self.retriever = HybridRetriever(hippocampal, neocortical, cache)
-        self.reranker = MemoryReranker(
-            config=_reranker_config_from_settings(),
-            llm_client=llm_client,
-        )
+        self.reranker = MemoryReranker(config=_reranker_config_from_settings())
         self.packet_builder = MemoryPacketBuilder()
         self.llm_client = llm_client
 

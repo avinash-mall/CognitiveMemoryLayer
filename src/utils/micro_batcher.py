@@ -2,7 +2,7 @@
 
 Coalesces concurrent single/few-item async calls into batched backend calls,
 trading a small fixed latency (``max_wait``) for far fewer/larger backend calls.
-Shared by the DeBERTa span predictor and the batching embedding client.
+Used by the batching embedding client.
 """
 
 from __future__ import annotations

@@ -199,15 +199,6 @@ class FeatureFlags(PydanticBaseModel):
         default=True,
         description="Post-process LLM answers to extract short factual core for F1 scoring.",
     )
-    cross_encoder_reranking_enabled: bool = Field(
-        default=True,
-        description="Use cross-encoder model for reranking. "
-        "Auto-downloads BAAI/bge-reranker-v2-m3 (~568MB) on first use.",
-    )
-    cross_encoder_model: str = Field(
-        default="BAAI/bge-reranker-v2-m3",
-        description="Cross-encoder model for reranking.",
-    )
     pii_redaction_enabled: bool = Field(
         default=True,
         description="Master switch for PII redaction (regex + model). "

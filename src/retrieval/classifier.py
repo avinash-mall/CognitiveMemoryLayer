@@ -1,6 +1,5 @@
 """Query classifier for retrieval strategy selection."""
 
-import json
 import re
 
 from ..utils.llm import LLMClient
@@ -257,7 +256,7 @@ class QueryClassifier:
                 analysis.constraint_dimensions = constraint_dimensions
                 analysis.constraint_dimensions_from_llm = True
             return analysis
-        except (json.JSONDecodeError, ValueError, TypeError, Exception) as e:
+        except Exception as e:
             logger.warning("llm_classify_failed", extra={"error": str(e)})
             return QueryAnalysis(
                 original_query=query,

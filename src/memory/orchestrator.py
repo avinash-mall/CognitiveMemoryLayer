@@ -382,8 +382,8 @@ class MemoryOrchestrator:
             if graph_task is not None and not graph_task.done():
                 try:
                     await asyncio.wait_for(graph_task, timeout=2.0)
-                except (TimeoutError, Exception):
-                    pass
+                except Exception as exc:
+                    logger.warning("graph_sync_incomplete", extra={"error": str(exc)})
         else:
             _t_facts = _t_encode
             _t_constraints = _t_encode

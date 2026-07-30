@@ -158,8 +158,6 @@ class WriteGate:
                 reason=f"Below novelty threshold: {novelty:.2f} < {self.config.min_novelty:.2f}",
             )
 
-        # TODO: replace fixed weights with learned combination weights once
-        # both novelty_pair and write_importance_regression models are trained.
         combined_score = (importance * 0.6) + (novelty * 0.4)
 
         if combined_score < self.config.min_importance:

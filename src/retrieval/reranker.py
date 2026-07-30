@@ -28,13 +28,8 @@ class RerankerConfig:
 class MemoryReranker:
     """Reranks retrieved memories by relevance, recency, confidence, and diversity."""
 
-    def __init__(
-        self,
-        config: RerankerConfig | None = None,
-        llm_client=None,
-    ):
+    def __init__(self, config: RerankerConfig | None = None):
         self.config = config or RerankerConfig()
-        self.llm_client = llm_client
 
     async def rerank(
         self,
