@@ -9,12 +9,12 @@ from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
-from .bm25_index import TenantBM25Manager, rrf_merge
 from .classifier import QueryClassifier
 from .packet_builder import MemoryPacketBuilder
 from .planner import RetrievalPlanner, RetrievalSource, RetrievalStep
 from .reranker import MemoryReranker, RerankerConfig
 from .retriever import HybridRetriever
+from .rrf import rrf_merge
 
 _logger = get_logger(__name__)
 
@@ -47,27 +47,14 @@ class MemoryRetriever:
         self.packet_builder = MemoryPacketBuilder()
         self.llm_client = llm_client
 
-        # --- Improvement Report: BM25, HyDE, answer processing ---
-        self._bm25_manager = TenantBM25Manager()
+        # --- Improvement Report: HyDE ---
         self._hyde_generator = None
-        self._adversarial_verifier = None
-        self._answer_compressor = None
         settings = get_settings()
 
         if llm_client and settings.features.hyde_retrieval_enabled:
             from .hyde import HyDEGenerator
 
             self._hyde_generator = HyDEGenerator(llm_client)
-
-        if llm_client and settings.features.adversarial_verification_enabled:
-            from .answer_processing import AdversarialVerifier
-
-            self._adversarial_verifier = AdversarialVerifier(llm_client)
-
-        if llm_client and settings.features.answer_compression_enabled:
-            from .answer_processing import AnswerCompressor
-
-            self._answer_compressor = AnswerCompressor(llm_client)
 
     @staticmethod
     def _apply_session_scope_restrictions(
@@ -362,30 +349,3 @@ class MemoryRetriever:
             recent_context=recent_context,
         )
         return self.packet_builder.to_llm_context(packet, max_tokens, format)
-
-    async def verify_answerable(self, question: str, context: str) -> bool:
-        """Check if the retrieved context can actually answer the question.
-
-        Used as an adversarial gate to prevent hallucination on
-        unanswerable questions.  Returns True if answerable.
-        """
-        if self._adversarial_verifier is None:
-            return True
-        return await self._adversarial_verifier.verify(question, context)
-
-    async def compress_answer(self, question: str, verbose_answer: str) -> str:
-        """Compress a verbose LLM answer to a short factual form for F1 scoring.
-
-        Returns the compressed answer, or the original if compression
-        is disabled or fails.
-        """
-        if self._answer_compressor is None:
-            return verbose_answer
-        return await self._answer_compressor.compress(question, verbose_answer)
-
-    @staticmethod
-    def unanswerable_response() -> str:
-        """Standard response for unanswerable questions."""
-        from .answer_processing import AdversarialVerifier
-
-        return AdversarialVerifier.unanswerable_response()

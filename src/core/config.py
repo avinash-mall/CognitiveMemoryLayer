@@ -176,10 +176,6 @@ class FeatureFlags(PydanticBaseModel):
         default=4,
         description="Number of prospective implications to generate per memory.",
     )
-    bm25_retrieval_enabled: bool = Field(
-        default=True,
-        description="Add BM25 sparse retrieval as a second pathway with RRF fusion.",
-    )
     hyde_retrieval_enabled: bool = Field(
         default=True,
         description="Use Hypothetical Document Embedding (HyDE) for cognitive memory queries.",
@@ -187,14 +183,6 @@ class FeatureFlags(PydanticBaseModel):
     temporal_resolution_enabled: bool = Field(
         default=True,
         description="Resolve relative time references to absolute dates at extraction time.",
-    )
-    adversarial_verification_enabled: bool = Field(
-        default=True,
-        description="Add verification step to detect unanswerable questions.",
-    )
-    answer_compression_enabled: bool = Field(
-        default=True,
-        description="Post-process LLM answers to extract short factual core for F1 scoring.",
     )
     pii_redaction_enabled: bool = Field(
         default=True,
