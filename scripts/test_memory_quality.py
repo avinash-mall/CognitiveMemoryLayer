@@ -541,13 +541,23 @@ def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> s
         {"role": "user", "content": prompt},
     ]
 
-    def _request(token_budget: int, allow_reasoning_effort: bool) -> tuple[str, str]:
+    def _request(
+        token_budget: int, allow_reasoning_effort: bool, disable_thinking: bool = True
+    ) -> tuple[str, str]:
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "max_tokens": token_budget,
             "temperature": temperature,
         }
+        # A judge must emit strict JSON, so don't let it spend the budget on
+        # chain-of-thought. On a reasoning model with a reasoning parser (e.g.
+        # Qwen3.6) every token goes to reasoning_content and `content` comes back
+        # empty, which reads downstream as a score of 0 rather than a broken judge.
+        # Measured on Qwen3.6-27B: 300 tokens thinking-on -> empty content;
+        # 900 -> truncated mid-JSON; 300 thinking-off -> valid JSON in 49 tokens.
+        if disable_thinking:
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
         if allow_reasoning_effort:
             kwargs["reasoning_effort"] = "low"
         resp = client.chat.completions.create(**kwargs)
@@ -558,22 +568,37 @@ def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> s
         return content, finish_reason
 
     allow_reasoning_effort = True
-    token_budgets = [max_tokens, max(max_tokens * 3, 900)]
+    disable_thinking = True
+    # Escalate the budget for endpoints that ignore the thinking switch and still
+    # need room to finish the JSON.
+    token_budgets = [max_tokens, max(max_tokens * 3, 900), 2500]
 
     for token_budget in token_budgets:
         try:
-            raw, finish_reason = _request(token_budget, allow_reasoning_effort)
+            raw, finish_reason = _request(token_budget, allow_reasoning_effort, disable_thinking)
         except Exception as e:
-            if allow_reasoning_effort and "reasoning_effort" in str(e):
+            msg = str(e)
+            # Retry without whichever knob the endpoint rejected.
+            if disable_thinking and "chat_template_kwargs" in msg:
+                disable_thinking = False
+            elif allow_reasoning_effort and "reasoning_effort" in msg:
                 allow_reasoning_effort = False
-                try:
-                    raw, finish_reason = _request(token_budget, allow_reasoning_effort)
-                except Exception as retry_error:
-                    print(f"  [LLM error] {retry_error}")
-                    return ""
             else:
                 print(f"  [LLM error] {e}")
                 return ""
+            try:
+                raw, finish_reason = _request(
+                    token_budget, allow_reasoning_effort, disable_thinking
+                )
+            except Exception as retry_error:
+                print(f"  [LLM error] {retry_error}")
+                return ""
+
+        if not raw and finish_reason == "length":
+            print(
+                f"  [judge] empty content at max_tokens={token_budget} "
+                f"(finish_reason=length) — the model spent the budget reasoning; escalating"
+            )
 
         if not raw:
             continue

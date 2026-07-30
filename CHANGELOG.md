@@ -61,6 +61,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **BREAKING: the custom-model ("modelpack") path** — the entire parallel inference stack
+  is gone and the internal LLM is now the only extraction/classification path.
+  Deleted: `src/utils/modelpack.py` (16 sklearn/DeBERTa task models), spaCy NER
+  (`src/utils/ner.py` keeps only the pure-Python normalizers and the regex PII table),
+  the Hugging Face summarizer, the model downloader, `local_unified_extractor.py`,
+  `fact_span_adapter.py`, the never-registered `extraction/registry.py`,
+  `evaluation/conflict_eval.py`, the dashboard Models page and its `/models/status`
+  endpoint, `packages/models/` (the whole training pipeline and its artifacts), and
+  py-cml's `cml.modeling` / `token_runtime` / `runtime_device`.
+  **Migration:** set `FEATURES__USE_LLM_ENABLED=true` and configure `LLM_INTERNAL__*`.
+  With it false the runtime is heuristic-only: regex PII, Jaccard novelty, regex
+  fact/constraint extraction, and no entity/relation extraction at all.
+  Also removed: the 10 fine-grained `FEATURES__USE_LLM_*` flags (collapsed into that one
+  master switch), `SummarizerInternalSettings` / all `SUMMARIZER_INTERNAL__*` keys, the
+  spaCy and DeBERTa `PERFORMANCE__*` knobs, every `CML_MODELS_*` variable, the public
+  `[modeling]` extra, the `cml-models` console script, and the `spacy` /
+  `scikit-learn` / `joblib` dependencies. The server no longer requires model artifacts
+  to boot (`prime_modelpack_runtime` is gone), and pairwise scoring that used to run
+  through sklearn models now reuses existing embedding-cosine and Jaccard signals, so
+  write and read latency are unchanged in heuristic mode.
+- **`cross_encoder_reranking_enabled` / `cross_encoder_model` flags and
+  `src/retrieval/cross_encoder.py`** — zero callers repo-wide, yet the flag defaulted to
+  true and advertised a ~568 MB `BAAI/bge-reranker-v2-m3` download that never happened.
 - **`query_domain` retrieval signal** — the field was never assigned by any code path
   (all four `QueryAnalysis` constructions set explicit kwargs and none included it), so
   `_domain_bonus` always returned 0.0, the graph-seed branch never fired, and

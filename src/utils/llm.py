@@ -7,11 +7,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..core.config import get_settings
+from .logging_config import get_logger
 
 try:
     from openai import AsyncOpenAI
 except ImportError:
     AsyncOpenAI = None  # type: ignore
+
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -53,6 +57,36 @@ class LLMClient(ABC):
     ) -> dict[str, Any]:
         """Return parsed JSON from completion."""
         ...
+
+
+def _content_or_warn(response: Any, *, where: str, max_tokens: int) -> str:
+    """Return message content, logging loudly when it comes back empty.
+
+    A reasoning model whose thinking is parsed into a separate field spends the token
+    budget on `reasoning_content` and returns `content=""` once it hits the cap. Callers
+    then see an empty string that is indistinguishable from a genuine empty answer, which
+    silently degrades into a wrong result (a judge scoring 0, an extractor finding
+    nothing). Surface it instead: either raise max_tokens or disable thinking via
+    LLM_*__EXTRA_BODY={"chat_template_kwargs": {"enable_thinking": false}}.
+    """
+    choice = response.choices[0]
+    content = choice.message.content or ""
+    if not content.strip():
+        logger.warning(
+            "llm_empty_content",
+            extra={
+                "where": where,
+                "model": getattr(response, "model", "?"),
+                "finish_reason": getattr(choice, "finish_reason", None),
+                "max_tokens": max_tokens,
+                "reasoning_chars": len(
+                    getattr(choice.message, "reasoning_content", None)
+                    or getattr(choice.message, "reasoning", None)
+                    or ""
+                ),
+            },
+        )
+    return content
 
 
 def _parse_json_from_response(response: str) -> dict[str, Any]:
@@ -127,7 +161,7 @@ class OpenAICompatibleClient(LLMClient):
             max_tokens=max_tokens,
             extra_body=self.extra_body,
         )
-        return response.choices[0].message.content or ""
+        return _content_or_warn(response, where="complete", max_tokens=max_tokens)
 
     async def complete_json(
         self,
@@ -155,7 +189,7 @@ class OpenAICompatibleClient(LLMClient):
                 response_format={"type": "json_object"},
                 extra_body=self.extra_body,
             )
-            text = response.choices[0].message.content or "{}"
+            text = _content_or_warn(response, where="complete_json", max_tokens=max_tokens) or "{}"
         except Exception:
             # Fallback for models/endpoints that don't support strict response_format
             response = await self.client.chat.completions.create(
@@ -165,7 +199,10 @@ class OpenAICompatibleClient(LLMClient):
                 max_tokens=max_tokens,
                 extra_body=self.extra_body,
             )
-            text = response.choices[0].message.content or "{}"
+            text = (
+                _content_or_warn(response, where="complete_json_fallback", max_tokens=max_tokens)
+                or "{}"
+            )
         return _parse_json_from_response(text)
 
 

@@ -255,3 +255,48 @@ def test_openai_compatible_client_uses_dummy_key_for_explicit_base_url(
     assert captures == [("http://local/v1", "dummy")]
     assert client.model == "x"
     assert os.environ.get("OPENAI_API_KEY") is None
+
+
+@pytest.mark.asyncio
+async def test_empty_content_from_reasoning_model_is_logged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reasoning model that burns its budget thinking returns content='' — never silently.
+
+    Observed with Qwen3.6-27B at max_tokens=300: finish_reason='length', empty content,
+    the whole budget in reasoning_content. Downstream that looked like a judge score of 0.
+    """
+
+    async def _create(**kwargs):
+        return SimpleNamespace(
+            model="reasoner",
+            choices=[
+                SimpleNamespace(
+                    finish_reason="length",
+                    message=SimpleNamespace(content="", reasoning_content="x" * 1212),
+                )
+            ],
+        )
+
+    class _FakeAsyncOpenAI:
+        def __init__(self, *, base_url: str, api_key: str) -> None:
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=_create))
+
+    warnings: list[tuple[str, dict]] = []
+    monkeypatch.setattr(llm, "AsyncOpenAI", _FakeAsyncOpenAI)
+    monkeypatch.setattr(llm, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        llm.logger,
+        "warning",
+        lambda event, **kw: warnings.append((event, kw.get("extra", {}))),
+    )
+    client = llm.OpenAICompatibleClient(base_url="http://local/v1", model="reasoner")
+
+    out = await client.complete("prompt", max_tokens=300)
+
+    assert out == ""
+    assert warnings, "empty completion must not pass silently"
+    event, extra = warnings[0]
+    assert event == "llm_empty_content"
+    assert extra["finish_reason"] == "length"
+    assert extra["reasoning_chars"] == 1212
