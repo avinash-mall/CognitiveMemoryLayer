@@ -359,7 +359,6 @@ class HippocampalStore:
         source_session_id: str | None = None,
         agent_id: str | None = None,
         namespace: str | None = None,
-        timestamp: datetime | None = None,
         request_metadata: dict[str, Any] | None = None,
         memory_type_override: MemoryType | None = None,
         return_gate_results: bool = False,
@@ -371,6 +370,10 @@ class HippocampalStore:
         Phase 2: Batch-embed surviving texts in ONE API call.
         Phase 3: Batch-extract entities and relations (concurrent).
         Phase 4: Upsert records (bounded concurrency).
+
+        Each record's timestamp comes from its own ``chunk.timestamp``, which the
+        chunker already stamps from the write's timestamp, so there is
+        deliberately no per-call override.
         """
         import time as _phase_time
 

@@ -129,8 +129,12 @@ class TestTimestampBackwardCompatibility:
             (WorkingMemoryManager, "process_input"),
             (SemchunkChunker, "chunk"),
             (HippocampalStore, "encode_chunk"),
-            (HippocampalStore, "encode_batch"),
             (SeamlessMemoryProvider, "process_turn"),
+            # encode_batch is deliberately absent: it timestamps each record from
+            # that record's own chunk.timestamp, which the chunker stamps from this
+            # same write timestamp. It used to accept a `timestamp` kwarg and
+            # silently ignore it, which this assertion could not tell apart from
+            # honouring it.
         ]
 
         for cls, method_name in methods_to_check:
