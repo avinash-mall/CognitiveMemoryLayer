@@ -40,7 +40,6 @@ class EpisodeSampler:
     async def sample(
         self,
         tenant_id: str,
-        user_id: str,
         max_episodes: int | None = None,
         exclude_consolidated: bool = True,
     ) -> list[MemoryRecord]:

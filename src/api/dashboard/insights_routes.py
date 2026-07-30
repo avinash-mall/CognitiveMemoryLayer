@@ -441,7 +441,7 @@ async def dashboard_forgetting_preview(
             filters={"status": MemoryStatus.ACTIVE.value},
             limit=body.max_memories,
         )
-        dep_counts = await worker._get_dependency_counts(body.tenant_id, user_id, memories)
+        dep_counts = await worker._get_dependency_counts(body.tenant_id, memories)
         scores = worker.scorer.score_batch(memories, dep_counts)
         duplicates = worker.interference.detect_duplicates(memories)
         planned = worker.policy.plan_operations(scores)

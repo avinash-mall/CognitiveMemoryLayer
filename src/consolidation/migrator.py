@@ -53,7 +53,6 @@ class ConsolidationMigrator:
     async def migrate(
         self,
         tenant_id: str,
-        user_id: str,
         alignments: list[AlignmentResult],
         mark_episodes_consolidated: bool = True,
         compress_episodes: bool = False,

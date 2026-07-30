@@ -46,7 +46,6 @@ class SchemaAligner:
     async def align(
         self,
         tenant_id: str,
-        user_id: str,
         gist: ExtractedGist,
     ) -> AlignmentResult:
         """Align a gist with existing schemas."""
@@ -125,13 +124,12 @@ class SchemaAligner:
     async def align_batch(
         self,
         tenant_id: str,
-        user_id: str,
         gists: list[ExtractedGist],
     ) -> list[AlignmentResult]:
         """Align multiple gists."""
         import asyncio
 
-        return await asyncio.gather(*[self.align(tenant_id, user_id, g) for g in gists])
+        return await asyncio.gather(*[self.align(tenant_id, g) for g in gists])
 
     def _calculate_similarity(self, text1: str, text2: Any) -> float:
         text2_str = str(text2)

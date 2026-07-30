@@ -72,7 +72,6 @@ class TestConsolidationMigrator:
         migrator = ConsolidationMigrator(neocortical=mock_semantic, episodic_store=mock_episodic)
         result = await migrator.migrate(
             tenant_id="t1",
-            user_id="u1",
             alignments=[alignment],
             mark_episodes_consolidated=False,
         )
@@ -101,7 +100,6 @@ class TestConsolidationMigrator:
         migrator = ConsolidationMigrator(neocortical=mock_semantic, episodic_store=mock_episodic)
         result = await migrator.migrate(
             tenant_id="t1",
-            user_id="u1",
             alignments=[alignment],
             mark_episodes_consolidated=False,
         )
@@ -131,7 +129,7 @@ class TestEpisodeSampler:
         mock_store.scan = AsyncMock(side_effect=[records, []])
 
         sampler = EpisodeSampler(store=mock_store, config=SamplingConfig(max_episodes=200))
-        result = await sampler.sample(tenant_id="t1", user_id="u1", max_episodes=2)
+        result = await sampler.sample(tenant_id="t1", max_episodes=2)
         assert len(result) == 2
         assert all(isinstance(r, MemoryRecord) for r in result)
         # Now called twice: once for episodes, once for constraints
@@ -147,7 +145,7 @@ class TestEpisodeSampler:
 
         config = SamplingConfig(min_importance=0.5, min_confidence=0.5)
         sampler = EpisodeSampler(store=mock_store, config=config)
-        result = await sampler.sample(tenant_id="t1", user_id="u1", max_episodes=10)
+        result = await sampler.sample(tenant_id="t1", max_episodes=10)
         assert len(result) == 1
         assert result[0].text == "high"
 
@@ -163,7 +161,6 @@ class TestEpisodeSampler:
         sampler = EpisodeSampler(store=mock_store)
         result = await sampler.sample(
             tenant_id="t1",
-            user_id="u1",
             max_episodes=10,
             exclude_consolidated=True,
         )

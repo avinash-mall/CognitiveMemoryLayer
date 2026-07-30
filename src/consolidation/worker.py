@@ -80,7 +80,7 @@ class ConsolidationWorker:
         started = datetime.now(UTC)
 
         episode_limit = task.episode_limit if task else 200
-        episodes = await self.sampler.sample(tenant_id, user_id, max_episodes=episode_limit)
+        episodes = await self.sampler.sample(tenant_id, max_episodes=episode_limit)
 
         if not episodes:
             return ConsolidationReport(
@@ -188,10 +188,9 @@ class ConsolidationWorker:
         gists = await self.extractor.extract_from_clusters(clusters)
         gists = self._apply_gist_guardrails(gists, clusters)
 
-        alignments = await self.aligner.align_batch(tenant_id, user_id, gists)
+        alignments = await self.aligner.align_batch(tenant_id, gists)
         migration = await self.migrator.migrate(
             tenant_id,
-            user_id,
             alignments,
             mark_episodes_consolidated=True,
             compress_episodes=False,

@@ -89,7 +89,7 @@ class ForgettingWorker:
                 result=ForgettingResult(0, 0),
             )
 
-        dep_counts = await self._get_dependency_counts(tenant_id, user_id, memories)
+        dep_counts = await self._get_dependency_counts(tenant_id, memories)
         scores = self.scorer.score_batch(memories, dep_counts)
         operations = self.policy.plan_operations(scores)
 
@@ -116,7 +116,6 @@ class ForgettingWorker:
     async def _get_dependency_counts(
         self,
         tenant_id: str,
-        user_id: str,
         memories: list,
     ) -> dict[str, int]:
         """Count how many other memories reference each memory.
