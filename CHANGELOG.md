@@ -104,6 +104,8 @@ and the unreachable retrieval hot-cache path.
   `CHANGELOG.md` already documented a released 1.5.0.
 
 
+#### From the preceding modelpack-removal cleanup, released in the same version
+
 ### Added
 
 - **Locomo resume mode in py-cml CLI** — `cml eval run-locomo` now accepts `--resume`, which forwards to the Locomo runner as `--skip-ingestion --skip-consolidation` so interrupted evaluation runs can continue from the scoring phase without replaying ingestion. Added regression coverage in `packages/py-cml/tests/unit/test_eval_cli.py`.
