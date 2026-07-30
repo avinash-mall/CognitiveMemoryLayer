@@ -18,6 +18,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Vector search silently dropped negatively-correlated results** — `vector_search`
+  defaulted `min_similarity` to `0.0` and filtered on `similarity >= min_similarity`.
+  Cosine similarity is valid on `[-1, 1]`, so that default was a filter rather than the
+  "no threshold" it reads as. With embedding models whose vectors are effectively
+  non-negative (nomic-embed) it never showed; with hashed/mock embeddings — what CI and
+  offline runs use — real matches vanished, and a write/read round trip returned fewer
+  memories than were stored (observed: a row at −0.0946 discarded). Default is now `-1.0`.
+- **LLM-compression tests errored instead of using their documented mock** — the fixture
+  promised "mock so tests never skip" but guarded on `if client is None`, and
+  `get_internal_llm_client()` never returns `None`; it raises when no credentials are
+  configured. The fallback was unreachable in exactly the environment it existed for.
 - **Dashboard "Retrieval Explain" returned HTTP 500** — the reranker emitted
   `memory_id`/`type` in its breakdown rows while `RetrievalExplainRerankItem` (and the
   dashboard UI) require `id`/`source_type`, so the response failed validation with 12-16

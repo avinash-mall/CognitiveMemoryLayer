@@ -211,7 +211,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         top_k: int = 10,
         context_filter: list[str] | None = None,
         filters: dict[str, Any] | None = None,
-        min_similarity: float = 0.0,
+        min_similarity: float = -1.0,
     ) -> list[MemoryRecord]:
         async with self.session_factory() as session:
             # Phase 6.1: Set HNSW ef_search for this query transaction
@@ -276,6 +276,11 @@ class PostgresMemoryStore(MemoryStoreBase):
             records = []
             for row in result:
                 model, similarity = row[0], row[1]
+                # Cosine similarity is valid on [-1, 1], so the "no threshold" default
+                # must be -1.0. It used to be 0.0, which silently dropped every
+                # negatively-correlated row: invisible with embedding models whose vectors
+                # are effectively non-negative (nomic), but with hashed/mock embeddings —
+                # what CI runs — legitimate results just vanished from the result set.
                 if similarity >= min_similarity:
                     rec = self._to_schema(model)
                     if rec is not None:

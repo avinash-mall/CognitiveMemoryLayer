@@ -62,7 +62,7 @@ class MemoryStoreBase(ABC):
         top_k: int = 10,
         context_filter: list[str] | None = None,
         filters: dict[str, Any] | None = None,
-        min_similarity: float = 0.0,
+        min_similarity: float = -1.0,
     ) -> list[MemoryRecord]:
         """Search by vector similarity. Holistic: tenant-only, optional context_tags filter."""
         ...

@@ -22,11 +22,18 @@ def _make_mock_llm():
 
 @pytest.fixture(scope="module")
 def llm_client():
-    """Real LLM from config if available; otherwise mock so tests never skip."""
-    client = get_internal_llm_client()
-    if client is None:
+    """Real LLM from config if available; otherwise mock so tests never skip.
+
+    get_internal_llm_client() never returns None — it either returns a client or raises
+    (OpenAIError when no credentials are configured, ValueError for a provider that needs
+    a key, ImportError for a missing SDK). Guarding on None left the documented mock
+    fallback unreachable, so these tests errored at setup wherever no LLM is configured,
+    which is exactly the environment the fallback exists for.
+    """
+    try:
+        return get_internal_llm_client()
+    except Exception:
         return _make_mock_llm()
-    return client
 
 
 @pytest.mark.asyncio
