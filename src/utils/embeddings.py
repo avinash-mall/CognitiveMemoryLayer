@@ -13,7 +13,6 @@ from openai import AsyncOpenAI
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import get_embedding_dimensions, get_settings
-from .micro_batcher import AsyncMicroBatcher
 
 # Retryable exceptions for embedding API calls (transient network/rate-limit).
 # The OpenAI SDK raises APITimeoutError/APIConnectionError/RateLimitError/
@@ -430,7 +429,7 @@ class CachedEmbeddings(EmbeddingClient):
         return [r for _, r in results if r is not None]
 
 
-class BatchingEmbeddingClient(EmbeddingClient, AsyncMicroBatcher[str, EmbeddingResult]):
+class BatchingEmbeddingClient(EmbeddingClient):
     """Wraps any EmbeddingClient to coalesce concurrent embed calls into larger GPU batches.
 
     Multiple concurrent ``embed`` / ``embed_batch`` calls that arrive within
@@ -438,8 +437,14 @@ class BatchingEmbeddingClient(EmbeddingClient, AsyncMicroBatcher[str, EmbeddingR
     amortising per-request overhead and saturating GPU throughput.  Works for
     all API paths (write, retrieval, evaluation) — not just bulk ingestion.
 
+    Overflow past ``max_batch_size`` stays queued and is re-dispatched
+    immediately after the current batch, so a burst never becomes one
+    super-batch.
+
     Thread-safety: asyncio-only (each uvicorn worker has its own event loop and
     its own ``BatchingEmbeddingClient`` instance via the singleton cache).
+    State is created lazily so an instance can be constructed outside a running
+    event loop.
     """
 
     def __init__(
@@ -448,8 +453,17 @@ class BatchingEmbeddingClient(EmbeddingClient, AsyncMicroBatcher[str, EmbeddingR
         max_wait_ms: float = 10.0,
         max_batch_size: int = 512,
     ) -> None:
-        AsyncMicroBatcher.__init__(self, max_wait_ms / 1000.0, max_batch_size)
         self._inner = inner
+        self._max_wait = max_wait_ms / 1000.0
+        self._max_batch = max_batch_size
+        self._lock: asyncio.Lock | None = None
+        self._pending: list[tuple[str, asyncio.Future[EmbeddingResult]]] = []
+        self._dispatch_task: asyncio.Task[None] | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def dimensions(self) -> int:
@@ -460,17 +474,43 @@ class BatchingEmbeddingClient(EmbeddingClient, AsyncMicroBatcher[str, EmbeddingR
         return results[0]
 
     async def embed_batch(self, texts: list[str]) -> list[EmbeddingResult]:
-        return await self._submit(texts)
+        """Queue ``texts``, await their results, and return them in order."""
+        if not texts:
+            return []
+        loop = asyncio.get_running_loop()
+        futures: list[asyncio.Future[EmbeddingResult]] = [loop.create_future() for _ in texts]
+        async with self._get_lock():
+            for text, fut in zip(texts, futures, strict=True):
+                self._pending.append((text, fut))
+            if self._dispatch_task is None or self._dispatch_task.done():
+                self._dispatch_task = loop.create_task(self._dispatch_after_wait())
+        return list(await asyncio.gather(*futures))
 
-    async def _run_batch(self, items: list[str]) -> list[EmbeddingResult]:
-        return await self._inner.embed_batch(items)
+    async def _dispatch_after_wait(self) -> None:
+        await asyncio.sleep(self._max_wait)
+        await self._drain()
 
-    def _distribute(
-        self,
-        batch: list[tuple[str, asyncio.Future[EmbeddingResult]]],
-        results: list[EmbeddingResult],
-    ) -> None:
-        # Strict 1:1 contract — surface a backend mismatch rather than None-fill.
+    async def _drain(self) -> None:
+        async with self._get_lock():
+            if not self._pending:
+                return
+            batch = self._pending[: self._max_batch]
+            self._pending = self._pending[self._max_batch :]
+            if self._pending:
+                self._dispatch_task = asyncio.get_running_loop().create_task(self._drain())
+            else:
+                self._dispatch_task = None
+
+        try:
+            results = await self._inner.embed_batch([text for text, _ in batch])
+        except Exception as exc:
+            for _, fut in batch:
+                if not fut.done():
+                    fut.set_exception(exc)
+            return
+
+        # Strict 1:1 contract — surface a backend mismatch rather than None-filling,
+        # because a short result list would otherwise hand callers a None embedding.
         if len(results) != len(batch):
             exc_val = ValueError(
                 f"embed_batch returned {len(results)} results for {len(batch)} texts"
