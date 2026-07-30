@@ -35,7 +35,7 @@ class _FakeRedis:
 @dataclass
 class _FeatureSettings:
     use_llm_enabled: bool = False
-    use_llm_constraint_extractor: bool = False
+    constraint_extraction_enabled: bool = False
     write_time_facts_enabled: bool = True
     untouched: str = "keep"
 
@@ -58,7 +58,7 @@ async def test_get_tenant_overrides_filters_unknown_fields() -> None:
             "tenant_flags:tenant-a": json.dumps(
                 {
                     "use_llm_enabled": True,
-                    "use_llm_constraint_extractor": True,
+                    "constraint_extraction_enabled": True,
                     "unknown_flag": "ignored",
                 }
             )
@@ -69,7 +69,7 @@ async def test_get_tenant_overrides_filters_unknown_fields() -> None:
 
     assert overrides == TenantFeatureOverrides(
         use_llm_enabled=True,
-        use_llm_constraint_extractor=True,
+        constraint_extraction_enabled=True,
     )
 
 
@@ -118,15 +118,15 @@ def test_apply_overrides_returns_shallow_copy_without_mutating_original() -> Non
     features = _FeatureSettings()
     overrides = TenantFeatureOverrides(
         use_llm_enabled=True,
-        use_llm_constraint_extractor=True,
+        constraint_extraction_enabled=True,
     )
 
     merged = apply_overrides(features, overrides)
 
     assert merged is not features
     assert merged.use_llm_enabled is True
-    assert merged.use_llm_constraint_extractor is True
+    assert merged.constraint_extraction_enabled is True
     assert merged.write_time_facts_enabled is True
     assert merged.untouched == "keep"
     assert features.use_llm_enabled is False
-    assert features.use_llm_constraint_extractor is False
+    assert features.constraint_extraction_enabled is False

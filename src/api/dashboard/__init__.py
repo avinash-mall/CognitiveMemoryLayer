@@ -10,7 +10,6 @@ from .graph_routes import router as graph_router
 from .insights_routes import router as insights_router
 from .jobs_routes import router as jobs_router
 from .memory_routes import router as memory_router
-from .models_routes import router as models_router
 from .overview_routes import router as overview_router
 
 dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -23,6 +22,5 @@ dashboard_router.include_router(config_router, tags=[])
 dashboard_router.include_router(jobs_router, tags=[])
 dashboard_router.include_router(insights_router, tags=[])
 dashboard_router.include_router(fact_router, tags=[])
-dashboard_router.include_router(models_router, tags=[])
 
 __all__ = ["_get_db", "dashboard_router"]

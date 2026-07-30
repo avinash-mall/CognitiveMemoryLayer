@@ -52,91 +52,10 @@ async def test_unified_extractor_returns_facts_with_mock_llm():
     assert result.facts[0].value == "vegetarian"
 
 
-def test_ner_write_time_fact_extractor_still_works(monkeypatch):
-    """Non-LLM WriteTimeFactExtractor produces valid facts from parsed NLP output."""
-
-    class _Node:
-        def __init__(self, text: str, dep_: str):
-            self.text = text
-            self.dep_ = dep_
-            self.subtree = [self]
-
-    class _Sent:
-        def __init__(self, text: str):
-            self.text = text
-            self._tokens = [
-                type("T", (), {"text": "I", "lemma_": "I", "pos_": "PRON"})(),
-                type("T", (), {"text": "prefer", "lemma_": "prefer", "pos_": "VERB"})(),
-            ]
-
-        def __iter__(self):
-            return iter(self._tokens)
-
-    class _Token:
-        def __init__(self):
-            self.lemma_ = "prefer"
-            self.pos_ = "VERB"
-            self.text = "prefer"
-            self.children = [_Node("Italian food", "dobj")]
-            self.sent = _Sent("I prefer Italian food")
-
-    class _Doc:
-        def __iter__(self):
-            return iter([_Token()])
-
-        ents = []
-        sents = []
-
-    monkeypatch.setattr("src.extraction.write_time_facts.parse_text", lambda text: _Doc())
-
+def test_regex_write_time_fact_extractor_still_works():
+    """Non-LLM WriteTimeFactExtractor produces valid facts via regex heuristics."""
     extractor = WriteTimeFactExtractor()
     chunk = _chunk("I prefer Italian food")
     facts = extractor.extract(chunk)
     assert len(facts) >= 1
     assert any(f.category == FactCategory.PREFERENCE for f in facts)
-
-
-def test_fact_type_model_can_suppress_named_heuristics(monkeypatch):
-    monkeypatch.setattr("src.extraction.write_time_facts.parse_text", lambda text: None)
-
-    class _FactTypeModelPack:
-        available = True
-
-        def has_task_model(self, task: str) -> bool:
-            return task == "fact_type"
-
-        def predict_single(self, task: str, text: str):
-            if task == "fact_type":
-                return type("P", (), {"label": "none", "confidence": 0.95})()
-            return None
-
-    extractor = WriteTimeFactExtractor()
-    extractor.modelpack = _FactTypeModelPack()
-    chunk = _chunk("I prefer Italian food", chunk_type=ChunkType.PREFERENCE)
-    facts = extractor.extract(chunk)
-    assert facts == []
-
-
-def test_fact_type_model_can_target_location_heuristics(monkeypatch):
-    monkeypatch.setattr("src.extraction.write_time_facts.parse_text", lambda text: None)
-
-    class _FactTypeModelPack:
-        available = True
-
-        def has_task_model(self, task: str) -> bool:
-            return task == "fact_type"
-
-        def predict_single(self, task: str, text: str):
-            if task == "fact_type":
-                return type("P", (), {"label": "location", "confidence": 0.95})()
-            return None
-
-    extractor = WriteTimeFactExtractor()
-    extractor.modelpack = _FactTypeModelPack()
-    chunk = _chunk(
-        "I prefer Italian food and I live in Paris.",
-        chunk_type=ChunkType.FACT,
-    )
-    facts = extractor.extract(chunk)
-    assert any(f.category == FactCategory.LOCATION for f in facts)
-    assert all(f.category != FactCategory.PREFERENCE for f in facts)

@@ -32,25 +32,9 @@ def _chunk(
     return SemanticChunk(id="1", text=text, chunk_type=chunk_type, salience=salience)
 
 
-class _NoModelPack:
-    available = False
-
-    def predict_single(self, task: str, text: str):
-        return None
-
-    def predict_pair(self, task: str, text_a: str, text_b: str):
-        return None
-
-    def predict_score_pair(self, task: str, text_a: str, text_b: str):
-        return None
-
-    def has_task_model(self, task: str) -> bool:
-        return False
-
-
 class TestWriteGate:
     def test_skip_low_importance(self):
-        gate = WriteGate(WriteGateConfig(min_importance=0.5), modelpack=_NoModelPack())
+        gate = WriteGate(WriteGateConfig(min_importance=0.5))
         chunk = SemanticChunk(
             id="1",
             text="Just saying hello.",
@@ -62,7 +46,7 @@ class TestWriteGate:
         assert "threshold" in result.reason.lower()
 
     def test_store_sync_high_importance(self):
-        gate = WriteGate(WriteGateConfig(sync_importance_threshold=0.5), modelpack=_NoModelPack())
+        gate = WriteGate(WriteGateConfig(sync_importance_threshold=0.5))
         chunk = SemanticChunk(
             id="2",
             text="My name is Alice and I live in Paris.",
@@ -79,7 +63,7 @@ class TestWriteGate:
         assert result.importance >= 0.5
 
     def test_skip_secrets(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         chunk = SemanticChunk(
             id="3",
             text="My api_key=sk-secret123 do not share.",
@@ -91,7 +75,7 @@ class TestWriteGate:
         assert "contains_secrets" in result.risk_flags
 
     def test_novelty_low_when_duplicate(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         chunk = SemanticChunk(
             id="4",
             text="I prefer coffee.",
@@ -102,69 +86,9 @@ class TestWriteGate:
         result = gate.evaluate(chunk, existing_memories=existing)
         assert result.novelty == 0.0
 
-    def test_changed_novelty_label_still_allows_store(self):
-        class _ChangedNoveltyModelPack(_NoModelPack):
-            available = True
-
-            def has_task_model(self, task: str) -> bool:
-                return task == "novelty_pair"
-
-            def predict_pair_proba(self, task: str, text_a: str, text_b: str):
-                if task == "novelty_pair":
-                    return {"duplicate": 0.05, "changed": 0.95, "novel": 0.0}
-                return None
-
-        gate = WriteGate(modelpack=_ChangedNoveltyModelPack())
-        chunk = SemanticChunk(
-            id="4b",
-            text="Bob is a professional chef who specializes in Italian cuisine",
-            chunk_type=ChunkType.STATEMENT,
-            salience=0.5,
-        )
-        existing = [{"text": "Alice works as a software engineer at a technology company"}]
-        result = gate.evaluate(chunk, existing_memories=existing)
-        assert result.novelty == 0.95
-        assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
-
-    def test_model_duplicate_probability_skips_without_heuristic_override(self):
-        class _DuplicateNoveltyModelPack(_NoModelPack):
-            available = True
-
-            def has_task_model(self, task: str) -> bool:
-                return task == "novelty_pair"
-
-            def predict_pair_proba(self, task: str, text_a: str, text_b: str):
-                if task == "novelty_pair":
-                    return {"duplicate": 0.97, "changed": 0.02, "novel": 0.01}
-                return None
-
-        gate = WriteGate(modelpack=_DuplicateNoveltyModelPack())
-        chunk = SemanticChunk(
-            id="4c",
-            text="Bob is a professional chef who specializes in Italian cuisine",
-            chunk_type=ChunkType.STATEMENT,
-            salience=0.5,
-        )
-        result = gate.evaluate(
-            chunk,
-            existing_memories=[
-                {"text": "Alice works as a software engineer at a technology company"}
-            ],
-        )
-        assert result.novelty == 0.03
-        assert result.decision == WriteDecision.SKIP
-
-    def test_pii_triggers_redaction(self, monkeypatch):
-        class _PIIModelPack:
-            available = True
-
-            def predict_single(self, task: str, text: str):
-                if task == "pii_presence":
-                    return type("P", (), {"label": "pii", "confidence": 0.9})()
-                return None
-
+    def test_pii_email_triggers_redaction(self, monkeypatch):
         _patch_pii_enabled(monkeypatch)
-        gate = WriteGate(modelpack=_PIIModelPack())
+        gate = WriteGate()
         chunk = SemanticChunk(
             id="5",
             text="My email is test@example.com",
@@ -175,15 +99,9 @@ class TestWriteGate:
         assert result.redaction_required is True
         assert "contains_pii" in result.risk_flags
 
-    def test_pii_regex_fallback_without_modelpack(self, monkeypatch):
-        class _NoModelPack:
-            available = False
-
-            def predict_single(self, task: str, text: str):  # pragma: no cover - never used
-                return None
-
+    def test_pii_regex_phone_triggers_redaction(self, monkeypatch):
         _patch_pii_enabled(monkeypatch)
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         chunk = SemanticChunk(
             id="6",
             text="Reach me at +1 (415) 555-0101.",
@@ -194,16 +112,9 @@ class TestWriteGate:
         assert result.redaction_required is True
         assert "contains_pii" in result.risk_flags
 
-    def test_high_confidence_classifier_without_lexical_pii_cue_does_not_redact(self):
-        class _PIIModelPack:
-            available = True
-
-            def predict_single(self, task: str, text: str):
-                if task == "pii_presence":
-                    return type("P", (), {"label": "pii", "confidence": 0.99})()
-                return None
-
-        gate = WriteGate(modelpack=_PIIModelPack())
+    def test_no_pii_cue_does_not_redact(self, monkeypatch):
+        _patch_pii_enabled(monkeypatch)
+        gate = WriteGate()
         chunk = SemanticChunk(
             id="7",
             text="I prefer dark mode.",
@@ -220,13 +131,13 @@ class TestWriteGateChunkTypeToMemoryType:
     """Flow: each ChunkType maps to expected MemoryType(s); decision store/skip as expected."""
 
     def test_preference_maps_to_preference(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.PREFERENCE, "I prefer dark mode."))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.PREFERENCE in result.memory_types
 
     def test_constraint_maps_to_constraint(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(
             _chunk(ChunkType.CONSTRAINT, "I never want to be reminded on weekends.")
         )
@@ -234,38 +145,38 @@ class TestWriteGateChunkTypeToMemoryType:
         assert MemoryType.CONSTRAINT in result.memory_types
 
     def test_fact_maps_to_semantic_fact_and_episodic(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.FACT, "My name is Alice."))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.SEMANTIC_FACT in result.memory_types
         assert MemoryType.EPISODIC_EVENT in result.memory_types
 
     def test_event_maps_to_episodic_event(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.EVENT, "We met last Tuesday."))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.EPISODIC_EVENT in result.memory_types
 
     def test_statement_maps_to_episodic_event(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.STATEMENT, "The project is on track."))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.EPISODIC_EVENT in result.memory_types
 
     def test_instruction_maps_to_task_state(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.INSTRUCTION, "Please send the report by Friday."))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.TASK_STATE in result.memory_types
 
     def test_question_maps_to_episodic_event(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.QUESTION, "What time is the meeting?"))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.EPISODIC_EVENT in result.memory_types
 
     def test_opinion_maps_to_hypothesis(self):
-        gate = WriteGate(modelpack=_NoModelPack())
+        gate = WriteGate()
         result = gate.evaluate(_chunk(ChunkType.OPINION, "I think we should delay launch."))
         assert result.decision in (WriteDecision.STORE, WriteDecision.REDACT_AND_STORE)
         assert MemoryType.HYPOTHESIS in result.memory_types
@@ -275,7 +186,7 @@ class TestWriteGateSalienceThresholds:
     """Importance and novelty combined score and thresholds drive SKIP vs STORE."""
 
     def test_combined_score_below_min_importance_skips(self):
-        gate = WriteGate(WriteGateConfig(min_importance=0.8), modelpack=_NoModelPack())
+        gate = WriteGate(WriteGateConfig(min_importance=0.8))
         chunk = SemanticChunk(
             id="1",
             text="Just a casual remark.",
@@ -287,10 +198,7 @@ class TestWriteGateSalienceThresholds:
         assert "threshold" in result.reason.lower()
 
     def test_high_salience_and_novelty_stores(self):
-        gate = WriteGate(
-            WriteGateConfig(min_importance=0.3, min_novelty=0.2),
-            modelpack=_NoModelPack(),
-        )
+        gate = WriteGate(WriteGateConfig(min_importance=0.3, min_novelty=0.2))
         chunk = SemanticChunk(
             id="1",
             text="Important: the deadline is next Monday.",
@@ -303,7 +211,7 @@ class TestWriteGateSalienceThresholds:
         assert result.novelty >= 0.2
 
     def test_novelty_below_min_skips(self):
-        gate = WriteGate(WriteGateConfig(min_novelty=0.5), modelpack=_NoModelPack())
+        gate = WriteGate(WriteGateConfig(min_novelty=0.5))
         chunk = SemanticChunk(
             id="1",
             text="I prefer coffee.",

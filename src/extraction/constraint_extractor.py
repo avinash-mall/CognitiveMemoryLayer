@@ -1,4 +1,4 @@
-"""Constraint extraction with modelpack + NER (no rule-pattern heuristics)."""
+"""Constraint extraction via regex heuristics + chunk metadata (LLM path lives in the unified extractor)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from ..memory.working.models import SemanticChunk
-from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
-from ..utils.ner import extract_entities, normalize_scope_values
+from ..utils.ner import normalize_scope_values
 
 
 @dataclass
@@ -37,15 +36,6 @@ class ConstraintObject:
                 d[key] = val.isoformat()
         return d
 
-
-_ALLOWED_CONSTRAINT_TYPES = {
-    "goal",
-    "state",
-    "value",
-    "causal",
-    "preference",
-    "policy",
-}
 
 _CHUNK_TYPE_TO_CONSTRAINT: dict[str, str] = {
     "constraint": "policy",
@@ -133,15 +123,10 @@ Return JSON only:
 
 
 class ConstraintExtractor:
-    """Constraint extractor backed by modelpack + NER."""
+    """Constraint extractor backed by regex heuristics and chunk type."""
 
-    def __init__(
-        self,
-        base_confidence: float = 0.65,
-        modelpack: ModelPackRuntime | None = None,
-    ) -> None:
+    def __init__(self, base_confidence: float = 0.65) -> None:
         self._base_confidence = base_confidence
-        self._modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     def extract(self, chunk: SemanticChunk) -> list[ConstraintObject]:
         """Extract zero or more constraint objects from a single chunk."""
@@ -184,43 +169,12 @@ class ConstraintExtractor:
         chunk: SemanticChunk,
     ) -> tuple[str | None, float]:
         heuristic = self._heuristic_constraint_type(text)
-        chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
-        mapped = _CHUNK_TYPE_TO_CONSTRAINT.get(str(chunk_type).lower())
-
-        # Return early from heuristic/chunk-type if confident — avoids expensive family model
         if heuristic and heuristic[1] >= 0.85:
             return heuristic
+        chunk_type = getattr(getattr(chunk, "chunk_type", None), "value", "")
+        mapped = _CHUNK_TYPE_TO_CONSTRAINT.get(str(chunk_type).lower())
         if mapped:
             return mapped, self._base_confidence
-
-        # Only call the (slow) family model when there's a weak heuristic signal or a
-        # task-level model is available.
-        has_task_model = getattr(self._modelpack, "has_task_model", None)
-        has_dedicated = has_task_model and has_task_model("constraint_type")
-        if not has_dedicated and heuristic is None:
-            # No task model and no heuristic signal — skip the expensive family model
-            return None, self._base_confidence
-
-        supports_task = getattr(self._modelpack, "supports_task", None)
-        can_constraint_type = (
-            bool(supports_task("constraint_type"))
-            if callable(supports_task)
-            else bool(getattr(self._modelpack, "available", False))
-        )
-        if can_constraint_type:
-            pred = self._modelpack.predict_single("constraint_type", text)
-            if pred and pred.label:
-                label = pred.label.strip().lower()
-                if label in _ALLOWED_CONSTRAINT_TYPES:
-                    raw_confidence = max(0.0, min(1.0, pred.confidence))
-                    if heuristic:
-                        model_confidence = max(self._base_confidence, raw_confidence)
-                        if heuristic[1] > model_confidence:
-                            return heuristic
-                        return label, model_confidence
-                    if raw_confidence >= self._base_confidence:
-                        return label, raw_confidence
-
         if heuristic:
             return heuristic
         return None, self._base_confidence
@@ -235,7 +189,7 @@ class ConstraintExtractor:
         new: ConstraintObject,
         llm_client=None,
     ) -> bool:
-        """Return True when NEW supersedes OLD using modelpack or LLM only."""
+        """Return True when NEW supersedes OLD (type/scope pre-filters + LLM)."""
         if old.constraint_type != new.constraint_type:
             return False
         if old.status != "active":
@@ -244,30 +198,6 @@ class ConstraintExtractor:
         new_scope = set(normalize_scope_values(list(new.scope or [])))
         if old_scope and new_scope and old_scope.isdisjoint(new_scope):
             return False
-
-        modelpack = get_modelpack_runtime()
-        # Only use the pair model when a dedicated task model exists — the family
-        # model (supports_task=True but has_task_model=False) costs ~9ms per call
-        # and with 20+ existing constraints per category this adds 180ms+ per write.
-        has_task_model = getattr(modelpack, "has_task_model", None)
-        predict_pair = getattr(modelpack, "predict_pair", None)
-        can_score_supersession = (
-            has_task_model("supersession") if callable(has_task_model) else callable(predict_pair)
-        )
-        if can_score_supersession:
-            sup_pred = modelpack.predict_pair("supersession", old.description, new.description)
-            if sup_pred and sup_pred.confidence >= 0.55:
-                return sup_pred.label == "supersedes"
-
-            can_score_scope_match = (
-                has_task_model("scope_match")
-                if callable(has_task_model)
-                else callable(predict_pair)
-            )
-            if can_score_scope_match:
-                scope_pred = modelpack.predict_pair("scope_match", old.description, new.description)
-                if scope_pred and scope_pred.label == "no_match" and scope_pred.confidence >= 0.8:
-                    return False
 
         if llm_client is None:
             return False
@@ -313,23 +243,8 @@ class ConstraintExtractor:
         return None
 
     def _extract_scope(self, text: str, chunk_entities: list[str] | None = None) -> list[str]:
+        _ = text
         out: list[str] = []
-
-        # Only call the 33ms extractor family model when a dedicated task model exists.
-        # Without it, NER entities below provide sufficient scope coverage.
-        has_task_model = getattr(self._modelpack, "has_task_model", None)
-        if has_task_model and has_task_model("constraint_scope"):
-            pred = self._modelpack.predict_single("constraint_scope", text)
-            if pred and pred.label:
-                label = pred.label.strip()
-                if label and label.lower() not in {"none", "other"}:
-                    out.append(label)
-
-        for ent in extract_entities(text, max_entities=12):
-            value = ent.normalized.strip()
-            if value:
-                out.append(value)
-
         if chunk_entities:
             out.extend([str(e).strip() for e in chunk_entities if str(e).strip()])
         return normalize_scope_values(out)[:8]

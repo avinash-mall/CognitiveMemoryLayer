@@ -5,7 +5,6 @@ from enum import StrEnum
 
 from ..core.schemas import MemoryRecord
 from ..utils.llm import LLMClient
-from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 
 
 class ConflictType(StrEnum):
@@ -58,13 +57,8 @@ Return only valid JSON, no other text:
 class ConflictDetector:
     """Detects conflicts between new information and existing memories."""
 
-    def __init__(
-        self,
-        llm_client: LLMClient | None = None,
-        modelpack: ModelPackRuntime | None = None,
-    ):
+    def __init__(self, llm_client: LLMClient | None = None):
         self.llm = llm_client
-        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     @staticmethod
     def _extract_constraint_type(record: MemoryRecord) -> str | None:
@@ -144,15 +138,8 @@ class ConflictDetector:
 
         from ..core.config import get_settings
 
-        feat = get_settings().features
-        model_result = self._modelpack_detect(old_memory.text, new_statement)
-
-        if self.llm and feat.use_llm_enabled:
-            if feat.use_llm_conflict_detection_only or model_result is None:
-                return await self._llm_detect(old_memory.text, new_statement, context)
-
-        if model_result is not None:
-            return model_result
+        if self.llm and get_settings().features.use_llm_enabled:
+            return await self._llm_detect(old_memory.text, new_statement, context)
 
         return ConflictResult(
             conflict_type=ConflictType.NONE,
@@ -171,55 +158,6 @@ class ConflictDetector:
         import asyncio
 
         return await asyncio.gather(*[self.detect(mem, new_statement) for mem in memories])
-
-    def _modelpack_detect(
-        self,
-        old_statement: str,
-        new_statement: str,
-    ) -> ConflictResult | None:
-        supports_task = getattr(self.modelpack, "supports_task", None)
-        if callable(supports_task):
-            if not supports_task("conflict_detection"):
-                return None
-        elif not getattr(self.modelpack, "available", False):
-            return None
-
-        pred = self.modelpack.predict_pair("conflict_detection", old_statement, new_statement)
-        if pred is None or not pred.label:
-            return None
-
-        mapped = self._map_conflict_label(pred.label)
-        if mapped is None:
-            return None
-
-        return ConflictResult(
-            conflict_type=mapped,
-            confidence=max(0.0, min(1.0, pred.confidence)),
-            old_statement=old_statement,
-            new_statement=new_statement,
-            is_superseding=mapped in {ConflictType.CORRECTION, ConflictType.TEMPORAL_CHANGE},
-            reasoning=f"Modelpack prediction: {pred.label}",
-        )
-
-    @staticmethod
-    def _map_conflict_label(raw_label: str) -> ConflictType | None:
-        label = raw_label.strip().lower()
-        mapping = {
-            "none": ConflictType.NONE,
-            "no_conflict": ConflictType.NONE,
-            "conflict": ConflictType.DIRECT_CONTRADICTION,
-            "generic_conflict": ConflictType.DIRECT_CONTRADICTION,
-            "temporal_change": ConflictType.TEMPORAL_CHANGE,
-            "change": ConflictType.TEMPORAL_CHANGE,
-            "contradiction": ConflictType.DIRECT_CONTRADICTION,
-            "direct_contradiction": ConflictType.DIRECT_CONTRADICTION,
-            "refinement": ConflictType.REFINEMENT,
-            "correction": ConflictType.CORRECTION,
-            "supersedes": ConflictType.CORRECTION,
-            "ambiguity": ConflictType.AMBIGUITY,
-            "ambiguous": ConflictType.AMBIGUITY,
-        }
-        return mapping.get(label)
 
     async def _llm_detect(
         self,

@@ -5,8 +5,6 @@ import re
 
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
-from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
-from ..utils.ner import extract_entity_texts
 from .query_types import QueryAnalysis, QueryIntent
 
 logger = get_logger(__name__)
@@ -101,33 +99,10 @@ Rules:
 
 
 class QueryClassifier:
-    """Classifies queries using modelpack and/or LLM."""
+    """Classifies queries using the LLM plus regex heuristics."""
 
-    _MODELPACK_INTENT_HINTS: dict[str, QueryIntent] = {
-        "constraint_check": QueryIntent.CONSTRAINT_CHECK,
-        "preference_lookup": QueryIntent.PREFERENCE_LOOKUP,
-        "identity_lookup": QueryIntent.IDENTITY_LOOKUP,
-        "task_status": QueryIntent.TASK_STATUS,
-        "episodic_recall": QueryIntent.EPISODIC_RECALL,
-        "general_question": QueryIntent.GENERAL_QUESTION,
-        "multi_hop": QueryIntent.MULTI_HOP,
-        "temporal_query": QueryIntent.TEMPORAL_QUERY,
-        "procedural": QueryIntent.PROCEDURAL,
-        "unknown": QueryIntent.UNKNOWN,
-        "planning": QueryIntent.PROCEDURAL,
-        "conversation": QueryIntent.EPISODIC_RECALL,
-        "factual": QueryIntent.GENERAL_QUESTION,
-        "tool_query": QueryIntent.GENERAL_QUESTION,
-    }
-
-    def __init__(
-        self,
-        llm_client: LLMClient | None = None,
-        modelpack: ModelPackRuntime | None = None,
-    ):
+    def __init__(self, llm_client: LLMClient | None = None):
         self.llm = llm_client
-        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
-        self._direct_intent_map = {intent.value: intent for intent in QueryIntent}
 
     async def classify(
         self,
@@ -140,9 +115,7 @@ class QueryClassifier:
         settings = get_settings().features
 
         result: QueryAnalysis | None = None
-        result = self._modelpack_classify(query)
-
-        if result is None and self.llm and settings.use_llm_enabled:
+        if self.llm and settings.use_llm_enabled:
             result = await self._llm_classify(query, recent_context=recent_context)
 
         if result is None:
@@ -154,12 +127,10 @@ class QueryClassifier:
                 suggested_top_k=10,
             )
 
-        if not result.entities:
-            result.entities = self._extract_entities(query)
-
-        self._enrich_with_modelpack(result)
-        self._apply_preference_heuristics(result)
+        # Constraint/decision heuristics first: "Can I eat X?" is a constraint
+        # check even when a preference entity ("cuisine") is also mentioned.
         self._apply_constraint_heuristics(result)
+        self._apply_preference_heuristics(result)
         result.is_decision_query = result.is_decision_query or (
             result.intent == QueryIntent.CONSTRAINT_CHECK
         )
@@ -174,78 +145,6 @@ class QueryClassifier:
             result.suggested_sources = self._get_sources_for_intent(QueryIntent.CONSTRAINT_CHECK)
             result.suggested_top_k = self._get_top_k_for_intent(QueryIntent.CONSTRAINT_CHECK)
         return result
-
-    def _modelpack_classify(self, query: str) -> QueryAnalysis | None:
-        supports_task = getattr(self.modelpack, "supports_task", None)
-        if callable(supports_task):
-            if not supports_task("query_intent"):
-                return None
-        elif not getattr(self.modelpack, "available", False):
-            return None
-        if not query.strip():
-            return None
-
-        intent_pred = self.modelpack.predict_single("query_intent", query)
-        if intent_pred is None or not intent_pred.label:
-            return None
-        intent = self._intent_from_label(intent_pred.label)
-        if intent is None:
-            return None
-
-        return QueryAnalysis(
-            original_query=query,
-            intent=intent,
-            confidence=max(0.0, min(1.0, intent_pred.confidence)),
-            entities=self._extract_entities(query),
-            suggested_sources=self._get_sources_for_intent(intent),
-            suggested_top_k=self._get_top_k_for_intent(intent),
-        )
-
-    def _enrich_with_modelpack(self, analysis: QueryAnalysis) -> None:
-        """Augment query analysis with router model signals when available."""
-        supports_task = getattr(self.modelpack, "supports_task", None)
-        modelpack_available = bool(getattr(self.modelpack, "available", False))
-
-        def _can_use(task: str) -> bool:
-            if callable(supports_task):
-                return bool(supports_task(task))
-            return modelpack_available
-
-        query = analysis.original_query or ""
-        if not query.strip():
-            return
-
-        domain_pred = None
-        if _can_use("query_domain"):
-            domain_pred = self.modelpack.predict_single("query_domain", query)
-        if domain_pred and domain_pred.label:
-            analysis.query_domain = domain_pred.label
-            analysis.metadata["query_domain_confidence"] = domain_pred.confidence
-
-        if not analysis.constraint_dimensions_from_llm:
-            dim_pred = None
-            if _can_use("constraint_dimension"):
-                dim_pred = self.modelpack.predict_single("constraint_dimension", query)
-            if dim_pred and dim_pred.label and dim_pred.label != "other":
-                dims = analysis.constraint_dimensions
-                if dims is None:
-                    analysis.constraint_dimensions = [dim_pred.label]
-                elif dim_pred.label not in dims:
-                    dims.append(dim_pred.label)
-
-        intent_pred = None
-        if _can_use("query_intent"):
-            intent_pred = self.modelpack.predict_single("query_intent", query)
-        if intent_pred and intent_pred.label:
-            hint_intent = self._intent_from_label(intent_pred.label)
-            if (
-                hint_intent is not None
-                and intent_pred.confidence >= 0.55
-                and analysis.intent in {QueryIntent.GENERAL_QUESTION, QueryIntent.UNKNOWN}
-            ):
-                analysis.intent = hint_intent
-                analysis.suggested_sources = self._get_sources_for_intent(hint_intent)
-                analysis.suggested_top_k = self._get_top_k_for_intent(hint_intent)
 
     def _apply_constraint_heuristics(self, analysis: QueryAnalysis) -> None:
         query = (analysis.original_query or "").strip().lower()
@@ -367,15 +266,6 @@ class QueryClassifier:
                 suggested_sources=["vector", "facts"],
                 suggested_top_k=10,
             )
-
-    def _extract_entities(self, query: str) -> list[str]:
-        return extract_entity_texts(query, max_entities=12)
-
-    def _intent_from_label(self, raw_label: str) -> QueryIntent | None:
-        label = raw_label.strip().lower()
-        if label in self._direct_intent_map:
-            return self._direct_intent_map[label]
-        return self._MODELPACK_INTENT_HINTS.get(label)
 
     def _get_sources_for_intent(self, intent: QueryIntent) -> list[str]:
         """Map intent to retrieval sources."""

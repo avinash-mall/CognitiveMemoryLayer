@@ -1,18 +1,10 @@
-"""Entity extraction from text.
-
-Primary path:
-- LLM extraction when an LLM client is available.
-
-Fallback path:
-- spaCy NER for non-LLM mode.
-"""
+"""Entity extraction from text via LLM (empty when no LLM client)."""
 
 import asyncio
 import json
 
 from ..core.schemas import EntityMention
 from ..utils.llm import LLMClient
-from ..utils.ner import _SPACY_EXECUTOR, extract_entities
 from ..utils.parsing import strip_markdown_fences
 
 ENTITY_EXTRACTION_PROMPT = """Extract named entities from the following text.
@@ -34,7 +26,7 @@ Extract ALL meaningful entities. Return only the JSON array, no other text."""
 
 
 class EntityExtractor:
-    """Extracts named entities from text using LLM with spaCy fallback."""
+    """Extracts named entities from text using the LLM."""
 
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm = llm_client
@@ -45,8 +37,7 @@ class EntityExtractor:
         context: str | None = None,
     ) -> list[EntityMention]:
         if not self.llm:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, text)
+            return []
 
         prompt = ENTITY_EXTRACTION_PROMPT.format(text=text)
         if context:
@@ -66,20 +57,7 @@ class EntityExtractor:
                 if isinstance(e, dict) and e.get("text")
             ]
         except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, text)
-
-    def _spacy_extract(self, text: str) -> list[EntityMention]:
-        return [
-            EntityMention(
-                text=e.text,
-                normalized=e.normalized,
-                entity_type=e.entity_type,
-                start_char=e.start_char,
-                end_char=e.end_char,
-            )
-            for e in extract_entities(text)
-        ]
+            return []
 
     async def extract_batch(self, texts: list[str]) -> list[list[EntityMention]]:
         """Extract entities from multiple texts in a single LLM call.
@@ -91,12 +69,7 @@ class EntityExtractor:
         if not texts:
             return []
         if not self.llm:
-            loop = asyncio.get_running_loop()
-            return list(
-                await asyncio.gather(
-                    *[loop.run_in_executor(_SPACY_EXECUTOR, self._spacy_extract, t) for t in texts]
-                )
-            )
+            return [[] for _ in texts]
         if len(texts) == 1:
             return [await self.extract(texts[0])]
 

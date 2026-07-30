@@ -1,7 +1,6 @@
 """Unit tests for reconsolidation (labile tracker, conflict detector, belief revision)."""
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -81,59 +80,15 @@ class TestLabileStateTracker:
 
 
 class TestConflictDetector:
-    class _StubModelPack:
-        def __init__(self, label: str, confidence: float = 0.9):
-            self.available = True
-            self._label = label
-            self._confidence = confidence
-
-        def predict_pair(self, task: str, text_a: str, text_b: str):
-            if task == "conflict_detection":
-                return SimpleNamespace(label=self._label, confidence=self._confidence)
-            return None
-
     @pytest.mark.asyncio
-    async def test_modelpack_correction(self):
-        detector = ConflictDetector(
-            llm_client=None,
-            modelpack=self._StubModelPack(label="correction", confidence=0.93),
-        )
+    async def test_no_llm_returns_none(self):
+        """Without an LLM client, conflict detection reports NONE."""
+        detector = ConflictDetector(llm_client=None)
         old = _make_memory("I like coffee.")
         result = await detector.detect(old, "Actually, I prefer tea now.")
-        assert result.conflict_type == ConflictType.CORRECTION
-        assert result.is_superseding is True
-        assert result.confidence > 0.8
-
-    @pytest.mark.asyncio
-    async def test_modelpack_no_conflict(self):
-        detector = ConflictDetector(
-            llm_client=None,
-            modelpack=self._StubModelPack(label="none", confidence=0.88),
-        )
-        old = _make_memory("I have a dog.")
-        result = await detector.detect(old, "The weather is nice today.")
         assert result.conflict_type == ConflictType.NONE
-
-    @pytest.mark.asyncio
-    async def test_modelpack_preference_temporal(self):
-        detector = ConflictDetector(
-            llm_client=None,
-            modelpack=self._StubModelPack(label="temporal_change", confidence=0.81),
-        )
-        old = _make_memory("I prefer black coffee.")
-        result = await detector.detect(old, "I prefer milk coffee.")
-        assert result.conflict_type == ConflictType.TEMPORAL_CHANGE
-        assert result.is_superseding is True
-
-    @pytest.mark.asyncio
-    async def test_modelpack_generic_conflict_label_maps_to_contradiction(self):
-        detector = ConflictDetector(
-            llm_client=None,
-            modelpack=self._StubModelPack(label="conflict", confidence=0.84),
-        )
-        old = _make_memory("I work in New York City.")
-        result = await detector.detect(old, "I work in San Francisco.")
-        assert result.conflict_type == ConflictType.DIRECT_CONTRADICTION
+        assert result.confidence == 0.0
+        assert result.reasoning == "No conflict model available"
 
 
 class TestBeliefRevisionEngine:

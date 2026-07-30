@@ -7,11 +7,18 @@ from src.memory.hippocampal.write_gate import WriteGate
 from src.memory.working.models import ChunkType, SemanticChunk
 
 
-class _NoModelPack:
-    available = False
-
-    def predict_single(self, task: str, text: str):
-        return None
+def _fake_settings():
+    return type(
+        "S",
+        (),
+        {
+            "features": type(
+                "F",
+                (),
+                {"use_llm_enabled": True, "pii_redaction_enabled": True},
+            )()
+        },
+    )()
 
 
 def _chunk(text: str, chunk_type: ChunkType = ChunkType.STATEMENT) -> SemanticChunk:
@@ -28,28 +35,8 @@ def test_preference_memory_type_uses_chunk_type_preference_for_importance(monkey
     """When unified_result.memory_type='preference', gate uses ChunkType.PREFERENCE for importance."""
     from src.extraction.unified_write_extractor import UnifiedExtractionResult
 
-    monkeypatch.setattr(
-        "src.memory.hippocampal.write_gate.get_settings",
-        lambda: type(
-            "S",
-            (),
-            {
-                "features": type(
-                    "F",
-                    (),
-                    {
-                        "use_llm_enabled": True,
-                        "use_llm_memory_type": True,
-                        "use_llm_write_gate_importance": False,
-                        "use_llm_salience_refinement": False,
-                        "use_llm_pii_redaction": False,
-                        "pii_redaction_enabled": True,
-                    },
-                )()
-            },
-        )(),
-    )
-    gate = WriteGate(modelpack=_NoModelPack())
+    monkeypatch.setattr("src.memory.hippocampal.write_gate.get_settings", _fake_settings)
+    gate = WriteGate()
     chunk = _chunk("I prefer dark mode", chunk_type=ChunkType.STATEMENT)
     unified_result = UnifiedExtractionResult(
         entities=[],
@@ -72,28 +59,8 @@ def test_constraint_memory_type_uses_chunk_type_constraint(monkeypatch):
     """When unified_result.memory_type='constraint', gate uses ChunkType.CONSTRAINT."""
     from src.extraction.unified_write_extractor import UnifiedExtractionResult
 
-    monkeypatch.setattr(
-        "src.memory.hippocampal.write_gate.get_settings",
-        lambda: type(
-            "S",
-            (),
-            {
-                "features": type(
-                    "F",
-                    (),
-                    {
-                        "use_llm_enabled": True,
-                        "use_llm_memory_type": True,
-                        "use_llm_write_gate_importance": False,
-                        "use_llm_salience_refinement": False,
-                        "use_llm_pii_redaction": False,
-                        "pii_redaction_enabled": True,
-                    },
-                )()
-            },
-        )(),
-    )
-    gate = WriteGate(modelpack=_NoModelPack())
+    monkeypatch.setattr("src.memory.hippocampal.write_gate.get_settings", _fake_settings)
+    gate = WriteGate()
     chunk = _chunk("I must avoid gluten", chunk_type=ChunkType.STATEMENT)
     unified_result = UnifiedExtractionResult(
         entities=[],
@@ -112,28 +79,8 @@ def test_unknown_memory_type_falls_back_to_statement(monkeypatch):
     """Unknown memory_type falls back to ChunkType.STATEMENT."""
     from src.extraction.unified_write_extractor import UnifiedExtractionResult
 
-    monkeypatch.setattr(
-        "src.memory.hippocampal.write_gate.get_settings",
-        lambda: type(
-            "S",
-            (),
-            {
-                "features": type(
-                    "F",
-                    (),
-                    {
-                        "use_llm_enabled": True,
-                        "use_llm_memory_type": True,
-                        "use_llm_write_gate_importance": False,
-                        "use_llm_salience_refinement": False,
-                        "use_llm_pii_redaction": False,
-                        "pii_redaction_enabled": True,
-                    },
-                )()
-            },
-        )(),
-    )
-    gate = WriteGate(modelpack=_NoModelPack())
+    monkeypatch.setattr("src.memory.hippocampal.write_gate.get_settings", _fake_settings)
+    gate = WriteGate()
     chunk = _chunk("Some text", chunk_type=ChunkType.STATEMENT)
     unified_result = UnifiedExtractionResult(
         entities=[],

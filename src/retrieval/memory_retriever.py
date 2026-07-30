@@ -9,7 +9,6 @@ from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
-from ..utils.modelpack import get_modelpack_runtime
 from ..utils.tracing import async_trace_span
 from .bm25_index import TenantBM25Manager, rrf_merge
 from .classifier import QueryClassifier
@@ -42,14 +41,12 @@ class MemoryRetriever:
         llm_client: LLMClient | None = None,
         cache: object | None = None,
     ):
-        modelpack = get_modelpack_runtime()
-        self.classifier = QueryClassifier(llm_client, modelpack=modelpack)
+        self.classifier = QueryClassifier(llm_client)
         self.planner = RetrievalPlanner()
-        self.retriever = HybridRetriever(hippocampal, neocortical, cache, modelpack=modelpack)
+        self.retriever = HybridRetriever(hippocampal, neocortical, cache)
         self.reranker = MemoryReranker(
             config=_reranker_config_from_settings(),
             llm_client=llm_client,
-            modelpack=modelpack,
         )
         self.packet_builder = MemoryPacketBuilder()
         self.llm_client = llm_client

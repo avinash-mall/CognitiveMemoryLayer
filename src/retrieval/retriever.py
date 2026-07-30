@@ -14,7 +14,6 @@ from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.logging_config import get_logger
-from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
 
@@ -54,12 +53,10 @@ class HybridRetriever:
         hippocampal: HippocampalStore,
         neocortical: NeocorticalStore,
         cache: Any | None = None,
-        modelpack: ModelPackRuntime | None = None,
     ):
         self.hippocampal = hippocampal
         self.neocortical = neocortical
         self.cache = cache
-        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     async def retrieve(
         self,
@@ -765,61 +762,10 @@ class HybridRetriever:
         if not rows:
             return rows
 
-        supports_task = getattr(self.modelpack, "supports_task", None)
-        if callable(supports_task):
-            can_constraint_rerank = bool(supports_task("constraint_rerank"))
-            can_scope_match = bool(supports_task("scope_match"))
-            use_relevance_model = bool(supports_task("retrieval_constraint_relevance_pair"))
-        else:
-            can_constraint_rerank = bool(getattr(self.modelpack, "available", False))
-            can_scope_match = bool(getattr(self.modelpack, "available", False))
-            use_relevance_model = bool(
-                getattr(self.modelpack, "has_task_model", lambda _task: False)(
-                    "retrieval_constraint_relevance_pair"
-                )
-            )
-
-        modelpack_ready = bool(query.strip()) and (can_constraint_rerank or can_scope_match)
-
+        _ = query
         for row in rows:
             base = float(row.get("relevance", 0.7))
-            text = str(row.get("text", "") or "")
-
-            relevance_bonus: float | None = None
-            if use_relevance_model and text:
-                try:
-                    pred = self.modelpack.predict_score_pair(
-                        "retrieval_constraint_relevance_pair", query, text
-                    )
-                    if pred is not None:
-                        relevance_bonus = pred.score
-                except Exception:
-                    pass
-
-            if relevance_bonus is not None:
-                score = base + relevance_bonus
-            else:
-                score = base + self._domain_bonus(query_domain=query_domain, row=row)
-
-            if modelpack_ready and text:
-                rel_pred = self.modelpack.predict_pair("constraint_rerank", query, text)
-                if rel_pred:
-                    rel_signal = (
-                        rel_pred.confidence
-                        if rel_pred.label == "relevant"
-                        else (1.0 - rel_pred.confidence)
-                    )
-                    score += (rel_signal - 0.5) * 0.45
-
-                scope_pred = self.modelpack.predict_pair("scope_match", query, text)
-                if scope_pred:
-                    scope_signal = (
-                        scope_pred.confidence
-                        if scope_pred.label == "match"
-                        else (1.0 - scope_pred.confidence)
-                    )
-                    score += (scope_signal - 0.5) * 0.25
-
+            score = base + self._domain_bonus(query_domain=query_domain, row=row)
             row["relevance"] = max(0.0, min(1.5, score))
 
         rows.sort(

@@ -76,6 +76,10 @@ class LLMInternalSettings(PydanticBaseModel):
     model: str = Field(default="gpt-4o-mini")
     base_url: str | None = Field(default=None)
     api_key: str | None = Field(default=None)
+    extra_body: dict | None = Field(
+        default=None,
+        description='Extra JSON merged into chat completion requests, e.g. {"chat_template_kwargs": {"enable_thinking": false}} for vLLM reasoning models without a reasoning parser.',
+    )
 
 
 class LLMEvalSettings(PydanticBaseModel):
@@ -85,22 +89,7 @@ class LLMEvalSettings(PydanticBaseModel):
     model: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
     api_key: str | None = Field(default=None)
-
-
-class SummarizerInternalSettings(PydanticBaseModel):
-    """Local summarizer settings for non-LLM summarization paths."""
-
-    provider: str = Field(default="huggingface")
-    model: str = Field(default="Falconsai/text_summarization")
-    task: str = Field(default="summarization")
-    max_input_chars: int = Field(default=2400)
-    max_output_chars: int = Field(default=320)
-    min_length: int = Field(default=24)
-    max_length: int = Field(default=96)
-    device: int = Field(
-        default=-1,
-        description="-1 = CPU, >=0 = CUDA device index for transformers pipeline",
-    )
+    extra_body: dict | None = Field(default=None)
 
 
 class ChunkerSettings(PydanticBaseModel):
@@ -173,53 +162,12 @@ class FeatureFlags(PydanticBaseModel):
     constraint_extraction_enabled: bool = Field(
         default=True, description="Cognitive: extract and store latent constraints at write time"
     )
-    # Master LLM switch (default false): when false, internal LLM calls are disabled.
-    # Runtime uses modelpack and NER where available.
+    # Master LLM switch (default false): when false, internal LLM calls are disabled
+    # and the runtime degrades to heuristics (regex PII, Jaccard novelty, no extraction).
     use_llm_enabled: bool = Field(
         default=False,
-        description="Master switch: when false, internal LLM calls are disabled. "
-        "Runtime uses modelpack/NER alternatives when configured.",
-    )
-    # Fine-grained LLM flags (only effective when use_llm_enabled=true)
-    use_llm_constraint_extractor: bool = Field(
-        default=True,
-        description="Use LLM (via unified extractor) for constraint extraction instead of modelpack/NER path",
-    )
-    use_llm_write_time_facts: bool = Field(
-        default=True,
-        description="Use LLM (via unified extractor) for write-time fact extraction instead of NER parser path",
-    )
-    use_llm_salience_refinement: bool = Field(
-        default=True,
-        description="Use LLM salience from unified extractor instead of non-LLM salience/modelpack signal",
-    )
-    use_llm_pii_redaction: bool = Field(
-        default=True,
-        description="Use LLM PII spans from unified extractor, merged with regex redaction",
-    )
-    use_llm_write_gate_importance: bool = Field(
-        default=True,
-        description="Use LLM importance from unified extractor instead of modelpack/default salience",
-    )
-    use_llm_memory_type: bool = Field(
-        default=True,
-        description="Use LLM memory_type from unified extractor when present and valid",
-    )
-    use_llm_confidence: bool = Field(
-        default=True,
-        description="Use LLM confidence from unified extractor when present",
-    )
-    use_llm_context_tags: bool = Field(
-        default=True,
-        description="Use LLM context_tags from unified extractor when caller does not provide tags",
-    )
-    use_llm_decay_rate: bool = Field(
-        default=True,
-        description="Use LLM decay_rate from unified extractor when valid",
-    )
-    use_llm_conflict_detection_only: bool = Field(
-        default=False,
-        description="Bypass modelpack conflict detector and always use LLM for conflict detection",
+        description="Master switch: when true, the internal LLM drives extraction, "
+        "classification, and enrichment; when false, heuristic-only mode.",
     )
     # --- Improvement Report features (LoCoMo-Plus / Kumiho-inspired) ---
     prospective_indexing_enabled: bool = Field(
@@ -315,42 +263,10 @@ class PerformanceSettings(PydanticBaseModel):
         description="Thread-pool size for write-gate novelty checks. "
         "0 = auto (min(cpu_count, 8)). Lower on small machines to reduce GIL contention.",
     )
-    spacy_executor_workers: int = Field(
-        default=0,
-        description="Thread-pool size for spaCy NER calls. "
-        "0 = auto (min(cpu_count // 4, 2, but at least 1)). "
-        "spaCy + GIL means more threads rarely helps.",
-    )
-    span_batch_wait_ms: float = Field(
-        default=0,
-        description="DeBERTa span-predictor coalescing window (ms). "
-        "0 = auto (10ms). Higher = larger batches but more latency per request.",
-    )
-    span_max_batch_size: int = Field(
-        default=0,
-        description="Max texts per DeBERTa span-predictor batch. "
-        "0 = auto (20). Cap prevents super-batches from stalling callers.",
-    )
-
     def resolved_gate_workers(self) -> int:
         if self.gate_executor_workers > 0:
             return self.gate_executor_workers
         return min(_auto_cpu_count(), 8)
-
-    def resolved_spacy_workers(self) -> int:
-        if self.spacy_executor_workers > 0:
-            return self.spacy_executor_workers
-        return max(1, min(_auto_cpu_count() // 4, 2))
-
-    def resolved_span_batch_wait_ms(self) -> float:
-        if self.span_batch_wait_ms > 0:
-            return self.span_batch_wait_ms
-        return 10.0
-
-    def resolved_span_max_batch_size(self) -> int:
-        if self.span_max_batch_size > 0:
-            return self.span_max_batch_size
-        return 20
 
 
 class Settings(BaseSettings):
@@ -366,9 +282,6 @@ class Settings(BaseSettings):
     embedding_internal: EmbeddingInternalSettings = Field(default_factory=EmbeddingInternalSettings)
     llm_internal: LLMInternalSettings = Field(default_factory=LLMInternalSettings)
     llm_eval: LLMEvalSettings = Field(default_factory=LLMEvalSettings)
-    summarizer_internal: SummarizerInternalSettings = Field(
-        default_factory=SummarizerInternalSettings
-    )
     auth: AuthSettings = Field(default_factory=AuthSettings)
     chunker: ChunkerSettings = Field(default_factory=ChunkerSettings)
     features: FeatureFlags = Field(default_factory=FeatureFlags)

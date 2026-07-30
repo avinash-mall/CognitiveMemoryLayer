@@ -219,12 +219,6 @@ async def test_dashboard_write_simulate_returns_chunk_decisions(
         "get_settings",
         lambda: SimpleNamespace(features=_feature_flags()),
     )
-    monkeypatch.setattr(insights_routes, "_ner_entities_for_text", lambda text: [{"text": text}])
-    monkeypatch.setattr(
-        insights_routes,
-        "_ner_relations_for_text",
-        lambda text: [{"predicate": "likes", "text": text}],
-    )
     monkeypatch.setattr(insights_routes, "WriteTimeFactExtractor", lambda: _FactExtractor())
 
     store = SimpleNamespace(scan=AsyncMock(return_value=[SimpleNamespace(text="Older memory")]))

@@ -17,21 +17,11 @@ try:
 except ImportError:
     pass
 
-# Disable LLM replacement flags so tests don't require LLM (override .env)
+# Disable LLM so tests don't require a model server (override .env)
 # Individual tests can monkeypatch get_settings when testing LLM path
 import os
 
-_llm_flags = (
-    "FEATURES__USE_LLM_ENABLED",
-    "FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR",
-    "FEATURES__USE_LLM_WRITE_TIME_FACTS",
-    "FEATURES__USE_LLM_SALIENCE_REFINEMENT",
-    "FEATURES__USE_LLM_PII_REDACTION",
-    "FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE",
-    "FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY",
-)
-for _f in _llm_flags:
-    os.environ[_f] = "false"
+os.environ["FEATURES__USE_LLM_ENABLED"] = "false"
 
 # Keep tests lightweight and deterministic — always override .env so we never
 # load a real SentenceTransformer model and hit CUDA OOM in unit tests.

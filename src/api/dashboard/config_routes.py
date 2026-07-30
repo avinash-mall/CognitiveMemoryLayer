@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...core.config import EmbeddingInternalSettings, SummarizerInternalSettings, get_settings
+from ...core.config import EmbeddingInternalSettings, get_settings
 from ...core.env_file import get_env_path, update_env
 from ...storage.connection import DatabaseManager
 from ..auth import AuthContext, require_admin_permission
@@ -71,19 +71,6 @@ def _validate_config_updates(updates: dict[str, Any]) -> list[str]:
         elif key.startswith("retrieval.reranker."):
             if not isinstance(val, (int, float)) or val < 0 or val > 1:
                 errors.append(f"{key} must be between 0 and 1")
-        elif key in (
-            "summarizer_internal.max_input_chars",
-            "summarizer_internal.max_output_chars",
-            "summarizer_internal.max_length",
-        ):
-            if not isinstance(val, (int, float)) or val <= 0:
-                errors.append(f"{key} must be a positive integer")
-        elif key == "summarizer_internal.min_length":
-            if not isinstance(val, (int, float)) or val < 0:
-                errors.append("summarizer_internal.min_length must be non-negative")
-        elif key == "summarizer_internal.device":
-            if not isinstance(val, (int, float)) or val < -1:
-                errors.append("summarizer_internal.device must be -1 (CPU) or >= 0 (CUDA index)")
     return errors
 
 
@@ -492,105 +479,6 @@ async def dashboard_config(
         )
     )
 
-    # ── Summarizer (Internal) ──────────────────────────────────────────────────
-    summ = getattr(settings, "summarizer_internal", None) or SummarizerInternalSettings()
-    sections.append(
-        ConfigSection(
-            name="Summarizer (Internal)",
-            items=[
-                ConfigItem(
-                    key="summarizer_internal.provider",
-                    value=summ.provider,
-                    default_value="huggingface",
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__PROVIDER"),
-                    description="Summarizer backend. Only 'huggingface' is currently supported.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__PROVIDER",
-                    options=["huggingface"],
-                ),
-                ConfigItem(
-                    key="summarizer_internal.model",
-                    value=summ.model,
-                    default_value="Falconsai/text_summarization",
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__MODEL"),
-                    description="Hugging Face model ID for summarization. Used by consolidation gist extraction when LLM is disabled.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__MODEL",
-                ),
-                ConfigItem(
-                    key="summarizer_internal.task",
-                    value=summ.task,
-                    default_value="summarization",
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__TASK"),
-                    description="transformers pipeline task name.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__TASK",
-                ),
-                ConfigItem(
-                    key="summarizer_internal.max_input_chars",
-                    value=summ.max_input_chars,
-                    default_value=2400,
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__MAX_INPUT_CHARS"),
-                    description="Input text is truncated to this many characters before summarization.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__MAX_INPUT_CHARS",
-                ),
-                ConfigItem(
-                    key="summarizer_internal.max_output_chars",
-                    value=summ.max_output_chars,
-                    default_value=320,
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__MAX_OUTPUT_CHARS"),
-                    description="Output is truncated to this many characters after summarization.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__MAX_OUTPUT_CHARS",
-                ),
-                ConfigItem(
-                    key="summarizer_internal.min_length",
-                    value=summ.min_length,
-                    default_value=24,
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__MIN_LENGTH"),
-                    description="Minimum token length for generated summaries (passed to transformers pipeline).",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__MIN_LENGTH",
-                ),
-                ConfigItem(
-                    key="summarizer_internal.max_length",
-                    value=summ.max_length,
-                    default_value=96,
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__MAX_LENGTH"),
-                    description="Maximum token length for generated summaries (passed to transformers pipeline).",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__MAX_LENGTH",
-                ),
-                ConfigItem(
-                    key="summarizer_internal.device",
-                    value=summ.device,
-                    default_value=-1,
-                    is_editable=True,
-                    source=_config_source("SUMMARIZER_INTERNAL__DEVICE"),
-                    description="Device for transformers pipeline. -1 = auto-detect (uses GPU 0 if CUDA available, otherwise CPU); 0, 1, … = specific CUDA device index.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="SUMMARIZER_INTERNAL__DEVICE",
-                ),
-            ],
-        )
-    )
-
     # ── Chunker ────────────────────────────────────────────────────────────────
     chk = settings.chunker
     sections.append(
@@ -950,130 +838,10 @@ async def dashboard_config(
                     default_value=False,
                     is_editable=True,
                     source=_config_source("FEATURES__USE_LLM_ENABLED"),
-                    description="Master LLM switch. When false, all internal LLM calls are disabled; the runtime uses modelpack and NER instead. All fine-grained USE_LLM_* flags below are only effective when this is true.",
+                    description="Master LLM switch. When true, the internal LLM drives extraction, classification, and enrichment; when false, heuristic-only mode.",
                     requires_restart=True,
                     is_required=False,
                     env_var="FEATURES__USE_LLM_ENABLED",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_constraint_extractor",
-                    value=feat.use_llm_constraint_extractor,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR"),
-                    description="Use LLM (unified extractor) for constraint extraction instead of the rule-based path.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_CONSTRAINT_EXTRACTOR",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_write_time_facts",
-                    value=feat.use_llm_write_time_facts,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_WRITE_TIME_FACTS"),
-                    description="Use LLM for write-time fact extraction instead of the spaCy dependency-parse path.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_WRITE_TIME_FACTS",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_write_gate_importance",
-                    value=feat.use_llm_write_gate_importance,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE"),
-                    description="Use LLM importance score from the unified extractor instead of the modelpack/rule-based importance.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_WRITE_GATE_IMPORTANCE",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_salience_refinement",
-                    value=feat.use_llm_salience_refinement,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_SALIENCE_REFINEMENT"),
-                    description="Use LLM salience score from the unified extractor instead of rule-based salience boosts.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_SALIENCE_REFINEMENT",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_pii_redaction",
-                    value=feat.use_llm_pii_redaction,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_PII_REDACTION"),
-                    description="Merge LLM-detected PII spans from the unified extractor with the regex PII baseline.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_PII_REDACTION",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_memory_type",
-                    value=feat.use_llm_memory_type,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_MEMORY_TYPE"),
-                    description="Use LLM memory_type classification from the unified extractor. API-level override still takes precedence.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_MEMORY_TYPE",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_confidence",
-                    value=feat.use_llm_confidence,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_CONFIDENCE"),
-                    description="Use LLM confidence score from the unified extractor instead of the modelpack 3-bin estimate.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_CONFIDENCE",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_context_tags",
-                    value=feat.use_llm_context_tags,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_CONTEXT_TAGS"),
-                    description="Use LLM context_tags from the unified extractor when the caller does not provide tags.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_CONTEXT_TAGS",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_decay_rate",
-                    value=feat.use_llm_decay_rate,
-                    default_value=True,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_DECAY_RATE"),
-                    description="Use LLM decay_rate from the unified extractor instead of the modelpack 5-profile estimate.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_DECAY_RATE",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
-                    key="features.use_llm_conflict_detection_only",
-                    value=feat.use_llm_conflict_detection_only,
-                    default_value=False,
-                    is_editable=True,
-                    source=_config_source("FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY"),
-                    description="Bypass the modelpack conflict detector entirely and always use LLM for conflict detection.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__USE_LLM_CONFLICT_DETECTION_ONLY",
                     options=["true", "false"],
                 ),
             ],

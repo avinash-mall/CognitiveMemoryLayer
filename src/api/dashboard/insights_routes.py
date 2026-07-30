@@ -17,9 +17,7 @@ from sqlalchemy.orm import aliased
 from ...core.config import get_settings
 from ...core.enums import MemoryStatus, MemoryType
 from ...extraction.constraint_extractor import ConstraintExtractor
-from ...extraction.local_unified_extractor import LocalUnifiedWriteExtractor
 from ...extraction.write_time_facts import WriteTimeFactExtractor
-from ...memory.hippocampal.store import _ner_entities_for_text, _ner_relations_for_text
 from ...memory.hippocampal.write_gate import WriteDecision
 from ...reconsolidation.labile_tracker import _deserialize_session
 from ...storage.connection import DatabaseManager
@@ -244,11 +242,6 @@ async def dashboard_write_simulate(
             bool(hippocampal._use_unified_write_path())
             and hippocampal.unified_extractor is not None
         )
-        compare_local = bool(body.compare_extractors)
-        local_extractor = hippocampal.local_extractor
-        if compare_local and local_extractor is None:
-            candidate = LocalUnifiedWriteExtractor()
-            local_extractor = candidate if candidate.available else None
 
         chunk_results: list[DashboardWriteSimulationChunk] = []
         store_count = 0
@@ -258,10 +251,6 @@ async def dashboard_write_simulate(
             unified_result = None
             if configured_uses_unified and hippocampal.unified_extractor:
                 unified_result = await hippocampal.unified_extractor.extract(chunk)
-
-            local_result = None
-            if local_extractor and local_extractor.available:
-                local_result = await local_extractor.extract(chunk.text)
 
             gate_result = hippocampal.write_gate.evaluate(
                 chunk,
@@ -287,17 +276,8 @@ async def dashboard_write_simulate(
                 entities = unified_result.entities or []
                 relations = unified_result.relations or []
             else:
-                if hippocampal.entity_extractor:
-                    entities = await hippocampal.entity_extractor.extract(redacted_text)
-                else:
-                    entities = _ner_entities_for_text(redacted_text)
-                if hippocampal.relation_extractor:
-                    relations = await hippocampal.relation_extractor.extract(
-                        redacted_text,
-                        entities=[entity.normalized for entity in entities],
-                    )
-                else:
-                    relations = _ner_relations_for_text(redacted_text)
+                entities = []
+                relations = []
 
             settings = get_settings().features
             chosen_memory_type = memory_type_override
@@ -306,16 +286,10 @@ async def dashboard_write_simulate(
                 and configured_uses_unified
                 and unified_result
                 and settings.use_llm_enabled
-                and settings.use_llm_memory_type
                 and unified_result.memory_type
             ):
                 try:
                     chosen_memory_type = MemoryType(unified_result.memory_type)
-                except ValueError:
-                    chosen_memory_type = None
-            if chosen_memory_type is None and local_result and local_result.get("memory_type"):
-                try:
-                    chosen_memory_type = MemoryType(local_result["memory_type"])
                 except ValueError:
                     chosen_memory_type = None
             if chosen_memory_type is None:
@@ -325,12 +299,12 @@ async def dashboard_write_simulate(
                     else MemoryType.EPISODIC_EVENT
                 )
 
-            if configured_uses_unified and unified_result and settings.use_llm_constraint_extractor:
+            if configured_uses_unified and unified_result:
                 extracted_constraints = unified_result.constraints
             else:
                 extracted_constraints = hippocampal.constraint_extractor.extract(chunk)
 
-            if configured_uses_unified and unified_result and settings.use_llm_write_time_facts:
+            if configured_uses_unified and unified_result:
                 extracted_facts = unified_result.facts
             else:
                 extracted_facts = write_fact_extractor.extract(chunk)
@@ -349,15 +323,8 @@ async def dashboard_write_simulate(
                 key = hippocampal._generate_key(chunk, chosen_memory_type) or ""
 
             importance = gate_result.importance
-            if (
-                configured_uses_unified
-                and unified_result
-                and settings.use_llm_enabled
-                and settings.use_llm_write_gate_importance
-            ):
+            if configured_uses_unified and unified_result and settings.use_llm_enabled:
                 importance = unified_result.importance
-            elif local_result and "importance" in local_result:
-                importance = local_result["importance"]
 
             effective_context_tags = list(body.context_tags or [])
             if (
@@ -365,35 +332,22 @@ async def dashboard_write_simulate(
                 and configured_uses_unified
                 and unified_result
                 and settings.use_llm_enabled
-                and settings.use_llm_context_tags
                 and getattr(unified_result, "context_tags", None)
             ):
                 effective_context_tags = list(unified_result.context_tags)
-            elif not effective_context_tags and local_result and local_result.get("context_tags"):
-                effective_context_tags = list(local_result["context_tags"])
 
             confidence = chunk.confidence
-            if (
-                configured_uses_unified
-                and unified_result
-                and settings.use_llm_enabled
-                and settings.use_llm_confidence
-            ):
+            if configured_uses_unified and unified_result and settings.use_llm_enabled:
                 confidence = unified_result.confidence
-            elif local_result and "confidence" in local_result:
-                confidence = local_result["confidence"]
 
             decay_rate = None
             if (
                 configured_uses_unified
                 and unified_result
                 and settings.use_llm_enabled
-                and settings.use_llm_decay_rate
                 and getattr(unified_result, "decay_rate", None) is not None
             ):
                 decay_rate = unified_result.decay_rate
-            elif local_result and local_result.get("decay_rate") is not None:
-                decay_rate = float(local_result["decay_rate"])
 
             would_store = gate_result.decision != WriteDecision.SKIP
             if would_store:
@@ -402,9 +356,7 @@ async def dashboard_write_simulate(
                 skip_count += 1
 
             extractor_outputs: dict[str, Any] = {
-                "configured_mode": "unified_llm"
-                if configured_uses_unified
-                else "local_modelpack_or_rules",
+                "configured_mode": "unified_llm" if configured_uses_unified else "heuristic",
                 "rule_constraints": [
                     constraint.to_dict()
                     for constraint in hippocampal.constraint_extractor.extract(chunk)
@@ -435,18 +387,6 @@ async def dashboard_write_simulate(
                         for span in unified_result.pii_spans
                     ],
                 }
-            if local_result is not None:
-                extractor_outputs["local_modelpack"] = {
-                    "facts": [_serialize_fact(fact) for fact in local_result.get("facts", [])],
-                    "importance": local_result.get("importance"),
-                    "pii_spans": list(local_result.get("pii_spans", [])),
-                    "memory_type": local_result.get("memory_type"),
-                    "constraints": list(local_result.get("constraints", [])),
-                    "context_tags": list(local_result.get("context_tags", [])),
-                    "confidence": local_result.get("confidence"),
-                    "decay_rate": local_result.get("decay_rate"),
-                }
-
             chunk_results.append(
                 DashboardWriteSimulationChunk(
                     chunk_id=chunk.id,
@@ -490,9 +430,7 @@ async def dashboard_write_simulate(
                 "would_store_count": store_count,
                 "skipped_count": skip_count,
                 "write_gate_acceptance_rate": acceptance_rate,
-                "configured_extractor": "unified_llm"
-                if configured_uses_unified
-                else "local_modelpack_or_rules",
+                "configured_extractor": "unified_llm" if configured_uses_unified else "heuristic",
                 "compare_extractors": body.compare_extractors,
             },
         )

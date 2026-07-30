@@ -6,7 +6,6 @@ from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
-from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 
 # Recency weights by memory type stability
 _STABLE_TYPES = {MemoryType.CONSTRAINT}
@@ -33,11 +32,9 @@ class MemoryReranker:
         self,
         config: RerankerConfig | None = None,
         llm_client=None,
-        modelpack: ModelPackRuntime | None = None,
     ):
         self.config = config or RerankerConfig()
         self.llm_client = llm_client
-        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     async def rerank(
         self,
@@ -67,16 +64,13 @@ class MemoryReranker:
         }
         base_scores = {i: breakdowns[i]["base_score"] for i in breakdowns}
 
-        constraints = [
-            (i, m) for i, m in enumerate(memories) if m.record.type == MemoryType.CONSTRAINT
-        ]
-        if constraints:
-            constraint_texts = [m.record.text for _, m in constraints]
-            boosts = await self._score_constraints_batch(query, constraint_texts)
-            for (idx, mem), boost in zip(constraints, boosts, strict=True):
-                _ = mem
-                breakdowns[idx]["constraint_boost"] = boost * 2.0
-                base_scores[idx] += boost * 2.0
+        # ponytail: constraint boost from vector-search cosine relevance; a pairwise
+        # scorer (cross-encoder or LLM) could replace it if ranking quality demands.
+        for idx, mem in enumerate(memories):
+            if mem.record.type == MemoryType.CONSTRAINT:
+                boost = max(0.0, min(1.0, mem.relevance_score)) * 2.0
+                breakdowns[idx]["constraint_boost"] = boost
+                base_scores[idx] += boost
 
         scored = [(score, memories[idx], idx) for idx, score in base_scores.items()]
 
@@ -131,25 +125,6 @@ class MemoryReranker:
             else:
                 recency_weight = min(recency_weight, 0.10)  # Generic constraint: moderate stability
 
-            # Model-backed stability fallback when structured type is missing/weak.
-            supports_task = getattr(self.modelpack, "supports_task", None)
-            can_stability = (
-                bool(supports_task("constraint_stability"))
-                if callable(supports_task)
-                else bool(getattr(self.modelpack, "available", False))
-            )
-            if can_stability:
-                stability = self.modelpack.predict_single(
-                    "constraint_stability", memory.record.text
-                )
-                if stability and stability.confidence >= 0.55:
-                    if stability.label == "stable":
-                        recency_weight = 0.0
-                    elif stability.label == "semi_stable":
-                        recency_weight = min(recency_weight, 0.12)
-                    elif stability.label == "volatile":
-                        recency_weight = max(recency_weight, 0.25)
-
         return recency_weight
 
     def _score_components(
@@ -161,23 +136,9 @@ class MemoryReranker:
         query: str = "",
     ) -> dict[str, Any]:
         """Calculate score components for a memory."""
+        _ = query
         notes: list[str] = []
-        relevance: float | None = None
-        if query and memory.record.text:
-            try:
-                if getattr(self.modelpack, "has_task_model", lambda _: False)("memory_rerank_pair"):
-                    pred = self.modelpack.predict_score_pair(
-                        "memory_rerank_pair", query, memory.record.text
-                    )
-                    if pred is not None:
-                        relevance = pred.score
-                        notes.append("modelpack_rerank_pair")
-            except Exception:
-                pass
-
-        if relevance is None:
-            relevance = memory.relevance_score
-            notes.append("retrieval_score_fallback")
+        relevance = memory.relevance_score
         ts = memory.record.timestamp
         if isinstance(ts, datetime):
             now = datetime.now(UTC)
@@ -295,125 +256,3 @@ class MemoryReranker:
         intersection = len(words1 & words2)
         union = len(words1 | words2)
         return intersection / union if union > 0 else 0.0
-
-    async def _score_constraints_batch(
-        self, query: str, constraint_texts: list[str]
-    ) -> list[float]:
-        """Score multiple constraints against a query using modelpack and/or LLM."""
-        if not constraint_texts:
-            return []
-
-        model_scores = self._score_constraints_with_modelpack(query, constraint_texts)
-        if model_scores is not None:
-            return model_scores
-
-        if not self.llm_client:
-            return [0.0 for _ in constraint_texts]
-
-        if not query.strip():
-            return [0.0 for _ in constraint_texts]
-
-        from ..core.config import get_settings
-
-        feat = get_settings().features
-        if not feat.use_llm_enabled:
-            return [0.0 for _ in constraint_texts]
-
-        import asyncio
-
-        batch_size = 10
-        results = [0.0 for _ in constraint_texts]
-
-        for i in range(0, len(constraint_texts), batch_size):
-            batch = constraint_texts[i : i + batch_size]
-            prompt = f"""Evaluate the relevance of multiple constraints to the given query.
-Score each constraint from 0.0 to 1.0 based on how logically it applies to fulfilling the query.
-Return the results in a JSON array of objects, where each object has "index" (the integer ID of the constraint) and "score" (a float between 0.0 and 1.0).
-
-Query: "{query}"
-
-Constraints:
-"""
-            for idx, text in enumerate(batch):
-                prompt += f'[{idx}] "{text}"\n'
-
-            try:
-                resp = await asyncio.wait_for(
-                    self.llm_client.complete_json(prompt, temperature=0.0), timeout=5.0
-                )
-                items = (
-                    resp
-                    if isinstance(resp, list)
-                    else resp.get("results", [])
-                    if isinstance(resp, dict)
-                    else []
-                )
-                for item in items:
-                    if isinstance(item, dict):
-                        idx_raw = item.get("index")
-                        score = item.get("score")
-                        if (
-                            isinstance(idx_raw, int)
-                            and 0 <= idx_raw < len(batch)
-                            and isinstance(score, (int, float))
-                        ):
-                            results[i + idx_raw] = min(1.0, max(0.0, float(score)))
-            except Exception as exc:
-                from ..utils.logging_config import get_logger
-
-                get_logger(__name__).debug("llm_constraint_scoring_failed", error=str(exc))
-
-        return results
-
-    def _score_constraints_with_modelpack(
-        self,
-        query: str,
-        constraint_texts: list[str],
-    ) -> list[float] | None:
-        if not query.strip():
-            return None
-        supports_task = getattr(self.modelpack, "supports_task", None)
-        if callable(supports_task):
-            can_constraint_rerank = bool(supports_task("constraint_rerank"))
-            can_scope_match = bool(supports_task("scope_match"))
-        else:
-            can_constraint_rerank = bool(getattr(self.modelpack, "available", False))
-            can_scope_match = bool(getattr(self.modelpack, "available", False))
-        if not (can_constraint_rerank or can_scope_match):
-            return None
-
-        out: list[float] = []
-        used = False
-        for text in constraint_texts:
-            signals: list[float] = []
-
-            rel_pred = (
-                self.modelpack.predict_pair("constraint_rerank", query, text)
-                if can_constraint_rerank
-                else None
-            )
-            if rel_pred:
-                used = True
-                rel_signal = (
-                    rel_pred.confidence
-                    if rel_pred.label == "relevant"
-                    else (1.0 - rel_pred.confidence)
-                )
-                signals.append(rel_signal)
-
-            scope_pred = (
-                self.modelpack.predict_pair("scope_match", query, text) if can_scope_match else None
-            )
-            if scope_pred:
-                used = True
-                scope_signal = (
-                    scope_pred.confidence
-                    if scope_pred.label == "match"
-                    else (1.0 - scope_pred.confidence)
-                )
-                signals.append(scope_signal)
-
-            score = sum(signals) / len(signals) if signals else 0.0
-            out.append(max(0.0, min(1.0, score)))
-
-        return out if used else None

@@ -19,6 +19,8 @@ def _settings(
     eval_model: str | None = None,
     eval_api_key: str | None = None,
     eval_base_url: str | None = None,
+    extra_body: dict | None = None,
+    eval_extra_body: dict | None = None,
 ):
     return SimpleNamespace(
         llm_internal=SimpleNamespace(
@@ -26,12 +28,14 @@ def _settings(
             model=model,
             api_key=api_key,
             base_url=base_url,
+            extra_body=extra_body,
         ),
         llm_eval=SimpleNamespace(
             provider=eval_provider,
             model=eval_model,
             api_key=eval_api_key,
             base_url=eval_base_url,
+            extra_body=eval_extra_body,
         ),
     )
 
@@ -171,6 +175,7 @@ def test_get_internal_llm_client_uses_internal_config_and_env(
         api_key="env-key",
         base_url=None,
         env_prefix="LLM_INTERNAL",
+        extra_body=None,
     )
 
 
@@ -199,7 +204,36 @@ def test_get_eval_llm_client_falls_back_to_internal_config(monkeypatch: pytest.M
         api_key="internal-key",
         base_url="http://internal",
         env_prefix="LLM_EVAL",
+        extra_body=None,
     )
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_client_forwards_extra_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def _create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))]
+        )
+
+    class _FakeAsyncOpenAI:
+        def __init__(self, *, base_url: str, api_key: str) -> None:
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=_create))
+
+    extra = {"chat_template_kwargs": {"enable_thinking": False}}
+    monkeypatch.setattr(llm, "AsyncOpenAI", _FakeAsyncOpenAI)
+    monkeypatch.setattr(llm, "get_settings", lambda: _settings(extra_body=extra))
+
+    client = llm.OpenAICompatibleClient(base_url="http://local/v1", model="x")
+    await client.complete("prompt")
+    await client.complete_json("prompt")
+
+    assert len(calls) == 2
+    assert all(c["extra_body"] == extra for c in calls)
 
 
 def test_openai_compatible_client_uses_dummy_key_for_explicit_base_url(

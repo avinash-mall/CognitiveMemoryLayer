@@ -97,6 +97,23 @@ class TestRelevanceScorer:
         assert score.total_score < 0.9
         assert score.suggested_action in ("decay", "silence", "compress", "delete")
 
+    def test_safety_guard_blocks_compress_delete_for_valuable_memories(self):
+        """dep>0, importance>=0.7, or recent-and-accessed forces keep even at rock-bottom scores."""
+        cfg = ScorerConfig(keep_threshold=0.99, decay_threshold=0.98, silence_threshold=0.97)
+        scorer = RelevanceScorer(config=cfg)
+
+        important = _make_record(importance=0.75, confidence=0.0, days_ago=365)
+        assert scorer.score(important).suggested_action == "keep"
+
+        depended_on = _make_record(importance=0.0, confidence=0.0, days_ago=365)
+        assert scorer.score(depended_on, dependency_count=3).suggested_action == "keep"
+
+        recent_hot = _make_record(importance=0.0, confidence=0.0, access_count=6, days_ago=5)
+        assert scorer.score(recent_hot).suggested_action == "keep"
+
+        stale = _make_record(importance=0.0, confidence=0.0, days_ago=365)
+        assert scorer.score(stale).suggested_action in ("compress", "delete")
+
     def test_score_batch(self):
         scorer = RelevanceScorer()
         recs = [_make_record(), _make_record(importance=0.9)]

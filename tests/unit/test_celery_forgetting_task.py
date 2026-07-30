@@ -107,38 +107,6 @@ class TestCeleryForgettingTask:
         assert db3 is created[-1]
         assert len(created) == 2
 
-    def test_get_configured_summarizer_backend_handles_provider_switches(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        non_hf_settings = SimpleNamespace(
-            summarizer_internal=SimpleNamespace(provider="mock"),
-        )
-        monkeypatch.setattr(celery_app, "get_settings", lambda: non_hf_settings)
-        assert celery_app._get_configured_summarizer_backend() is None
-
-        hf_settings = SimpleNamespace(
-            summarizer_internal=SimpleNamespace(
-                provider="huggingface",
-                model="summ-model",
-                task="summarization",
-                max_input_chars=10,
-                max_output_chars=20,
-                min_length=5,
-                max_length=15,
-                device="cpu",
-            )
-        )
-        monkeypatch.setattr(celery_app, "get_settings", lambda: hf_settings)
-        monkeypatch.setattr(
-            "src.utils.hf_summarizer.get_hf_summarizer",
-            lambda **kwargs: kwargs,
-        )
-
-        backend = celery_app._get_configured_summarizer_backend()
-        assert backend["model"] == "summ-model"
-        assert backend["device"] == "cpu"
-
     def test_get_all_tenant_user_pairs_filters_blank_tenants(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -210,9 +178,8 @@ class TestCeleryForgettingTask:
         captured: dict[str, object] = {}
 
         class FakeWorker:
-            def __init__(self, store, compression_summarizer=None):
+            def __init__(self, store):
                 captured["store"] = store
-                captured["summarizer"] = compression_summarizer
 
             async def run_forgetting(self, **kwargs):
                 captured["kwargs"] = kwargs
@@ -222,7 +189,6 @@ class TestCeleryForgettingTask:
             return SimpleNamespace(pg_session_factory="factory")
 
         monkeypatch.setattr(celery_app, "_get_or_create_db_manager", _get_db)
-        monkeypatch.setattr(celery_app, "_get_configured_summarizer_backend", lambda: "backend")
         monkeypatch.setattr(celery_app, "_run_async", lambda coro: _run_coro(coro))
         monkeypatch.setattr(
             "src.storage.postgres.PostgresMemoryStore",
@@ -240,7 +206,6 @@ class TestCeleryForgettingTask:
         assert result["tenant_id"] == "tenant-a"
         assert result["operations_applied"] == 4
         assert captured["store"] == ("store", "factory")
-        assert captured["summarizer"] == "backend"
         assert captured["kwargs"] == {
             "tenant_id": "tenant-a",
             "user_id": "tenant-a",

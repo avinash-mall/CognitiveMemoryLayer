@@ -366,6 +366,3 @@ export function invalidateFact(factId) {
     return request('POST', `/facts/${factId}/invalidate`);
 }
 
-export function getModelsStatus() {
-    return request('GET', '/models/status');
-}

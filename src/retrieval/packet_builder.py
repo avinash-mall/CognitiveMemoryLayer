@@ -5,7 +5,6 @@ from datetime import datetime
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryPacket, RetrievedMemory
-from ..utils.modelpack import get_modelpack_runtime
 
 # Fallback constants when config unavailable (BUG-02: avoid diluting constraints)
 EPISODE_RELEVANCE_THRESHOLD = 0.5
@@ -59,7 +58,7 @@ class MemoryPacketBuilder:
         """Resolve retrieval-time supersession conflicts among constraints.
 
         Keeps the most recent surviving constraints and drops older constraints
-        when a newer one supersedes them (same key or model-backed supersession).
+        when a newer one supersedes them (same key).
         """
         if len(constraints) <= 1:
             return constraints, []
@@ -71,7 +70,6 @@ class MemoryPacketBuilder:
         ordered = sorted(constraints, key=_ts, reverse=True)
         kept: list[RetrievedMemory] = []
         warnings: list[str] = []
-        modelpack = get_modelpack_runtime()
 
         for candidate in ordered:
             cand_key = getattr(candidate.record, "key", None) or ""
@@ -84,17 +82,6 @@ class MemoryPacketBuilder:
                     )
                     suppressed = True
                     break
-
-                if modelpack.available:
-                    pred = modelpack.predict_pair(
-                        "supersession", candidate.record.text, newer.record.text
-                    )
-                    if pred and pred.label == "supersedes" and pred.confidence >= 0.6:
-                        warnings.append(
-                            f"Suppressed likely superseded constraint: '{candidate.record.text[:80]}...'"
-                        )
-                        suppressed = True
-                        break
 
             if not suppressed:
                 kept.append(candidate)

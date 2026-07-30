@@ -7,10 +7,8 @@ from typing import Any
 
 from ..core.enums import MemoryType, OperationType
 from ..core.schemas import MemoryRecord
-from ..extraction.fact_span_adapter import build_reconsolidation_fact_dicts
 from ..storage.base import MemoryStoreBase
 from ..utils.logging_config import get_logger
-from ..utils.modelpack import ModelPackRuntime, get_modelpack_runtime
 from .belief_revision import RevisionOperation, RevisionPlan, RevisionStrategy
 from .conflict_detector import ConflictDetector
 from .labile_tracker import LabileStateTracker
@@ -57,7 +55,6 @@ class ReconsolidationService:
         llm_client: Any | None = None,
         fact_extractor: Any | None = None,
         redis_client: Any | None = None,
-        modelpack: ModelPackRuntime | None = None,
     ):
         self.store = memory_store
         self.labile_tracker = LabileStateTracker(redis_client=redis_client)
@@ -66,7 +63,6 @@ class ReconsolidationService:
 
         self.revision_engine = BeliefRevisionEngine()
         self.fact_extractor = fact_extractor
-        self.modelpack = modelpack if modelpack is not None else get_modelpack_runtime()
 
     # Maximum memories to run LLM conflict detection against per new fact.
     # Memories are ranked by word-overlap similarity to the new fact before
@@ -130,29 +126,7 @@ class ReconsolidationService:
                 candidates.extend(other[: k - len(candidates)])
             return candidates
 
-        # Model path: use dedicated pair model for candidate ranking
-        if getattr(self.modelpack, "has_task_model", lambda _: False)(
-            "reconsolidation_candidate_pair"
-        ):
-            try:
-                model_scores: list[tuple[MemoryRecord, float]] = []
-                scored_any = False
-                for mem in memories:
-                    pred = self.modelpack.predict_score_pair(
-                        "reconsolidation_candidate_pair", fact_text, mem.text
-                    )
-                    if pred is not None:
-                        scored_any = True
-                        model_scores.append((mem, pred.score))
-                    else:
-                        model_scores.append((mem, 0.0))
-                if scored_any:
-                    model_scores.sort(key=lambda x: x[1], reverse=True)
-                    return [m for m, _ in model_scores[:k]]
-            except Exception:
-                pass  # fall through to heuristic
-
-        # Heuristic fallback: Jaccard word-overlap ranking
+        # Jaccard word-overlap ranking
         scored = sorted(
             memories,
             key=lambda m: self._word_overlap(fact_text, m.text),
@@ -316,19 +290,6 @@ class ReconsolidationService:
             text = f"User: {user_message}\nAssistant: {assistant_response}"
             facts = await self.fact_extractor.extract(text)
             return [{"text": f.text, "type": getattr(f, "type", "semantic_fact")} for f in facts]
-
-        try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)(
-                "fact_extraction_structured"
-            ):
-                combined = f"{user_message} {assistant_response or ''}".strip()
-                span_pred = self.modelpack.predict_spans("fact_extraction_structured", combined)
-                if span_pred is not None and span_pred.spans:
-                    facts = build_reconsolidation_fact_dicts(combined, span_pred)
-                    if facts:
-                        return facts
-        except Exception:
-            pass  # fall through to regex fallback
 
         # BUG-09: include assistant_response in fallback; split on . ! ? ;
         facts = []

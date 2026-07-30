@@ -1,4 +1,4 @@
-"""Unit tests for query classifier modelpack/LLM priority."""
+"""Unit tests for query classifier LLM path."""
 
 import pytest
 
@@ -8,10 +8,9 @@ from src.utils.llm import LLMClient
 
 
 @pytest.mark.asyncio
-async def test_classifier_prefers_modelpack_over_llm_when_available(monkeypatch):
-    """Classifier should use modelpack first and avoid LLM call when modelpack predicts."""
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock, MagicMock
+async def test_classifier_uses_llm_when_enabled(monkeypatch):
+    """Classifier should call the LLM when a client is set and use_llm_enabled is on."""
+    from unittest.mock import AsyncMock
 
     mock_llm = AsyncMock(spec=LLMClient)
     mock_llm.complete_json = AsyncMock(
@@ -22,15 +21,6 @@ async def test_classifier_prefers_modelpack_over_llm_when_available(monkeypatch)
             "confidence": 0.9,
         }
     )
-    mock_modelpack = MagicMock()
-    mock_modelpack.available = True
-    mock_modelpack.predict_single = MagicMock(
-        side_effect=lambda task, text: (
-            SimpleNamespace(label="preference_lookup", confidence=0.91)
-            if task == "query_intent"
-            else None
-        )
-    )
     monkeypatch.setattr(
         "src.core.config.get_settings",
         lambda: type(
@@ -39,7 +29,7 @@ async def test_classifier_prefers_modelpack_over_llm_when_available(monkeypatch)
             {"features": type("F", (), {"use_llm_enabled": True})()},
         )(),
     )
-    classifier = QueryClassifier(llm_client=mock_llm, modelpack=mock_modelpack)
+    classifier = QueryClassifier(llm_client=mock_llm)
     result = await classifier.classify("What do I like to eat?")
-    mock_llm.complete_json.assert_not_called()
+    mock_llm.complete_json.assert_called()
     assert result.intent == QueryIntent.PREFERENCE_LOOKUP

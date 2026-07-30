@@ -112,16 +112,7 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
 
 
 class EmbeddedCognitiveMemoryLayer:
-    """In-process CognitiveMemoryLayer engine. No server, no HTTP.
-
-    Args:
-        models_dir: Optional path to the directory containing trained model
-            artifacts (``*.joblib``).  When set, the embedded
-            ``ModelPackRuntime`` loads models from this directory instead of
-            the default ``packages/models/trained_models`` inside the repo.
-            Can also be configured via the ``CML_MODELS_DIR`` environment
-            variable.
-    """
+    """In-process CognitiveMemoryLayer engine. No server, no HTTP."""
 
     def __init__(
         self,
@@ -132,7 +123,6 @@ class EmbeddedCognitiveMemoryLayer:
         db_path: str | None = None,
         embedding_provider: str = "local",
         llm_api_key: str | None = None,
-        models_dir: str | None = None,
     ) -> None:
         if config is not None:
             self._config = config
@@ -151,7 +141,6 @@ class EmbeddedCognitiveMemoryLayer:
                 self._config.embedding.provider = embedding_provider  # type: ignore[assignment]
             if llm_api_key is not None:
                 self._config.llm.api_key = llm_api_key
-        self._models_dir = models_dir
         self._orchestrator: Any = None
         self._sqlite_store: Any = None
         self._initialized = False
@@ -160,10 +149,6 @@ class EmbeddedCognitiveMemoryLayer:
 
     async def initialize(self) -> None:
         """Initialize storage and the memory orchestrator."""
-        if self._models_dir:
-            import os
-
-            os.environ["CML_MODELS_DIR"] = str(self._models_dir)
         _check_embedded_deps()
         if self._config.storage_mode != "lite":
             raise NotImplementedError(

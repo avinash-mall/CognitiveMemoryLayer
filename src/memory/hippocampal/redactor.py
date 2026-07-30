@@ -3,7 +3,6 @@
 import re
 from dataclasses import dataclass
 
-from ...utils.modelpack import get_modelpack_runtime
 from ...utils.ner import extract_pii_spans
 
 
@@ -45,7 +44,6 @@ class PIIRedactor:
         self._compiled = {
             name: re.compile(pattern, re.IGNORECASE) for name, pattern in self.patterns.items()
         }
-        self.modelpack = get_modelpack_runtime()
 
     def redact(
         self,
@@ -58,17 +56,6 @@ class PIIRedactor:
         for pii_type, pattern in self._compiled.items():
             for match in pattern.finditer(text):
                 matches.append((match.start(), match.end(), pii_type, match.group()))
-
-        # --- model path: merge model PII spans as union with regex baseline ---
-        try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)("pii_span_detection"):
-                span_pred = self.modelpack.predict_spans("pii_span_detection", text)
-                if span_pred is not None:
-                    for start, end, pii_type in span_pred.spans:
-                        if 0 <= start < end <= len(text):
-                            matches.append((start, end, pii_type, text[start:end]))
-        except Exception:
-            pass
 
         if include_ner:
             for start, end, pii_type in extract_pii_spans(text):

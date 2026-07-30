@@ -35,15 +35,6 @@ class TenantFeatureOverrides:
     use_llm_enabled: bool | None = None
     constraint_extraction_enabled: bool | None = None
     write_time_facts_enabled: bool | None = None
-    use_llm_constraint_extractor: bool | None = None
-    use_llm_write_time_facts: bool | None = None
-    use_llm_pii_redaction: bool | None = None
-    use_llm_salience_refinement: bool | None = None
-    use_llm_memory_type: bool | None = None
-    use_llm_write_gate_importance: bool | None = None
-    use_llm_confidence: bool | None = None
-    use_llm_context_tags: bool | None = None
-    use_llm_decay_rate: bool | None = None
 
 
 async def get_tenant_overrides(

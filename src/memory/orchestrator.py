@@ -11,9 +11,7 @@ from ..consolidation.worker import ConsolidationWorker
 from ..core.enums import MemoryStatus
 from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
 from ..core.schemas import MemoryPacket
-from ..extraction.entity_extractor import EntityExtractor
 from ..extraction.fact_extractor import LLMFactExtractor
-from ..extraction.relation_extractor import RelationExtractor
 from ..forgetting.worker import ForgettingWorker
 from ..memory.conversation import ConversationMemory
 from ..memory.hippocampal.store import HippocampalStore
@@ -66,19 +64,11 @@ class WritePathConfig:
         f = settings.features
         llm = f.use_llm_enabled
         return cls(
-            use_unified=llm
-            and has_unified_extractor
-            and (
-                f.use_llm_constraint_extractor
-                or f.use_llm_write_time_facts
-                or f.use_llm_salience_refinement
-                or f.use_llm_pii_redaction
-                or f.use_llm_write_gate_importance
-            ),
+            use_unified=llm and has_unified_extractor,
             write_time_facts=f.write_time_facts_enabled,
             constraint_extraction=f.constraint_extraction_enabled,
-            use_llm_constraints=llm and f.use_llm_constraint_extractor,
-            use_llm_facts=llm and f.use_llm_write_time_facts,
+            use_llm_constraints=llm,
+            use_llm_facts=llm,
             use_llm_enabled=llm,
         )
 
@@ -123,24 +113,6 @@ class MemoryOrchestrator:
 
         settings = get_settings()
         internal_llm = get_internal_llm_client() if settings.features.use_llm_enabled else None
-        fallback_summarizer = None
-        if not settings.features.use_llm_enabled:
-            try:
-                from ..utils.hf_summarizer import get_hf_summarizer
-
-                summarizer_cfg = settings.summarizer_internal
-                if summarizer_cfg.provider.lower() == "huggingface":
-                    fallback_summarizer = get_hf_summarizer(
-                        model=summarizer_cfg.model,
-                        task=summarizer_cfg.task,
-                        max_input_chars=summarizer_cfg.max_input_chars,
-                        max_output_chars=summarizer_cfg.max_output_chars,
-                        min_length=summarizer_cfg.min_length,
-                        max_length=summarizer_cfg.max_length,
-                        device=summarizer_cfg.device,
-                    )
-            except Exception as exc:
-                logger.warning("fallback_summarizer_init_failed", extra={"error": str(exc)})
         embedding_client: EmbeddingClient = get_embedding_client()
 
         # Phase 2.3: wrap with Redis cache when available and enabled
@@ -166,37 +138,13 @@ class MemoryOrchestrator:
 
         short_term_config = ShortTermMemoryConfig()
         short_term = ShortTermMemory(config=short_term_config)
-        entity_extractor: EntityExtractor | None = EntityExtractor(
-            internal_llm if settings.features.use_llm_enabled else None
-        )
-        relation_extractor: RelationExtractor | None = RelationExtractor(
-            internal_llm if settings.features.use_llm_enabled else None
-        )
-        from ..extraction.local_unified_extractor import LocalUnifiedWriteExtractor
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
 
-        _use_unified = settings.features.use_llm_enabled and (
-            settings.features.use_llm_constraint_extractor
-            or settings.features.use_llm_write_time_facts
-            or settings.features.use_llm_salience_refinement
-            or settings.features.use_llm_pii_redaction
-            or settings.features.use_llm_write_gate_importance
-        )
-        if _use_unified:
-            entity_extractor = None
-            relation_extractor = None
-
-        unified_extractor = (
-            UnifiedWritePathExtractor(internal_llm) if _use_unified and internal_llm else None
-        )
-        local_extractor = LocalUnifiedWriteExtractor() if unified_extractor is None else None
+        unified_extractor = UnifiedWritePathExtractor(internal_llm) if internal_llm else None
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
-            entity_extractor=entity_extractor,
-            relation_extractor=relation_extractor,
             unified_extractor=unified_extractor,
-            local_extractor=local_extractor,
         )
 
         from ..retrieval.memory_retriever import MemoryRetriever
@@ -218,13 +166,11 @@ class MemoryOrchestrator:
             episodic_store=episodic_store,
             neocortical_store=neocortical,
             llm_client=internal_llm,
-            summarizer_backend=fallback_summarizer,
         )
 
         forgetting = ForgettingWorker(
             store=episodic_store,
             compression_llm_client=internal_llm,
-            compression_summarizer=fallback_summarizer,
         )
 
         scratch_pad = ScratchPad(store=episodic_store)
@@ -264,39 +210,13 @@ class MemoryOrchestrator:
 
         settings = get_settings()
         runtime_llm = llm_client if settings.features.use_llm_enabled else None
-        fallback_summarizer = None
-        if not settings.features.use_llm_enabled:
-            try:
-                from ..utils.hf_summarizer import get_hf_summarizer
 
-                summarizer_cfg = settings.summarizer_internal
-                if summarizer_cfg.provider.lower() == "huggingface":
-                    fallback_summarizer = get_hf_summarizer(
-                        model=summarizer_cfg.model,
-                        task=summarizer_cfg.task,
-                        max_input_chars=summarizer_cfg.max_input_chars,
-                        max_output_chars=summarizer_cfg.max_output_chars,
-                        min_length=summarizer_cfg.min_length,
-                        max_length=summarizer_cfg.max_length,
-                        device=summarizer_cfg.device,
-                    )
-            except Exception as exc:
-                logger.warning("fallback_summarizer_init_failed", extra={"error": str(exc)})
-        entity_extractor = EntityExtractor(
-            runtime_llm if settings.features.use_llm_enabled else None
-        )
-        relation_extractor = RelationExtractor(
-            runtime_llm if settings.features.use_llm_enabled else None
-        )
-
-        from ..extraction.local_unified_extractor import LocalUnifiedWriteExtractor
+        from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
 
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
             embedding_client=embedding_client,
-            entity_extractor=entity_extractor,
-            relation_extractor=relation_extractor,
-            local_extractor=LocalUnifiedWriteExtractor(),
+            unified_extractor=UnifiedWritePathExtractor(runtime_llm) if runtime_llm else None,
         )
 
         from ..retrieval.memory_retriever import MemoryRetriever
@@ -318,13 +238,11 @@ class MemoryOrchestrator:
             episodic_store=episodic_store,
             neocortical_store=neocortical,
             llm_client=runtime_llm,
-            summarizer_backend=fallback_summarizer,
         )
 
         forgetting = ForgettingWorker(
             store=episodic_store,
             compression_llm_client=runtime_llm,
-            compression_summarizer=fallback_summarizer,
         )
 
         scratch_pad = ScratchPad(store=episodic_store)

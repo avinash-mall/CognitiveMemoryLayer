@@ -26,10 +26,7 @@ COPY pyproject.toml hatch_build.py ./
 COPY packages/py-cml ./packages/py-cml
 
 RUN pip install --no-cache-dir --break-system-packages -r requirements-runtime.txt \
-    && pip install --no-cache-dir --break-system-packages "." \
-    && pip install --no-cache-dir --break-system-packages "huggingface_hub>=0.25"
-
-RUN python3 -m spacy download en_core_web_sm
+    && pip install --no-cache-dir --break-system-packages "."
 
 RUN pip install --no-build-isolation --no-cache-dir --break-system-packages \
        stanford-stk git+https://github.com/nomic-ai/megablocks.git
@@ -73,12 +70,7 @@ COPY alembic.ini ./
 COPY migrations ./migrations/
 COPY docker/entrypoint.sh /entrypoint.sh
 
-ENV PYTHONPATH=/app \
-    NER__MODEL=en_core_web_sm \
-    CML_MODELS_DIR=/app/packages/models/trained_models
-
-# Create models directory so entrypoint can write to it.
-RUN mkdir -p /app/packages/models/trained_models
+ENV PYTHONPATH=/app
 
 # Non-root user for production
 RUN useradd -m appuser && chown -R appuser:appuser /app
@@ -115,11 +107,9 @@ COPY migrations ./migrations/
 COPY docker/entrypoint.sh /entrypoint.sh
 
 # Install package with the extras required by the full GitHub test suite.
-RUN pip install --no-cache-dir --break-system-packages -e ".[embedded,eval,modeling]"
+RUN pip install --no-cache-dir --break-system-packages -e ".[embedded,eval]"
 
-ENV PYTHONPATH=/app \
-    NER__MODEL=en_core_web_sm \
-    CML_MODELS_DIR=/app/packages/models/trained_models
+ENV PYTHONPATH=/app
 
 ENTRYPOINT ["/entrypoint.sh"]
 

@@ -38,7 +38,7 @@ def integration_config() -> CMLConfig:
         api_key=INTEGRATION_KEY,
         base_url=INTEGRATION_URL,
         tenant_id=INTEGRATION_TENANT,
-        timeout=30.0,
+        timeout=120.0,  # LLM-enabled writes make several model calls each; 30s flakes under suite load
         max_retries=1,
         admin_api_key=INTEGRATION_ADMIN_KEY,
     )

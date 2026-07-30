@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryRecord
-from ..utils.modelpack import get_modelpack_runtime
 
 
 @dataclass
@@ -85,7 +84,6 @@ class RelevanceScorer:
     def __init__(self, config: ScorerConfig | None = None) -> None:
         self.config = config or ScorerConfig()
         self.config.weights.validate()
-        self.modelpack = get_modelpack_runtime()
 
     def score(
         self,
@@ -183,26 +181,7 @@ class RelevanceScorer:
         and compression — they can only decay or be kept. This prevents
         safety-critical information (allergies, policies) from being lost.
         """
-        # --- model path: policy prediction ---
-        try:
-            if text and getattr(self.modelpack, "has_task_model", lambda _: False)(
-                "forgetting_action_policy"
-            ):
-                pred = self.modelpack.predict_single(
-                    "forgetting_action_policy",
-                    text,
-                    metadata=metadata,
-                )
-                if pred is not None and pred.label in self._VALID_ACTIONS:
-                    action = pred.label
-                    if memory_type in self._PROTECTED_TYPES:
-                        if action not in {"keep", "decay"}:
-                            action = "keep" if score >= self.config.decay_threshold else "decay"
-                    return action
-        except Exception:
-            pass
-
-        # --- heuristic path: threshold chain ---
+        _ = text
         if memory_type in self._PROTECTED_TYPES:
             if score >= self.config.decay_threshold:
                 return "keep"
@@ -213,6 +192,19 @@ class RelevanceScorer:
             return "decay"
         if score >= self.config.silence_threshold:
             return "silence"
+
+        # Safety guard for high-risk actions: never compress/delete a memory that
+        # is depended on, important, or high-value-and-recent, regardless of score.
+        meta = metadata or {}
+        try:
+            imp = float(meta.get("importance") or 0.0)
+            acc = int(meta.get("access_count") or 0)
+            age = int(meta.get("age_days")) if meta.get("age_days") is not None else 999
+            dep = int(meta.get("dependency_count") or 0)
+        except (TypeError, ValueError):
+            imp, acc, age, dep = 0.0, 0, 999, 0
+        if dep > 0 or imp >= 0.7 or (acc >= 5 and age <= 30):
+            return "keep"
         if score >= self.config.compress_threshold:
             return "compress"
         return "delete"

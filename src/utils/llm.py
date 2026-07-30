@@ -75,6 +75,7 @@ class OpenAICompatibleClient(LLMClient):
         model: str | None = None,
         api_key: str | None = None,
         _provider: str | None = None,
+        extra_body: dict | None = None,
     ) -> None:
         """Create client. Pass base_url/model/api_key, or leave None to use llm_internal config."""
         if AsyncOpenAI is None:
@@ -104,6 +105,7 @@ class OpenAICompatibleClient(LLMClient):
                 self._api_key = cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
             else:
                 self._api_key = cfg.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
+        self.extra_body = extra_body if extra_body is not None else cfg.extra_body
         self.client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key)
 
     async def complete(
@@ -123,6 +125,7 @@ class OpenAICompatibleClient(LLMClient):
             messages=messages,  # type: ignore[arg-type]
             temperature=temperature,
             max_tokens=max_tokens,
+            extra_body=self.extra_body,
         )
         return response.choices[0].message.content or ""
 
@@ -131,7 +134,11 @@ class OpenAICompatibleClient(LLMClient):
         prompt: str,
         schema: dict | None = None,
         temperature: float = 0.0,
+        max_tokens: int = 2000,
     ) -> dict[str, Any]:
+        # max_tokens caps runaway generation: without it, a degenerate completion under
+        # guided JSON decoding can run until the model's context fills (observed 90KB+ /
+        # 4+ minutes on a local vLLM). Callers degrade gracefully on truncated JSON.
         messages = [
             {
                 "role": "system",
@@ -144,7 +151,9 @@ class OpenAICompatibleClient(LLMClient):
                 model=self.model,
                 messages=messages,
                 temperature=temperature,
+                max_tokens=max_tokens,
                 response_format={"type": "json_object"},
+                extra_body=self.extra_body,
             )
             text = response.choices[0].message.content or "{}"
         except Exception:
@@ -153,6 +162,8 @@ class OpenAICompatibleClient(LLMClient):
                 model=self.model,
                 messages=messages,  # type: ignore[arg-type]
                 temperature=temperature,
+                max_tokens=max_tokens,
+                extra_body=self.extra_body,
             )
             text = response.choices[0].message.content or "{}"
         return _parse_json_from_response(text)
@@ -305,6 +316,7 @@ def _build_llm_client_from_config(
     api_key: str | None,
     base_url: str | None,
     env_prefix: str = "LLM_INTERNAL",
+    extra_body: dict | None = None,
 ) -> LLMClient:
     """Build LLM client from provider/model/api_key/base_url. Handles openai, ollama, anthropic, gemini, vllm, sglang, openai_compatible."""
 
@@ -322,7 +334,7 @@ def _build_llm_client_from_config(
         else:
             url = _OLLAMA_DEFAULT_BASE
         key = api_key if provider == "openai" else (api_key or "dummy")
-        return OpenAICompatibleClient(base_url=url, model=model, api_key=key)
+        return OpenAICompatibleClient(base_url=url, model=model, api_key=key, extra_body=extra_body)
 
     if provider == "gemini":
         if not api_key:
@@ -356,6 +368,7 @@ def get_internal_llm_client() -> LLMClient:
         api_key=api_key,
         base_url=cfg.base_url,
         env_prefix="LLM_INTERNAL",
+        extra_body=cfg.extra_body,
     )
 
 
@@ -380,6 +393,7 @@ def get_eval_llm_client() -> LLMClient:
         api_key=api_key,
         base_url=base_url,
         env_prefix="LLM_EVAL",
+        extra_body=ev.extra_body if ev.extra_body is not None else cfg.extra_body,
     )
 
 

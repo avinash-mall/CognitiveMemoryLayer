@@ -10,7 +10,6 @@ from ..memory.neocortical.store import NeocorticalStore
 from ..storage.base import MemoryStoreBase
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
-from ..utils.modelpack import get_modelpack_runtime
 from .clusterer import EpisodeCluster, SemanticClusterer
 from .migrator import ConsolidationMigrator, MigrationResult
 from .sampler import EpisodeSampler
@@ -57,17 +56,16 @@ class ConsolidationWorker:
         episodic_store: MemoryStoreBase,
         neocortical_store: NeocorticalStore,
         llm_client: LLMClient | None,
-        summarizer_backend=None,
         scheduler: ConsolidationScheduler | None = None,
     ):
         self.sampler = EpisodeSampler(episodic_store)
         self.clusterer = SemanticClusterer()
-        self.extractor = GistExtractor(llm_client, fallback_summarizer=summarizer_backend)
+        self.extractor = GistExtractor(llm_client)
         self.aligner = SchemaAligner(neocortical_store.facts)
         self.migrator = ConsolidationMigrator(neocortical_store, episodic_store)
+        self.llm = llm_client
 
         self.scheduler = scheduler or ConsolidationScheduler()
-        self.modelpack = get_modelpack_runtime()
 
         self._running = False
         self._worker_task: asyncio.Task | None = None
@@ -151,7 +149,9 @@ class ConsolidationWorker:
                                 description=str(old.value),
                                 scope=getattr(old, "context_tags", None) or [],
                             )
-                            if await ConstraintExtractor.detect_supersession(old_obj, c):
+                            if await ConstraintExtractor.detect_supersession(
+                                old_obj, c, llm_client=self.llm
+                            ):
                                 await self.migrator.semantic.facts.invalidate_fact(
                                     tenant_id, old.key, reason="superseded_consolidation"
                                 )
@@ -318,29 +318,7 @@ class ConsolidationWorker:
         if not (0.0 <= gist.confidence <= 1.0):
             return False
 
-        # --- model path: gist quality scoring ---
-        try:
-            if getattr(self.modelpack, "has_task_model", lambda _: False)(
-                "consolidation_gist_quality"
-            ):
-                score_pred = self.modelpack.predict_score_single(
-                    "consolidation_gist_quality",
-                    text,
-                    metadata={
-                        "memory_type": "semantic_fact",
-                        "importance": min(1.0, 0.3 + (0.1 * len(cluster.episodes))),
-                        "confidence": gist.confidence,
-                        "support_count": len(cluster.episodes),
-                        "mixed_topic": self._is_mixed_topic_cluster(cluster),
-                        "context_tags": sorted(cluster.common_entities)[:3],
-                    },
-                )
-                if score_pred is not None:
-                    return score_pred.score >= 0.5
-        except Exception:
-            pass
-
-        # --- heuristic path: string-blacklist and overlap checks ---
+        # Heuristic quality gate: string-blacklist and overlap checks
         if len(cluster.episodes) <= 1:
             return True
         lowered = text.lower()

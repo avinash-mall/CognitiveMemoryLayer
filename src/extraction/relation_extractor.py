@@ -1,11 +1,4 @@
-"""Relation extraction from text.
-
-Primary path:
-- LLM OpenIE extraction when an LLM client is available.
-
-Fallback path:
-- spaCy dependency-based relation extraction for non-LLM mode.
-"""
+"""Relation extraction from text via LLM OpenIE (empty when no LLM client)."""
 
 import asyncio
 import json
@@ -13,7 +6,6 @@ import re
 
 from ..core.schemas import Relation
 from ..utils.llm import LLMClient
-from ..utils.ner import _SPACY_REL_EXECUTOR, extract_relations, extract_relations_from_spans
 from ..utils.parsing import strip_markdown_fences
 
 RELATION_EXTRACTION_PROMPT = """Extract relationships from the following text using Open Information Extraction.
@@ -40,7 +32,7 @@ Return only the JSON array."""
 
 
 class RelationExtractor:
-    """Extracts relation triples from text using LLM with spaCy fallback."""
+    """Extracts relation triples from text using the LLM."""
 
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm = llm_client
@@ -51,8 +43,7 @@ class RelationExtractor:
         entities: list[str] | None = None,
     ) -> list[Relation]:
         if not self.llm:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
+            return []
 
         prompt = RELATION_EXTRACTION_PROMPT.format(text=text)
         if entities:
@@ -76,19 +67,7 @@ class RelationExtractor:
                 and r.get("object")
             ]
         except (json.JSONDecodeError, KeyError, TypeError, ValueError, AttributeError):
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
-
-    def _spacy_extract(self, text: str) -> list[Relation]:
-        return [
-            Relation(
-                subject=r.subject,
-                predicate=self._normalize_predicate(r.predicate),
-                object=r.object,
-                confidence=r.confidence,
-            )
-            for r in extract_relations(text)
-        ]
+            return []
 
     async def extract_batch(self, items: list[tuple[str, list[str]]]) -> list[list[Relation]]:
         """Extract relations from multiple (text, entities) pairs in a single LLM call.
@@ -100,15 +79,7 @@ class RelationExtractor:
         if not items:
             return []
         if not self.llm:
-            loop = asyncio.get_running_loop()
-            return list(
-                await asyncio.gather(
-                    *[
-                        loop.run_in_executor(_SPACY_REL_EXECUTOR, self._spacy_extract, text)
-                        for text, _ in items
-                    ]
-                )
-            )
+            return [[] for _ in items]
         if len(items) == 1:
             text, entities = items[0]
             return [await self.extract(text, entities=entities)]
@@ -157,36 +128,6 @@ class RelationExtractor:
             # Fallback: individual calls (original behaviour)
             tasks = [self.extract(text, entities=entities) for text, entities in items]
             return list(await asyncio.gather(*tasks))
-
-    def extract_batch_with_spans(
-        self,
-        items: list[tuple[str, list[str]]],
-        spans_batch: list,
-    ) -> list[list[Relation]]:
-        """Extract relations using pre-computed SpanPredictions (no GPU call).
-
-        Uses extract_relations_from_spans for each text, which avoids a second
-        predict_spans() DeBERTa call.  Only valid when LLM is disabled.
-        """
-        results: list[list[Relation]] = []
-        for i, (text, _entities) in enumerate(items):
-            span_pred = spans_batch[i] if i < len(spans_batch) else None
-            try:
-                rels = extract_relations_from_spans(text, span_pred)
-                results.append(
-                    [
-                        Relation(
-                            subject=r.subject,
-                            predicate=self._normalize_predicate(r.predicate),
-                            object=r.object,
-                            confidence=r.confidence,
-                        )
-                        for r in rels
-                    ]
-                )
-            except Exception:
-                results.append([])
-        return results
 
     def _normalize_predicate(self, predicate: str) -> str:
         normalized = re.sub(r"[\s\-]+", "_", predicate.lower())

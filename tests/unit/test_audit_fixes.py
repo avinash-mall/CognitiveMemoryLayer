@@ -891,9 +891,7 @@ class TestTypeAwareConflictDetection:
     async def test_falls_through_without_new_memory(self):
         from src.reconsolidation.conflict_detector import ConflictDetector, ConflictType
 
-        modelpack = MagicMock()
-        modelpack.available = False
-        detector = ConflictDetector(llm_client=None, modelpack=modelpack)
+        detector = ConflictDetector(llm_client=None)
 
         old = _make_memory_record(
             "I value honesty",
