@@ -435,4 +435,3 @@ def get_eval_llm_client() -> LLMClient:
 
 
 # Backward-compatibility alias
-OpenAIClient = OpenAICompatibleClient

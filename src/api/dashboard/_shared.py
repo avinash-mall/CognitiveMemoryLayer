@@ -1,7 +1,6 @@
 """Shared constants, helpers, and imports for dashboard routes."""
 
 import os
-from typing import Any
 
 import structlog
 from fastapi import Request
@@ -250,7 +249,6 @@ for _fk in (
     _CONFIG_KEY_TO_ENV[f"features.{_fk}"] = f"FEATURES__{_fk.upper()}"
 
 # Fields whose values must be masked in the config output.
-_SECRET_FIELD_TOKENS = {"key", "password", "secret", "token"}
 
 
 def _get_db(request: Request) -> DatabaseManager:
@@ -261,12 +259,3 @@ def _get_db(request: Request) -> DatabaseManager:
 def _config_source(env_var: str) -> str:
     """Return 'env' if env var is set, else 'default'."""
     return "env" if os.environ.get(env_var) is not None else "default"
-
-
-def _mask_value(value: Any) -> str:
-    return "****" if value else ""
-
-
-def _is_secret_key(key: str) -> bool:
-    lower = key.lower()
-    return any(tok in lower for tok in _SECRET_FIELD_TOKENS)

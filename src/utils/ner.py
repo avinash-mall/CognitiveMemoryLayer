@@ -128,7 +128,3 @@ def extract_pii_spans(text: str) -> list[tuple[int, int, str]]:
         seen.add(span)
         deduped.append(span)
     return deduped
-
-
-def contains_pii_entities(text: str) -> bool:
-    return bool(extract_pii_spans(text))

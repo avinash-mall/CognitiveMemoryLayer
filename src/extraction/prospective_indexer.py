@@ -18,7 +18,7 @@ Example:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -64,13 +64,6 @@ class ProspectiveIndex:
     implication: str
     source_memory_text: str
     source_memory_id: str | None = None
-
-
-@dataclass
-class ProspectiveIndexResult:
-    """Result of prospective indexing for one or more memories."""
-
-    indexes: list[ProspectiveIndex] = field(default_factory=list)
 
 
 class ProspectiveIndexer:

@@ -1,7 +1,6 @@
 """Neo4j knowledge graph store for semantic memory."""
 
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,33 +12,6 @@ from ..utils.logging_config import get_logger
 from .base import GraphStoreBase
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class GraphNode:
-    """Graph node (entity) representation."""
-
-    id: str
-    entity: str
-    entity_type: str
-    properties: dict[str, Any]
-    tenant_id: str
-    scope_id: str
-    created_at: datetime
-    updated_at: datetime
-
-
-@dataclass
-class GraphEdge:
-    """Graph edge (relation) representation."""
-
-    id: str
-    source_id: str
-    target_id: str
-    predicate: str
-    properties: dict[str, Any]
-    confidence: float
-    created_at: datetime
 
 
 _REL_TYPE_ALLOWLIST = re.compile(r"^[A-Za-z0-9_\s]+$")

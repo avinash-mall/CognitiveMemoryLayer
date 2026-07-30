@@ -19,8 +19,6 @@ from cml.eval.types import FullEvalConfig, LocomoEvalConfig
 from cml.eval.validate import validate_outputs
 
 HEALTH_URL = "http://localhost:8000/api/v1/health"
-HEALTH_POLL_INTERVAL = 5
-HEALTH_TIMEOUT_SEC = 180
 
 
 @dataclass(slots=True)

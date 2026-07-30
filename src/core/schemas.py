@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import MemorySource, MemoryStatus, MemoryType, OperationType
+from .enums import MemorySource, MemoryStatus, MemoryType
 
 
 class Provenance(BaseModel):
@@ -112,17 +112,6 @@ class MemoryRecordCreate(BaseModel):
     importance: float = 0.5
     decay_rate: float | None = None
     provenance: Provenance
-
-
-class MemoryOperation(BaseModel):
-    """Planned operation on a memory."""
-
-    op: OperationType
-    record_id: UUID | None = None  # For UPDATE/DELETE
-    record: MemoryRecordCreate | None = None  # For ADD
-    patch: dict[str, Any] | None = None  # For UPDATE
-    reason: str = ""
-    confidence: float = 1.0
 
 
 class RetrievedMemory(BaseModel):

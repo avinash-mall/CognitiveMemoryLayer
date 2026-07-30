@@ -264,16 +264,6 @@ async def dashboard_consolidation_runs(
     )
 
 
-@router.get("/consolidation/runs/{job_id}", response_model=DashboardJobItem)
-async def dashboard_consolidation_run_detail(
-    job_id: UUID,
-    auth: AuthContext = Depends(require_admin_permission),
-    db: DatabaseManager = Depends(_get_db),
-):
-    """Alias for consolidation job detail."""
-    return await dashboard_job_detail(job_id=job_id, auth=auth, db=db)
-
-
 @router.get("/reconsolidation/runs", response_model=DashboardJobsResponse)
 async def dashboard_reconsolidation_runs(
     tenant_id: str | None = Query(None),
@@ -289,16 +279,6 @@ async def dashboard_reconsolidation_runs(
         auth=auth,
         db=db,
     )
-
-
-@router.get("/reconsolidation/runs/{job_id}", response_model=DashboardJobItem)
-async def dashboard_reconsolidation_run_detail(
-    job_id: UUID,
-    auth: AuthContext = Depends(require_admin_permission),
-    db: DatabaseManager = Depends(_get_db),
-):
-    """Alias for reconsolidation job detail."""
-    return await dashboard_job_detail(job_id=job_id, auth=auth, db=db)
 
 
 @router.post("/consolidate")

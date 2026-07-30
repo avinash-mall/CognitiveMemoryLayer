@@ -88,22 +88,6 @@ def _serialize_redaction(redaction: tuple[str, str, int, int]) -> dict[str, Any]
     }
 
 
-def _serialize_memory_summary(record: Any) -> dict[str, Any]:
-    return {
-        "id": str(getattr(record, "id", "")),
-        "text": getattr(record, "text", ""),
-        "type": _enum_value(getattr(record, "type", "")),
-        "status": _enum_value(getattr(record, "status", "")),
-        "confidence": getattr(record, "confidence", 0.0),
-        "importance": getattr(record, "importance", 0.0),
-        "timestamp": getattr(record, "timestamp", None),
-        "written_at": getattr(record, "written_at", None),
-        "source_session_id": getattr(record, "source_session_id", None),
-        "supersedes_id": getattr(record, "supersedes_id", None),
-        "metadata": getattr(record, "metadata", {}) or {},
-    }
-
-
 def _sample_ids(rows: Sequence[Any], *, limit: int = 5) -> list[str]:
     out = []
     for row in rows[:limit]:

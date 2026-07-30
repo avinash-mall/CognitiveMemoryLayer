@@ -151,32 +151,6 @@ def resolve_temporal_references(
     return deduped
 
 
-def annotate_text_with_dates(
-    text: str,
-    session_date: datetime,
-) -> str:
-    """Return the text with inline date annotations for resolved temporal references.
-
-    Example: "I went there yesterday" -> "I went there yesterday [2026-04-07]"
-    """
-    refs = resolve_temporal_references(text, session_date)
-    if not refs:
-        return text
-
-    # Sort by position descending so we can insert without offset issues
-    refs.sort(key=lambda r: r["start"], reverse=True)
-    result = text
-    for ref in refs:
-        date_str = ref["resolved_date"].strftime("%Y-%m-%d")
-        approx = "~" if ref["approximate"] else ""
-        annotation = f" [{approx}{date_str}]"
-        insert_pos = ref["end"]
-        # Adjust for case differences between original and lower-cased match
-        result = result[:insert_pos] + annotation + result[insert_pos:]
-
-    return result
-
-
 def extract_event_date(
     text: str,
     session_date: datetime,
