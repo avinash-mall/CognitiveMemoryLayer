@@ -119,4 +119,3 @@ class TestForgettingExecutor:
         assert result.deleted == 1
         assert result.errors == []
         mock_store.delete.assert_called_once_with(rec.id, hard=False)
-

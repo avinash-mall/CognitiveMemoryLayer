@@ -1,6 +1,5 @@
 """Compression (summarization) helpers for active forgetting."""
 
-
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
 

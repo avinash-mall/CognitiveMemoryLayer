@@ -468,7 +468,6 @@ class HippocampalStore:
         texts_to_embed = final_texts
         embedding_results = await self.embeddings.embed_batch(texts_to_embed)
         _t_p3 = _phase_time.perf_counter()
-        _t_p25 = _t_p3
 
         # ---- Phase 3.5 (concurrent with Phase 3): constraint extraction in a thread ----
         _surviving_chunks = [s[1] for s in surviving]
@@ -492,7 +491,6 @@ class HippocampalStore:
             entities_batch = await self.entity_extractor.extract_batch(texts_to_embed)
         else:
             entities_batch = [[] for _ in texts_to_embed]
-        _t_p3r = _phase_time.perf_counter()
 
         relations_batch: list[list[Relation]] = []
         if self.relation_extractor and getattr(self.relation_extractor, "llm", None):
@@ -503,7 +501,6 @@ class HippocampalStore:
             relations_batch = await self.relation_extractor.extract_batch(relation_items)
         else:
             relations_batch = [[] for _ in texts_to_embed]
-        _t_p35 = _phase_time.perf_counter()
 
         # ---- Await Phase 3.5 results ----
         constraint_results_batch = await _constraints_future
@@ -647,7 +644,6 @@ class HippocampalStore:
         # so build all aligned lists together — the write-time facts/constraints
         # phases rely on stored[k] <-> chunk[k].
         aligned_unified: list[UnifiedExtractionResult | None] = []
-        aligned_local: list[dict[str, Any] | None] = []
         aligned_chunks: list[SemanticChunk] = []
         for i, res in enumerate(stored_results):
             if isinstance(res, BaseException):
@@ -657,7 +653,6 @@ class HippocampalStore:
                 rec = cast("MemoryRecord", res)
                 results.append(rec)
                 aligned_unified.append(unified_results[i] if i < len(unified_results) else None)
-                aligned_local.append(None)
                 aligned_chunks.append(surviving[i][1])
                 existing_dicts.append({"text": rec.text})
 
@@ -666,10 +661,7 @@ class HippocampalStore:
             scan_ms=round((_t_scan_end - _t_scan_start) * 1000, 1),
             gate_ms=round((_t_gate_end - _t_gate_start) * 1000, 1),
             embed_ms=round((_t_p3 - _t_p2) * 1000, 1),
-            spans_ms=round((_t_p25 - _t_p3) * 1000, 1),
-            ner_ms=round((_t_p3r - _t_p25) * 1000, 1),
-            rel_ms=round((_t_p35 - _t_p3r) * 1000, 1),
-            local_ms=round((_t_p4 - _t_p35) * 1000, 1),
+            extract_ms=round((_t_p4 - _t_p3) * 1000, 1),
             upsert_ms=round((_t_p4_end - _t_p4_start) * 1000, 1),
         )
 
@@ -677,7 +669,6 @@ class HippocampalStore:
             results,
             (gate_results_list if return_gate_results else None),
             aligned_unified,
-            aligned_local,
             aligned_chunks,
         )
 

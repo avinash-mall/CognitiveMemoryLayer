@@ -336,7 +336,6 @@ class MemoryOrchestrator:
             stored,
             gate_results,
             unified_results,
-            local_results,
             stored_chunks,
         ) = await self._phase_encode_and_store(
             tenant_id=tenant_id,
@@ -359,10 +358,10 @@ class MemoryOrchestrator:
             graph_task = None
             if stored:
                 graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
-            # stored_chunks is positionally aligned with stored / unified_results /
-            # local_results (one entry per stored record), so stored[idx] always
-            # corresponds to chunks[idx] in both phases — even when the write gate
-            # skipped some chunks or an upsert was dropped.
+            # stored_chunks is positionally aligned with stored / unified_results
+            # (one entry per stored record), so stored[idx] always corresponds to
+            # chunks[idx] in both phases — even when the write gate skipped some
+            # chunks or an upsert was dropped.
             _facts_coro = self._phase_write_time_facts(
                 tenant_id,
                 stored_chunks,
@@ -370,7 +369,6 @@ class MemoryOrchestrator:
                 unified_results,
                 timestamp,
                 wpc,
-                local_results=local_results,
             )
             _constraints_coro = self._phase_write_constraints(
                 tenant_id, stored_chunks, stored, unified_results, timestamp, wpc
@@ -595,13 +593,13 @@ class MemoryOrchestrator:
         memory_type_override: Any,
         eval_mode: bool,
         unified_results: list | None,
-    ) -> tuple[list, list, list | None, list, list]:
+    ) -> tuple[list, list, list | None, list]:
         """Encode chunks and store in hippocampal vector store.
 
-        Returns ``(stored, gate_results, unified_results, local_results, stored_chunks)``
-        where ``unified_results``, ``local_results`` and ``stored_chunks`` are all
-        positionally aligned with ``stored`` (one entry per successfully stored
-        record), so callers can correlate each stored record with its source chunk.
+        Returns ``(stored, gate_results, unified_results, stored_chunks)`` where
+        ``unified_results`` and ``stored_chunks`` are positionally aligned with
+        ``stored`` (one entry per successfully stored record), so callers can
+        correlate each stored record with its source chunk.
         """
         result = await self.hippocampal.encode_batch(
             tenant_id=tenant_id,
@@ -626,7 +624,6 @@ class MemoryOrchestrator:
         unified_results: list | None,
         timestamp: datetime | None,
         wpc: WritePathConfig,
-        local_results: list | None = None,
     ) -> None:
         """Write-time fact extraction: populate semantic store immediately."""
         if not wpc.write_time_facts or not chunks:
@@ -655,28 +652,6 @@ class MemoryOrchestrator:
                 for idx, chunk in enumerate(chunks):
                     evidence = [str(stored[idx].id)] if idx < len(stored) else fallback_evidence
                     fact_map: dict[tuple[str, str], Any] = {}
-
-                    local_result = (
-                        local_results[idx] if local_results and idx < len(local_results) else None
-                    )
-                    if local_result is None:
-                        local_extractor = getattr(self.hippocampal, "local_extractor", None)
-                        if local_extractor and getattr(local_extractor, "available", False):
-                            try:
-                                local_result = await local_extractor.extract(
-                                    getattr(chunk, "text", "")
-                                )
-                            except Exception:
-                                local_result = None
-                    local_facts = (
-                        list(local_result.get("facts", []))
-                        if isinstance(local_result, dict)
-                        else []
-                    )
-                    for fact in local_facts:
-                        key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))
-                        if key[0] and key[1]:
-                            fact_map[key] = fact
 
                     for fact in extractor.extract(chunk):
                         key = (str(getattr(fact, "key", "")), str(getattr(fact, "value", "")))

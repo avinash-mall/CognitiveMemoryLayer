@@ -276,4 +276,3 @@ class TestCompression:
         out = await summarize_for_compression(long_text, max_chars=100, llm_client=mock)
         assert "pizza" in out.lower()
         assert len(out) <= 100
-
