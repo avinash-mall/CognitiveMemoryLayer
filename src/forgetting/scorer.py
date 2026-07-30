@@ -3,6 +3,7 @@
 import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryRecord
@@ -173,7 +174,7 @@ class RelevanceScorer:
         memory_type: str,
         *,
         text: str = "",
-        metadata: dict[str, object] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Suggest forgetting action based on score.
 
@@ -199,7 +200,8 @@ class RelevanceScorer:
         try:
             imp = float(meta.get("importance") or 0.0)
             acc = int(meta.get("access_count") or 0)
-            age = int(meta.get("age_days")) if meta.get("age_days") is not None else 999
+            age_raw = meta.get("age_days")
+            age = int(age_raw) if age_raw is not None else 999
             dep = int(meta.get("dependency_count") or 0)
         except (TypeError, ValueError):
             imp, acc, age, dep = 0.0, 0, 999, 0

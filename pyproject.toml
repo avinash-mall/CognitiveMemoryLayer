@@ -147,6 +147,12 @@ ignore_missing_imports = true
 show_error_codes = true
 pretty = true
 
+# numpy is only a transitive dependency; its stubs use PEP 695 `type` statements
+# that mypy rejects under python_version=3.11.
+[[tool.mypy.overrides]]
+module = ["numpy.*"]
+follow_imports = "skip"
+
 [[tool.mypy.overrides]]
 module = [
     "src.api.*",
