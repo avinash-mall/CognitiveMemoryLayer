@@ -85,6 +85,19 @@ resident vLLM servers).
 - **`packages/models/trained_models/` still exists locally** — 241 untracked files
   (15 `.joblib`) with absolute paths from another host. Nothing can load them. Left in
   place deliberately: not in git, so deleting is unrecoverable. Needs an explicit call.
+- **Unshipped retrieval improvements**, salvaged from the deleted `Improvement_Report.md`
+  (levers A, B and D shipped as `extraction/prospective_indexer.py`, the BM25+RRF hybrid,
+  and `extraction/temporal_resolver.py`; the BM25 half is being removed as unwired, leaving
+  `rrf_merge` for HyDE):
+  - **C — bi-temporal graph edges** (Graphiti-style `valid_from`/`valid_to` on relations),
+    so the graph can answer "what did I believe then" rather than only "now".
+  - **E — multi-hop iterative retrieval** (IRCoT-style reason/retrieve loop). Multi-hop is
+    the weakest measured category, so this is the highest-value one.
+  - **F — category-aware answer prompt** for the QA path.
+  - **G — judge comparability caveat:** LoCoMo-Plus scores in the paper use
+    gemini-2.5-flash with a constraint-consistency protocol. Our harness uses a local
+    Qwen judge, so absolute scores are NOT comparable to published baselines — only
+    relative movement is meaningful.
 - Heuristic query classification is keyword-sensitive: `\bcareer\b` sits in the goal
   pattern, so "profession job career" classifies as `constraint_check`. Correct-ish but
   worth knowing when a retrieval result looks oddly constraint-shaped.
