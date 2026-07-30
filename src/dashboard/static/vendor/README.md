@@ -8,11 +8,11 @@ To update: re-fetch from the URL below, re-verify the sha256, refresh this table
 
 | file | version | bytes | sha256 | source |
 |---|---|---|---|---|
-| `chart.umd.js` | 4.4.7 | 205615 | \`2812cb8825fdc57469eb2f7bb055e9429244e599920511ee477e828499b632cb\` | https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js |
-| `vis-network.min.js` | 9.1.9 | 476620 | \`f6ee3a6560dd2bc7fce0b08149a30f2111e78255c5bb677e02c6517acc770379\` | https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js |
-| `vis-network.min.css` | 9.1.9 | 220163 | \`2e82d445ad5878ea881652470ce632601f8f55f1b99e6ebecdff8614600e6d0e\` | https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css |
-| `fonts/inter-latin-wght-normal.woff2` | 5.2.5 | 48444 | \`f052ee44c3728dfd23aba8a4567150bc314d23903026fbb6ad089422c2df56af\` | https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.2.5/files/inter-latin-wght-normal.woff2 |
-| `fonts/jetbrains-mono-latin-wght-normal.woff2` | 5.2.5 | 40404 | \`18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e\` | https://cdn.jsdelivr.net/npm/@fontsource-variable/jetbrains-mono@5.2.5/files/jetbrains-mono-latin-wght-normal.woff2 |
+| `chart.umd.js` | 4.4.7 | 205615 | `2812cb8825fdc57469eb2f7bb055e9429244e599920511ee477e828499b632cb` | https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js |
+| `vis-network.min.js` | 9.1.9 | 476620 | `f6ee3a6560dd2bc7fce0b08149a30f2111e78255c5bb677e02c6517acc770379` | https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js |
+| `vis-network.min.css` | 9.1.9 | 220163 | `2e82d445ad5878ea881652470ce632601f8f55f1b99e6ebecdff8614600e6d0e` | https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css |
+| `fonts/inter-latin-wght-normal.woff2` | 5.2.5 | 48444 | `f052ee44c3728dfd23aba8a4567150bc314d23903026fbb6ad089422c2df56af` | https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.2.5/files/inter-latin-wght-normal.woff2 |
+| `fonts/jetbrains-mono-latin-wght-normal.woff2` | 5.2.5 | 40404 | `18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e` | https://cdn.jsdelivr.net/npm/@fontsource-variable/jetbrains-mono@5.2.5/files/jetbrains-mono-latin-wght-normal.woff2 |
 
 All five hashes were verified against jsDelivr's published hashes
 (`data.jsdelivr.com/v1/packages/npm/<pkg>@<ver>?structure=flat`) at fetch time.
