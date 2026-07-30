@@ -111,6 +111,12 @@ resident vLLM servers).
   `evaluation/results/`).
 - The LoCoMo-Plus scores in `evaluation/` are pre-51afd15 history and are NOT reproducible
   — their source artifacts were never committed. Don't cite them as current.
+- **The modelpack gate numbers in `CHANGELOG.md` [1.4.2] have no surviving evidence.**
+  `packages/models/trained_models/` (25 GB: 16 safetensors, 17 joblib, and 60 metrics /
+  epoch-stats JSONs with the per-model accuracy, macro-F1 and confusion matrices) was
+  deleted on 2026-07-30 by explicit decision. It was never in git and the training
+  pipeline that produced it went in 51afd15, so none of it is regenerable. Treat those
+  changelog figures as historical claims that cannot be re-derived.
 
 ## Known issues / open decisions
 
@@ -131,11 +137,6 @@ resident vLLM servers).
   The table and `migrations/versions/001_initial_schema.py` were deliberately left alone
   — a destructive migration doesn't belong in a cleanup. Drop it in a migration whenever
   someone is willing to own the data loss, or resurrect the writer instead.
-- **`packages/models/trained_models/` still exists locally** — **25 GB**, 241 untracked
-  files (17 `.joblib`) across 93 top-level entries, with absolute paths from another host.
-  Nothing in the tree can load them since the modelpack removal. Left in place
-  deliberately: `git ls-files` returns zero, so deleting is unrecoverable. Needs an
-  explicit call — but it is by far the largest reclaimable thing in the working copy.
 - **Unshipped retrieval improvements**, salvaged from the deleted `Improvement_Report.md`
   (levers A, B and D shipped as `extraction/prospective_indexer.py`, the BM25+RRF hybrid,
   and `extraction/temporal_resolver.py`. The BM25 half has since been removed as unwired —
