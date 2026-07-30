@@ -59,8 +59,9 @@ class MemoryReranker:
         }
         base_scores = {i: breakdowns[i]["base_score"] for i in breakdowns}
 
-        # ponytail: constraint boost from vector-search cosine relevance; a pairwise
-        # scorer (cross-encoder or LLM) could replace it if ranking quality demands.
+        # ponytail: constraint boost from vector-search cosine relevance. If ranking
+        # quality ever demands it, a pairwise scorer could replace this — but note the
+        # scale trap in _score_components before wiring one in.
         for idx, mem in enumerate(memories):
             if mem.record.type == MemoryType.CONSTRAINT:
                 boost = max(0.0, min(1.0, mem.relevance_score)) * 2.0

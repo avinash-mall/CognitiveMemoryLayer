@@ -232,7 +232,7 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 ---
 
-## Optional Modules (Eval and Modeling)
+## Optional Modules (Eval)
 
 Install the optional evaluation module if you need it:
 

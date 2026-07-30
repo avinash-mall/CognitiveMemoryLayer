@@ -200,9 +200,18 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 
 ## CML vs Other Methods (Comparison)
 
-Latest CML evaluation results (April 2026) compared with baselines from the **Locomo-Plus paper** (arXiv:2602.10715, Table 1). Same evaluation protocol: LLM-as-judge, constraint consistency, no task disclosure.
+> **The CML numbers below are historical and not reproducible.** They were measured in
+> April 2026 against the pre-51afd15 write path, which used custom DeBERTa/sklearn models
+> that no longer exist, with a different QA model (`gemma-4-31b-it`) than is configured now.
+> Their source artifacts were never committed. They have **not** been re-measured since
+> extraction moved to the LLM — see the banner in
+> [EVALUATION_REPORT.md](EVALUATION_REPORT.md) for what a re-run costs. The paper baselines
+> in the second table are external citations and remain valid.
 
-### Latest CML Run — `google/gemma-4-31b-it` (local, via vLLM)
+CML results compared with baselines from the **Locomo-Plus paper** (arXiv:2602.10715,
+Table 1). Same evaluation protocol: LLM-as-judge, constraint consistency, no task disclosure.
+
+### CML Run, April 2026 (superseded) — `google/gemma-4-31b-it` (local, via vLLM)
 
 | Metric | Value |
 |--------|--------|
@@ -226,10 +235,6 @@ Latest CML evaluation results (April 2026) compared with baselines from the **Lo
 | RAG (emb-large) | GPT-4o | ~39% | 59.73% | 40.00% | Basic retrieval |
 
 ### Key Strengths
-
-> Scores 1, 2 and 5 come from the April 2026 run against the pre-51afd15 write path and
-> have not been re-measured since extraction moved to the LLM. See the banner in
-> [EVALUATION_REPORT.md](EVALUATION_REPORT.md).
 
 1. **Adversarial: 64.80%** — outperforms GPT-4o full-context (48.99%), more than doubles Mem0 (30.50%), SeCom (31.80%), A-Mem (35.20%). Best adversarial score of any memory system.
 2. **Temporal: 48.60%** — beats GPT-4o full-context (45.79%) and Mem0 (39.40%) by +9.20%.

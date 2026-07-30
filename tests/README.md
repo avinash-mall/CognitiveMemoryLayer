@@ -5,7 +5,7 @@ This document describes how to run the test suite for the Cognitive Memory Layer
 ## Prerequisites
 
 - **Python 3.11+**
-- Project dependencies installed (e.g. `pip install -e ".[dev,server]"` from repo root for server tests, or `pip install -e ".[dev,server,embedded,modeling,eval]"` for the full monorepo suite)
+- Project dependencies installed (e.g. `pip install -e ".[dev,server]"` from repo root for server tests, or `pip install -e ".[dev,server,embedded,eval]"` for the full monorepo suite)
 
 ## Quick start
 

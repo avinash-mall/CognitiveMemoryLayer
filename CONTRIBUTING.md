@@ -64,7 +64,7 @@ Thank you for your interest in contributing. This document outlines how to get s
   - `utils` — Embedding client, LLM client, entity/PII normalization helpers (`ner.py`), `shadow_logger.py` (shadow mode comparison).
 - `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
 - `tests/` — Pytest tests (unit, integration, e2e); see [tests/README.md](tests/README.md).
-- `scripts/` — Dev scripts: `update_readme_badges.py` (refresh README badge counts), `run_examples.py` (run examples; see script docstring or examples/README), and focused probe/evaluation helpers such as `package_surface_probe.py`, `constraint_retrieval_probe.py`, `models_artifact_probe.py`, and `test_memory_quality.py`.
+- `scripts/` — Dev scripts: `update_readme_badges.py` (refresh README badge counts), `run_examples.py` (run examples; see script docstring or examples/README), and focused probe/evaluation helpers such as `package_surface_probe.py`, `constraint_retrieval_probe.py`, and `test_memory_quality.py`.
 - `ProjectPlan/` — Design docs and roadmap (see [ActiveCML/README.md](ProjectPlan/ActiveCML/README.md) for the forward-looking phase plan).
 
 For full architecture and API details, see [README](README.md) and [Usage Documentation](docs/usage.md).

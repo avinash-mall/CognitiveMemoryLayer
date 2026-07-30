@@ -1,7 +1,6 @@
 """Helpers for parsing loose, LLM/JSON-sourced data.
 
-Shared coercion utilities so extractors and the model-pack runtime do not each
-carry their own copy. Pure stdlib — safe to import anywhere in ``src/``.
+Shared coercion utilities so the extractors do not each carry their own copy. Pure stdlib — safe to import anywhere in ``src/``.
 """
 
 from __future__ import annotations
