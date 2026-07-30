@@ -120,7 +120,7 @@ jobs:
 
       - name: Run full suite with coverage
         run: |
-          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml run --rm -v "$PWD:/workspace" app sh -lc "pytest tests packages/py-cml/tests -v --tb=short -rs --cov=src --cov=packages/py-cml/src/cml --cov-report=xml:/workspace/coverage.xml --cov-report=term && coverage report --include='src/*' --fail-under=75 && coverage report --include='src/*,packages/py-cml/src/cml/*' --fail-under=75"
+          docker compose -f docker/docker-compose.yml -f docker/docker-compose.ci.yml run --rm --no-deps -v "$PWD:/workspace" app sh -lc "pytest tests packages/py-cml/tests -v --tb=short -rs --cov=src --cov=packages/py-cml/src/cml --cov-report=xml:/workspace/coverage.xml --cov-report=term && coverage report --include='src/*' --fail-under=75 && coverage report --include='src/*,packages/py-cml/src/cml/*' --fail-under=75"
 
       - name: Upload coverage to Codecov
         if: always()

@@ -24,9 +24,14 @@ transformers>=4.45
 sentence-transformers>=5.0
 einops>=0.7.0
 
-# GPU-accelerated torch (CUDA 12.8 — matches RTX 5070 Ti / driver 580+).
-# nvidia-ctk mounts GPU drivers into the container at runtime; torch just needs
-# the right CUDA wheel installed. CPU torch is pulled as a transitive dep above
-# without this override, so this must come last to win.
+# GPU-accelerated torch (CUDA 12.8 — matches driver 580+). The wheel vendors its
+# own CUDA runtime; nvidia-container-toolkit mounts the host driver at run time.
+#
+# The version MUST stay an exact +cu128 pin. With --extra-index-url pip merges both
+# indexes and takes the highest version, and PyPI's default-CUDA torch outranks
+# anything on the cu128 index — which is how a CUDA-13.0 build silently landed here.
+# Bumping this is a deliberate act: check https://download.pytorch.org/whl/cu128/torch/
+# for the newest +cu128 wheel. (uv.lock resolves from pyproject.toml, not this file,
+# so it legitimately shows a plain version — don't "fix" the pin to match it.)
 --extra-index-url https://download.pytorch.org/whl/cu128
-torch>=2.7.0
+torch==2.10.0+cu128

@@ -24,14 +24,18 @@ link them below. Delete notes when they stop being true.
 
 ## Known issues
 
-- `CI/CD Pipeline` test job fails at Docker image build (megablocks: CUDA 12.8
-  builder image vs CUDA 13.0 torch wheel from PyPI). Pre-existing since
-  2026-06-20, unrelated to the modelpack removal.
 - Offline rule (CLAUDE.md #1) violations in the dashboard: chart.js loaded
-  from jsdelivr in `src/dashboard/static/index.html:8`; vis-network CDN
-  fallback in `src/dashboard/static/js/pages/graph.js:55-58` (a local
-  `bundle.js` is built for the graph, but the fallback still points at a CDN).
-  Both need bundling to comply.
+  from jsdelivr in `src/dashboard/static/index.html:8`; vis-network loaded from
+  jsdelivr in `src/dashboard/static/js/pages/graph.js:55-58`. There is no local
+  copy of either — being vendored under `static/vendor/`.
+
+## Docker notes
+
+- Images build from `python:3.12-slim`. There is deliberately no CUDA toolkit: torch's
+  wheels vendor their own CUDA runtime and the GPU comes from nvidia-container-toolkit.
+- `torch` must stay an exact `+cu128` pin in `requirements-runtime.txt` — with
+  `--extra-index-url` pip takes the highest version across indexes, and PyPI's
+  default-CUDA build outranks every cu128 wheel. That is what broke CI for six weeks.
 
 ## Notes index
 

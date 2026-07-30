@@ -18,7 +18,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Docker image build (CI red since 2026-06-20)** — `torch` is now pinned to an exact
+  `2.10.0+cu128` wheel. With `--extra-index-url`, pip merges both indexes and takes the
+  highest version, so PyPI's default-CUDA torch outranked every cu128 wheel; the resulting
+  CUDA-13.0 build then failed the nvcc-12.8 version check while compiling megablocks. The
+  megablocks/stanford-stk step and the CUDA base images are gone (see Removed), so both the
+  `test` and `production` targets build again.
+- **CI test runner no longer rebuilds an unused image** — `docker compose run` now passes
+  `--no-deps`, so `app` stops pulling in the `api-test` service (which has no CI `image:`
+  override and would trigger a fresh `production` build).
 - **GitHub Actions Docker startup on non-GPU runners** — CI no longer inherits an `nvidia` device reservation from the base Compose file, fixing failures like `could not select device driver "nvidia" with capabilities: [[gpu]]` when bringing up the stack on standard GitHub-hosted runners.
+
+### Removed
+
+- **CUDA toolkit base images and the megablocks build** — the Docker builder/production
+  stages now use `python:3.12-slim`. The `nvidia/cuda:12.8.1-{devel,runtime}` bases existed
+  only to supply `nvcc` for compiling `megablocks`, an *optional* accelerator for the
+  MoE embedding model: the model's own code imports it under `try/except ImportError` and
+  falls back to a pure-PyTorch experts loop, which is what has actually been running.
+  Torch's pip wheels vendor their own CUDA runtime and GPU access still comes from
+  nvidia-container-toolkit, so GPU inference is unaffected.
+- **Dead dashboard build pipeline** — `src/dashboard/package.json`, `vite.config.js`, and
+  the Docker `node:20-alpine` stage. The bundle they produced was loaded by nothing
+  (`index.html` imports `app.js` directly), and the declared `neovis.js` dependency was
+  imported by no file.
 
 ## [1.5.0] — 2026-03-26
 

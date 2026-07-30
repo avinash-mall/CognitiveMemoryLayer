@@ -1,70 +1,47 @@
 # Cognitive Memory Layer - Multi-stage build
-# Stage 1: build image with CUDA toolkit (nvcc) for compiling megablocks kernels.
-# The devel variant includes nvcc, needed for megablocks CUDA extensions.
-FROM nvidia/cuda:12.8.1-devel-ubuntu24.04 AS builder
+# Stage 1: builder — installs runtime deps into site-packages.
+# No CUDA toolkit: torch's pip wheels vendor their own CUDA runtime libraries,
+# and GPU access comes from nvidia-container-toolkit at run time (see
+# docker-compose.gpu.yml), so nothing here needs nvcc.
+FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_BREAK_SYSTEM_PACKAGES=1 \
-    CUDA_HOME=/usr/local/cuda \
-    TORCH_CUDA_ARCH_LIST="8.0;8.6;9.0;10.0;12.0"
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-dev python3-pip python3-venv \
     build-essential \
     libpq-dev \
-    curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-runtime.txt ./
 COPY pyproject.toml hatch_build.py ./
 COPY packages/py-cml ./packages/py-cml
 
-RUN pip install --no-cache-dir --break-system-packages -r requirements-runtime.txt \
-    && pip install --no-cache-dir --break-system-packages "."
-
-RUN pip install --no-build-isolation --no-cache-dir --break-system-packages \
-       stanford-stk git+https://github.com/nomic-ai/megablocks.git
-
-# Stage 1b: Dashboard frontend build (neovis.js bundle for offline graph)
-FROM node:20-alpine AS dashboard
-WORKDIR /build
-COPY src/dashboard/package.json src/dashboard/vite.config.js ./
-COPY src/dashboard/static ./static
-RUN npm install && npm run build
+RUN pip install -r requirements-runtime.txt \
+    && pip install "."
 
 # Stage 2: production runtime image
-# Uses the runtime variant (smaller, no nvcc) — still has CUDA shared libs
-# so pre-compiled megablocks .so files work at runtime.
-FROM nvidia/cuda:12.8.1-runtime-ubuntu24.04 AS production
+FROM python:3.12-slim AS production
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_BREAK_SYSTEM_PACKAGES=1 \
-    CC=gcc \
-    CXX=g++
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-dev \
     libpq5 \
     curl \
-    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy all installed Python packages from the builder stage.
-COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
-COPY --from=builder /usr/lib/python3/dist-packages /usr/lib/python3/dist-packages
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY src ./src
-COPY --from=dashboard /build/static/js/bundle.js ./src/dashboard/static/js/bundle.js
 COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations/
@@ -91,7 +68,7 @@ CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
 FROM builder AS test-dependencies
 
 COPY requirements-test.txt ./
-RUN pip install --no-cache-dir --break-system-packages -r requirements-test.txt
+RUN pip install -r requirements-test.txt
 
 FROM test-dependencies AS test
 
@@ -107,7 +84,7 @@ COPY migrations ./migrations/
 COPY docker/entrypoint.sh /entrypoint.sh
 
 # Install package with the extras required by the full GitHub test suite.
-RUN pip install --no-cache-dir --break-system-packages -e ".[embedded,eval]"
+RUN pip install -e ".[embedded,eval]"
 
 ENV PYTHONPATH=/app
 
