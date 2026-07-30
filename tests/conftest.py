@@ -166,11 +166,3 @@ async def pg_session_factory(pg_engine):
         expire_on_commit=False,
     )
     yield async_session
-
-
-@pytest.fixture
-async def event_log_repo(db_session: AsyncSession):
-    """Provide EventLogRepository with a live session."""
-    from src.storage.event_log import EventLogRepository
-
-    return EventLogRepository(db_session)

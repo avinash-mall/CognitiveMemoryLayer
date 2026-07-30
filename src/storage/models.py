@@ -21,37 +21,6 @@ class Base(DeclarativeBase):
     pass
 
 
-class EventLogModel(Base):
-    """Event log table - append-only audit trail."""
-
-    __tablename__ = "event_log"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(String(100), nullable=False, index=True)
-    scope_id = Column(String(100), nullable=False, index=True)
-    agent_id = Column(String(100), nullable=True)
-
-    event_type = Column(String(50), nullable=False, index=True)
-    operation = Column(String(20), nullable=True)
-
-    payload = Column(JSON, nullable=False)
-    memory_ids = cast("Any", Column(ARRAY(UUID(as_uuid=True)), default=list))
-    parent_event_id = Column(UUID(as_uuid=True), nullable=True)
-
-    created_at = Column(
-        DateTime,
-        default=lambda: datetime.now(UTC).replace(tzinfo=None),
-        index=True,
-    )
-
-    ip_address = Column(String(50), nullable=True)
-    user_agent = Column(String(500), nullable=True)
-
-    __table_args__ = (
-        Index("ix_event_log_tenant_scope_time", "tenant_id", "scope_id", "created_at"),
-    )
-
-
 class MemoryRecordModel(Base):
     """Memory records table with vector embedding support."""
 

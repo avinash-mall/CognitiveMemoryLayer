@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
 
 from ...storage.connection import DatabaseManager
-from ...storage.models import DashboardJobModel, EventLogModel, MemoryRecordModel, SemanticFactModel
+from ...storage.models import DashboardJobModel, MemoryRecordModel, SemanticFactModel
 from ..auth import AuthContext, require_admin_permission
 from ._shared import (
     BulkActionRequest,
@@ -119,30 +119,13 @@ async def dashboard_memory_detail(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Full detail for a single memory record: text, type, confidence, metadata, related semantic facts, and event history."""
+    """Full detail for a single memory record: text, type, confidence, metadata, and related semantic facts."""
     try:
         async with db.pg_session() as session:
             q = select(MemoryRecordModel).where(MemoryRecordModel.id == memory_id)
             record = (await session.execute(q)).scalar_one_or_none()
             if not record:
                 raise HTTPException(status_code=404, detail="Memory not found")
-            event_q = (
-                select(EventLogModel)
-                .where(EventLogModel.memory_ids.any(memory_id))
-                .order_by(EventLogModel.created_at.desc())
-                .limit(50)
-            )
-            events = (await session.execute(event_q)).scalars().all()
-            related_events = [
-                {
-                    "id": str(e.id),
-                    "event_type": e.event_type,
-                    "operation": e.operation,
-                    "created_at": e.created_at.isoformat() if e.created_at else None,
-                    "payload": e.payload,
-                }
-                for e in events
-            ]
             return DashboardMemoryDetail(
                 id=cast("UUID", record.id),
                 tenant_id=cast("str", record.tenant_id),
@@ -171,7 +154,6 @@ async def dashboard_memory_detail(
                 written_at=cast("datetime", record.written_at),
                 valid_from=cast("datetime | None", record.valid_from),
                 valid_to=cast("datetime | None", record.valid_to),
-                related_events=related_events,
             )
     except HTTPException:
         raise
@@ -330,8 +312,6 @@ async def dashboard_memory_lineage(
         record_key = cast("str | None", record.key)
         if record_key:
             lookup_terms.add(record_key)
-        if detail.related_events:
-            lookup_terms.update(event["id"] for event in detail.related_events)
         for job in recent_jobs:
             payload = json.dumps(job.result or {}, default=str)
             if any(term and term in payload for term in lookup_terms):

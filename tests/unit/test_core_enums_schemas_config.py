@@ -9,7 +9,6 @@ from src.core.enums import (
     OperationType,
 )
 from src.core.schemas import (
-    EventLog,
     MemoryPacket,
     MemoryRecord,
     MemoryRecordCreate,
@@ -107,32 +106,6 @@ class TestMemoryRecordSchema:
         assert record.status == MemoryStatus.ACTIVE
         assert record.version == 1
         assert record.access_count == 0
-
-
-class TestEventLogSchema:
-    """EventLog schema."""
-
-    def test_event_log_minimal(self):
-        e = EventLog(
-            tenant_id="t1",
-            scope_id="s1",
-            event_type="turn",
-            payload={"message": "hello"},
-        )
-        assert e.id is not None
-        assert e.operation is None
-        assert e.memory_ids == []
-        assert e.created_at is not None
-
-    def test_event_log_with_operation(self):
-        e = EventLog(
-            tenant_id="t1",
-            scope_id="s1",
-            event_type="memory_op",
-            operation=OperationType.ADD,
-            payload={"op": "add"},
-        )
-        assert e.operation == OperationType.ADD
 
 
 class TestMemoryPacket:

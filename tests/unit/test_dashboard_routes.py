@@ -159,12 +159,6 @@ class TestDashboardAuth:
             resp = client.get("/api/v1/dashboard/memories")
         assert resp.status_code == 403
 
-    def test_events_with_user_key_returns_403(self, user_headers):
-        """Dashboard events list requires admin key."""
-        with TestClient(app, headers=user_headers) as client:
-            resp = client.get("/api/v1/dashboard/events")
-        assert resp.status_code == 403
-
     def test_timeline_with_user_key_returns_403(self, user_headers):
         """Dashboard timeline requires admin key."""
         with TestClient(app, headers=user_headers) as client:
@@ -243,10 +237,8 @@ class TestDashboardWithAdminAndMockDb:
             assert "active_memories" in data
             assert "by_type" in data
             assert "by_status" in data
-            assert "total_events" in data
             assert "total_semantic_facts" in data
             assert data["total_memories"] == 0
-            assert data["total_events"] == 0
         finally:
             app.dependency_overrides.pop(_get_db, None)
 
@@ -265,21 +257,6 @@ class TestDashboardWithAdminAndMockDb:
             assert "total_pages" in data
             assert data["items"] == []
             assert data["total"] == 0
-        finally:
-            app.dependency_overrides.pop(_get_db, None)
-
-    def test_events_returns_200_and_pagination_shape(self, admin_headers, mock_db):
-        """Dashboard events returns 200 and paginated list shape."""
-        _override_get_db(mock_db)
-        try:
-            with TestClient(app, headers=admin_headers) as client:
-                resp = client.get("/api/v1/dashboard/events?page=1&per_page=10")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert "items" in data
-            assert "total" in data
-            assert "page" in data
-            assert "total_pages" in data
         finally:
             app.dependency_overrides.pop(_get_db, None)
 

@@ -826,22 +826,6 @@ tr.clickable-row:hover { background: var(--bg-card-hover); }
     overflow-y: auto;
 }
 
-/* --- Event Row Expandable --- */
-.event-payload {
-    display: none;
-    padding: 10px 14px;
-    background: var(--bg-input);
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    white-space: pre-wrap;
-    word-break: break-word;
-    border-bottom: 1px solid var(--border);
-}
-
-.event-payload.expanded { display: table-cell; }
-
-tr.event-expanded .event-payload { display: block; }
-
 /* --- Loading spinner --- */
 .spinner {
     display: inline-block;

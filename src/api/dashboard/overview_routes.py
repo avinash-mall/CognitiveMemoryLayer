@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, text
 
 from ...core.config import get_embedding_dimensions, get_settings
-from ...storage.models import EventLogModel, MemoryRecordModel, SemanticFactModel
+from ...storage.models import MemoryRecordModel, SemanticFactModel
 from ..auth import AuthContext, require_admin_permission
 from ._shared import (
     _REQUEST_COUNT_PREFIX,
@@ -40,16 +40,14 @@ async def dashboard_overview(
     auth: AuthContext = Depends(require_admin_permission),
     db=Depends(_get_db),
 ):
-    """Comprehensive dashboard overview: total memories, semantic facts, event counts, storage estimates, and breakdowns by type and status. Optionally filter by tenant."""
+    """Comprehensive dashboard overview: total memories, semantic facts, storage estimates, and breakdowns by type and status. Optionally filter by tenant."""
     try:
         async with db.pg_session() as session:
             mem_filter: list = []
             fact_filter: list = []
-            event_filter: list = []
             if tenant_id:
                 mem_filter.append(MemoryRecordModel.tenant_id == tenant_id)
                 fact_filter.append(SemanticFactModel.tenant_id == tenant_id)
-                event_filter.append(EventLogModel.tenant_id == tenant_id)
 
             # Memory record stats
             total_q = select(func.count()).select_from(MemoryRecordModel)
@@ -138,28 +136,6 @@ async def dashboard_overview(
             avg_fact_confidence = float(fact_avg_row[0] or 0) if fact_avg_row else 0.0
             avg_evidence_count = float(fact_avg_row[1] or 0) if fact_avg_row else 0.0
 
-            # Events
-            event_total_q = select(func.count()).select_from(EventLogModel)
-            for f in event_filter:
-                event_total_q = event_total_q.where(f)
-            total_events = (await session.execute(event_total_q)).scalar() or 0
-
-            event_type_q = select(EventLogModel.event_type, func.count()).group_by(
-                EventLogModel.event_type
-            )
-            for f in event_filter:
-                event_type_q = event_type_q.where(f)
-            events_by_type = {r[0]: r[1] for r in (await session.execute(event_type_q)).all()}
-
-            event_op_q = (
-                select(EventLogModel.operation, func.count())
-                .where(EventLogModel.operation.isnot(None))
-                .group_by(EventLogModel.operation)
-            )
-            for f in event_filter:
-                event_op_q = event_op_q.where(f)
-            events_by_operation = {r[0]: r[1] for r in (await session.execute(event_op_q)).all()}
-
             return DashboardOverview(
                 total_memories=total,
                 active_memories=by_status.get("active", 0),
@@ -182,9 +158,6 @@ async def dashboard_overview(
                 facts_by_category=facts_by_category,
                 avg_fact_confidence=round(avg_fact_confidence, 4),
                 avg_evidence_count=round(avg_evidence_count, 2),
-                total_events=total_events,
-                events_by_type=events_by_type,
-                events_by_operation=events_by_operation,
             )
     except Exception as e:
         logger.error("dashboard_overview_error", error=str(e))
@@ -244,9 +217,6 @@ async def dashboard_components(
             fact_count = (
                 await session.execute(select(func.count()).select_from(SemanticFactModel))
             ).scalar() or 0
-            event_count = (
-                await session.execute(select(func.count()).select_from(EventLogModel))
-            ).scalar() or 0
         latency = (time.monotonic() - t0) * 1000
         components.append(
             ComponentStatus(
@@ -256,7 +226,6 @@ async def dashboard_components(
                 details={
                     "memory_records": mem_count,
                     "semantic_facts": fact_count,
-                    "events": event_count,
                     "embedding_dimensions": get_embedding_dimensions(),
                 },
             )
@@ -384,17 +353,7 @@ async def dashboard_tenants(
             fact_rows = (await session.execute(fact_q)).all()
             fact_map = {r[0]: r[1] for r in fact_rows}
 
-            event_q = select(
-                EventLogModel.tenant_id,
-                func.count().label("event_count"),
-                func.max(EventLogModel.created_at).label("last_evt"),
-            ).group_by(EventLogModel.tenant_id)
-            event_rows = (await session.execute(event_q)).all()
-            event_map: dict[str, dict] = {}
-            for r in event_rows:
-                event_map[r[0]] = {"count": r[1], "last_evt": r[2]}
-
-            all_tenants = sorted(set(mem_map.keys()) | set(fact_map.keys()) | set(event_map.keys()))
+            all_tenants = sorted(set(mem_map.keys()) | set(fact_map.keys()))
 
             tenants = [
                 TenantInfo(
@@ -402,9 +361,7 @@ async def dashboard_tenants(
                     memory_count=mem_map.get(tid, {}).get("count", 0),
                     active_memory_count=mem_map.get(tid, {}).get("active", 0),
                     fact_count=fact_map.get(tid, 0),
-                    event_count=event_map.get(tid, {}).get("count", 0),
                     last_memory_at=mem_map.get(tid, {}).get("last_mem"),
-                    last_event_at=event_map.get(tid, {}).get("last_evt"),
                 )
                 for tid in all_tenants
             ]

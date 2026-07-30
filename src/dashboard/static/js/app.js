@@ -8,7 +8,6 @@ import { renderOverview } from './pages/overview.js';
 import { renderMemories } from './pages/memories.js';
 import { renderDetail } from './pages/detail.js';
 import { renderComponents } from './pages/components.js';
-import { renderEvents } from './pages/events.js';
 import { renderManagement } from './pages/management.js';
 import { renderTenants } from './pages/tenants.js';
 import { renderSessions } from './pages/sessions.js';
@@ -46,7 +45,6 @@ const pages = {
     sessions: { title: 'Sessions', render: renderSessions },
     detail: { title: 'Memory Detail', render: renderDetail },
     components: { title: 'Components', render: renderComponents },
-    events: { title: 'Event Log', render: renderEvents },
     graph: { title: 'Knowledge Graph', render: renderGraph },
     facts: { title: 'Facts Explorer', render: renderFacts },
     quality: { title: 'Data Quality', render: renderQuality },

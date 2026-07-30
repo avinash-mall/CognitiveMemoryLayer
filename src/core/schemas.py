@@ -114,32 +114,6 @@ class MemoryRecordCreate(BaseModel):
     provenance: Provenance
 
 
-class EventLog(BaseModel):
-    """Immutable event log entry."""
-
-    id: UUID = Field(default_factory=uuid4)
-    tenant_id: str
-    scope_id: str
-    agent_id: str | None = None
-
-    event_type: str  # "turn", "memory_op", "consolidation", etc.
-    operation: OperationType | None = None
-
-    # Content
-    payload: dict[str, Any]  # Full turn data or operation details
-
-    # References
-    memory_ids: list[UUID] = Field(default_factory=list)  # Affected memories
-    parent_event_id: UUID | None = None  # For chaining
-
-    # Timing
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    # Audit
-    ip_address: str | None = None
-    user_agent: str | None = None
-
-
 class MemoryOperation(BaseModel):
     """Planned operation on a memory."""
 

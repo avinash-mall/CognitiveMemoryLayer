@@ -152,7 +152,6 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
                 "decay_rate": 0.01,
                 "labile": False,
                 "version": 1,
-                "related_events": [],
             }
         if path == "/dashboard/facts":
             return {"items": [], "total": 0}
@@ -251,7 +250,6 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
     assert (await client.dashboard_facts()).total == 0
     assert (await client.dashboard_invalidate_fact("fact-1"))["success"] is True
     assert (await client.dashboard_export_memories())[0]["id"] == str(memory_id)
-    assert (await client.get_events()).total == 0
     assert (await client.dashboard_timeline()).total == 0
     assert (await client.component_health()).components[0].name == "PostgreSQL"
     assert (await client.get_sessions()).total_active == 0
@@ -402,7 +400,6 @@ async def test_async_client_batch_iter_and_namespace_wrappers(
     monkeypatch.setattr(
         client, "dashboard_export_memories", lambda *args, **kwargs: _constant("export")
     )
-    monkeypatch.setattr(client, "get_events", lambda *args, **kwargs: _constant("events"))
     monkeypatch.setattr(client, "dashboard_timeline", lambda *args, **kwargs: _constant("timeline"))
     monkeypatch.setattr(client, "component_health", lambda *args, **kwargs: _constant("components"))
     monkeypatch.setattr(client, "get_sessions", lambda *args, **kwargs: _constant("sessions"))
@@ -436,7 +433,6 @@ async def test_async_client_batch_iter_and_namespace_wrappers(
     assert await namespace_client.dashboard_facts() == "facts"
     assert await namespace_client.dashboard_invalidate_fact("fact-1") == "invalidate"
     assert await namespace_client.dashboard_export_memories() == "export"
-    assert await namespace_client.get_events() == "events"
     assert await namespace_client.dashboard_timeline() == "timeline"
     assert await namespace_client.component_health() == "components"
     assert await namespace_client.get_sessions() == "sessions"

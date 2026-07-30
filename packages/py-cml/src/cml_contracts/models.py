@@ -70,9 +70,6 @@ class DashboardOverview(BaseModel):
     facts_by_category: dict[str, int] = Field(default_factory=dict)
     avg_fact_confidence: float = 0.0
     avg_evidence_count: float = 0.0
-    total_events: int = 0
-    events_by_type: dict[str, int] = Field(default_factory=dict)
-    events_by_operation: dict[str, int] = Field(default_factory=dict)
 
 
 class DashboardMemoryListItem(BaseModel):
@@ -137,32 +134,6 @@ class DashboardMemoryDetail(BaseModel):
     written_at: datetime | None = None
     valid_from: datetime | None = None
     valid_to: datetime | None = None
-    related_events: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class DashboardEventItem(BaseModel):
-    """Event log item for dashboard."""
-
-    id: UUID
-    tenant_id: str
-    scope_id: str
-    agent_id: str | None = None
-    event_type: str
-    operation: str | None = None
-    payload: Any = None
-    memory_ids: list[UUID] = Field(default_factory=list)
-    parent_event_id: UUID | None = None
-    created_at: datetime | None = None
-
-
-class DashboardEventListResponse(BaseModel):
-    """Paginated event list response."""
-
-    items: list[DashboardEventItem]
-    total: int
-    page: int
-    per_page: int
-    total_pages: int
 
 
 class TimelinePoint(BaseModel):
@@ -202,9 +173,7 @@ class TenantInfo(BaseModel):
     memory_count: int = 0
     active_memory_count: int = 0
     fact_count: int = 0
-    event_count: int = 0
     last_memory_at: datetime | None = None
-    last_event_at: datetime | None = None
 
 
 class DashboardTenantsResponse(BaseModel):

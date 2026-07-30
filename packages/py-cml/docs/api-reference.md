@@ -51,7 +51,6 @@ Set `CML_API_KEY` in `.env` or pass it directly. Use `with CognitiveMemoryLayer(
 - **batch_write(items, \*, session_id, namespace)** → `list[WriteResponse]` — Write multiple memories sequentially.
 - **batch_read(queries, \*, max_results, response_format)** → `list[ReadResponse]` — Execute multiple read queries.
 - **list_tenants()** → `DashboardTenantsResponse` — List all tenants with memory/fact/event counts and last activity.
-- **get_events(\*, limit, page, event_type, since)** → `DashboardEventListResponse` — Query the event log with pagination.
 - **component_health()** → `DashboardComponentsResponse` — Detailed health status of all CML components.
 - **with_namespace(namespace)** → `NamespacedClient` — Create a namespace-scoped view.
 - **iter_memories(\*, memory_types, status, batch_size)** → `Iterator[MemoryItem]` — Paginated iteration over memories.

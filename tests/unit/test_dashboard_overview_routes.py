@@ -34,9 +34,6 @@ async def test_dashboard_overview_aggregates_counts() -> None:
             ResultStub(scalar=4),
             ResultStub(all_rows=[("identity", 5)]),
             ResultStub(one_or_none=(0.9, 2.0)),
-            ResultStub(scalar=8),
-            ResultStub(all_rows=[("memory.write", 5)]),
-            ResultStub(all_rows=[("add", 5)]),
         ]
     )
 
@@ -52,8 +49,6 @@ async def test_dashboard_overview_aggregates_counts() -> None:
     assert result.by_type == {"episodic_event": 6, "constraint": 4}
     assert result.total_semantic_facts == 5
     assert result.current_semantic_facts == 4
-    assert result.total_events == 8
-    assert result.events_by_operation == {"add": 5}
 
 
 @pytest.mark.asyncio
@@ -145,19 +140,18 @@ async def test_dashboard_components_reports_ok_unknown_and_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_tenants_merges_sets_from_memories_facts_and_events() -> None:
+async def test_dashboard_tenants_merges_sets_from_memories_and_facts() -> None:
     db, _ = make_db(
         pg_results=[
             ResultStub(all_rows=[("tenant-a", 5, 4, datetime(2025, 1, 1))]),
             ResultStub(all_rows=[("tenant-b", 3)]),
-            ResultStub(all_rows=[("tenant-c", 7, datetime(2025, 1, 2))]),
         ]
     )
 
     result = await overview_routes.dashboard_tenants(auth=ADMIN_AUTH, db=db)
 
     tenant_ids = [tenant.tenant_id for tenant in result.tenants]
-    assert tenant_ids == ["tenant-a", "tenant-b", "tenant-c"]
+    assert tenant_ids == ["tenant-a", "tenant-b"]
 
 
 @pytest.mark.asyncio

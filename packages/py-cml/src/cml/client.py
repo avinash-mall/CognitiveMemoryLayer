@@ -21,7 +21,6 @@ from cml.models import (
     CreateSessionRequest,
     DashboardComponentsResponse,
     DashboardConfigResponse,
-    DashboardEventListResponse,
     DashboardFactListResponse,
     DashboardJobsResponse,
     DashboardLabileResponse,
@@ -949,30 +948,6 @@ class CognitiveMemoryLayer:
             "POST", "/dashboard/memories/bulk-action", json=payload, use_admin_key=True
         )
 
-    # ---- Phase 5: Event log ----
-
-    def get_events(
-        self,
-        *,
-        limit: int = 50,
-        page: int = 1,
-        event_type: str | None = None,
-        since: datetime | None = None,
-    ) -> DashboardEventListResponse:
-        """Query the event log (admin only)."""
-        params: dict[str, Any] = {"per_page": limit, "page": page}
-        if event_type is not None:
-            params["event_type"] = event_type
-        if since is not None:
-            params["since"] = since.isoformat()
-        data = self._transport.request(
-            "GET",
-            "/dashboard/events",
-            params=params,
-            use_admin_key=True,
-        )
-        return DashboardEventListResponse(**data)
-
     def dashboard_timeline(
         self,
         *,
@@ -1726,21 +1701,6 @@ class NamespacedClient:
 
     def dashboard_export_memories(self, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
         return self._parent.dashboard_export_memories(tenant_id=tenant_id)
-
-    def get_events(
-        self,
-        *,
-        limit: int = 50,
-        page: int = 1,
-        event_type: str | None = None,
-        since: datetime | None = None,
-    ) -> DashboardEventListResponse:
-        return self._parent.get_events(
-            limit=limit,
-            page=page,
-            event_type=event_type,
-            since=since,
-        )
 
     def dashboard_timeline(
         self,

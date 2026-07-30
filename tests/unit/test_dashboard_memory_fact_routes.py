@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from src.api.dashboard import events_routes, fact_routes, memory_routes
+from src.api.dashboard import fact_routes, memory_routes
 from src.core.enums import MemoryStatus, MemoryType
 
 from .dashboard_support import (
@@ -97,9 +97,8 @@ async def test_dashboard_memories_returns_http_500_on_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_memory_detail_maps_meta_and_related_events() -> None:
+async def test_dashboard_memory_detail_maps_meta() -> None:
     memory_id = uuid4()
-    event_id = uuid4()
     record = SimpleNamespace(
         id=memory_id,
         tenant_id="tenant-a",
@@ -129,15 +128,8 @@ async def test_dashboard_memory_detail_maps_meta_and_related_events() -> None:
         valid_from=datetime.now(UTC),
         valid_to=None,
     )
-    event = SimpleNamespace(
-        id=event_id,
-        event_type="memory_op",
-        operation="write",
-        created_at=datetime.now(UTC),
-        payload={"source": "api"},
-    )
     db, _ = make_db(
-        pg_results=[ResultStub(one_or_none=record), ResultStub(scalar_rows=[event])],
+        pg_results=[ResultStub(one_or_none=record)],
     )
 
     result = await memory_routes.dashboard_memory_detail(
@@ -148,7 +140,6 @@ async def test_dashboard_memory_detail_maps_meta_and_related_events() -> None:
 
     assert result.id == memory_id
     assert result.metadata == {"source": "write"}
-    assert result.related_events[0]["id"] == str(event_id)
 
 
 @pytest.mark.asyncio
@@ -167,7 +158,6 @@ async def test_dashboard_memory_detail_404_when_missing() -> None:
 async def test_dashboard_memory_lineage_maps_versions_entities_and_jobs() -> None:
     memory_id = uuid4()
     child_id = uuid4()
-    event_id = uuid4()
     fact_id = uuid4()
     job_id = uuid4()
     now = datetime.now(UTC)
@@ -234,17 +224,9 @@ async def test_dashboard_memory_lineage_maps_versions_entities_and_jobs() -> Non
         completed_at=now,
         result={"memory_id": str(memory_id), "key": "pref:food"},
     )
-    event = SimpleNamespace(
-        id=event_id,
-        event_type="memory_op",
-        operation="write",
-        created_at=now,
-        payload={"source": "api"},
-    )
     db, _ = make_db(
         pg_results=[
             ResultStub(one_or_none=record),
-            ResultStub(scalar_rows=[event]),
             ResultStub(one_or_none=record),
             ResultStub(one_or_none=None),
             ResultStub(scalar_rows=[record, child]),
@@ -526,45 +508,3 @@ async def test_dashboard_invalidate_fact_handles_success_not_found_and_errors() 
             fact_id="fact-3",
             auth=ADMIN_AUTH,
         )
-
-
-@pytest.mark.asyncio
-async def test_dashboard_events_returns_paginated_history() -> None:
-    event_id = uuid4()
-    memory_id = uuid4()
-    event = SimpleNamespace(
-        id=event_id,
-        tenant_id="tenant-a",
-        scope_id="scope-1",
-        agent_id="agent-1",
-        event_type="memory_op",
-        operation="write",
-        payload={"source": "api"},
-        memory_ids=[memory_id],
-        parent_event_id=None,
-        created_at=datetime.now(UTC),
-    )
-    db, session = make_db(pg_results=[ResultStub(scalar=3), ResultStub(scalar_rows=[event])])
-
-    result = await events_routes.dashboard_events(
-        page=2,
-        per_page=2,
-        event_type="memory_op",
-        operation="write",
-        tenant_id="tenant-a",
-        auth=ADMIN_AUTH,
-        db=db,
-    )
-
-    assert result.total == 3
-    assert result.total_pages == 2
-    assert result.items[0].id == event_id
-    assert "ORDER BY" in str(session.execute_calls[1][0][0])
-
-
-@pytest.mark.asyncio
-async def test_dashboard_events_wraps_errors() -> None:
-    db, _ = make_db(session=SessionStub([RuntimeError("events boom")]))
-
-    with pytest.raises(HTTPException, match="events boom"):
-        await events_routes.dashboard_events(auth=ADMIN_AUTH, db=db)

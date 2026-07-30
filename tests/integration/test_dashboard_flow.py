@@ -36,7 +36,6 @@ class TestDashboardIntegration:
         assert resp.status_code == 200
         data = resp.json()
         assert "total_memories" in data
-        assert "total_events" in data
         assert "by_type" in data
         assert "by_status" in data
 
@@ -54,14 +53,6 @@ class TestDashboardIntegration:
         assert "total" in data
         assert "page" in data
         assert data["per_page"] == 5
-
-    def test_dashboard_events_returns_200(self, admin_client: TestClient):
-        """GET /dashboard/events returns paginated list."""
-        resp = admin_client.get("/api/v1/dashboard/events?page=1&per_page=5")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "items" in data
-        assert "total" in data
 
     def test_dashboard_timeline_returns_200(self, admin_client: TestClient):
         """GET /dashboard/timeline returns points and total."""

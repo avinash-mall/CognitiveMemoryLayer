@@ -82,7 +82,6 @@ function buildComponentCard(comp) {
         detailsHtml = `
             ${detailRow('Memory Records', formatNumber(comp.details?.memory_records))}
             ${detailRow('Semantic Facts', formatNumber(comp.details?.semantic_facts))}
-            ${detailRow('Events', formatNumber(comp.details?.events))}
             ${detailRow('Embedding dimensions', comp.details?.embedding_dimensions ?? '—')}
             ${detailRow('Latency', formatLatency(comp.latency_ms))}
         `;

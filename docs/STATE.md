@@ -10,8 +10,9 @@ link them below. Delete notes when they stop being true.
   the first passing `CI/CD Pipeline` run in the visible history — every run back through
   2026-06-20 failed at the Docker build, so the integration suite had not executed in six
   weeks. If CI goes red, it was genuinely green here.
-- Suite sizes, so drift is visible: **759** unit (hermetic), **338** integration + e2e +
-  py-cml against a live server, of which py-cml alone is 241.
+- Suite sizes, so drift is visible: **704** unit (hermetic), **331** integration + e2e +
+  py-cml against a live server. The drop from 759/338 is deleted tests for deleted code
+  (the cleanup below), not regressions.
 - The modelpack removal (`51afd15`) and its follow-up cleanup are complete: dead code,
   stale docs, dead env keys, vendored assets, cache volumes.
 
@@ -82,6 +83,11 @@ resident vLLM servers).
 - **Graph relevance is clamped, not normalized.** Every graph hit now lands at exactly 1.0,
   so graph results no longer dominate but are also no longer ordered among themselves. A
   proper per-source normalization is an open improvement.
+- **`event_log` is now an orphan table.** Nothing ever wrote a row, so its whole read
+  surface (routes, dashboard panels, SDK `get_events`, `EventLogModel`) was removed.
+  The table and `migrations/versions/001_initial_schema.py` were deliberately left alone
+  — a destructive migration doesn't belong in a cleanup. Drop it in a migration whenever
+  someone is willing to own the data loss, or resurrect the writer instead.
 - **`packages/models/trained_models/` still exists locally** — 241 untracked files
   (15 `.joblib`) with absolute paths from another host. Nothing can load them. Left in
   place deliberately: not in git, so deleting is unrecoverable. Needs an explicit call.

@@ -274,44 +274,6 @@ def test_dashboard_export_memories_calls_endpoint(cml_config: CMLConfig) -> None
     assert call[1]["use_admin_key"] is True
 
 
-# ---- Event log ----
-
-
-def test_get_events_calls_dashboard_events(cml_config: CMLConfig) -> None:
-    config = cml_config
-    client = CognitiveMemoryLayer(config=config)
-    client._transport.request = MagicMock(  # type: ignore[method-assign]
-        return_value={
-            "items": [],
-            "total": 0,
-            "page": 2,
-            "per_page": 25,
-            "total_pages": 1,
-        }
-    )
-    out = client.get_events(limit=25, page=2, event_type="memory_op")
-    assert out.page == 2
-    assert out.per_page == 25
-    call = client._transport.request.call_args
-    assert call[0] == ("GET", "/dashboard/events")
-    assert call[1]["params"]["per_page"] == 25
-    assert call[1]["params"]["page"] == 2
-    assert call[1]["params"]["event_type"] == "memory_op"
-    assert call[1]["use_admin_key"] is True
-
-
-def test_get_events_with_since(cml_config: CMLConfig) -> None:
-    config = cml_config
-    client = CognitiveMemoryLayer(config=config)
-    client._transport.request = MagicMock(  # type: ignore[method-assign]
-        return_value={"items": [], "total": 0, "page": 1, "per_page": 50, "total_pages": 1}
-    )
-    since = datetime(2025, 1, 1, 12, 0, 0)
-    client.get_events(since=since)
-    call = client._transport.request.call_args
-    assert "since" in call[1]["params"]
-
-
 # ---- Component health ----
 
 

@@ -1,6 +1,6 @@
 /**
  * Tenants Page
- * Lists all tenants with memory/fact/event counts, last activity, and quick links.
+ * Lists all tenants with memory/fact counts, last activity, and quick links.
  */
 
 import { getTenants } from '../api.js';
@@ -39,11 +39,10 @@ function renderTable(el) {
 
     const totalMemories = tenantsData.reduce((s, t) => s + t.memory_count, 0);
     const totalFacts = tenantsData.reduce((s, t) => s + t.fact_count, 0);
-    const totalEvents = tenantsData.reduce((s, t) => s + t.event_count, 0);
     const mostActive = tenantsData.length ? tenantsData.reduce((a, b) => a.memory_count > b.memory_count ? a : b) : null;
 
     el.innerHTML = `
-        <p class="page-desc">All registered tenants with memory, fact, and event counts. Click column headers to sort, or use quick links to drill into a specific tenant.</p>
+        <p class="page-desc">All registered tenants with memory and fact counts. Click column headers to sort, or use quick links to drill into a specific tenant.</p>
         <div class="kpi-grid">
             <div class="kpi-card"><div class="kpi-label">Total Tenants</div><div class="kpi-value">${formatNumber(tenantsData.length)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Total Memories</div><div class="kpi-value">${formatNumber(totalMemories)}</div></div>
@@ -61,9 +60,7 @@ function renderTable(el) {
                             ${thCol('memory_count', 'Memories')}
                             ${thCol('active_memory_count', 'Active')}
                             ${thCol('fact_count', 'Facts')}
-                            ${thCol('event_count', 'Events')}
                             ${thCol('last_memory_at', 'Last Memory')}
-                            ${thCol('last_event_at', 'Last Event')}
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -74,19 +71,16 @@ function renderTable(el) {
                                 <td>${formatNumber(t.memory_count)}</td>
                                 <td>${formatNumber(t.active_memory_count)}</td>
                                 <td>${formatNumber(t.fact_count)}</td>
-                                <td>${formatNumber(t.event_count)}</td>
                                 <td style="font-size:0.82rem">${formatDate(t.last_memory_at)}</td>
-                                <td style="font-size:0.82rem">${formatDate(t.last_event_at)}</td>
                                 <td>
                                     <div class="action-btns">
                                         <button class="btn btn-ghost btn-xs quick-link" data-tenant="${escapeHtml(t.tenant_id)}" data-page="overview">Overview</button>
                                         <button class="btn btn-ghost btn-xs quick-link" data-tenant="${escapeHtml(t.tenant_id)}" data-page="memories">Memories</button>
-                                        <button class="btn btn-ghost btn-xs quick-link" data-tenant="${escapeHtml(t.tenant_id)}" data-page="events">Events</button>
                                     </div>
                                 </td>
                             </tr>
                         `).join('')}
-                        ${sorted.length === 0 ? '<tr><td colspan="8" class="empty-state">No tenants found</td></tr>' : ''}
+                        ${sorted.length === 0 ? '<tr><td colspan="6" class="empty-state">No tenants found</td></tr>' : ''}
                     </tbody>
                 </table>
             </div>

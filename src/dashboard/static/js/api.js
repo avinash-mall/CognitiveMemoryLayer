@@ -132,18 +132,6 @@ export function bulkAction(memoryIds, action) {
     });
 }
 
-export function getEvents({ page = 1, perPage = 25, eventType, operation, tenantId } = {}) {
-    return request('GET', '/events', {
-        params: {
-            page,
-            per_page: perPage,
-            event_type: eventType,
-            operation,
-            tenant_id: tenantId,
-        },
-    });
-}
-
 export function getTimeline(days = 30, tenantId) {
     return request('GET', '/timeline', { params: { days, tenant_id: tenantId } });
 }
@@ -320,11 +308,6 @@ export function getEvaluationSummary() {
 export function exportMemories(tenantId) {
     const params = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '';
     window.open(`${API_BASE}/export/memories${params}`, '_blank');
-}
-
-export function exportEvents(tenantId) {
-    const params = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '';
-    window.open(`${API_BASE}/events/export${params}`, '_blank');
 }
 
 export function exportFacts(tenantId) {

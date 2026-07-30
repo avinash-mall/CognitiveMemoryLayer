@@ -211,10 +211,6 @@ function buildPage(lineage) {
 
         <div class="detail-grid" style="margin-top:16px;">
             <div class="card">
-                <div class="card-title">Related Events</div>
-                ${buildEventList(mem.related_events)}
-            </div>
-            <div class="card">
                 <div class="card-title">Related Jobs</div>
                 ${buildJobList(lineage.related_jobs)}
             </div>
@@ -292,29 +288,6 @@ function buildEntityList(items = []) {
                         tenant ${escapeHtml(item.tenant_id)} • scope ${escapeHtml(item.scope_id)}
                     </div>
                 </a>
-            `).join('')}
-        </div>
-    `;
-}
-
-function buildEventList(items = []) {
-    if (!items.length) {
-        return '<div class="empty-state" style="padding:12px;">No related events.</div>';
-    }
-
-    return `
-        <div class="stack-list">
-            ${items.map(item => `
-                <div class="stack-item">
-                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-                        <span>
-                            <span class="badge badge-type">${escapeHtml(item.event_type || 'event')}</span>
-                            ${item.operation ? `<span style="margin-left:6px;color:var(--text-muted)">${escapeHtml(item.operation)}</span>` : ''}
-                        </span>
-                        <span style="font-size:0.78rem;color:var(--text-muted)">${formatDate(item.created_at)}</span>
-                    </div>
-                    <div style="margin-top:8px;" class="mono">${escapeHtml(item.id || '')}</div>
-                </div>
             `).join('')}
         </div>
     `;
