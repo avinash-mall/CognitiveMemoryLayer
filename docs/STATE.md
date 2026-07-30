@@ -120,9 +120,25 @@ resident vLLM servers).
 
 ## Known issues / open decisions
 
-- **LoCoMo-Plus has not been re-run** against the current write path. ~10.7k LLM calls
-  (5,882 turn ingests + 2,387 QA + 2,387 judge) on shared GPUs; datasets are committed so
-  it needs no downloads, only time. Opt-in, not scheduled.
+- **LoCoMo-Plus has not been re-run** — and it is ~41x bigger than this note used to
+  claim. The runner expands 2,387 samples into 411 unique conversations = **242,658 turn
+  ingests** (not 5,882), plus 2,387 QA + 2,387 judge calls. At the measured 3.78 turns/s
+  (4 workers, conc=40) ingestion alone is ~18h on this host. Datasets are committed;
+  opt-in, not scheduled.
+- **Write throughput is LLM-token-bound, measured not guessed.** One LLM call per write
+  (~884 prompt + ~481 output tokens) is 95.8% of write latency; under sustained conc=40
+  load vLLM holds 40 running / 0 waiting while GPU2 (qwen35-4b) pins at 93-99% and
+  postgres sits flat at 41 connections. Remaining levers: shrink extraction output
+  tokens, or serve the model with more capacity. More API workers past 4 will not help.
+- **The eval harness's QA and judge phases are serial `for` loops** (~3.3 s/sample and
+  ~1.4 s/sample) against an LLM with demonstrated 40-way headroom — ~3h that could be
+  ~10min with a worker pool like Phase A already has. Not the long pole while ingestion
+  dominates.
+- **`EMBEDDING_INTERNAL__DEVICE` cannot select a GPU** — it only knows auto|cpu|cuda, and
+  `auto` puts every uvicorn worker's ~2.2GB model copy on GPU0. On this host (GPU0 full
+  of a resident vLLM) multi-worker startup OOMed until the container pinned
+  CUDA_VISIBLE_DEVICES=3. If multi-worker becomes the norm, either share the embedder or
+  teach the knob cuda:N.
 - **"Multi-hop" retrieval has no depth control.** `NeocorticalStore.multi_hop_query`
   runs Personalized PageRank from the seeds, takes the top 20, keeps 10, and attaches
   each entity's relations and facts. There is no hop loop. It used to accept
