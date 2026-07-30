@@ -1,4 +1,4 @@
-"""Unit tests for use_llm_conflict_detection_only feature flag."""
+"""Unit tests for ConflictDetector's LLM detection path."""
 
 import pytest
 
@@ -31,8 +31,8 @@ def sample_memory_record():
 
 
 @pytest.mark.asyncio
-async def test_use_llm_conflict_detection_only_skips_fast_path(monkeypatch, sample_memory_record):
-    """When use_llm_conflict_detection_only=true, ConflictDetector skips fast path."""
+async def test_detect_uses_llm_when_use_llm_enabled(monkeypatch, sample_memory_record):
+    """With an LLM client and use_llm_enabled=true, detect() delegates to the LLM."""
     from unittest.mock import AsyncMock
 
     mock_llm = AsyncMock(spec=LLMClient)
@@ -49,11 +49,7 @@ async def test_use_llm_conflict_detection_only_skips_fast_path(monkeypatch, samp
         lambda: type(
             "S",
             (),
-            {
-                "features": type(
-                    "F", (), {"use_llm_enabled": True, "use_llm_conflict_detection_only": True}
-                )()
-            },
+            {"features": type("F", (), {"use_llm_enabled": True})()},
         )(),
     )
     detector = ConflictDetector(llm_client=mock_llm)

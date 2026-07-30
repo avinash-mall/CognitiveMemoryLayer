@@ -210,12 +210,6 @@ class TestForgettingPolicyEngine:
 class TestInterferenceDetector:
     def test_detect_overlapping_same_text(self):
         det = InterferenceDetector()
-        # Disable modelpack so the deterministic Jaccard fallback is used.
-        det.modelpack = type(
-            "_NoModelPack",
-            (),
-            {"has_task_model": staticmethod(lambda task: False)},
-        )()
         r1 = _make_record(text="hello world foo bar")
         r2 = _make_record(text="hello world baz")
         overlaps = det.detect_overlapping([r1, r2], text_overlap_threshold=0.4)
@@ -224,11 +218,6 @@ class TestInterferenceDetector:
 
     def test_detect_duplicates_identical_embedding(self):
         det = InterferenceDetector(similarity_threshold=0.99)
-        det.modelpack = type(
-            "_NoNoveltyModelPack",
-            (),
-            {"has_task_model": staticmethod(lambda task: False)},
-        )()
         emb = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
         r1 = _make_record(text="a")
         r1.embedding = emb

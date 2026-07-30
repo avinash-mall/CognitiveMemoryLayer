@@ -718,9 +718,6 @@ class TestTypedCandidateSelection:
         from src.reconsolidation.service import ReconsolidationService
 
         service = ReconsolidationService.__new__(ReconsolidationService)
-        service.modelpack = MagicMock()
-        service.modelpack.available = False
-        service.modelpack.has_task_model = MagicMock(return_value=False)
 
         value_mem_1 = _make_memory_record(
             "I value honesty",
@@ -767,9 +764,6 @@ class TestTypedCandidateSelection:
         from src.reconsolidation.service import ReconsolidationService
 
         service = ReconsolidationService.__new__(ReconsolidationService)
-        service.modelpack = MagicMock()
-        service.modelpack.available = False
-        service.modelpack.has_task_model = MagicMock(return_value=False)
 
         memories = [
             _make_memory_record("memory A"),

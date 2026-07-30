@@ -54,7 +54,7 @@ async def test_reconsolidation_correction_flow(pg_session_factory):
     )
     created.metadata["_similarity"] = 0.9
 
-    # In CI there is often no LLM/modelpack, so conflict detection returns NONE and no
+    # In CI use_llm_enabled is off, so conflict detection returns NONE and no
     # correction is applied. Mock the detector to return CORRECTION so we exercise the
     # full revision + store path.
     async def _mock_detect(old_memory, new_statement, context=None, *, new_memory=None):

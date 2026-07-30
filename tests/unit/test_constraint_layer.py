@@ -144,7 +144,7 @@ class TestConstraintExtractor:
         types = {c.constraint_type for c in constraints}
         assert "policy" in types
 
-    def test_constraint_extractor_uses_policy_heuristic_when_modelpack_is_weak(self):
+    def test_constraint_extractor_uses_policy_heuristic(self):
         extractor = ConstraintExtractor()
         chunk = _make_chunk(
             "I refuse to use single-use plastics because of their impact on ocean life."
@@ -168,12 +168,6 @@ class TestConstraintExtractor:
         chunk = _make_chunk("The sky is blue.")
         constraints = extractor.extract(chunk)
         assert len(constraints) == 0
-
-    def test_low_confidence_model_only_prediction_is_ignored(self):
-        extractor = ConstraintExtractor(base_confidence=0.65)
-        chunk = _make_chunk("The sky is blue.")
-        constraints = extractor.extract(chunk)
-        assert constraints == []
 
     def test_empty_text_returns_empty(self):
         extractor = ConstraintExtractor()

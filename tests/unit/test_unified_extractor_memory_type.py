@@ -1,4 +1,4 @@
-"""Unit tests for use_llm_memory_type feature (LLM-set memory type in Unified Extractor)."""
+"""Unit tests for memory_type parsing/validation in UnifiedWritePathExtractor."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

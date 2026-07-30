@@ -1,4 +1,4 @@
-"""Unit tests for use_llm_salience_refinement feature flag."""
+"""Unit tests for salience returned by UnifiedWritePathExtractor."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

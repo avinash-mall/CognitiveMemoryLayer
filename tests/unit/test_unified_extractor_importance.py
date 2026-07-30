@@ -1,4 +1,4 @@
-"""Unit tests for use_llm_write_gate_importance feature flag."""
+"""Unit tests for importance returned by UnifiedWritePathExtractor (WriteGate override)."""
 
 from datetime import UTC, datetime
 from uuid import uuid4

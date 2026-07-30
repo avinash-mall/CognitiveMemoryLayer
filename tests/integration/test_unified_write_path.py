@@ -65,7 +65,7 @@ def _make_store_with_unified(session_factory):
 async def test_encode_batch_with_unified_extractor_uses_llm_results(
     pg_session_factory, monkeypatch
 ):
-    """When unified extractor is present and flags enabled, encode_batch uses LLM results."""
+    """When unified extractor is present and use_llm_enabled, encode_batch uses LLM results."""
     monkeypatch.setattr(
         "src.core.config.get_settings",
         lambda: type(
@@ -77,15 +77,6 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
                     (),
                     {
                         "use_llm_enabled": True,
-                        "use_llm_constraint_extractor": True,
-                        "use_llm_write_time_facts": True,
-                        "use_llm_salience_refinement": True,
-                        "use_llm_pii_redaction": False,
-                        "use_llm_write_gate_importance": True,
-                        "use_llm_memory_type": True,
-                        "use_llm_confidence": True,
-                        "use_llm_context_tags": True,
-                        "use_llm_decay_rate": True,
                         "pii_redaction_enabled": True,
                     },
                 )()
@@ -110,9 +101,9 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
     assert len(results) >= 1
     assert unified_results is not None
     assert len(unified_results) >= 1
-    if unified_results[0]:
-        assert len(unified_results[0].constraints) >= 1
-        assert unified_results[0].importance == 0.7
+    assert unified_results[0]
+    assert len(unified_results[0].constraints) >= 1
+    assert unified_results[0].importance == 0.7
 
 
 def _make_store_with_llm_fields_mock(session_factory, confidence, context_tags, decay_rate):
@@ -152,7 +143,7 @@ def _make_store_with_llm_fields_mock(session_factory, confidence, context_tags, 
 async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
     pg_session_factory, monkeypatch
 ):
-    """When use_llm_* flags are True, store uses LLM confidence, context_tags, decay_rate."""
+    """When use_llm_enabled is True, store uses LLM confidence, context_tags, decay_rate."""
     monkeypatch.setattr(
         "src.core.config.get_settings",
         lambda: type(
@@ -164,15 +155,6 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
                     (),
                     {
                         "use_llm_enabled": True,
-                        "use_llm_constraint_extractor": True,
-                        "use_llm_write_time_facts": False,
-                        "use_llm_salience_refinement": True,
-                        "use_llm_pii_redaction": False,
-                        "use_llm_write_gate_importance": True,
-                        "use_llm_memory_type": True,
-                        "use_llm_confidence": True,
-                        "use_llm_context_tags": True,
-                        "use_llm_decay_rate": True,
                         "pii_redaction_enabled": True,
                     },
                 )()
@@ -235,7 +217,7 @@ def _make_store_with_memory_type_mock(session_factory, memory_type: str):
 
 @pytest.mark.asyncio
 async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch):
-    """When use_llm_memory_type is True and unified extractor returns memory_type, store uses it."""
+    """When use_llm_enabled is True and unified extractor returns memory_type, store uses it."""
     monkeypatch.setattr(
         "src.core.config.get_settings",
         lambda: type(
@@ -247,15 +229,6 @@ async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch
                     (),
                     {
                         "use_llm_enabled": True,
-                        "use_llm_constraint_extractor": True,
-                        "use_llm_write_time_facts": False,
-                        "use_llm_salience_refinement": True,
-                        "use_llm_pii_redaction": False,
-                        "use_llm_write_gate_importance": True,
-                        "use_llm_memory_type": True,
-                        "use_llm_confidence": True,
-                        "use_llm_context_tags": True,
-                        "use_llm_decay_rate": True,
                         "pii_redaction_enabled": True,
                     },
                 )()

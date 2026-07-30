@@ -1,7 +1,7 @@
 """Unit tests for the shared AsyncMicroBatcher coordination logic.
 
 Pure asyncio — no heavy deps. Verifies the wait/coalesce/dispatch/overflow
-machinery shared by the DeBERTa span predictor and the embedding client.
+machinery used by the batching embedding client.
 """
 
 import asyncio

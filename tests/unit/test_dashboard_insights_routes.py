@@ -32,16 +32,7 @@ def _request(*, orchestrator: object | None = None, db: object | None = None) ->
 
 
 def _feature_flags(**overrides: object) -> SimpleNamespace:
-    defaults = {
-        "use_llm_enabled": False,
-        "use_llm_memory_type": False,
-        "use_llm_constraint_extractor": False,
-        "use_llm_write_time_facts": False,
-        "use_llm_write_gate_importance": False,
-        "use_llm_context_tags": False,
-        "use_llm_confidence": False,
-        "use_llm_decay_rate": False,
-    }
+    defaults = {"use_llm_enabled": False}
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -223,7 +214,6 @@ async def test_dashboard_write_simulate_returns_chunk_decisions(
     orchestrator = SimpleNamespace(
         hippocampal=SimpleNamespace(
             store=store,
-            local_extractor=None,
             unified_extractor=None,
             write_gate=_WriteGate(),
             redactor=SimpleNamespace(redact=lambda *args, **kwargs: None),
