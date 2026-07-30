@@ -1,9 +1,19 @@
 # CML Evaluation Report: LoCoMo-Plus Benchmark
 
-**Date:** 2026-04-14
+> **These scores are historical and are not reproducible on the current build.**
+> They were produced on 2026-04-14 against the pre-51afd15 write path, which used
+> custom-trained DeBERTa/sklearn models that have since been removed — extraction now
+> runs through the internal LLM. The QA model used here (`google/gemma-4-31b-it`) is also
+> not the currently configured one. The source artifact they were computed from is not in
+> the repository (`evaluation/outputs*/` is gitignored), so the numbers below cannot be
+> independently checked. Treat them as a record of what was measured then, not as a claim
+> about what this code does now. Re-running is a deliberate act — see
+> §5 for what it costs.
+
+**Date:** 2026-04-14 (superseded)
 **Model:** `google/gemma-4-31b-it` (31B parameters, served locally via vLLM)
 **Sources:**
-- CML evaluation outputs (`evaluation/outputs_v2/locomo_plus_qa_cml_judge_summary.json`)
+- CML evaluation outputs (`evaluation/outputs_v2/locomo_plus_qa_cml_judge_summary.json` — **absent from the repo**)
 - LoCoMo-Plus paper: [arXiv:2602.10715](https://arxiv.org/abs/2602.10715) — *LoCoMo-Plus: Beyond-Factual Cognitive Memory Evaluation Framework for LLM Agents* (Li et al., 2026)
 - LoCoMo-Plus repo: [github.com/xjtuleeyf/Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 
@@ -20,7 +30,7 @@
 
 ---
 
-## 2. CML Results (April 2026)
+## 2. CML Results (April 2026 — superseded, see banner)
 
 **Setup:** CML memory pipeline + `google/gemma-4-31b-it` (31B parameter open-source model, served locally via vLLM — **zero API dependency**)
 **Samples evaluated:** 2,387 (complete dataset — 10 conversations, zero errors)
@@ -161,22 +171,37 @@ CML at **48.58%** sits between RAG baselines and GPT-4o-backed memory systems �
 
 ---
 
-## 5. Custom Model Pipeline
+## 5. Write-Path Throughput (measured 2026-07-30)
 
-CML uses custom-trained DeBERTa models for all internal pipeline tasks, eliminating the need for LLM calls in the write path:
+The previous version of this section claimed "17+ turns/second" and "**zero LLM calls** in
+the write path — all extraction, routing, and novelty detection run locally on DeBERTa",
+backed by an accuracy table for five custom models. Those models were deleted in commit
+51afd15; the LLM is now the only extraction path. The table is gone rather than restated,
+and the throughput claim has been re-measured against the current code.
 
-| Model | Task | Accuracy | F1 | Samples |
-|-------|------|----------|-----|---------|
-| **Extractor** | constraint_scope, stability, type, fact_type, pii | 99.82% | 0.9995 macro | 36,000 |
-| **Router** | memory_type, decay, forgetting, etc. | 92.65% | 0.9283 macro | 63,000 |
-| **Novelty Pair** | duplicate/changed/novel detection | 93.37% | 0.9351 macro | 14,652 |
-| **PII Span** | Named entity PII detection | — | 93.10% span F1 | 4,472 |
-| **Write Importance** | Importance scoring (regression) | MAE: 0.0184 | RMSE: 0.0230 | 8,000 |
+**Method:** 25 sequential `POST /api/v1/memory/write` calls with real turns from
+`evaluation/locomo_plus/data/locomo10.json`, one fresh tenant per run, measured
+client-side end to end. Commit `485ad77`, 4x A100 80GB (shared with resident vLLM
+servers), internal LLM `qwen35-4b` via vLLM on `localhost:8012`, local
+`nomic-embed-text-v2-moe` embeddings.
 
-These custom models enable:
-- **17+ turns/second** write throughput (vs ~1 turn/s with LLM extraction)
-- **Zero LLM calls** in the write path — all extraction, routing, and novelty detection run locally on DeBERTa
-- **Deterministic, reproducible** pipeline behavior
+| Mode | Mean | p50 | p95 | Sequential throughput |
+|---|---|---|---|---|
+| `FEATURES__USE_LLM_ENABLED=true` (unified LLM extractor) | 3.027 s | 2.723 s | 4.427 s | **0.33 turns/s** |
+| `FEATURES__USE_LLM_ENABLED=false` (regex/Jaccard heuristics) | 0.058 s | 0.024 s | 0.038 s | **17.31 turns/s** |
+
+Two things worth noting. First, the old "17+ turns/second" figure was real — but it is the
+*heuristic* path's number, which still holds; what was false was attributing it to trained
+DeBERTa models and implying it came with model-quality extraction. Second, the ~52x gap is
+the honest cost of the current architecture: one LLM call per chunk buys entities,
+relations, constraints, facts, PII spans and the scoring signals in a single round trip,
+and the heuristic mode extracts no entities or relations at all.
+
+These are latency numbers only. **No quality benchmark has been re-run against the current
+write path.** A full LoCoMo-Plus re-run means 5,882 turn ingests plus 2,387 QA calls plus
+2,387 judge calls — roughly 10.7k LLM calls on shared GPUs. The datasets are committed
+(`locomo10.json`, `locomo_plus.json`), so it needs no downloads, only time. Until someone
+runs it, §2 stands as history and nothing here should be read as a current quality claim.
 
 ---
 
@@ -184,7 +209,7 @@ These custom models enable:
 
 ### CML's Architecture Advantages
 
-1. **Adversarial robustness is architectural, not model-dependent.** CML's 64.80% adversarial score — beating GPT-4o full-context by 15.81% — comes from constraint-aware retrieval and structured memory, not from a bigger LLM. This is the strongest evidence that CML's neuro-inspired architecture adds real value beyond what a larger model alone provides.
+1. **Adversarial robustness looked architectural rather than model-dependent.** In the April 2026 run the 64.80% adversarial score exceeded GPT-4o full-context by 15.81%, which pointed at constraint-aware retrieval and structured memory rather than raw model size. The retrieval architecture is largely unchanged, but this has not been re-measured since the write path was replaced — see the banner.
 
 2. **Temporal reasoning benefits from explicit timestamp handling.** CML stores timestamps with memories and retrieves them with temporal context, enabling 48.60% temporal accuracy that beats GPT-4o's 45.79% despite using a 31B local model.
 

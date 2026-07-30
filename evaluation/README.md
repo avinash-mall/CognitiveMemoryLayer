@@ -229,10 +229,18 @@ Latest CML evaluation results (April 2026) compared with baselines from the **Lo
 
 ### Key Strengths
 
+> Scores 1, 2 and 5 come from the April 2026 run against the pre-51afd15 write path and
+> have not been re-measured since extraction moved to the LLM. See the banner in
+> [EVALUATION_REPORT.md](EVALUATION_REPORT.md).
+
 1. **Adversarial: 64.80%** — outperforms GPT-4o full-context (48.99%), more than doubles Mem0 (30.50%), SeCom (31.80%), A-Mem (35.20%). Best adversarial score of any memory system.
 2. **Temporal: 48.60%** — beats GPT-4o full-context (45.79%) and Mem0 (39.40%) by +9.20%.
 3. **Fully local inference** — `google/gemma-4-31b-it` via vLLM on a single GPU. Zero API dependency, zero per-query cost, privacy-preserving.
-4. **Custom DeBERTa models** for all write-path tasks (extraction, routing, novelty, PII) — 17+ turns/sec throughput with no LLM calls in the write path.
+4. **Two write-path modes, measured 2026-07-30 at commit `485ad77`** — the unified LLM
+   extractor at 0.33 turns/s (mean 3.03 s/turn, `qwen35-4b`), or heuristic-only at
+   17.31 turns/s with no LLM calls but no entity/relation extraction. The custom DeBERTa
+   models this line used to credit were removed in 51afd15. See
+   [EVALUATION_REPORT.md §5](EVALUATION_REPORT.md#5-write-path-throughput-measured-2026-07-30).
 5. **Zero errors** across 2,387 samples — robust retry logic and local serving reliability.
 
 ### Key Takeaway

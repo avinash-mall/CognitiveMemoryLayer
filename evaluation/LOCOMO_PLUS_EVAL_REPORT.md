@@ -2,6 +2,12 @@
 
 Date: 2026-04-07
 
+> **Historical.** The local artifacts this report treats as authoritative
+> (`outputs/locomo_plus_qa_cml_*.json`) are gitignored and are not present in the
+> repository, so none of the local numbers below can be re-checked from a clean clone.
+> They also predate commit 51afd15, which replaced the write path this run exercised.
+> Kept as a record of the 2026-04-07 comparison; not a claim about the current build.
+
 This report compares the local CML evaluation artifacts in this repository with the current online LoCoMo-Plus paper and upstream GitHub repository. For local numbers, the raw saved outputs are treated as authoritative. Existing prose docs in this repo are treated as secondary because they diverge from the saved artifacts.
 
 ## 1. Local Evaluation Snapshot
