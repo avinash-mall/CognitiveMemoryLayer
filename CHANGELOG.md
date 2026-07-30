@@ -77,6 +77,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **ActiveCML phase specifications compressed to an index** (−8,585 lines) — the 10 phase
+  documents and their risk register described an "intrinsic memory" architecture (model
+  access layer, logit/activation/KV-cache/LoRA injection) that was fully specified and never
+  started; no symbol from it exists in `src/`. `ProjectPlan/ActiveCML/README.md` now carries
+  one paragraph per phase, the four cross-cutting risks, and why the work stalled. The full
+  text remains in git history, and README's roadmap links (which point at the directory) keep
+  working.
 - **Obsolete planning and status documents** (−6,996 lines) —
   `ProjectPlan/CreatePackage/CreatePackageStatus.md` (a design doc for building the py-cml
   package, which shipped and has 241 passing tests), `ProjectPlan/LocomoEval/RunEvaluation.md`

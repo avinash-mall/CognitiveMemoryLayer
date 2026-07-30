@@ -708,7 +708,7 @@ See [Usage Documentation](docs/usage.md) for full API details.
 | **SDK Eval** | [Eval Module](packages/py-cml/docs/evaluation.md) | `cml-eval` CLI, Python API, typed configs |
 | **Dev** | [Contributing](CONTRIBUTING.md) | Setup, code standards, PR process |
 | **Changelog** | [Release History](CHANGELOG.md) | Version history |
-| **Roadmap** | [Future Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration phases |
+| **Roadmap** | [Future Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration phases (designed, not started) |
 
 ---
 
@@ -716,7 +716,7 @@ See [Usage Documentation](docs/usage.md) for full API details.
 
 The next frontier: **intrinsic memory** &mdash; injecting memories directly into the LLM's computational graph (steering vectors, KV-cache manipulation, logit biases) instead of context-window stuffing.
 
-See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the 10-phase specification.
+See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the 10-phase roadmap index. None of it is implemented — the detailed specs were compressed into that index and remain in git history.
 
 ---
 
