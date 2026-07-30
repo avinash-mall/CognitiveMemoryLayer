@@ -83,7 +83,7 @@ flowchart TD
     STM --> Chunks["SemanticChunks"]
     Chunks --> Decision{LLM enabled?}
     Decision -->|Yes| Unified["UnifiedWritePathExtractor\n(single LLM call)"]
-    Decision -->|No| Local["LocalUnifiedWriteExtractor\n(modelpack router + task models)"]
+    Decision -->|No| Local["Regex heuristics\n(facts, constraints, PII)"]
     Unified --> Gate["WriteGate"]
     Local --> Gate
     Gate --> Encode["HippocampalStore\nencode_chunk / encode_batch"]
@@ -94,7 +94,7 @@ flowchart TD
 
 ### Read path (high-level)
 
-1. Query classification (modelpack-first, optional LLM fallback).
+1. Query classification (LLM when enabled, else regex heuristics).
 2. Retrieval planning with parallel groups and timeout budgets.
 3. Hybrid retrieval across vector/facts/graph/constraints/cache.
 4. Rerank by relevance/recency/confidence/diversity plus constraint boosts.

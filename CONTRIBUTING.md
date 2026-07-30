@@ -18,7 +18,7 @@ Thank you for your interest in contributing. This document outlines how to get s
 
    ```bash
    pip install -e ".[embedded]"        # embedded engine / embedded tests
-   pip install -e ".[modeling,eval]"   # modeling and evaluation workflows
+   pip install -e ".[eval]"            # evaluation workflows
    ```
 
 2. **Environment**
@@ -60,10 +60,8 @@ Thank you for your interest in contributing. This document outlines how to get s
   - `consolidation` — Episodic-to-semantic consolidation (sampler, clusterer, summarizer, migrator).
   - `forgetting` — Active forgetting (scorer, interference, compression, actions, executor, worker).
   - `reconsolidation` — Labile state tracking, conflict detection, belief revision.
-  - `extraction` — Entity, relation, constraint, and fact extractors; `local_unified_extractor.py` (model-based alternative to LLM extractor).
-  - `evaluation` — Offline evaluation tools: `conflict_eval.py` (heuristic vs. model conflict detection).
-  - `utils` — Embedding client, LLM client, NER, modelpack runtime adapter, `shadow_logger.py` (shadow mode comparison).
-- `packages/models/` — Custom model pipeline: data preparation, training, and 10 task-specific models. See [packages/models/README.md](packages/models/README.md).
+  - `extraction` — Entity, relation, constraint, and fact extractors; `unified_write_extractor.py` (the single LLM write-path extractor).
+  - `utils` — Embedding client, LLM client, entity/PII normalization helpers (`ner.py`), `shadow_logger.py` (shadow mode comparison).
 - `packages/py-cml/` — Python SDK; see [packages/py-cml/CONTRIBUTING.md](packages/py-cml/CONTRIBUTING.md) for dev setup and publishing.
 - `tests/` — Pytest tests (unit, integration, e2e); see [tests/README.md](tests/README.md).
 - `scripts/` — Dev scripts: `update_readme_badges.py` (refresh README badge counts), `run_examples.py` (run examples; see script docstring or examples/README), and focused probe/evaluation helpers such as `package_surface_probe.py`, `constraint_retrieval_probe.py`, `models_artifact_probe.py`, and `test_memory_quality.py`.

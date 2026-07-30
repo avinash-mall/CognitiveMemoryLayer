@@ -18,69 +18,51 @@ Primary coordinator: `src/memory/orchestrator.py`.
 
 ## Runtime Modes
 
-### Default mode (non-LLM)
+`FEATURES__USE_LLM_ENABLED` picks between one intelligence path and one deterministic
+fallback. There is no third model tier — the custom-model ("modelpack") runtime was
+removed in commit 51afd15.
 
-`FEATURES__USE_LLM_ENABLED=false` (default in `src/core/config.py`)
+### LLM-enabled mode (recommended)
 
-- `MemoryOrchestrator.create()` and `create_lite()` do not wire internal LLM clients.
-- Write/read paths run with modelpack + deterministic fallback paths (NER/rules).
-- `LocalUnifiedWriteExtractor` is wired into `HippocampalStore` to provide content-derived context tags, confidence, and decay rate from the router model.
-- Consolidation and forgetting use summarizer fallback (`SUMMARIZER_INTERNAL__*`) when available.
+`FEATURES__USE_LLM_ENABLED=true`, provider settings from `LLM_INTERNAL__*`.
 
-#### Write path field sources (LLM off)
+`MemoryOrchestrator.create()` wires `UnifiedWritePathExtractor`, which makes one LLM call
+per chunk and returns entities, relations, constraints, write-time facts, PII spans,
+memory type, importance, salience, confidence, context tags and decay rate. The read path
+uses the same client for query classification, conflict detection, constraint
+supersession, consolidation gists and forgetting compression.
+
+#### Write path field sources (LLM on)
 
 ```mermaid
 flowchart LR
-    subgraph gate ["WriteGate"]
-        G_IMP["importance_bin"] --> IMP["importance"]
-        G_PII["pii_presence"] --> PII["PII flag"]
-        G_CT["chunk_type map"] --> MTYPE["memory_types"]
-    end
-    subgraph localExt ["LocalUnifiedWriteExtractor"]
-        CT["context_tag"] --> CTags["context_tags"]
-        CB["confidence_bin"] --> Conf["confidence"]
-        DP["decay_profile"] --> DR["decay_rate"]
-        MT["memory_type"] --> MType2["memory_type"]
-    end
-    subgraph ner ["NER / Rules"]
-        ENT["entity_extractor"] --> Entities
-        REL["relation_extractor"] --> Relations
-        CON["constraint_type + scope"] --> Constraints
-        WTF["WriteTimeFactExtractor"] --> Facts
-    end
-    gate --> Record["MemoryRecordCreate"]
-    localExt --> Record
-    ner --> Record
+    Chunk["SemanticChunk"] --> UWE["UnifiedWritePathExtractor<br/>(one LLM call)"]
+    UWE --> Fields["entities, relations, constraints, facts,<br/>pii_spans, memory_type, importance,<br/>salience, confidence, context_tags, decay_rate"]
+    Fields --> Gate["WriteGate<br/>(uses unified importance + pii_spans)"]
+    Gate --> Record["MemoryRecordCreate"]
 ```
+
+### Heuristic mode (LLM off)
+
+`FEATURES__USE_LLM_ENABLED=false` (the default in `src/core/config.py`). No internal LLM
+client is constructed. This is the mode the hermetic unit suite runs in.
 
 | Field | Source | Notes |
 |-------|--------|-------|
-| entities | NER `entity_extractor` or `_ner_entities_for_text` | Full coverage |
-| relations | NER `relation_extractor` or `_ner_relations_for_text` | Full coverage |
-| constraints | Modelpack `constraint_type` + `constraint_scope` + NER | Single constraint per chunk; crude scope |
-| facts | `WriteTimeFactExtractor` (spaCy + keyword rules) | Full coverage |
-| importance | Modelpack `importance_bin` / `write_importance_regression` or gate salience | Full coverage |
-| memory_type | Modelpack `memory_type` or gate chunk_type map | Full coverage |
-| context_tags | Modelpack `context_tag` (single label as list) | Moderate (single tag vs LLM multi-tag) |
-| confidence | Modelpack `confidence_bin` mapped to float (low=0.35, medium=0.65, high=0.9) | Moderate (3-bin vs continuous) |
-| decay_rate | Modelpack `decay_profile` mapped to float (very_fast=0.35 ... very_slow=0.02) | Moderate (5-profile vs continuous) |
-| PII detection | Modelpack `pii_presence` + regex redaction | Binary detection, no typed spans |
+| entities / relations | — | Not extracted; the graph stays empty |
+| constraints | `ConstraintExtractor` regex patterns + chunk-type map | Single constraint per chunk; scope from chunk entities |
+| facts | `WriteTimeFactExtractor` regex families | preference / identity / location / occupation |
+| importance | Upstream chunk salience | Clamped to [0,1] |
+| memory_type | Write-gate chunk_type map | Full coverage |
+| context_tags | Caller-provided only | No inference |
+| confidence | Chunk confidence | No inference |
+| decay_rate | Type default | No inference |
+| PII detection | Regex pattern table (`src/utils/ner.py`) | Typed spans, no model |
+| novelty | Jaccard word overlap | See `WriteGate._compute_novelty` |
 | contains_secrets | Regex patterns in write gate | Deterministic |
 
-### LLM-enabled mode
-
-`FEATURES__USE_LLM_ENABLED=true`
-
-Fine-grained flags (`FEATURES__USE_LLM_*`) control LLM use for:
-
-- constraint extraction
-- write-time fact extraction
-- salience and write-gate importance
-- pii redaction spans
-- memory type, confidence, context tags, decay rate
-- conflict detection override path
-
-Provider settings come from `LLM_INTERNAL__*`.
+Consolidation produces no gists in this mode (`GistExtractor.extract_gist` returns `[]`
+without an LLM); forgetting compression falls back to deterministic truncation.
 
 ## API Base And Auth
 
@@ -143,7 +125,6 @@ Dashboard API modules include:
 - semantic facts list/invalidate (Facts Explorer page with category/tenant filters, current-only toggle, pagination)
 - config get/update
 - jobs/labile/retrieval test/consolidate/forget/reconsolidate/database reset
-- models/status — modelpack load status (families, task models, load errors, models directory)
 
 Security behavior:
 
@@ -186,8 +167,8 @@ Key behavior:
 ## Read Pipeline (Current Execution Order)
 
 1. Query classification (`QueryClassifier`)
-   - modelpack first
-   - LLM fallback only if modelpack path cannot classify and LLM is enabled
+   - LLM classification when `FEATURES__USE_LLM_ENABLED` and a client is configured
+   - regex intent/constraint heuristics otherwise (and always applied on top)
 2. Retrieval plan generation (`RetrievalPlanner`)
 3. Hybrid retrieval (`HybridRetriever`)
    - facts, vector, graph, constraints, cache
@@ -214,7 +195,6 @@ Source of truth: `src/core/config.py`.
 - `EMBEDDING_INTERNAL__*`
 - `LLM_INTERNAL__*`
 - `LLM_EVAL__*`
-- `SUMMARIZER_INTERNAL__*`
 - `CHUNKER__*`
 - `FEATURES__*`
 - `RETRIEVAL__*`
@@ -239,29 +219,6 @@ Dashboard config writes through `src/core/env_file.py` and persists to `.env`, b
 
 - DB URLs and key/password fields are write-protected.
 
-## Modelpack Runtime
-
-Runtime adapter: `src/utils/modelpack.py`.
-
-Family model artifacts (if present):
-
-- `router_model.joblib`
-- `extractor_model.joblib`
-- `pair_model.joblib`
-
-Task-level artifacts currently supported include:
-
-- `retrieval_constraint_relevance_pair`
-- `memory_rerank_pair`
-- `novelty_pair`
-- `fact_extraction_structured`
-- `schema_match_pair`
-- `reconsolidation_candidate_pair`
-- `write_importance_regression`
-- `pii_span_detection`
-- `consolidation_gist_quality`
-- `forgetting_action_policy`
-
 ## Semantic Lineage
 
 When facts are superseded during reconsolidation or consolidation, CML tracks the lineage chain via `supersedes_id`. The following APIs expose this lineage:
@@ -276,33 +233,6 @@ Lineage metadata is captured during consolidation and reconsolidation operations
 - Dashboard memory detail page (visual lineage chain in the Provenance section)
 - py-cml SDK `RetrievalResultItem.supersedes_id`
 
-## Local Unified Write Extractor
-
-`src/extraction/local_unified_extractor.py` provides `LocalUnifiedWriteExtractor`, a model-based alternative to the LLM-centric `UnifiedWritePathExtractor`. It composes:
-
-**Task-level models (when available):**
-
-- `fact_extraction_structured` for structured fact extraction
-- `write_importance_regression` for importance scoring
-- `pii_span_detection` for PII detection
-
-**Router-level models:**
-
-- `memory_type` for memory type classification
-- `context_tag` for content-derived categorization (returns single label as list)
-- `confidence_bin` for content-derived confidence (maps low→0.35, medium→0.65, high→0.9)
-- `decay_profile` for per-memory decay rate (maps very_fast→0.35, fast→0.2, medium→0.1, slow→0.05, very_slow→0.02)
-
-**Availability:** The extractor is available when `modelpack.available` is true (router model loaded) or any task-level model is present. It does not require all models.
-
-**Wiring:** `MemoryOrchestrator.create()` instantiates `LocalUnifiedWriteExtractor` when `unified_extractor is None` (LLM off) and passes it as `local_extractor` to `HippocampalStore`. `create_lite()` always passes a `LocalUnifiedWriteExtractor`.
-
-**Consumption:** Both `encode_chunk` and `encode_batch` use the local extractor result for:
-- `context_tags` — when no request-level tags and no LLM tags
-- `confidence` — when LLM confidence is not available
-- `decay_rate` — when LLM decay rate is not available (validated to 0.01–0.5)
-- `importance` — when LLM importance is not available (encode_chunk only; encode_batch uses gate importance)
-
 ## Shadow Mode Logging
 
 `src/utils/shadow_logger.py` provides `ShadowModeLogger` for running heuristic and model paths in parallel:
@@ -312,14 +242,6 @@ Lineage metadata is captured during consolidation and reconsolidation operations
 - Configurable `sample_rate` for production use (e.g. 0.1 = 10% of requests)
 
 Used by the conflict evaluation framework and during model rollout validation.
-
-## Conflict Evaluation Framework
-
-`src/evaluation/conflict_eval.py` provides `ConflictDetectorEvaluator` for offline evaluation:
-
-- Loads evaluation corpus from JSONL files (`old_memory`, `new_statement`, `expected_label`)
-- Computes precision/recall/F1 for both heuristic and model-based conflict detection paths
-- Generates shadow comparison reports
 
 ## Operations
 
@@ -410,10 +332,6 @@ curl -X POST "http://localhost:8000/api/v1/memory/read" \
 ## Related Docs
 
 - Root overview: [README.md](../README.md)
-- API versioning: [docs/api-versioning.md](../docs/api-versioning.md)
-- Model pipeline: [packages/models/README.md](../packages/models/README.md) (10 task models, multilingual training, rollout plan)
 - SDK docs: [packages/py-cml/README.md](../packages/py-cml/README.md)
 - SDK eval module: [packages/py-cml/docs/evaluation.md](../packages/py-cml/docs/evaluation.md) (`cml-eval` CLI and Python API)
-- SDK modeling module: [packages/py-cml/docs/modeling.md](../packages/py-cml/docs/modeling.md) (`cml-models` CLI and Python API)
 - Changelog: [CHANGELOG.md](../CHANGELOG.md)
-- Multilingual prompts: [packages/models/scripts/multilingual_prompts.py](../packages/models/scripts/multilingual_prompts.py)

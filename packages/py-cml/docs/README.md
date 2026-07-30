@@ -10,7 +10,6 @@ Documentation for the Python SDK for the Cognitive Memory Layer.
 - [Examples](examples.md) - integration examples
 - [Temporal Fidelity](temporal-fidelity.md) - historical timestamp usage
 - [Evaluation Module](evaluation.md) - `cml.eval` APIs and `cml-eval` CLI
-- [Modeling Module](modeling.md) - `cml.modeling` APIs and `cml-models` CLI
 
 ## Quick links
 

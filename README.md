@@ -157,9 +157,8 @@ flowchart LR
     WRITE --> STM[Short-term chunking]
     WRITE --> GATE[Write gate + PII redaction]
     WRITE --> EXT[Extraction]
-    EXT -->|default| NER[spaCy NER + parser]
-    EXT -->|optional| LLM[LLM_INTERNAL]
-    EXT -->|runtime inference| MP[Modelpack]
+    EXT -->|LLM enabled| LLM[LLM_INTERNAL unified extractor]
+    EXT -->|LLM disabled| HEUR[Regex heuristics]
 
     READ --> CLS2[Query classifier]
     READ --> PLAN[Retrieval planner]
@@ -337,74 +336,40 @@ CML supports 15 memory types, each with a biological analog and distinct decay p
 
 Types are defined in `src/core/enums.py` as `MemoryType`. **Decay**: Fast/Very Fast = short-lived; Slow/Stable = long-lived (higher retention); Session = per conversation; Task = per task; Confirm = until confirmed or rejected. **Implementation**: type assignment at write in `src/memory/hippocampal/write_gate.py` (`_determine_memory_types()`); retention by type in `src/forgetting/scorer.py` (`ScorerConfig.type_bonuses`).
 
-### Custom Models & NER
+### Extraction & Enrichment
 
-CML includes a custom model pipeline (`packages/models/`) that trains lightweight task-specific models to replace heuristic and rule-based logic throughout the runtime. Models are served via the `ModelPack` adapter in `src/utils/modelpack.py`.
+`FEATURES__USE_LLM_ENABLED` selects between two write paths. There is one intelligence
+path (the LLM) and one deterministic fallback; there is no third model tier.
 
 <details>
-<summary><strong>Task-specific models</strong> &mdash; dedicated classifiers, rankers, and extractors that replace or gate heuristics</summary>
+<summary><strong>LLM enabled</strong> &mdash; the unified write-path extractor (recommended)</summary>
 
-| Model | What It Replaces | Location |
-| :--- | :--- | :--- |
-| `retrieval_constraint_relevance_pair` | Domain keyword bonus | `src/retrieval/retriever.py` |
-| `memory_rerank_pair` | Weighted reranker with hard-coded stability rules | `src/retrieval/reranker.py` |
-| `novelty_pair` | Jaccard novelty and cosine-threshold duplicate detection | `src/memory/hippocampal/write_gate.py`, `src/forgetting/interference.py` |
-| `fact_extraction_structured` | Regex/spaCy fallback extraction and dependency-based relation extraction | `src/extraction/write_time_facts.py`, `src/utils/ner.py`, `src/reconsolidation/service.py` |
-| `schema_match_pair` | Jaccard schema similarity | `src/consolidation/schema_aligner.py` |
-| `reconsolidation_candidate_pair` | Word-overlap top-k candidate selection | `src/reconsolidation/service.py` |
-| `write_importance_regression` | Fixed importance bins; family-level `importance_bin`/`salience_bin` blending | `src/memory/hippocampal/write_gate.py` |
-| `pii_span_detection` | Regex+NER span redaction | `src/memory/hippocampal/redactor.py`, `src/memory/hippocampal/write_gate.py` |
-| `consolidation_gist_quality` | String-match gist blacklist | `src/consolidation/worker.py` |
-| `forgetting_action_policy` | Heuristic action choice | `src/forgetting/scorer.py` |
-| `memory_type` | Heuristic write-path type classification in local extraction mode | `src/extraction/local_unified_extractor.py` |
-| `context_tag` | Heuristic local write-path tagging | `src/extraction/local_unified_extractor.py` |
-| `constraint_dimension` | Heuristic query constraint-dimension labeling | `src/retrieval/classifier.py` |
+A single call to `LLM_INTERNAL` per chunk returns everything the write path needs:
+entities, relations, constraints, write-time facts, PII spans, memory type, importance,
+salience, confidence, context tags and decay rate. See
+`src/extraction/unified_write_extractor.py`.
 
-Upgraded tasks now prefer dedicated artifacts over router/pair family fallbacks. If a dedicated artifact is unavailable, runtime drops to the original heuristic path rather than silently using the old family classifier.
-
-All model-assisted paths preserve deterministic fallbacks. For dedicated-only tasks, runtime uses either the dedicated model or the original heuristic path; it does not fall back to the legacy router/pair family model. Safety-critical paths (secret detection, PII regex baseline, deterministic key generation) are never delegated to models.
+Read-path enrichment (query classification, conflict detection, constraint supersession,
+consolidation gists, forgetting compression) uses the same client.
 
 </details>
 
 <details>
-<summary><strong>NER & relation extraction</strong> &mdash; spaCy-based entity and relation extraction</summary>
+<summary><strong>LLM disabled</strong> &mdash; deterministic heuristics</summary>
 
-| Component | Code | Location |
+| Signal | Heuristic | Location |
 | :--- | :--- | :--- |
-| Entity extraction | `extract_entities()` with alias normalization (`_ENTITY_ALIAS_MAP`) | `src/utils/ner.py` |
-| Relation extraction | `extract_relations()` with dependency-based S-V-O parsing | `src/utils/ner.py` |
-| Fact extraction | `extract()` with predicate derivation and fact schema mapping | `src/extraction/write_time_facts.py` |
-| Constraint extraction | 5 cognitive constraint types (goal/value/policy/state/causal) | `src/extraction/constraint_extractor.py` |
-| PII redaction | Regex patterns + NER entity spans + model spans | `src/memory/hippocampal/redactor.py` |
+| Write-time facts | Regex families (preference / identity / location / occupation) | `src/extraction/write_time_facts.py` |
+| Constraints | Regex patterns + chunk-type mapping, 5 cognitive types | `src/extraction/constraint_extractor.py` |
+| PII redaction | Regex pattern table | `src/memory/hippocampal/redactor.py`, `src/utils/ner.py` |
+| Novelty | Jaccard word overlap | `src/memory/hippocampal/write_gate.py` |
+| Importance | Upstream chunk salience | `src/memory/hippocampal/write_gate.py` |
+| Duplicate detection | Embedding cosine + Jaccard | `src/forgetting/interference.py` |
+| Forgetting policy | Threshold chain + safety guard (never discards depended-on, important, or hot-recent memories) | `src/forgetting/scorer.py` |
+| Entities / relations | Not extracted — the graph stays empty in this mode | — |
 
-When `fact_extraction_structured` is trained and loaded, `extract_relations()` and `write_time_facts.extract()` prefer the model-based span extraction path, falling back to the spaCy dependency parse on any failure.
-
-</details>
-
-<details>
-<summary><strong>Training & data preparation</strong> &mdash; hybrid TF-IDF baselines, transformer task models, and internet-sourced public datasets</summary>
-
-The pipeline trains 3 family models plus dedicated task models across TF-IDF, dense pair-ranking, hierarchical text, transformer text, regression, and token-classification objectives. Training is strict-by-default and runs preflight/artifact validation before reporting success.
-
-- Auto-download from a registry of public NLP datasets via Hugging Face, with `usage_role` and `task_targets` per dataset
-- Checked-in public dataset shortlist for supervision and LLM seed corpora
-- LLM-only synthetic data generation for domain-specific tasks
-- Missing-only balancing with configurable target counts
-- Group-aware train/test/eval splits with source-coverage and regression-provenance checks
-- Best-checkpoint selection and optional threshold export for calibrated task models
-
-```bash
-# Via cml-models CLI (requires `pip install "cognitive-memory-layer[modeling]"`)
-cml-models prepare --config packages/models/model_pipeline.toml
-cml-models train --config packages/models/model_pipeline.toml --strict
-cml-models train --config packages/models/model_pipeline.toml --allow-skips
-
-# Legacy scripts (still work)
-python -m packages.models.scripts.prepare
-python -m packages.models.scripts.train
-```
-
-Full details: [packages/models/README.md](packages/models/README.md) &#8226; SDK docs: [Modeling Module](packages/py-cml/docs/modeling.md)
+Safety-critical paths (secret detection, the PII regex baseline, deterministic key
+generation) are never delegated to a model in either mode.
 
 </details>
 
@@ -510,7 +475,7 @@ source .venv/bin/activate
 pip install -e ".[server,dev]"
 ```
 
-This installs the CML server, the `py-cml` client SDK, all runtime extras (FastAPI, spaCy, pgvector, etc.), and dev tools (pytest, ruff, mypy).
+This installs the CML server, the `py-cml` client SDK, all runtime extras (FastAPI, pgvector, sentence-transformers, etc.), and dev tools (pytest, ruff, mypy).
 
 ---
 
@@ -642,35 +607,16 @@ curl -X POST http://localhost:8000/api/v1/memory/read \
 
 **Admin dashboard:** open [http://localhost:8000/dashboard/](http://localhost:8000/dashboard/) and authenticate with `AUTH__ADMIN_API_KEY` (default `test-key` from `.env.minimal`).
 
-**ModelPack status:** the dashboard's **Components** tab shows which trained models loaded successfully. All 13 task models should appear as `loaded`.
 
 ---
 
 ### Step 7 — Run the Test Suite
 
 ```bash
-pytest tests/unit -v --tb=short        # 812 unit tests   (~60s)
+pytest tests/unit -v --tb=short          # unit tests, hermetic (no DB/LLM needed)
 pytest tests/integration -v --tb=short  # 88 integration tests (requires running stack)
 pytest tests/e2e -v                     # 5 end-to-end API tests
 ```
-
----
-
-### Retrain Models (Optional)
-
-If you want to retrain the model pipeline from scratch rather than using the pre-trained weights:
-
-```bash
-# 1. Prepare datasets (downloads public NLP datasets via Hugging Face)
-cml-models prepare --config packages/models/model_pipeline.toml
-
-# 2. Train all models (strict mode — fails if any release gate fails)
-cml-models train --config packages/models/model_pipeline.toml --strict
-
-# 3. Trained artifacts land in packages/models/trained_models/
-```
-
-Full details: [packages/models/README.md](packages/models/README.md)
 
 ---
 
@@ -679,7 +625,6 @@ Full details: [packages/models/README.md](packages/models/README.md)
 | Artifact | Source | Local Path |
 | :--- | :--- | :--- |
 | Code & configs | [GitHub](https://github.com/avinash-mall/CognitiveMemoryLayer) | `./` (repo root) |
-| Trained model weights | [Hugging Face Hub](https://huggingface.co/avinashm/CognitiveMemoryLayer-models) | `packages/models/trained_models/` |
 | Python client SDK | [PyPI](https://pypi.org/project/cognitive-memory-layer/) | `pip install cognitive-memory-layer` |
 
 ---
@@ -733,7 +678,7 @@ CML ships a built-in admin dashboard at **[http://localhost:8000/dashboard/](htt
 | **Knowledge Graph** | Interactive neovis.js graph with entity search, depth control, edge labels |
 | **Events** | Event log with type/operation/tenant filters, auto-refresh, JSON export |
 | **API Usage** | Rate-limit buckets, hourly request volume chart |
-| **Components** | PostgreSQL, Neo4j, Redis health with latency; Embedding model info (provider, model, dimensions, batch size); Server info (version, Python, workers); ModelPack status |
+| **Components** | PostgreSQL, Neo4j, Redis health with latency; Embedding model info (provider, model, dimensions, batch size); Server info (version, Python, workers) |
 | **Retrieval Test** | Interactive query tool with scored results, supersession badges, lineage links |
 | **Configuration** | Live config viewer with inline editing for safe settings (embedding batch size, rate limits, retrieval tuning, feature flags) |
 | **Management** | Consolidation, forgetting, reconsolidation triggers with job history |
@@ -761,8 +706,6 @@ See [Usage Documentation](ProjectPlan/UsageDocumentation.md) for full API detail
 | **SDK** | [Python SDK](packages/py-cml/docs/README.md) | Getting started, API reference, examples |
 | **Eval** | [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
 | **SDK Eval** | [Eval Module](packages/py-cml/docs/evaluation.md) | `cml-eval` CLI, Python API, typed configs |
-| **Models** | [Custom Models](packages/models/README.md) | Training, data prep, model pipeline |
-| **SDK Models** | [Modeling Module](packages/py-cml/docs/modeling.md) | `cml-models` CLI, Python API, typed configs |
 | **Dev** | [Contributing](CONTRIBUTING.md) | Setup, code standards, PR process |
 | **Changelog** | [Release History](CHANGELOG.md) | Version history |
 | **Roadmap** | [Future Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration phases |

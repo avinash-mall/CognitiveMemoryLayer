@@ -113,36 +113,30 @@ See [API Reference — Models](api-reference.md#models) for the `ReadResponse.co
 
 ## Optional Modules
 
-The SDK includes two optional modules for evaluation and model training workflows. They are installed separately to keep the base SDK lightweight:
+The SDK includes an optional evaluation module, installed separately to keep the base SDK lightweight:
 
 ```bash
 # Evaluation: LoCoMo-Plus benchmark runner, validation, reports
 pip install "cognitive-memory-layer[eval]"
-
-# Modeling: data prep and custom model training
-pip install "cognitive-memory-layer[modeling]"
 ```
 
 Quick examples:
 
 ```bash
 cml-eval run-full --repo-root .
-cml-models pipeline --config packages/models/model_pipeline.toml
 ```
 
 ```python
 from cml.eval import LocomoEvalConfig, run_locomo_plus
-from cml.modeling import PrepareConfig, prepare_data
 ```
 
-See [Evaluation Module](evaluation.md) and [Modeling Module](modeling.md) for full documentation.
+See [Evaluation Module](evaluation.md) for full documentation.
 
 ## Next Steps
 
 - [API Reference](api-reference.md) — All operations and types
 - [Examples](examples.md) — Quickstart, chat, async, embedded, agent, temporal fidelity
 - [Evaluation Module](evaluation.md) — LoCoMo-Plus benchmarks and reports
-- [Modeling Module](modeling.md) — Custom model preparation and training
 - Embedded mode — See README and examples/embedded_mode.py
 
 

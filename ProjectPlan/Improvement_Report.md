@@ -808,7 +808,6 @@ def oracle_experiment(dataset, llm):
 | **Graph (prototyping)** | `networkx` | PPR, graph algorithms | `pip install networkx` |
 | **Structured extraction** | `instructor` | Pydantic-validated LLM outputs with retries | `pip install instructor` |
 | **LLM gateway** | `litellm` | Unified API for 100+ providers | `pip install litellm` |
-| **NER/NLP** | `spacy` + `en_core_web_trf` | Entity extraction, dependency parsing | `pip install spacy` |
 | **Prompt compression** | `llmlingua` | 5–20× compression with minimal quality loss | `pip install llmlingua` |
 | **RAG evaluation** | `ragas` | Faithfulness, answer relevancy, context precision/recall | `pip install ragas` |
 | **Framework (optional)** | `llama-index` | RAG orchestration, HyDE, multi-query, agent memory | `pip install llama-index` |

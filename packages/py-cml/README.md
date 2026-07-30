@@ -192,7 +192,6 @@ response = helper.chat("What should I eat tonight?", session_id="s1")
 - [Examples](docs/examples.md)
 - [Temporal Fidelity](docs/temporal-fidelity.md)
 - [Evaluation Module](docs/evaluation.md) — `cml-eval` CLI and Python API
-- [Modeling Module](docs/modeling.md) — `cml-models` CLI and Python API
 - [Security policy](../../SECURITY.md)
 
 [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues, server setup
@@ -235,20 +234,14 @@ GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 ## Optional Modules (Eval and Modeling)
 
-Install optional modules depending on your workflow:
+Install the optional evaluation module if you need it:
 
 ```bash
 # Evaluation utilities (`cml.eval`, `cml-eval`)
 pip install "cognitive-memory-layer[eval]"
-
-# Custom model prep/training (`cml.modeling`, `cml-models`)
-pip install "cognitive-memory-layer[modeling]"
-
-# Both modules
-pip install "cognitive-memory-layer[eval,modeling]"
 ```
 
-Each extra installs only its own dependencies. Running `cml-eval` or `cml-models` without the corresponding extra produces a clear error message with install instructions.
+Running `cml-eval` without the extra produces a clear error message with install instructions.
 
 **Evaluation CLI** — run LoCoMo-Plus benchmarks, validate outputs, and generate comparison reports:
 
@@ -260,22 +253,10 @@ cml-eval report --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.js
 cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json
 ```
 
-**Modeling CLI** — prepare training data and train custom TF-IDF models:
-
-```bash
-cml-models prepare --config packages/models/model_pipeline.toml
-cml-models train --config packages/models/model_pipeline.toml --strict
-cml-models train --config packages/models/model_pipeline.toml --allow-skips
-cml-models pipeline --config packages/models/model_pipeline.toml -- --strict
-```
-
-`cml-models train` is strict-by-default (`TrainConfig.strict=True`). Deferred token tasks and missing task coverage fail fast unless `--allow-skips` is set.
-
-**Python API** — both modules expose typed dataclass configs for programmatic use:
+**Python API** — typed dataclass configs for programmatic use:
 
 ```python
 from cml.eval import LocomoEvalConfig, run_locomo_plus
-from cml.modeling import PrepareConfig, TrainConfig, run_pipeline
 ```
 
-See [Evaluation Module](docs/evaluation.md) and [Modeling Module](docs/modeling.md) for full CLI flags, Python API reference, and dataclass field documentation.
+See [Evaluation Module](docs/evaluation.md) for full CLI flags, Python API reference, and dataclass field documentation.
