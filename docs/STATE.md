@@ -88,6 +88,12 @@ resident vLLM servers).
 - **LoCoMo-Plus has not been re-run** against the current write path. ~10.7k LLM calls
   (5,882 turn ingests + 2,387 QA + 2,387 judge) on shared GPUs; datasets are committed so
   it needs no downloads, only time. Opt-in, not scheduled.
+- **"Multi-hop" retrieval has no depth control.** `NeocorticalStore.multi_hop_query`
+  runs Personalized PageRank from the seeds, takes the top 20, keeps 10, and attaches
+  each entity's relations and facts. There is no hop loop. It used to accept
+  `max_hops` and never read it (the retriever passed `3`), which is worth knowing
+  because multi-hop is the weakest measured retrieval category — lever E in the
+  unshipped list below is the thing that would actually add iterative depth.
 - **Graph relevance is clamped, not normalized.** Every graph hit now lands at exactly 1.0,
   so graph results no longer dominate but are also no longer ordered among themselves. A
   proper per-source normalization is an open improvement.

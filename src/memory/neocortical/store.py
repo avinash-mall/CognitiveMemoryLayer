@@ -238,9 +238,13 @@ class NeocorticalStore:
         self,
         tenant_id: str,
         seed_entities: list[str],
-        max_hops: int = 3,
     ) -> list[dict[str, Any]]:
         """Multi-hop reasoning from seed entities via Personalized PageRank.
+
+        Depth is **not** a parameter. Reachability is whatever
+        ``personalized_pagerank`` propagates from the seeds; this method takes its
+        top 20 entities, keeps the first 10, and attaches each one's graph
+        relations and semantic facts. There is no hop loop to bound.
 
         Uses single-query batching to avoid the N+1 pattern:
         one Cypher ``UNWIND`` call for all graph relations and one
@@ -248,6 +252,9 @@ class NeocorticalStore:
 
         Holistic: tenant-only.
         """
+        # ponytail: if real depth control is ever needed it belongs in
+        # personalized_pagerank (damping / iteration count), not as a max_hops
+        # argument here — a previous `max_hops=3` was accepted and never read.
         related = await self.graph.personalized_pagerank(
             tenant_id, tenant_id, seed_entities=seed_entities, top_k=20
         )

@@ -581,9 +581,7 @@ class HybridRetriever:
         """Retrieve via knowledge graph PPR. Holistic: tenant-only."""
         if not step.seeds:
             return []
-        results = await self.neocortical.multi_hop_query(
-            tenant_id, seed_entities=step.seeds, max_hops=3
-        )
+        results = await self.neocortical.multi_hop_query(tenant_id, seed_entities=step.seeds)
         items = []
         for r in results:
             text = self._format_entity_info(r)
