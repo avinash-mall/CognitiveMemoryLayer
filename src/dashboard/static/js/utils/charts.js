@@ -23,7 +23,8 @@ function getThemeColors() {
 }
 
 /** Palette of chart colors */
-export function getChartPalette() {
+// ponytail: module-private — the two chart builders below are its only callers
+function getChartPalette() {
     const c = getThemeColors();
     return [
         c.accent, c.success, c.warning, c.danger, c.info,

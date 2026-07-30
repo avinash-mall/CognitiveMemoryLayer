@@ -77,15 +77,6 @@ async function request(method, path, { body = null, params = null } = {}) {
 }
 
 /** Test if the API key is valid */
-export async function testAuth() {
-    try {
-        const resp = await fetch('/api/v1/health', { headers: headers() });
-        return resp.ok;
-    } catch {
-        return false;
-    }
-}
-
 /** Test admin auth by calling a dashboard endpoint */
 export async function testAdminAuth() {
     try {
@@ -116,10 +107,6 @@ export function getMemories({ page = 1, perPage = 25, type, status, search, tena
             source_session_id: sourceSessionId,
         },
     });
-}
-
-export function getMemoryDetail(memoryId) {
-    return request('GET', `/memories/${memoryId}`);
 }
 
 export function getMemoryLineage(memoryId) {
@@ -189,10 +176,6 @@ export function getGraphStats() {
     return request('GET', '/graph/stats');
 }
 
-export function getGraphNeo4jConfig() {
-    return request('GET', '/graph/neo4j-config');
-}
-
 export function getGraphOverview(tenantId, scopeId = null) {
     const params = { tenant_id: tenantId };
     if (scopeId) params.scope_id = scopeId;
@@ -223,19 +206,6 @@ export function getLabile(tenantId) {
     return request('GET', '/labile', { params: { tenant_id: tenantId } });
 }
 
-export function testRetrieval(tenantId, query, maxResults = 10, contextFilter = null, memoryTypes = null, format = 'list') {
-    return request('POST', '/retrieval', {
-        body: {
-            tenant_id: tenantId,
-            query,
-            max_results: maxResults,
-            context_filter: contextFilter,
-            memory_types: memoryTypes,
-            format,
-        },
-    });
-}
-
 export function explainRetrieval(tenantId, query, maxResults = 10, contextFilter = null, memoryTypes = null, format = 'list') {
     return request('POST', '/retrieval/explain', {
         body: {
@@ -252,22 +222,6 @@ export function explainRetrieval(tenantId, query, maxResults = 10, contextFilter
 export function getJobs(tenantId, jobType, limit = 50) {
     return request('GET', '/jobs', {
         params: { tenant_id: tenantId, job_type: jobType, limit },
-    });
-}
-
-export function getJobDetail(jobId) {
-    return request('GET', `/jobs/${jobId}`);
-}
-
-export function getConsolidationRuns(tenantId, limit = 50) {
-    return request('GET', '/consolidation/runs', {
-        params: { tenant_id: tenantId, limit },
-    });
-}
-
-export function getReconsolidationRuns(tenantId, limit = 50) {
-    return request('GET', '/reconsolidation/runs', {
-        params: { tenant_id: tenantId, limit },
     });
 }
 

@@ -17,18 +17,6 @@ export function formatDate(dateStr) {
 }
 
 /** Format a date to short form */
-export function formatDateShort(dateStr) {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-}
-
 /** Format a number with commas */
 export function formatNumber(n) {
     if (n === null || n === undefined) return '—';
@@ -77,13 +65,6 @@ export function statusBadgeClass(status) {
 }
 
 /** Get a CSS class for a component health status */
-export function healthBadgeClass(status) {
-    const s = (status || 'unknown').toLowerCase();
-    if (s === 'ok') return 'badge badge-ok';
-    if (s === 'error') return 'badge badge-error';
-    return 'badge badge-unknown';
-}
-
 /** Pretty-print JSON with indentation */
 export function prettyJson(obj) {
     if (obj === null || obj === undefined) return 'null';
@@ -103,7 +84,3 @@ export function escapeHtml(str) {
 }
 
 /** Format a percentage (0-1 range) */
-export function formatPercent(n) {
-    if (n === null || n === undefined) return '—';
-    return `${(Number(n) * 100).toFixed(1)}%`;
-}

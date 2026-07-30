@@ -231,8 +231,4 @@ function init() {
 }
 
 // Export for pages to use
-export function getSelectedTenantId() {
-    return selectedTenantId;
-}
-
 init();
