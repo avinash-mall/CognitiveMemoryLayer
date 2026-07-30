@@ -308,6 +308,12 @@ class ConsolidationWorker:
 
     @staticmethod
     def _token_set(text: str) -> set[str]:
+        # ponytail: deliberately NOT src.utils.similarity.word_set. This tokenises with
+        # _TOKEN_RE, so "food." -> {"food"} where word_set gives {"food."} — and it feeds
+        # an intersection-nonempty gist check, not a Jaccard ratio. No test pins the
+        # gist-overlap threshold, so switching tokenisers would change which gists survive
+        # on punctuated text with nothing to catch the regression. Convert it together with
+        # a test that fixes the overlap behaviour.
         return set(_TOKEN_RE.findall(text.lower()))
 
     def _is_valid_gist(self, gist: ExtractedGist, cluster: EpisodeCluster) -> bool:

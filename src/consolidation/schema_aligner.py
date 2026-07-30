@@ -5,6 +5,7 @@ from typing import Any
 
 from ..memory.neocortical.schemas import FactCategory
 from ..memory.neocortical.store import FactStoreLike
+from ..utils.similarity import jaccard
 from .summarizer import ExtractedGist
 
 
@@ -132,16 +133,8 @@ class SchemaAligner:
         return await asyncio.gather(*[self.align(tenant_id, g) for g in gists])
 
     def _calculate_similarity(self, text1: str, text2: Any) -> float:
-        text2_str = str(text2)
-
-        # Jaccard similarity
-        words1 = set(text1.lower().split())
-        words2 = set(text2_str.lower().split())
-        if not words1 or not words2:
-            return 0.0
-        intersection = len(words1 & words2)
-        union = len(words1 | words2)
-        return intersection / union if union > 0 else 0.0
+        """Jaccard overlap; ``text2`` is coerced because callers pass fact values."""
+        return jaccard(text1, str(text2))
 
     def _suggest_schema(self, gist: ExtractedGist) -> dict[str, Any]:
         # Map gist types to FactCategory

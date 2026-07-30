@@ -3,18 +3,7 @@
 from dataclasses import dataclass, field
 
 from ..core.schemas import MemoryRecord
-
-
-def _cosine_sim(a: list[float], b: list[float]) -> float:
-    """Cosine similarity between two vectors."""
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(x * x for x in b) ** 0.5
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+from ..utils.similarity import cosine_similarity
 
 
 def _centroid(embeddings: list[list[float]]) -> list[float]:
@@ -91,7 +80,7 @@ class SemanticClusterer:
             best_sim = self.similarity_threshold - 0.01
             for idx, c in enumerate(clusters):
                 if c.centroid:
-                    sim = _cosine_sim(emb, c.centroid)
+                    sim = cosine_similarity(emb, c.centroid)
                     if sim > best_sim:
                         best_sim = sim
                         best_idx = idx
@@ -178,7 +167,7 @@ class SemanticClusterer:
         best_sim = -1.0
         for c in clusters:
             if c.centroid:
-                sim = _cosine_sim(episode.embedding, c.centroid)
+                sim = cosine_similarity(episode.embedding, c.centroid)
                 if sim > best_sim:
                     best_sim = sim
                     best = c

@@ -6,6 +6,7 @@ from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
+from ..utils.similarity import jaccard, word_set
 
 # Recency weights by memory type stability
 _STABLE_TYPES = {MemoryType.CONSTRAINT}
@@ -52,7 +53,7 @@ class MemoryReranker:
             return [], []
         max_results = max_results or self.config.max_results
 
-        word_sets = {i: self._word_set(mem.record.text) for i, mem in enumerate(memories)}
+        word_sets = {i: word_set(mem.record.text) for i, mem in enumerate(memories)}
         breakdowns = {
             i: self._score_components(mem, memories, word_sets, i, query=query)
             for i, mem in enumerate(memories)
@@ -164,9 +165,9 @@ class MemoryReranker:
                 if other is memory:
                     continue
                 if my_ws is not None and word_sets:
-                    total_sim += self._text_similarity(my_ws, word_sets.get(j, frozenset()))
+                    total_sim += jaccard(my_ws, word_sets.get(j, frozenset()))
                 else:
-                    total_sim += self._text_similarity(memory.record.text, other.record.text)
+                    total_sim += jaccard(memory.record.text, other.record.text)
                 count += 1
             avg_sim = total_sim / count if count > 0 else 0.0
             diversity = 1.0 - avg_sim
@@ -208,9 +209,7 @@ class MemoryReranker:
                 best_idx = 0
                 best_mmr = float("-inf")
                 for i, (score, mem) in enumerate(candidates):
-                    max_sim = max(
-                        self._text_similarity(mem.record.text, s[1].record.text) for s in selected
-                    )
+                    max_sim = max(jaccard(mem.record.text, s[1].record.text) for s in selected)
                     mmr = score - self.config.diversity_threshold * max_sim
                     if mmr > best_mmr:
                         best_mmr = mmr
@@ -236,27 +235,10 @@ class MemoryReranker:
                 best_mmr = float("-inf")
                 for i, (score, mem, idx) in enumerate(candidates):
                     _ = idx
-                    max_sim = max(
-                        self._text_similarity(mem.record.text, s[1].record.text) for s in selected
-                    )
+                    max_sim = max(jaccard(mem.record.text, s[1].record.text) for s in selected)
                     mmr = score - self.config.diversity_threshold * max_sim
                     if mmr > best_mmr:
                         best_mmr = mmr
                         best_idx = i
                 selected.append(candidates.pop(best_idx))
         return selected
-
-    @staticmethod
-    def _word_set(text: str) -> frozenset[str]:
-        """Return a cached-friendly word set for Jaccard computation."""
-        return frozenset(text.lower().split())
-
-    def _text_similarity(self, text1: str | frozenset[str], text2: str | frozenset[str]) -> float:
-        """Jaccard word-overlap similarity (accepts pre-computed frozensets)."""
-        words1 = text1 if isinstance(text1, frozenset) else self._word_set(text1)
-        words2 = text2 if isinstance(text2, frozenset) else self._word_set(text2)
-        if not words1 or not words2:
-            return 0.0
-        intersection = len(words1 & words2)
-        union = len(words1 | words2)
-        return intersection / union if union > 0 else 0.0

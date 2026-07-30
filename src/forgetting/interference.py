@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from ..core.schemas import MemoryRecord
+from ..utils.similarity import cosine_similarity, jaccard
 
 
 @dataclass
@@ -15,18 +16,6 @@ class InterferenceResult:
     interference_type: str  # "duplicate", "conflicting", "overlapping"
     recommendation: str  # "merge", "keep_newer", "keep_higher_confidence"
     keep_id: str | None = None  # id of record to keep when deleting the other
-
-
-def _cosine_similarity(v1: list[float], v2: list[float]) -> float:
-    """Cosine similarity in pure Python (no numpy)."""
-    if len(v1) != len(v2) or not v1:
-        return 0.0
-    dot = sum(a * b for a, b in zip(v1, v2, strict=False))
-    norm1 = sum(a * a for a in v1) ** 0.5
-    norm2 = sum(b * b for b in v2) ** 0.5
-    if norm1 * norm2 == 0:
-        return 0.0
-    return dot / (norm1 * norm2)
 
 
 class InterferenceDetector:
@@ -56,7 +45,7 @@ class InterferenceDetector:
 
         for i, id1 in enumerate(ids):
             for id2 in ids[i + 1 :]:
-                sim = _cosine_similarity(vecs[id1], vecs[id2])
+                sim = cosine_similarity(vecs[id1], vecs[id2])
                 if sim >= self.similarity_threshold:
                     r1 = next(r for r in records if str(r.id) == id1)
                     r2 = next(r for r in records if str(r.id) == id2)
@@ -83,7 +72,7 @@ class InterferenceDetector:
         results: list[InterferenceResult] = []
         for i, r1 in enumerate(records):
             for r2 in records[i + 1 :]:
-                overlap = self._text_overlap(r1.text, r2.text)
+                overlap = jaccard(r1.text, r2.text)
                 if overlap >= text_overlap_threshold:
                     rec = self._recommend_resolution(r1, r2)
                     keep_id = self._resolve_keep_id(r1, r2, rec)
@@ -98,16 +87,6 @@ class InterferenceDetector:
                         )
                     )
         return results
-
-    def _text_overlap(self, text1: str, text2: str) -> float:
-        """Word-level Jaccard overlap."""
-        w1 = set(text1.lower().split())
-        w2 = set(text2.lower().split())
-        if not w1 or not w2:
-            return 0.0
-        inter = len(w1 & w2)
-        union = len(w1 | w2)
-        return inter / union if union else 0.0
 
     def _recommend_resolution(
         self,
