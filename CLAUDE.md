@@ -4,13 +4,19 @@ Neuro-inspired memory system for LLMs. FastAPI server (`src/`) + Python SDK
 (`packages/py-cml/`). PostgreSQL+pgvector, Neo4j, Redis. Env config via
 pydantic-settings with `__` nesting (see `.env`, untracked).
 
-## Working memory: `docs/`
+## `docs/`
 
-`docs/` is the agent working-memory directory. Read `docs/STATE.md` at the
-start of a session; keep it current as you work (active work, load-bearing
-architecture facts, known issues). Put anything too big to inline into
-`docs/<topic>.md` and link it from the STATE.md notes index. Delete notes
-when they stop being true — stale memory is worse than none.
+Two kinds of file live here.
+
+**Agent working memory.** Read `docs/STATE.md` at the start of a session; keep it
+current as you work (active work, load-bearing architecture facts, known issues).
+Put anything too big to inline into `docs/<topic>.md` and link it from the STATE.md
+notes index. Delete notes when they stop being true — stale memory is worse than none.
+
+**Durable reference docs**, currently `docs/usage.md` (server API, endpoints,
+configuration reference — other docs link into its anchors, so don't rename its
+headings casually). These are *not* subject to the delete-when-stale rule: fix them
+instead. If you add one, list it in the STATE.md notes index so it is discoverable.
 
 ## Rules
 

@@ -87,7 +87,7 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 
 ## Server-side feature flags and retrieval
 
-Server behavior (write-time facts, retrieval timeouts, cached embeddings, batch embeddings, constraint extraction, etc.) is controlled by **server** environment variables (`FEATURES__*`, `RETRIEVAL__*`), not by the SDK. The SDK does not set these; they are configured where the CML server runs. For the full list and defaults, see the main project [UsageDocumentation — Configuration Reference](../../../ProjectPlan/UsageDocumentation.md#configuration-reference).
+Server behavior (write-time facts, retrieval timeouts, cached embeddings, batch embeddings, constraint extraction, etc.) is controlled by **server** environment variables (`FEATURES__*`, `RETRIEVAL__*`), not by the SDK. The SDK does not set these; they are configured where the CML server runs. For the full list and defaults, see the main project [Usage Documentation — Configuration Reference](../../../docs/usage.md#configuration-reference).
 
 Key server-side flags that affect SDK responses:
 
@@ -125,7 +125,7 @@ With default feature flags, approximate internal LLM calls per operation:
 | **Read** | 1–2 (QueryClassifier + optional Reranker when constraints present) |
 | **Process Turn** | ~5–10 (retrieve + 2 writes + reconsolidation) |
 
-For a full breakdown (why turn exceeds read+write, reconsolidation, etc.), see the main project [UsageDocumentation — Internal LLM Call Counts](../../../ProjectPlan/UsageDocumentation.md#internal-llm-call-counts-default-settings).
+For a full breakdown (why turn exceeds read+write, reconsolidation, etc.), see the main project [Usage Documentation — Internal LLM Call Counts](../../../docs/usage.md#internal-llm-call-counts-default-settings).
 
 ## Versioning
 

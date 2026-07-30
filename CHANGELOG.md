@@ -63,6 +63,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **`ProjectPlan/UsageDocumentation.md` moved to `docs/usage.md`** — it is the canonical
+  server API and configuration reference that seven other docs link into, so it no longer
+  lives inside a planning tree. All inbound links were updated (anchors preserved);
+  `CLAUDE.md` now documents `docs/` as holding both agent working memory and durable
+  reference docs.
 - **Dashboard assets are vendored, not fetched from a CDN** — chart.js, vis-network, and
   the Inter / JetBrains Mono webfonts now ship in `src/dashboard/static/vendor/` and load
   from local paths. Previously the Overview and API Usage charts and the whole Knowledge

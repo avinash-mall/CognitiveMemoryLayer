@@ -13,6 +13,6 @@ Documentation for the Python SDK for the Cognitive Memory Layer.
 
 ## Quick links
 
-- [Usage & API](../../../ProjectPlan/UsageDocumentation.md) - server setup, API reference, config
+- [Usage & API](../../../docs/usage.md) - server setup, API reference, config
 - [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer)
 - [CHANGELOG](../CHANGELOG.md)

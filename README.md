@@ -10,7 +10,7 @@
 <br/>
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
-[![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./ProjectPlan/UsageDocumentation.md)
+[![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
 [![Tests](https://img.shields.io/badge/Tests-1233-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
 [![Version](https://img.shields.io/badge/version-1.5.0-blue?style=for-the-badge)](#)
 
@@ -694,7 +694,7 @@ CML ships a built-in admin dashboard at **[http://localhost:8000/dashboard/](htt
 
 The dashboard requires admin authentication via `AUTH__ADMIN_API_KEY`. Enter the key on first visit; it is stored in browser localStorage. State-changing requests require a CSRF header (`X-Requested-With: XMLHttpRequest`), which the dashboard sends automatically.
 
-See [Usage Documentation](ProjectPlan/UsageDocumentation.md) for full API details.
+See [Usage Documentation](docs/usage.md) for full API details.
 
 ---
 
@@ -702,7 +702,7 @@ See [Usage Documentation](ProjectPlan/UsageDocumentation.md) for full API detail
 
 | | Document | Description |
 |---|----------|-------------|
-| **API** | [Usage & API Reference](ProjectPlan/UsageDocumentation.md) | Full API, config, dashboard, runtime modes |
+| **API** | [Usage & API Reference](docs/usage.md) | Full API, config, dashboard, runtime modes |
 | **SDK** | [Python SDK](packages/py-cml/docs/README.md) | Getting started, API reference, examples |
 | **Eval** | [Evaluation](evaluation/README.md) | LoCoMo-Plus harness, scripts, comparison |
 | **SDK Eval** | [Eval Module](packages/py-cml/docs/evaluation.md) | `cml-eval` CLI, Python API, typed configs |

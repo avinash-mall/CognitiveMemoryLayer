@@ -67,7 +67,7 @@ Thank you for your interest in contributing. This document outlines how to get s
 - `scripts/` — Dev scripts: `update_readme_badges.py` (refresh README badge counts), `run_examples.py` (run examples; see script docstring or examples/README), and focused probe/evaluation helpers such as `package_surface_probe.py`, `constraint_retrieval_probe.py`, `models_artifact_probe.py`, and `test_memory_quality.py`.
 - `ProjectPlan/` — Design docs and phase plans (e.g. [ActiveCML/Issues.md](ProjectPlan/ActiveCML/Issues.md), [CreatePackage/CreatePackageStatus.md](ProjectPlan/CreatePackage/CreatePackageStatus.md)).
 
-For full architecture and API details, see [README](README.md) and [Usage Documentation](ProjectPlan/UsageDocumentation.md).
+For full architecture and API details, see [README](README.md) and [Usage Documentation](docs/usage.md).
 
 ## Publishing the Python SDK
 

@@ -157,7 +157,7 @@ OpenClaw Agent
 
 ## Further Reading
 
-- [CML Documentation](../../ProjectPlan/UsageDocumentation.md)
+- [CML Documentation](../../docs/usage.md)
 - [py-cml Python SDK](../../packages/py-cml/README.md)
 - [CML API Reference](http://localhost:8000/docs) (when server is running)
 - [OpenClaw Skills Guide](https://github.com/openclaw/openclaw)

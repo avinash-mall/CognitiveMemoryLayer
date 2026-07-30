@@ -126,4 +126,5 @@ resident vLLM servers).
 
 ## Notes index
 
-(none yet)
+- [usage.md](usage.md) — durable reference: server API, endpoints, configuration.
+  Linked into by README, CONTRIBUTING, and four py-cml docs (some by anchor).
