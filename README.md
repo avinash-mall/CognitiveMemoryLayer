@@ -516,46 +516,35 @@ This installs the CML server, the `py-cml` client SDK, all runtime extras (FastA
 
 ### Step 3 — Model Weights
 
-All trained model weights (~25 GB) live at **[avinashm/CognitiveMemoryLayer-models](https://huggingface.co/avinashm/CognitiveMemoryLayer-models)**.
+CML no longer ships trained task models — the internal LLM handles extraction and
+classification (see `FEATURES__USE_LLM_ENABLED`). Three model artifacts are still
+downloaded on demand from public registries the first time the write path runs:
 
-**Automatic download (recommended):** Models are downloaded automatically on first startup — both when running via Docker and when using the Python server directly. The runtime checks `packages/models/trained_models/` and pulls any missing artifacts from HuggingFace Hub. In Docker, the local repo's `packages/models/` directory is bind-mounted into the container, so existing host models are reused and any first-run download writes back to `packages/models/trained_models/`. No manual download step needed.
+| Artifact | Source | Configured by |
+|---|---|---|
+| Embedding model (`nomic-ai/nomic-embed-text-v2-moe`, revision-pinned) | HuggingFace | `EMBEDDING_INTERNAL__LOCAL_MODEL` |
+| Chunker tokenizer (`google/flan-t5-base`) | HuggingFace | `CHUNKER__TOKENIZER` |
+| tiktoken BPE ranks (`cl100k_base`) | openaipublic.blob.core.windows.net | — |
 
-If a Docker download fails with `PermissionError`, the host-mounted files under `packages/models/trained_models/` are usually owned by `root` from an earlier container run. Fix ownership from the repo root with `sudo chown -R $(id -u):$(id -g) packages/models/trained_models`.
+In Docker these land on the `hf-cache` and `tiktoken-cache` volumes, so they are
+downloaded once and survive `docker compose up --force-recreate`.
 
-To disable auto-download (e.g. air-gapped environments), set `CML_MODELS_AUTO_DOWNLOAD=false` in `.env`.
+> **Note:** the embedding model is loaded with `trust_remote_code=True`, so the first
+> download also fetches and **executes** the model's own Python from HuggingFace. It is
+> pinned to a specific revision. Set `EMBEDDING_INTERNAL__PROVIDER` to `mock`, `openai`,
+> `ollama`, or `vllm` if you would rather not run remote code.
 
-**Manual download** (if you prefer):
-
-```bash
-pip install "huggingface_hub[cli]"
-
-huggingface-cli download avinashm/CognitiveMemoryLayer-models \
-  --repo-type model \
-  --local-dir packages/models/trained_models
-```
-
-**Python API:**
-
-```python
-from huggingface_hub import snapshot_download
-
-snapshot_download(
-    repo_id="avinashm/CognitiveMemoryLayer-models",
-    repo_type="model",
-    local_dir="packages/models/trained_models",
-)
-```
-
-**Partial download** (saves disk space):
+**Air-gapped / fully offline runs.** Warm the caches once on a networked machine, then
+pin them shut:
 
 ```bash
-huggingface-cli download avinashm/CognitiveMemoryLayer-models \
-  --repo-type model \
-  --local-dir packages/models/trained_models \
-  --include "memory_rerank_pair*" "extractor*" "manifest.json"
+docker compose -f docker/docker-compose.yml up -d api        # first run populates the volumes
+# ...then for subsequent runs, in .env:
+HF_HUB_OFFLINE=1
 ```
 
-> **Note:** The `manifest.json` lists all expected artifacts. The runtime will warn at startup if required models are missing and will fall back to heuristic paths.
+With the volumes warm and `HF_HUB_OFFLINE=1` set, the server makes no outbound requests
+other than to your configured LLM endpoint.
 
 ---
 

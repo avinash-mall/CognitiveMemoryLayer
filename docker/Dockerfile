@@ -47,10 +47,17 @@ COPY alembic.ini ./
 COPY migrations ./migrations/
 COPY docker/entrypoint.sh /entrypoint.sh
 
-ENV PYTHONPATH=/app
+# Model/tokenizer caches live on volumes so weights survive container recreation.
+# The dirs must exist and be appuser-owned before the USER switch: Docker gives a
+# fresh named volume the ownership of its mount point in the image, so creating
+# them later (or not at all) makes every download fail with EACCES.
+ENV PYTHONPATH=/app \
+    HF_HOME=/cache/hf \
+    TIKTOKEN_CACHE_DIR=/cache/tiktoken
 
-# Non-root user for production
-RUN useradd -m appuser && chown -R appuser:appuser /app
+RUN useradd -m appuser \
+    && mkdir -p /cache/hf /cache/tiktoken \
+    && chown -R appuser:appuser /app /cache
 USER appuser
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -24,6 +24,8 @@ link them below. Delete notes when they stop being true.
 
 ## Known issues
 
+(none open)
+
 ## Dashboard notes
 
 - All third-party assets are vendored in `src/dashboard/static/vendor/` (chart.js,
@@ -31,6 +33,18 @@ link them below. Delete notes when they stop being true.
   directory's README. There is **no build step** — `src/api/app.py` serves the static
   tree verbatim, so any CDN URL added to it ships straight to users. Keep
   `grep -rn "https://" src/dashboard/static` (excluding `vendor/`) empty.
+
+## Model artifacts (offline posture)
+
+- Three artifacts download on demand: the nomic embedding model + flan-t5-base tokenizer
+  (HuggingFace) and tiktoken's `cl100k_base` ranks. In Docker they persist on the
+  `hf-cache` / `tiktoken-cache` volumes. Warm them once, then `HF_HUB_OFFLINE=1` makes
+  the server fully offline apart from the configured LLM endpoint.
+- The embedding model uses `trust_remote_code=True` — first load executes remote Python
+  from HF (revision-pinned). `EMBEDDING_INTERNAL__PROVIDER=mock` avoids it entirely.
+- Cache dirs are created and chowned to `appuser` **before** the `USER` switch in the
+  Dockerfile; a fresh named volume inherits its mount point's ownership, so doing it
+  later makes every download fail EACCES.
 
 ## Docker notes
 

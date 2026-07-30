@@ -110,6 +110,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - hf-cache:/cache/hf
+      - tiktoken-cache:/cache/tiktoken
     command: ["sh", "-c", "python3 scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 1"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -149,6 +152,9 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    volumes:
+      - hf-cache:/cache/hf
+      - tiktoken-cache:/cache/tiktoken
     command: ["sh", "-c", "python3 scripts/validate_llm_endpoints.py && alembic upgrade head && uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -156,3 +162,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 240s
+
+# Model + tokenizer caches. Without these, every `up --force-recreate` re-downloads
+# the embedding model, the chunker tokenizer and tiktoken's BPE ranks (~1-2 GB).
+volumes:
+  hf-cache:
+  tiktoken-cache:
