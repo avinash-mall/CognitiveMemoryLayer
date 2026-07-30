@@ -2,8 +2,6 @@
 
 This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus) benchmark setup and CML-backed evaluation scripts. Locomo-Plus unifies LoCoMo (five factual categories) with a sixth **Cognitive** category for long-context memory evaluation.
 
-For a step-by-step runbook (Ollama setup, env vars, DB setup), see [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md).
-
 ## Layout
 
 | Path | Description |
@@ -24,7 +22,7 @@ For a step-by-step runbook (Ollama setup, env vars, DB setup), see [ProjectPlan/
 
 ## Configuration
 
-CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is read from the project root `.env`. See [ProjectPlan/LocomoEval/RunEvaluation.md](../ProjectPlan/LocomoEval/RunEvaluation.md) for full setup.
+CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is read from the project root `.env`.
 
 ### Performance tuning for bulk eval
 
@@ -261,4 +259,3 @@ Full analysis: [EVALUATION_REPORT.md](EVALUATION_REPORT.md)
 - [LoCoMo paper / site](https://snap-research.github.io/locomo/)
 - [LoCoMo repo](https://github.com/snap-research/locomo)
 - [Locomo-Plus repo](https://github.com/xjtuleeyf/Locomo-Plus)
-- [Runbook (full steps)](../ProjectPlan/LocomoEval/RunEvaluation.md)

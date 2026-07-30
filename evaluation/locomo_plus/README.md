@@ -50,7 +50,7 @@
    python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json --out-dir evaluation/outputs --limit-samples 5
    ```
 
-   CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is in the project root `.env`. See [evaluation/README](../../evaluation/README.md) and [RunEvaluation](../../ProjectPlan/LocomoEval/RunEvaluation.md) for setup.
+   CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is in the project root `.env`. See [evaluation/README](../../evaluation/README.md) for setup.
 
 ## Outputs
 

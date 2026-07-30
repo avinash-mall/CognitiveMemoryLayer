@@ -77,6 +77,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- **Obsolete planning and status documents** (−6,996 lines) —
+  `ProjectPlan/CreatePackage/CreatePackageStatus.md` (a design doc for building the py-cml
+  package, which shipped and has 241 passing tests), `ProjectPlan/LocomoEval/RunEvaluation.md`
+  (a superseded, self-contradicting runbook that `evaluation/README.md` covers),
+  `evaluation/LOCOMO_PLUS_EVAL_REPORT.md` (unreachable, and its authoritative artifacts were
+  never committed), `ProjectPlan/BaseCML/BaseCMLStatus.md` (a status snapshot last verified
+  2026-03-05, superseded by `docs/STATE.md`), and `packages/py-cml/VALIDATION_REPORT.md`
+  (a completed migration checklist).
 - **BREAKING: the custom-model ("modelpack") path** — the entire parallel inference stack
   is gone and the internal LLM is now the only extraction/classification path.
   Deleted: `src/utils/modelpack.py` (16 sklearn/DeBERTa task models), spaCy NER
@@ -489,4 +497,4 @@ Implementations from [ProjectPlan/BaseCML/CML_Audit_2026-03-06.md](ProjectPlan/B
 
 ---
 
-*For earlier history and design docs, see the [ProjectPlan/](ProjectPlan/) directory (e.g. [ActiveCML/Issues.md](ProjectPlan/ActiveCML/Issues.md), [CreatePackage/CreatePackageStatus.md](ProjectPlan/CreatePackage/CreatePackageStatus.md)).*
+*For the forward-looking roadmap see [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/); for the current server reference see [docs/usage.md](docs/usage.md).*
