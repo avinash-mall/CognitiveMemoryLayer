@@ -10,13 +10,16 @@ link them below. Delete notes when they stop being true.
   the first passing `CI/CD Pipeline` run in the visible history — every run back through
   2026-06-20 failed at the Docker build, so the integration suite had not executed in six
   weeks. If CI goes red, it was genuinely green here.
-- Suite sizes, so drift is visible: **703** unit (hermetic), **331** integration + e2e +
-  py-cml against a live server. The drop from 759/338 is deleted tests for deleted code
-  (the cleanup below), not regressions.
-- **A cleanup pass is in flight** (docs + dead code, ~-19,500 lines). Done and pushed:
-  all docs, plus five unwired modules, the event-log surface, the async storage pipeline,
-  answer verification/compression, the BM25 index, and the retrieval hot-cache path.
-  Remaining: zero-reader flags, micro-deletions, simplifications, SDK 2.0.0.
+- Suite sizes, so drift is visible: **716** unit (hermetic), **327** integration + e2e +
+  py-cml against a live server. Down from 759/338: deleted tests for deleted code, offset
+  by new tests for `rrf_merge` and `src/utils/similarity.py`. Not regressions.
+- **The cleanup pass is complete and released as 2.0.0** (~-19,900 lines across 24
+  commits). Removed: all obsolete docs, five unwired modules, the event-log surface, the
+  async storage pipeline, answer verification/compression, the BM25 index, the retrieval
+  hot-cache path, nine unread config keys, and the SDK surface that depended on them.
+  See `CHANGELOG.md` [2.0.0] for the breaking inventory. `VERSION`, `.env.minimal` and
+  `cml/_version.py` are now all 2.0.0 — note `.env` (untracked) shadows the VERSION file,
+  so a fresh clone needs its own `.env` VERSION line or it falls back to the file.
 - The modelpack removal (`51afd15`) and its follow-up cleanup are complete: dead code,
   stale docs, dead env keys, vendored assets, cache volumes.
 
