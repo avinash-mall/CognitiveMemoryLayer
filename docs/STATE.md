@@ -26,6 +26,19 @@ link them below. Delete notes when they stop being true.
 
 (none open)
 
+## Measured baselines (2026-07-30, commit 8304f8f)
+
+- Write path: 0.33 turns/s with the LLM on (mean 3.03 s/turn, qwen35-4b); 17.31 turns/s
+  heuristic-only. Method + hardware in `evaluation/EVALUATION_REPORT.md` §5.
+- Retrieval quality: 9.8/10 judge, 100% recall, 6/6 constraint consistency, p50 1055 ms
+  (`scripts/test_memory_quality.py`; artifact committed under `evaluation/results/`).
+- The LoCoMo-Plus scores in `evaluation/` are pre-51afd15 history and are NOT reproducible
+  — their source artifacts were never committed. Don't cite them as current.
+- **Judge gotcha:** `LLM_EVAL` (Qwen3.6-27B) is a reasoning model. Any judge/JSON call to
+  it must disable thinking or budget 2000+ tokens, or `content` comes back empty with
+  `finish_reason=length` and the score silently reads as 0. `src/utils/llm.py` logs
+  `llm_empty_content` when this happens.
+
 ## Retrieval notes
 
 - **Sources do not share a relevance scale.** Vector/fact prongs emit cosine-like 0..1;

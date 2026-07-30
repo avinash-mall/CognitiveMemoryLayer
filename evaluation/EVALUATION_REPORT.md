@@ -197,11 +197,33 @@ the honest cost of the current architecture: one LLM call per chunk buys entitie
 relations, constraints, facts, PII spans and the scoring signals in a single round trip,
 and the heuristic mode extracts no entities or relations at all.
 
-These are latency numbers only. **No quality benchmark has been re-run against the current
-write path.** A full LoCoMo-Plus re-run means 5,882 turn ingests plus 2,387 QA calls plus
-2,387 judge calls — roughly 10.7k LLM calls on shared GPUs. The datasets are committed
-(`locomo10.json`, `locomo_plus.json`), so it needs no downloads, only time. Until someone
-runs it, §2 stands as history and nothing here should be read as a current quality claim.
+### Retrieval quality (measured 2026-07-30)
+
+`scripts/test_memory_quality.py` at commit `8304f8f`: 46-memory corpus, 31 probes across
+14 categories, LLM-as-judge via `LLM_EVAL` (`Qwen/Qwen3.6-27B-FP8` on `localhost:8002`).
+Raw output: [`results/memory_quality_2026-07-30.json`](results/memory_quality_2026-07-30.json)
+— committed, unlike the April artifacts.
+
+| Metric | Result |
+|---|---|
+| Overall judge score | **9.8 / 10** |
+| Retrieval recall | **100%** (all 14 categories) |
+| Constraint consistency | **6 / 6 probes** |
+| Read latency | mean 1081 ms, p50 1055 ms, p95 1239 ms |
+
+Every category scored 10.0 except `semantic_disconnect` at 8.0 — the one probe that
+genuinely under-performed is "What gift should I bring to a dinner party?", where the
+judge found the retrieved context matched on the keywords `single-use`/`plastics` without
+actually answering the question. Cue-trigger semantic disconnect remains the weak spot,
+which is consistent with the April run's Cognitive category being the lowest scorer.
+
+Note this harness measures *retrieval* quality on a small purpose-built corpus. It is not
+comparable to the LoCoMo-Plus scores in §2, which measure end-to-end QA accuracy on 2,387
+samples. **The LoCoMo-Plus benchmark has not been re-run against the current write path**:
+that means 5,882 turn ingests plus 2,387 QA calls plus 2,387 judge calls — roughly 10.7k
+LLM calls on shared GPUs. The datasets are committed (`locomo10.json`, `locomo_plus.json`),
+so it needs no downloads, only time. Until someone runs it, §2 stands as history and no
+number in it should be read as a current quality claim.
 
 ---
 

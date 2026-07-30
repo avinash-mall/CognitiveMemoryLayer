@@ -1,0 +1,410 @@
+{
+  "tenant": "quality-test-1785398548",
+  "timestamp": "2026-07-30T08:06:43.986140+00:00",
+  "corpus_size": 46,
+  "probes": [
+    {
+      "query": "What is my name?",
+      "category": "identity",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1007.1,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains the expected keywords 'elena' and 'vasquez' in the sentence 'my name is elena vasquez', perfectly answering the query. While there is some noise regarding goals and preferences, the critical information is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Where do I work?",
+      "category": "identity",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1008.0,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly states 'i work at the monterey bay aquarium research institute', which contains all keywords from Group 1 (monterey, mbari, aquarium). It also correctly retrieves safety-critical constraints like the shellfish allergy.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my qualifications?",
+      "category": "identity",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1029.5,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains both required keywords 'phd' and 'scripps' in the sentence 'i have a phd from scripps institution of oceanography', perfectly satisfying the expected information criteria for the query about qualifications.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What kind of food do I like?",
+      "category": "preference",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1129.9,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains 'thai', 'pad thai', and 'curry', satisfying all keywords in the expected information group. It also correctly retrieves the safety-critical constraint regarding the shellfish allergy.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "When do I prefer to work?",
+      "category": "preference",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1096.5,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains the sentence 'i prefer working early mornings, usually 5am to 1pm', which satisfies all keywords in Group 1 (morning, 5am, early). Although the context contains a significant amount of irrelevant noise (goals, other preferences, scientific facts), the specific information requested by the query is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my hobbies?",
+      "category": "preference",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1015.7,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly states 'i enjoy hiking and underwater photography as hobbies', which satisfies both keywords in Group 1 (hiking, photography). Although there is some noise regarding goals and preferences, the specific answer to the query is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Do I have any food allergies?",
+      "category": "constraint_direct",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1005.0,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 (shellfish, allergy, anaphylaxis) and directly answers the user's query about food allergies. Although there is some irrelevant noise regarding research goals and preferences, the critical safety information is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my personal rules about plastics?",
+      "category": "constraint_direct",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1189.7,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains the exact sentence 'i refuse to use single-use plastics because of their impact on ocean life', which includes all required keywords from Group 1 (single-use, plastic, ocean). Although there is significant noise regarding allergies and research goals, the specific information requested was perfectly retrieved.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What are my research ethics rules?",
+      "category": "constraint_direct",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 892.6,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains both required keywords ('unpublished' and 'peer review') within a sentence directly addressing the user's research ethics rules. Although there is significant irrelevant noise (allergies, budget, etc.), the core expected information is perfectly retrieved.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Recommend a seafood restaurant for dinner tonight.",
+      "category": "semantic_disconnect",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1242.7,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 (shellfish, allergy, anaphylaxis, epipen), which are critical safety constraints for a seafood restaurant recommendation. Although the context includes irrelevant professional goals, the presence of the critical allergy information makes the retrieval perfect for the safety aspect of the query.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What gift should I bring to a dinner party?",
+      "category": "semantic_disconnect",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1074.6,
+      "judge_score": 4.0,
+      "judge_reason": "The retrieved context contains the keyword 'single-use' and 'plastics' (from 'single-use plastics'), which partially satisfies Group 1. However, it misses 'sustainability' and 'environmental' (though 'impact on ocean life' is semantically related, the specific keywords are absent). More importantly, the context is overwhelmingly noisy, containing irrelevant goals, research details, and other personal facts, making the retrieval quality poor despite the partial keyword match.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What packaging should I use for shipping samples?",
+      "category": "semantic_disconnect",
+      "failure_mode": "semantic_disconnect",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1170.4,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all four required keywords from Group 1 ('single-use', 'plastics', 'sustainability', 'ocean') within the sentence 'i refuse to use single-use plastics because of their impact on ocean life' and the value statement 'i value environmental sustainability above convenience'. This directly answers the query about packaging preferences based on the persona's values. Although there is significant noise regarding allergies and research goals, the critical information for the query is fully present.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Should I take this job offer?",
+      "category": "constraint_dilution",
+      "failure_mode": "constraint_dilution",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1043.3,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 ('tenure', 'mbari', '2026') within the phrase 'getting tenure at mbari by 2026'. Although the context includes significant noise regarding lab procedures and personal preferences, it successfully retrieves the specific information expected.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Where do I live now?",
+      "category": "temporal",
+      "failure_mode": "temporal_recency",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1014.1,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 ('san diego', 'pacific grove', 'moving') and explicitly states the user's current location and recent move, perfectly answering the query.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Do I drink coffee?",
+      "category": "temporal",
+      "failure_mode": "stale_constraint",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1048.3,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 (coffee, morning, started, march) in the sentence 'i've started drinking one cup of coffee each morning since march', perfectly answering the query. Although there is contradictory information ('i don't drink coffee at all') and significant noise regarding research goals and allergies, the specific expected information is fully present.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What am I working toward in my career?",
+      "category": "goal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1161.3,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all keywords from Group 1: 'tenure' (getting tenure at mbari), 'nsf' (secure a $2m nsf grant), and 'publish' (must publish research). While 'nature' and 'grant' (as a standalone word distinct from NSF grant) are not explicitly present as separate tokens, 'nsf grant' covers the grant concept, and the context is highly relevant to the career goals query. The system also correctly retrieved safety-critical constraints (shellfish allergy) and values (scientific integrity).",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What is my publication target?",
+      "category": "goal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1126.1,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1: 'nature' (in 'publish my research on bioluminescent communication in nature'), 'bioluminescent' (in 'bioluminescent communication'), and 'end of year' (in 'by end of year'). The information directly answers the query about the publication target.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What challenges am I dealing with right now?",
+      "category": "state",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 996.0,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all keywords from the expected group (budget, cuts, grant, deadline, stress), directly answering the user's query about current challenges. Although there is some irrelevant information (allergies, mentoring, values), the core expected information is fully present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Who am I mentoring?",
+      "category": "state",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1076.8,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains the sentence 'right now i'm mentoring three graduate students', which includes all required keywords from Group 1 ('graduate', 'student', 'three'). Although there is some repetitive noise in the context, the specific information requested is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Why did I switch to ROV surveys?",
+      "category": "causal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1239.0,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly states 'the reason i switched to rov surveys is that manned submersibles are too expensive', which contains the keyword 'expensive' from Group 1. It also mentions 'rov rental costs', satisfying the 'cost' keyword. All expected information is present.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Why do I need alternative funding?",
+      "category": "causal",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1017.2,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains both required keywords 'budget' and 'cuts' in the sentence 'because of the budget cuts, i need to find alternative funding sources', directly answering the query. Although there is irrelevant noise regarding shellfish allergies and research data policies, the core expected information is perfectly retrieved.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Who is Maria's previous advisor?",
+      "category": "multi_hop",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1007.4,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains the sentence 'maria's thesis advisor before me was dr. tanaka at woods hole', which includes all required keywords from Group 1 ('tanaka' and 'woods hole'). Although the context includes irrelevant information about goals, preferences, and allergies, the specific answer to the query is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "Who recommended the Scripps collaboration?",
+      "category": "multi_hop",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1046.6,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains the exact sentence 'dr. chen from nsf recommended i collaborate with dr. patel at scripps on the grant', which includes all required keywords (chen, nsf, patel) and directly answers the query. Although there is some repetitive and irrelevant information (noise), the core expected information is perfectly retrieved.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "How do I calibrate the spectrometer?",
+      "category": "procedural",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1013.2,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all four required keywords (dark-current, baseline, white reference, mercury) and provides the correct procedural steps for calibrating the spectrometer. Although the context is heavily polluted with irrelevant personal and professional details (noise), the specific information requested by the query is fully present and accurate, warranting a perfect score for retrieval completeness.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What's on the ROV pre-dive checklist?",
+      "category": "procedural",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1227.4,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all five required keywords (pressure, thruster, camera, ballast, communication) explicitly listed in the ROV pre-dive checklist sentence. Although the context includes a significant amount of irrelevant personal and professional information (noise), the specific information requested by the query is fully present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What happened at the MBARI seminar?",
+      "category": "episodic",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1032.9,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 ('anglerfish', 'bioluminescence', 'presented') in the sentence 'last tuesday i presented my findings on deep-sea anglerfish bioluminescence at the mbari seminar', which directly answers the query. Although there is significant irrelevant noise (allergies, grant details, personal history), the core information is perfectly retrieved.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What went wrong during the May expedition?",
+      "category": "episodic",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1114.7,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains all required keywords from Group 1 ('rov', 'broke', 'lost', 'data') in the sentence 'the lab's rov broke down during the may expedition and we lost two days of data collection', perfectly answering the query about what went wrong.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What drives bioluminescence in deep-sea organisms?",
+      "category": "knowledge",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1105.1,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains both required keywords 'luciferin' and 'luciferase' and explicitly states that bioluminescence is driven by the luciferin-luciferase reaction, perfectly satisfying the expected information criteria. Although there is significant irrelevant noise (personal anecdotes about allergies and research habits), the core answer is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What percentage of deep-sea organisms produce light?",
+      "category": "knowledge",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1055.0,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains the exact expected information ('76% of deep-sea organisms produce their own light'), satisfying the query perfectly. Although the context includes a large amount of irrelevant personal and procedural noise, the core answer is present and accurate, warranting a perfect score for retrieval quality regarding the expected information.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "What is my research budget?",
+      "category": "financial",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1199.9,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context explicitly contains the exact expected information ('$450,000') regarding the research budget. Although there is some repetitive and irrelevant noise (allergies, publication goals), the core answer to the query is present and accurate.",
+      "keyword_hits": [
+        true
+      ]
+    },
+    {
+      "query": "How much does ROV rental cost?",
+      "category": "financial",
+      "failure_mode": "",
+      "recall_groups_hit": 1,
+      "recall_groups_total": 1,
+      "latency_ms": 1121.5,
+      "judge_score": 10.0,
+      "judge_reason": "The retrieved context contains the exact expected information ('$15,000 per day'), satisfying all keyword groups. Although the context includes significant irrelevant noise (user goals, allergies, checklists), the core answer to the query is present and accurate, warranting a perfect score for retrieval quality regarding the specific information requested.",
+      "keyword_hits": [
+        true
+      ]
+    }
+  ]
+}
