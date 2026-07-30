@@ -29,6 +29,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   override and would trigger a fresh `production` build).
 - **GitHub Actions Docker startup on non-GPU runners** — CI no longer inherits an `nvidia` device reservation from the base Compose file, fixing failures like `could not select device driver "nvidia" with capabilities: [[gpu]]` when bringing up the stack on standard GitHub-hosted runners.
 
+### Changed
+
+- **Dashboard assets are vendored, not fetched from a CDN** — chart.js, vis-network, and
+  the Inter / JetBrains Mono webfonts now ship in `src/dashboard/static/vendor/` and load
+  from local paths. Previously the Overview and API Usage charts and the whole Knowledge
+  Graph page were dead without internet access. Every file's sha256 was verified against
+  jsDelivr's published hashes and is recorded, with upstream licenses, in
+  `static/vendor/README.md`. The dashboard now makes zero external requests.
+
 ### Removed
 
 - **CUDA toolkit base images and the megablocks build** — the Docker builder/production

@@ -24,10 +24,13 @@ link them below. Delete notes when they stop being true.
 
 ## Known issues
 
-- Offline rule (CLAUDE.md #1) violations in the dashboard: chart.js loaded
-  from jsdelivr in `src/dashboard/static/index.html:8`; vis-network loaded from
-  jsdelivr in `src/dashboard/static/js/pages/graph.js:55-58`. There is no local
-  copy of either — being vendored under `static/vendor/`.
+## Dashboard notes
+
+- All third-party assets are vendored in `src/dashboard/static/vendor/` (chart.js,
+  vis-network, Inter + JetBrains Mono woff2) with hashes and licenses recorded in that
+  directory's README. There is **no build step** — `src/api/app.py` serves the static
+  tree verbatim, so any CDN URL added to it ships straight to users. Keep
+  `grep -rn "https://" src/dashboard/static` (excluding `vendor/`) empty.
 
 ## Docker notes
 

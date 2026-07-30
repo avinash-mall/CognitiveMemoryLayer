@@ -52,10 +52,10 @@ function ensureVisLoaded() {
         if (window.vis) { visLoaded = true; resolve(); return; }
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = 'https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css';
+        link.href = '/dashboard/static/vendor/vis-network.min.css';
         document.head.appendChild(link);
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js';
+        script.src = '/dashboard/static/vendor/vis-network.min.js';
         script.onload = () => { visLoaded = true; resolve(); };
         script.onerror = () => reject(new Error('Failed to load vis-network library'));
         document.head.appendChild(script);

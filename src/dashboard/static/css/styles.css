@@ -3,6 +3,23 @@
    Dark-first theme with light mode toggle
    ============================================================ */
 
+/* --- Vendored fonts (see ../vendor/README.md) --- */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/dashboard/static/vendor/fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/dashboard/static/vendor/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+}
+
 /* --- CSS Custom Properties (Dark Theme) --- */
 :root, [data-theme="dark"] {
     --bg-primary: #0f1117;
