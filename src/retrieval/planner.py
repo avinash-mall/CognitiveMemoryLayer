@@ -17,7 +17,6 @@ class RetrievalSource(StrEnum):
     FACTS = "facts"
     VECTOR = "vector"
     GRAPH = "graph"
-    CACHE = "cache"
     CONSTRAINTS = "constraints"
 
 

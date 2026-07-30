@@ -41,11 +41,9 @@ class HybridRetriever:
         self,
         hippocampal: HippocampalStore,
         neocortical: NeocorticalStore,
-        cache: Any | None = None,
     ):
         self.hippocampal = hippocampal
         self.neocortical = neocortical
-        self.cache = cache
 
     async def retrieve(
         self,
@@ -401,8 +399,6 @@ class HybridRetriever:
                 items = await self._retrieve_constraints(
                     tenant_id, step, context_filter, query_embedding
                 )
-            elif step.source == RetrievalSource.CACHE:
-                items = await self._retrieve_cache(tenant_id, step)
             else:
                 items = []
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -743,35 +739,6 @@ class HybridRetriever:
             reverse=True,
         )
         return rows
-
-    async def _retrieve_cache(
-        self,
-        tenant_id: str,
-        step: RetrievalStep,
-    ) -> list[dict[str, Any]]:
-        """Retrieve from hot cache. Holistic: tenant-only."""
-        if not self.cache:
-            return []
-        cache_key = f"hot:{tenant_id}"
-        try:
-            cached = await self.cache.get(cache_key)
-        except Exception as e:
-            logger.debug(
-                "cache_get_failed", extra={"cache_key": cache_key, "error": str(e)}, exc_info=True
-            )
-            return []
-        if cached:
-            import json
-
-            try:
-                return json.loads(cached) if isinstance(cached, str) else cached
-            except (TypeError, json.JSONDecodeError) as e:
-                get_logger(__name__).warning(
-                    "retrieval_cache_decode_error",
-                    cache_key=cache_key,
-                    error=str(e),
-                )
-        return []
 
     def _to_retrieved_memories(
         self,
