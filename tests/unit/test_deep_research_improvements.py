@@ -566,12 +566,8 @@ class TestBoundedStateMap:
 class TestFeatureFlags:
     def test_defaults_are_true(self):
         flags = FeatureFlags()
-        assert flags.stable_keys_enabled is True
         assert flags.write_time_facts_enabled is True
-        assert flags.batch_embeddings_enabled is True
         assert flags.retrieval_timeouts_enabled is True
-        assert flags.db_dependency_counts is True
-        assert flags.bounded_state_enabled is True
         assert flags.hnsw_ef_search_tuning is True
 
     def test_retrieval_settings_defaults(self):

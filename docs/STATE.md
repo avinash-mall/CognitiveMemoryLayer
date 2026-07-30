@@ -10,9 +10,13 @@ link them below. Delete notes when they stop being true.
   the first passing `CI/CD Pipeline` run in the visible history — every run back through
   2026-06-20 failed at the Docker build, so the integration suite had not executed in six
   weeks. If CI goes red, it was genuinely green here.
-- Suite sizes, so drift is visible: **704** unit (hermetic), **331** integration + e2e +
+- Suite sizes, so drift is visible: **703** unit (hermetic), **331** integration + e2e +
   py-cml against a live server. The drop from 759/338 is deleted tests for deleted code
   (the cleanup below), not regressions.
+- **A cleanup pass is in flight** (docs + dead code, ~-19,500 lines). Done and pushed:
+  all docs, plus five unwired modules, the event-log surface, the async storage pipeline,
+  answer verification/compression, the BM25 index, and the retrieval hot-cache path.
+  Remaining: zero-reader flags, micro-deletions, simplifications, SDK 2.0.0.
 - The modelpack removal (`51afd15`) and its follow-up cleanup are complete: dead code,
   stale docs, dead env keys, vendored assets, cache volumes.
 
@@ -57,6 +61,10 @@ Each of these was a real bug. They look like tidy-up targets and are not.
 - **`get_internal_llm_client()` never returns `None`** — it raises (OpenAIError without
   credentials, ValueError for a provider needing a key). Guarding on `is None` leaves a
   mock fallback unreachable in exactly the credential-less environment it exists for.
+- **`rrf_merge` is live scoring arithmetic on the HyDE path** and had zero tests until
+  `tests/unit/test_retrieval_rrf.py`. It survived the BM25 removal for that reason; the
+  fusion constant `k` and the `id(doc)` fallback for id-less docs both change ranking, so
+  keep the test if the file moves again.
 - **Judge/JSON calls to a reasoning model** must disable thinking or budget 2000+ tokens.
   `LLM_EVAL` (Qwen3.6-27B) otherwise spends the whole budget on `reasoning_content` and
   returns empty `content` with `finish_reason=length`, which reads downstream as a score of
@@ -93,8 +101,9 @@ resident vLLM servers).
   place deliberately: not in git, so deleting is unrecoverable. Needs an explicit call.
 - **Unshipped retrieval improvements**, salvaged from the deleted `Improvement_Report.md`
   (levers A, B and D shipped as `extraction/prospective_indexer.py`, the BM25+RRF hybrid,
-  and `extraction/temporal_resolver.py`; the BM25 half is being removed as unwired, leaving
-  `rrf_merge` for HyDE):
+  and `extraction/temporal_resolver.py`. The BM25 half has since been removed as unwired —
+  no plan step ever produced a sparse retrieval step — leaving `rrf_merge` in
+  `src/retrieval/rrf.py` for the HyDE merge):
   - **C — bi-temporal graph edges** (Graphiti-style `valid_from`/`valid_to` on relations),
     so the graph can answer "what did I believe then" rather than only "now".
   - **E — multi-hop iterative retrieval** (IRCoT-style reason/retrieve loop). Multi-hop is

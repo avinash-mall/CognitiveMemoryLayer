@@ -131,14 +131,8 @@ class FeatureFlags(PydanticBaseModel):
     revert individual features without a full rollback.
     """
 
-    stable_keys_enabled: bool = Field(
-        default=True, description="Phase 1.1-1.2: SHA256-based stable keys"
-    )
     write_time_facts_enabled: bool = Field(
         default=True, description="Phase 1.3: populate semantic store at write time"
-    )
-    batch_embeddings_enabled: bool = Field(
-        default=True, description="Phase 2.1: batch embed_batch() calls"
     )
     cached_embeddings_enabled: bool = Field(
         default=True, description="Phase 2.3: Redis embedding cache"
@@ -149,10 +143,6 @@ class FeatureFlags(PydanticBaseModel):
     skip_if_found_cross_group: bool = Field(
         default=True, description="Phase 3.2: cross-group skip on fact hit"
     )
-    db_dependency_counts: bool = Field(
-        default=True, description="Phase 4.1: DB-side aggregation for forgetting"
-    )
-    bounded_state_enabled: bool = Field(default=True, description="Phase 5.2: LRU+TTL state maps")
     hnsw_ef_search_tuning: bool = Field(
         default=True, description="Phase 6.1: query-time HNSW tuning"
     )
@@ -197,10 +187,6 @@ class RerankerSettings(PydanticBaseModel):
     recency_weight: float = Field(default=0.1, description="Weight for recency in reranking")
     relevance_weight: float = Field(default=0.5, description="Weight for relevance score")
     confidence_weight: float = Field(default=0.2, description="Weight for confidence")
-    active_constraint_bonus: float = Field(
-        default=0.2,
-        description="Optional bonus for active constraints (for future use in reranker)",
-    )
 
 
 class RetrievalSettings(PydanticBaseModel):
