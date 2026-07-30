@@ -507,53 +507,53 @@ class TestBoundedStateMap:
     @pytest.mark.asyncio
     async def test_get_returns_none_for_missing(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(max_size=10)
-        assert await m.get("nonexistent") is None
+        assert m.get("nonexistent") is None
 
     @pytest.mark.asyncio
     async def test_get_or_create_creates_and_returns(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(max_size=10)
-        val = await m.get_or_create("k1", factory=lambda: "hello")
+        val = m.get_or_create("k1", factory=lambda: "hello")
         assert val == "hello"
         # Second call returns same value
-        val2 = await m.get_or_create("k1", factory=lambda: "world")
+        val2 = m.get_or_create("k1", factory=lambda: "world")
         assert val2 == "hello"
 
     @pytest.mark.asyncio
     async def test_lru_eviction(self) -> None:
         m: BoundedStateMap[int] = BoundedStateMap(max_size=3, ttl_seconds=999)
-        await m.set("a", 1)
-        await m.set("b", 2)
-        await m.set("c", 3)
+        m.set("a", 1)
+        m.set("b", 2)
+        m.set("c", 3)
         assert m.size == 3
 
         # Adding a 4th should evict the oldest ("a")
-        await m.set("d", 4)
+        m.set("d", 4)
         assert m.size == 3
-        assert await m.get("a") is None
-        assert await m.get("d") == 4
+        assert m.get("a") is None
+        assert m.get("d") == 4
 
     @pytest.mark.asyncio
     async def test_ttl_expiry(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(max_size=100, ttl_seconds=0.01)
-        await m.set("k", "v")
+        m.set("k", "v")
         await asyncio.sleep(0.05)
-        assert await m.get("k") is None
+        assert m.get("k") is None
 
     @pytest.mark.asyncio
     async def test_delete(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap()
-        await m.set("k", "v")
-        assert await m.delete("k") is True
-        assert await m.delete("k") is False
-        assert await m.get("k") is None
+        m.set("k", "v")
+        assert m.delete("k") is True
+        assert m.delete("k") is False
+        assert m.get("k") is None
 
     @pytest.mark.asyncio
     async def test_cleanup_expired(self) -> None:
         m: BoundedStateMap[str] = BoundedStateMap(ttl_seconds=0.01)
-        await m.set("a", "1")
-        await m.set("b", "2")
+        m.set("a", "1")
+        m.set("b", "2")
         await asyncio.sleep(0.05)
-        removed = await m.cleanup_expired()
+        removed = m.cleanup_expired()
         assert removed == 2
         assert m.size == 0
 

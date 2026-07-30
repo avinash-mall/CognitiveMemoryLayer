@@ -35,7 +35,7 @@ class SensoryBufferManager:
     async def get_buffer(self, tenant_id: str, scope_id: str) -> SensoryBuffer:
         """Get or create buffer for scope."""
         key = self._get_key(tenant_id, scope_id)
-        return await self._buffers.get_or_create(
+        return self._buffers.get_or_create(
             key,
             factory=lambda: SensoryBuffer(self.config),
         )
@@ -64,10 +64,10 @@ class SensoryBufferManager:
 
     async def clear_user(self, tenant_id: str, scope_id: str) -> None:
         """Clear a specific scope's buffer."""
-        buffer = await self._buffers.get(self._get_key(tenant_id, scope_id))
+        buffer = self._buffers.get(self._get_key(tenant_id, scope_id))
         if buffer:
             await buffer.clear()
 
     async def cleanup_inactive(self, inactive_seconds: float = 300) -> None:
         """Remove expired buffers via the bounded state map's TTL."""
-        await self._buffers.cleanup_expired()
+        self._buffers.cleanup_expired()

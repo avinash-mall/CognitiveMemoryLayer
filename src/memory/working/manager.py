@@ -49,7 +49,7 @@ class WorkingMemoryManager:
     async def get_state(self, tenant_id: str, scope_id: str) -> WorkingMemoryState:
         """Get or create working memory state for scope."""
         key = self._get_key(tenant_id, scope_id)
-        return await self._states.get_or_create(
+        return self._states.get_or_create(
             key,
             factory=lambda: WorkingMemoryState(
                 tenant_id=tenant_id,
@@ -110,7 +110,7 @@ class WorkingMemoryManager:
     async def clear_user(self, tenant_id: str, scope_id: str) -> None:
         """Clear working memory for scope."""
         key = self._get_key(tenant_id, scope_id)
-        await self._states.delete(key)
+        self._states.delete(key)
 
     async def get_stats(self, tenant_id: str, scope_id: str) -> dict[str, object]:
         """Get working memory statistics."""
