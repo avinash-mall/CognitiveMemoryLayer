@@ -10,7 +10,7 @@ A single, self-contained script that:
   4. Prints a detailed report: precision, recall, constraint consistency, latency.
 
 Requirements:
-  - CML API running (default http://localhost:8000).
+  - CML API running (default http://localhost:6000).
   - .env with LLM_EVAL__PROVIDER, LLM_EVAL__MODEL, LLM_EVAL__BASE_URL (and optionally
     LLM_EVAL__API_KEY / OPENAI_API_KEY).
   - ``pip install requests openai`` (both already in project deps).

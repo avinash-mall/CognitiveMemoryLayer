@@ -23,7 +23,7 @@ except Exception:
 
 # Use env when set; default so tests run (no skip) and fail at first request if server is down
 INTEGRATION_URL = (
-    os.environ.get("CML_TEST_URL") or os.environ.get("CML_BASE_URL") or "http://localhost:8000"
+    os.environ.get("CML_TEST_URL") or os.environ.get("CML_BASE_URL") or "http://localhost:6000"
 ).strip()
 INTEGRATION_KEY = os.environ.get("CML_TEST_API_KEY") or os.environ.get("CML_API_KEY") or "test-key"
 INTEGRATION_ADMIN_KEY = os.environ.get("AUTH__ADMIN_API_KEY") or INTEGRATION_KEY
