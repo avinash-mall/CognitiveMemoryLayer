@@ -263,6 +263,7 @@ class PerformanceSettings(PydanticBaseModel):
         description="Thread-pool size for write-gate novelty checks. "
         "0 = auto (min(cpu_count, 8)). Lower on small machines to reduce GIL contention.",
     )
+
     def resolved_gate_workers(self) -> int:
         if self.gate_executor_workers > 0:
             return self.gate_executor_workers

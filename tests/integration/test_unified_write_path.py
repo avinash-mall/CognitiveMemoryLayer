@@ -277,5 +277,3 @@ async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch
     results, _, _, _, _ = await store.encode_batch(tenant_id, chunks)
     assert len(results) >= 1
     assert results[0].type == MemoryType.PREFERENCE
-
-

@@ -227,11 +227,7 @@ class HippocampalStore:
         if (
             memory_type_override is None
             and chunk.chunk_type.value != "preference"
-            and not (
-                unified_result
-                and settings.use_llm_enabled
-                and unified_result.memory_type
-            )
+            and not (unified_result and settings.use_llm_enabled and unified_result.memory_type)
             and extracted_constraints
             and any(c.confidence >= 0.7 for c in extracted_constraints)
         ):
@@ -570,11 +566,7 @@ class HippocampalStore:
             # If high-confidence constraint extracted and no API/LLM override, override memory type
             if (
                 memory_type_override is None
-                and not (
-                    unified_res
-                    and settings.use_llm_enabled
-                    and unified_res.memory_type
-                )
+                and not (unified_res and settings.use_llm_enabled and unified_res.memory_type)
                 and extracted_constraints
                 and any(c.confidence >= 0.7 for c in extracted_constraints)
             ):
