@@ -73,25 +73,41 @@ def _retrieved_to_memory_item(rec: Any) -> MemoryItem:
     )
 
 
-def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -> ReadResponse:
-    """Map engine MemoryPacket to ReadResponse."""
+def _packet_to_read_response(
+    query: str, packet: Any, elapsed_ms: float = 0.0, response_format: str = "packet"
+) -> ReadResponse:
+    """Map engine MemoryPacket to ReadResponse, mirroring the server's format branches.
+
+    Matches `src/api/routes.py`: ``"list"`` returns the flat list only and leaves the
+    categorised buckets empty; ``"llm_context"`` is the only format that builds
+    ``llm_context``. Embedded mode previously ignored the argument entirely — it
+    filled every bucket and paid for a `to_llm_context()` call on every read,
+    including the default ``"packet"`` path where the server returns None.
+    """
     facts = [_retrieved_to_memory_item(m) for m in getattr(packet, "facts", [])]
     preferences = [_retrieved_to_memory_item(m) for m in getattr(packet, "preferences", [])]
     episodes = [_retrieved_to_memory_item(m) for m in getattr(packet, "recent_episodes", [])]
     procedures = [_retrieved_to_memory_item(m) for m in getattr(packet, "procedures", [])]
     constraints = [_retrieved_to_memory_item(m) for m in getattr(packet, "constraints", [])]
     all_items = facts + preferences + episodes + procedures + constraints
-    try:
-        from src.retrieval.packet_builder import MemoryPacketBuilder
 
-        builder = MemoryPacketBuilder()
-        llm_context = builder.to_llm_context(packet, max_tokens=4000)
-    except Exception as e:
-        logger.warning(
-            "Failed to import MemoryPacketBuilder, using fallback context: %s",
-            e,
-        )
-        llm_context = "\n".join(f"- {m.text}" for m in all_items[:20])
+    if response_format == "list":
+        facts, preferences, episodes, constraints = [], [], [], []
+
+    llm_context: str | None = None
+    if response_format == "llm_context":
+        try:
+            from src.retrieval.packet_builder import MemoryPacketBuilder
+
+            builder = MemoryPacketBuilder()
+            llm_context = builder.to_llm_context(packet, max_tokens=4000)
+        except Exception as e:
+            logger.warning(
+                "Failed to import MemoryPacketBuilder, using fallback context: %s",
+                e,
+            )
+            llm_context = "\n".join(f"- {m.text}" for m in all_items[:20])
+
     return ReadResponse(
         query=query,
         memories=all_items,
@@ -356,7 +372,7 @@ class EmbeddedCognitiveMemoryLayer:
             user_timezone=user_timezone,
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000
-        return _packet_to_read_response(query, packet, elapsed_ms)
+        return _packet_to_read_response(query, packet, elapsed_ms, format)
 
     async def turn(
         self,

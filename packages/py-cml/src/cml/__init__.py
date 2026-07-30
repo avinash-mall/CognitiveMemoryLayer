@@ -19,7 +19,7 @@ from cml.exceptions import (
     TimeoutError,
     ValidationError,
 )
-from cml.integrations import CMLOpenAIHelper, MemoryProvider
+from cml.integrations import CMLOpenAIHelper
 from cml.models import HealthResponse
 from cml.utils.logging import configure_logging
 
@@ -38,7 +38,6 @@ __all__ = [
     "EmbeddedCognitiveMemoryLayer",
     "EmbeddedConfig",
     "HealthResponse",
-    "MemoryProvider",
     "NamespacedClient",
     "NotFoundError",
     "RateLimitError",

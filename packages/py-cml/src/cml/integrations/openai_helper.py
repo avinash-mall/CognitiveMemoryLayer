@@ -3,31 +3,9 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from cml.client import CognitiveMemoryLayer
-
-
-@runtime_checkable
-class MemoryProvider(Protocol):
-    """Protocol for memory-enhanced LLM providers."""
-
-    def get_context(self, query: str) -> str:
-        """Get memory context for a query."""
-        ...
-
-    def store_exchange(
-        self,
-        user_message: str,
-        assistant_response: str,
-        session_id: str,
-    ) -> None:
-        """Store a conversation exchange."""
-        ...
-
-    def clear_session(self, session_id: str) -> None:
-        """Clear a session's memories."""
-        ...
 
 
 class CMLOpenAIHelper:

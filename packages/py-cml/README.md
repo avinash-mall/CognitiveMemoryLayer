@@ -176,7 +176,7 @@ helper = CMLOpenAIHelper(memory, OpenAI())
 response = helper.chat("What should I eat tonight?", session_id="s1")
 ```
 
-**Developer:** `read_safe` (returns empty on connection/timeout), `memory.session(name=...)`, `configure_logging("DEBUG")`, typed models (`py.typed`). Typed exceptions: `AuthenticationError`, `AuthorizationError`, `ValidationError`, `RateLimitError`, `NotFoundError`, `ServerError`, `CMLConnectionError`, `CMLTimeoutError`. The `MemoryProvider` protocol is available for custom backends. See [API Reference](docs/api-reference.md).
+**Developer:** `read_safe` (returns empty on connection/timeout), `memory.session(name=...)`, `configure_logging("DEBUG")`, typed models (`py.typed`). Typed exceptions: `AuthenticationError`, `AuthorizationError`, `ValidationError`, `RateLimitError`, `NotFoundError`, `ServerError`, `CMLConnectionError`, `CMLTimeoutError`. See [API Reference](docs/api-reference.md).
 
 **Temporal fidelity:** Optional `timestamp` in `write()`, `turn()`, and `remember()` enables historical data replay for benchmarks, migration, and testing. See [Temporal Fidelity](docs/temporal-fidelity.md).
 

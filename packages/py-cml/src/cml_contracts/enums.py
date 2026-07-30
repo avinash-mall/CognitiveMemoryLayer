@@ -55,7 +55,7 @@ class MemorySource(StrEnum):
 
 
 class OperationType(StrEnum):
-    """Type of operation in event log."""
+    """Type of operation a reconsolidation plan can apply to a memory."""
 
     ADD = "add"
     UPDATE = "update"
@@ -63,5 +63,3 @@ class OperationType(StrEnum):
     NOOP = "noop"
     REINFORCE = "reinforce"
     DECAY = "decay"
-    SILENCE = "silence"
-    COMPRESS = "compress"

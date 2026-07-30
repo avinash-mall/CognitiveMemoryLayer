@@ -22,6 +22,9 @@ alembic>=1.14
 semchunk
 transformers>=4.45
 sentence-transformers>=5.0
+# einops has no importer in this repo and must not be pruned: it is a transitive
+# requirement of the default embedding model's trust_remote_code MoE implementation
+# (nomic-embed-text-v2-moe), imported at model-load time.
 einops>=0.7.0
 
 # GPU-accelerated torch (CUDA 12.8 — matches driver 580+). The wheel vendors its

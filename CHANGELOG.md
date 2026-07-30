@@ -6,6 +6,104 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-07-30
+
+Major release. The breaking half is a deliberate prune of surface that never
+worked: four never-called subsystems, nine unread configuration keys, and the SDK
+and HTTP endpoints that depended on them. The `Added`/`Changed`/`Fixed`/`Removed`
+sections further down this release cover the preceding modelpack-removal cleanup,
+which ships in the same version.
+
+### Removed — BREAKING
+
+- **SDK: `MemoryProvider` protocol** (`cml.MemoryProvider`,
+  `cml.integrations.MemoryProvider`). A `Protocol` that nothing in the package
+  used as a type — `CMLOpenAIHelper` takes a concrete client — and that no
+  known consumer implemented.
+- **SDK: `get_events()`** on `CognitiveMemoryLayer` and
+  `AsyncCognitiveMemoryLayer`, plus their `.dashboard` mirrors, and the
+  `DashboardEventItem` / `DashboardEventListResponse` models. The route it
+  called no longer exists (see below), so keeping the method would have
+  guaranteed a 404.
+- **Contracts: `OperationType.SILENCE` and `OperationType.COMPRESS`.** Neither
+  was ever produced or consumed. The forgetting path's own
+  `src/forgetting/actions.py` enum — a different type — keeps its silence and
+  compress actions; only the reconsolidation `OperationType` members went.
+- **Response fields:** `DashboardMemoryDetail.related_events`,
+  `DashboardOverview.{total_events, events_by_type, events_by_operation}`,
+  `TenantInfo.{event_count, last_event_at}`. All were permanently empty/zero.
+- **HTTP: the event-log endpoints** `GET /dashboard/events`,
+  `GET /dashboard/events/export`, and the two alias routes
+  `GET /dashboard/{consolidation,reconsolidation}/runs/{job_id}` (one-line
+  pass-throughs to `GET /dashboard/jobs/{job_id}`, which is unchanged). The
+  `/runs` *list* endpoints are unchanged.
+- **`/metrics`: three metric families** — `memory_count`,
+  `cml_retrieval_fact_hit_total`, and `retrieval_latency_seconds`. Each emitted
+  HELP/TYPE headers and zero data series, so no scraper could have been reading
+  a value.
+- **Nine configuration keys with no reader.** Setting any of them did nothing:
+  `FEATURES__STABLE_KEYS_ENABLED`, `FEATURES__BATCH_EMBEDDINGS_ENABLED`,
+  `FEATURES__BM25_RETRIEVAL_ENABLED`, `FEATURES__BOUNDED_STATE_ENABLED`,
+  `FEATURES__DB_DEPENDENCY_COUNTS`, `FEATURES__STORE_ASYNC`,
+  `FEATURES__ADVERSARIAL_VERIFICATION_ENABLED`,
+  `FEATURES__ANSWER_COMPRESSION_ENABLED`,
+  `RETRIEVAL__RERANKER__ACTIVE_CONSTRAINT_BONUS`.
+  `PERFORMANCE__GATE_EXECUTOR_WORKERS` is **kept** — it is a real tunable.
+
+### Changed — BREAKING
+
+- **Embedded mode honours `read(format=...)`.** It previously accepted the
+  argument and ignored it. It now mirrors the server: `"list"` returns the flat
+  list with empty category buckets, and `"llm_context"` is the only format that
+  populates `llm_context`. **On the default `"packet"` format `llm_context` is
+  now `None`** where embedded used to return a string — matching the server,
+  and dropping a `to_llm_context()` call from every read.
+- **`ProjectPlan/UsageDocumentation.md` moved to `docs/usage.md`.** Inbound
+  links updated; anchors unchanged.
+
+### Removed — internal
+
+Four subsystems that were built, wired to feature flags, and never called:
+the **event log** (no writer ever existed, so every reader returned empty), the
+**async storage pipeline** (`AsyncStoragePipeline` was never constructed), the
+**BM25 sparse index** (no plan step produced a sparse retrieval step; `rrf_merge`
+survives in `src/retrieval/rrf.py` for the HyDE merge), and **answer
+verification/compression**. Plus five modules imported only by their own tests
+(`utils/tracing.py` — `opentelemetry` is in no dependency list, so it was always
+a no-op — `core/tenant_flags.py`, `utils/shadow_logger.py`, `utils/timing.py`,
+`memory/neocortical/schema_manager.py`), nine never-raised exception classes,
+and the unreachable retrieval hot-cache path.
+
+### Fixed — parameters that were accepted and ignored
+
+- **`encode_batch(timestamp=...)` was silently ignored** — every record was
+  stamped from `chunk.timestamp` instead. The parameter is gone; behaviour is
+  unchanged because the chunker stamps chunks from the same write timestamp.
+- **`multi_hop_query(max_hops=...)` was silently ignored** — there is no hop
+  loop; depth is whatever Personalized PageRank propagates. The parameter is
+  gone and the docstring now says what the method does.
+- **`validate_embedding_dimensions(settings)` ignored its argument**, always
+  re-reading `get_settings()`. A caller passing a different `Settings` validated
+  the process-wide one.
+- **`_get_tiktoken_encoder()` could not reach its documented `None` fallback** —
+  it caught only `ImportError`, but `tiktoken` is a core dependency that always
+  imports; the real failure is `get_encoding()` downloading ranks and failing
+  offline. Now degrades instead of raising.
+
+### Notes
+
+- **The `event_log` table is intentionally left in place.** Nothing reads it and
+  no drop migration ships with this release; `migrations/001_initial_schema.py`
+  is unchanged. Drop it when someone is willing to own the data loss.
+- **`einops` must never be pruned as "unused".** It has no importer in this
+  repository but is a transitive requirement of the default embedding model's
+  `trust_remote_code` MoE implementation, loaded at model-load time. All three
+  declaration sites now carry a comment saying so.
+- Version reconciled to 2.0.0 across `VERSION`, `.env.minimal`, and
+  `packages/py-cml/src/cml/_version.py`, which had drifted to 1.4.2 while
+  `CHANGELOG.md` already documented a released 1.5.0.
+
+
 ### Added
 
 - **Locomo resume mode in py-cml CLI** — `cml eval run-locomo` now accepts `--resume`, which forwards to the Locomo runner as `--skip-ingestion --skip-consolidation` so interrupted evaluation runs can continue from the scoring phase without replaying ingestion. Added regression coverage in `packages/py-cml/tests/unit/test_eval_cli.py`.

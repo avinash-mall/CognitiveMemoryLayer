@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-07-30
+
+### Removed — BREAKING
+
+- `MemoryProvider` protocol (`cml.MemoryProvider`, `cml.integrations.MemoryProvider`).
+- `get_events()` on both clients and their `.dashboard` mirrors, plus
+  `DashboardEventItem` and `DashboardEventListResponse`. The server route is gone.
+- `OperationType.SILENCE` and `OperationType.COMPRESS` from `cml_contracts.enums`.
+- `DashboardMemoryDetail.related_events`, `DashboardOverview.total_events` /
+  `events_by_type` / `events_by_operation`, `TenantInfo.event_count` /
+  `last_event_at` — all permanently empty.
+- `cml/models/memory.py`, a module whose entire content was pointers to other
+  modules plus a "may be added in a future release" note.
+
+### Changed — BREAKING
+
+- **`EmbeddedCognitiveMemoryLayer.read(format=...)` is now honoured.** Previously
+  ignored: every read filled all category buckets and built `llm_context`. Now
+  matches the server — `"list"` empties the buckets, and only `"llm_context"`
+  populates `llm_context`, so the default `"packet"` format returns
+  `llm_context=None`.
+
+### Changed
+
+- `_embedded_engine.py`'s six `import_*` pass-through wrappers were inlined at
+  their call sites; `ensure_engine_available()` remains.
+- Four orphaned request-body builders removed from `_endpoints.py`
+  (`build_turn_body`, `build_update_body`, `build_forget_body`,
+  `build_create_session_body`). `build_write_body` and `build_read_body` are live
+  and unchanged.
+
+See the root `CHANGELOG.md` for the server-side half of this release, including
+the removed HTTP endpoints and configuration keys.
+
+
 ### Removed
 
 - **`cml.modeling` and the `[modeling]` extra** — the custom-model training pipeline

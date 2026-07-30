@@ -51,6 +51,9 @@ server = [
     "sentence-transformers>=5.0",
     "semchunk",
     "transformers>=4.45",
+    # einops has no importer in this repo and must not be pruned: it is a
+    # transitive requirement of the default embedding model's trust_remote_code
+    # MoE implementation (nomic-embed-text-v2-moe), imported at model-load time.
     "einops>=0.7.0",
 ]
 embedded = [
@@ -63,6 +66,9 @@ embedded = [
     "pydantic-settings>=2.0",
     "semchunk",
     "transformers>=4.45",
+    # einops has no importer in this repo and must not be pruned: it is a
+    # transitive requirement of the default embedding model's trust_remote_code
+    # MoE implementation (nomic-embed-text-v2-moe), imported at model-load time.
     "einops>=0.7.0",
 ]
 gemini = ["google-generativeai"]
