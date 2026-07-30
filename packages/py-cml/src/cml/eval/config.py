@@ -18,10 +18,14 @@ def find_repo_root(start: Path | None = None) -> Path | None:
     """Detect repo root by scanning parents for known project markers."""
     current = (start or Path.cwd()).resolve()
     for candidate in [current, *current.parents]:
+        # Every marker must exist, so a stale one silently disables detection and
+        # every caller's default (out-dir, unified-file, dotenv loading) becomes None.
+        # `packages/models/model_pipeline.toml` was such a marker until it was removed
+        # with the modelpack in 51afd15 — do not add a marker that can be deleted
+        # independently of the eval tooling.
         markers = (
             candidate / "docker" / "docker-compose.yml",
             candidate / "evaluation" / "locomo_plus",
-            candidate / "packages" / "models" / "model_pipeline.toml",
         )
         if all(marker.exists() for marker in markers):
             return candidate
