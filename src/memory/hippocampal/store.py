@@ -37,19 +37,17 @@ if TYPE_CHECKING:
 # Dedicated executor for Phase 1 (write-gate evaluation) so CPU-bound gate work
 # doesn't block the event loop during embedding. Worker count configurable via
 # PERFORMANCE__GATE_EXECUTOR_WORKERS; 0 = auto (min(cpu_count, 8)).
-def _resolve_gate_workers() -> int:
-    try:
-        from ...core.config import get_settings
-
-        return get_settings().performance.resolved_gate_workers()
-    except Exception:
-        import os
-
-        return min(os.cpu_count() or 4, 8)
-
+#
+# Imported here rather than at module top and *not* reused by the methods below:
+# pool size is read once at import, but the per-call settings reads deliberately
+# re-import inside each method so `monkeypatch.setattr("src.core.config.
+# get_settings", ...)` reaches them. Binding the name at module scope silently
+# pins those reads to the unpatched function.
+from ...core.config import get_settings as _settings_for_pool_size
 
 _GATE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=_resolve_gate_workers(), thread_name_prefix="write_gate"
+    max_workers=_settings_for_pool_size().performance.resolved_gate_workers(),
+    thread_name_prefix="write_gate",
 )
 
 
@@ -93,9 +91,10 @@ class HippocampalStore:
 
     def _use_unified_write_path(self) -> bool:
         """True when use_llm_enabled and we have a unified extractor."""
+        from ...core.config import get_settings
+
         if self.unified_extractor is None:
             return False
-        from ...core.config import get_settings
 
         return get_settings().features.use_llm_enabled
 
@@ -153,9 +152,9 @@ class HippocampalStore:
         memory_type_override: MemoryType | None = None,
     ) -> tuple[MemoryRecord | None, WriteGateResult]:
         # S-04: single settings load for the entire method
-        from ...core.config import get_settings as _get_settings
+        from ...core.config import get_settings
 
-        _features = _get_settings().features
+        _features = get_settings().features
 
         unified_result: UnifiedExtractionResult | None = None
         if self._use_unified_write_path() and self.unified_extractor:
@@ -381,12 +380,13 @@ class HippocampalStore:
         existing_dicts = await self._get_existing_for_gate(tenant_id)
         _t_scan_end = _phase_time.perf_counter()
 
-        from ...core.config import get_settings as _cfg_phase1
-
         # ---- Phase 1: Gate + Redact in thread executor ----
+        from ...core.config import get_settings
+
         gate_results_list: list[dict] = []
         _ur_list = unified_results if unified_results is not None else [None] * len(chunks)
-        _cfg = _cfg_phase1().features
+
+        _cfg = get_settings().features
 
         _wg = self.write_gate
         _rd = self.redactor
@@ -455,9 +455,7 @@ class HippocampalStore:
         unified_results = surviving_unified
 
         # Apply LLM PII spans to texts before embedding (merge with regex redaction)
-        from ...core.config import get_settings as _get_settings
-
-        cfg = _get_settings().features
+        cfg = get_settings().features
         final_texts: list[str] = []
         for i, (_idx, chunk, gate_result, text) in enumerate(surviving):
             ures = unified_results[i] if i < len(unified_results) else None
@@ -517,10 +515,7 @@ class HippocampalStore:
             text = final_texts[idx]
             embedding_result = embedding_results[idx]
             unified_res = unified_results[idx] if idx < len(unified_results) else None
-
-            from ...core.config import get_settings as _gs
-
-            settings = _gs().features
+            settings = get_settings().features
 
             # Use unified entities/relations for graph sync when unified path enabled
             if self._use_unified_write_path() and unified_res is not None:
@@ -775,9 +770,9 @@ class HippocampalStore:
         At retrieval time, queries match against both the original memory
         embedding and the prospective index embeddings.
         """
-        from ...core.config import get_settings as _gs
+        from ...core.config import get_settings
 
-        features = _gs().features
+        features = get_settings().features
         if not features.prospective_indexing_enabled:
             return
 

@@ -10,11 +10,6 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
-def _auto_cpu_count() -> int:
-    """Return usable CPU count, capped at physical cores."""
-    return os.cpu_count() or 4
-
-
 def ensure_asyncpg_url(url: str) -> str:
     """Normalise a PostgreSQL URL to always use the asyncpg driver.
 
@@ -227,9 +222,10 @@ class PerformanceSettings(PydanticBaseModel):
     )
 
     def resolved_gate_workers(self) -> int:
+        """Configured worker count, or an auto value capped at 8 when unset (0)."""
         if self.gate_executor_workers > 0:
             return self.gate_executor_workers
-        return min(_auto_cpu_count(), 8)
+        return min(os.cpu_count() or 4, 8)
 
 
 class Settings(BaseSettings):

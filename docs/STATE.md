@@ -65,6 +65,16 @@ Each of these was a real bug. They look like tidy-up targets and are not.
   `tests/unit/test_retrieval_rrf.py`. It survived the BM25 removal for that reason; the
   fusion constant `k` and the `id(doc)` fallback for id-less docs both change ranking, so
   keep the test if the file moves again.
+- **`hippocampal/store.py` reads settings via a *function-local* import, on purpose.**
+  `from ...core.config import get_settings` at module scope binds the function object
+  at import time, so `monkeypatch.setattr("src.core.config.get_settings", ...)` stops
+  reaching those reads — the store silently falls back to the real config and the LLM
+  write path goes dark while the tests still "pass" their earlier assertions. Hoisting
+  those imports broke `tests/integration/test_unified_write_path.py` exactly that way.
+  The one module-level import (`_settings_for_pool_size`) is fine: it is read once at
+  import to size `_GATE_EXECUTOR` and never used for per-call reads. Note also that a
+  local import anywhere in a function makes the name local to the *whole* function, so
+  each settings-reading function needs its import at the top, not next to first use.
 - **Judge/JSON calls to a reasoning model** must disable thinking or budget 2000+ tokens.
   `LLM_EVAL` (Qwen3.6-27B) otherwise spends the whole budget on `reasoning_content` and
   returns empty `content` with `finish_reason=length`, which reads downstream as a score of
