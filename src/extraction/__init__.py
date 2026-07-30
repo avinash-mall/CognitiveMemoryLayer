@@ -2,7 +2,7 @@
 
 from .constraint_extractor import ConstraintExtractor, ConstraintObject
 from .entity_extractor import EntityExtractor
-from .fact_extractor import FactExtractor, LLMFactExtractor
+from .fact_extractor import LLMFactExtractor
 from .unified_write_extractor import (
     PIISpan,
     UnifiedExtractionResult,
@@ -15,7 +15,6 @@ __all__ = [
     "ConstraintObject",
     "EntityExtractor",
     "ExtractedFact",
-    "FactExtractor",
     "LLMFactExtractor",
     "PIISpan",
     "UnifiedExtractionResult",

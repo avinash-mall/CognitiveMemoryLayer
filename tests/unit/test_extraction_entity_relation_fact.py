@@ -6,7 +6,7 @@ import pytest
 
 from src.core.schemas import EntityMention, Relation
 from src.extraction.entity_extractor import EntityExtractor
-from src.extraction.fact_extractor import ExtractedFact, FactExtractor, LLMFactExtractor
+from src.extraction.fact_extractor import ExtractedFact, LLMFactExtractor
 from src.extraction.relation_extractor import RelationExtractor
 
 
@@ -119,16 +119,6 @@ class TestRelationExtractor:
     async def test_extract_batch_empty_list(self, mock_llm):
         extractor = RelationExtractor(llm_client=mock_llm)
         result = await extractor.extract_batch([])
-        assert result == []
-
-
-class TestFactExtractor:
-    """FactExtractor base (no-op) and LLMFactExtractor."""
-
-    @pytest.mark.asyncio
-    async def test_base_extract_returns_empty(self):
-        extractor = FactExtractor()
-        result = await extractor.extract("Any text.")
         assert result == []
 
 

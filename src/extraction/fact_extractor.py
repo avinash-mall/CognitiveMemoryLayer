@@ -3,7 +3,8 @@
 import json
 from dataclasses import dataclass
 
-from ..utils.llm import LLMClient
+from ..utils.llm import JSON_ARRAY_SYSTEM_PROMPT, LLMClient
+from ..utils.parsing import strip_markdown_fences
 
 FACT_EXTRACTION_PROMPT = """Extract durable, generalizable facts from this conversation turn.
 Focus on: preferences, identity details, relationships, beliefs, and stated facts.
@@ -25,21 +26,12 @@ class ExtractedFact:
     type: str = "semantic_fact"
 
 
-class FactExtractor:
+class LLMFactExtractor:
+    """LLM-based fact extraction for reconsolidation.
+
+    Returns [] when ``llm_client`` is None, which is also the heuristic-mode
+    behaviour — so there is no separate no-op base class to instantiate.
     """
-    Extracts facts from conversation text for reconsolidation.
-    Base implementation is an intentional no-op (returns []); use LLMFactExtractor
-    for LLM-based extraction. The no-op is useful when extraction is disabled
-    or for tests that do not need fact extraction.
-    """
-
-    async def extract(self, text: str) -> list[ExtractedFact]:
-        """Extract facts from text. Base: no extraction (no-op)."""
-        return []
-
-
-class LLMFactExtractor(FactExtractor):
-    """LLM-based fact extraction. Returns [] when llm_client is None (heuristic: no facts)."""
 
     def __init__(self, llm_client: LLMClient | None) -> None:
         self.llm = llm_client
@@ -54,17 +46,9 @@ class LLMFactExtractor(FactExtractor):
                 prompt,
                 temperature=0.0,
                 max_tokens=500,
-                system_prompt="You are a JSON generator. Always respond with a valid JSON array only, no markdown.",
+                system_prompt=JSON_ARRAY_SYSTEM_PROMPT,
             )
-            raw = response.strip()
-            if raw.startswith("```"):
-                lines = raw.split("\n")
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                raw = "\n".join(lines)
-            data = json.loads(raw)
+            data = json.loads(strip_markdown_fences(response))
             if not isinstance(data, list):
                 data = [data]
             return [

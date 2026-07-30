@@ -55,6 +55,27 @@ class LLMClient(ABC):
         ...
 
 
+JSON_SYSTEM_PROMPT = "You are a JSON generator. Always respond with valid JSON only, no markdown."
+JSON_ARRAY_SYSTEM_PROMPT = (
+    "You are a JSON generator. Always respond with a valid JSON array only, no markdown."
+)
+
+
+async def _complete_json_via_complete(
+    client: "LLMClient", prompt: str, temperature: float
+) -> dict[str, Any]:
+    """complete_json for providers with no native JSON mode: prompt, then parse.
+
+    Shared by the Gemini and Claude adapters, which had byte-identical bodies.
+    Unlike OpenAICompatibleClient there is no `response_format` to fall back from,
+    so correctness rests entirely on the system prompt plus tolerant parsing.
+    """
+    response = await client.complete(
+        prompt, temperature=temperature, system_prompt=JSON_SYSTEM_PROMPT
+    )
+    return _parse_json_from_response(response)
+
+
 def _content_or_warn(response: Any, *, where: str, max_tokens: int) -> str:
     """Return message content, logging loudly when it comes back empty.
 
@@ -170,7 +191,7 @@ class OpenAICompatibleClient(LLMClient):
         messages = [
             {
                 "role": "system",
-                "content": "You are a JSON generator. Always respond with valid JSON only, no markdown.",
+                "content": JSON_SYSTEM_PROMPT,
             },
             {"role": "user", "content": prompt},
         ]
@@ -281,12 +302,7 @@ def _gemini_client(api_key: str, model: str) -> LLMClient:
             schema: dict | None = None,
             temperature: float = 0.0,
         ) -> dict[str, Any]:
-            response = await self.complete(
-                prompt,
-                temperature=temperature,
-                system_prompt="You are a JSON generator. Always respond with valid JSON only, no markdown.",
-            )
-            return _parse_json_from_response(response)
+            return await _complete_json_via_complete(self, prompt, temperature)
 
     return _GeminiClient(api_key, model)
 
@@ -331,12 +347,7 @@ def _claude_client(api_key: str, model: str) -> LLMClient:
             schema: dict | None = None,
             temperature: float = 0.0,
         ) -> dict[str, Any]:
-            response = await self.complete(
-                prompt,
-                temperature=temperature,
-                system_prompt="You are a JSON generator. Always respond with valid JSON only, no markdown.",
-            )
-            return _parse_json_from_response(response)
+            return await _complete_json_via_complete(self, prompt, temperature)
 
     return _ClaudeClient(api_key, model)
 

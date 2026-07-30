@@ -23,7 +23,7 @@ from typing import Any
 
 import structlog
 
-from ..utils.llm import LLMClient
+from ..utils.llm import JSON_ARRAY_SYSTEM_PROMPT, LLMClient
 
 logger = structlog.get_logger(__name__)
 
@@ -94,7 +94,7 @@ class ProspectiveIndexer:
                 prompt,
                 temperature=0.7,
                 max_tokens=600,
-                system_prompt="You are a JSON generator. Always respond with a valid JSON array only, no markdown.",
+                system_prompt=JSON_ARRAY_SYSTEM_PROMPT,
             )
             implications = self._parse_implications(response)
             return [
