@@ -1,6 +1,5 @@
 """Compression (summarization) helpers for active forgetting."""
 
-from typing import Protocol
 
 from ..utils.llm import LLMClient
 from ..utils.logging_config import get_logger
@@ -14,12 +13,6 @@ COMPRESSION_SYSTEM = (
 )
 
 
-class SummarizerBackend(Protocol):
-    """Async summarizer backend contract (e.g., Hugging Face summarizer API)."""
-
-    async def summarize(self, text: str, *, max_chars: int | None = None) -> str: ...
-
-
 def _truncate(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
@@ -30,15 +23,13 @@ async def summarize_for_compression(
     text: str,
     max_chars: int = 100,
     llm_client: LLMClient | None = None,
-    summarizer_backend: SummarizerBackend | None = None,
 ) -> str:
     """
     Produce a compressed (summarized) version of text for forgetting.
 
     Preference order when text exceeds ``max_chars``:
-    1) shared summarizer backend API (if provided)
-    2) LLM completion fallback (if provided)
-    3) deterministic truncation
+    1) LLM completion (if provided)
+    2) deterministic truncation
     """
     cleaned = " ".join((text or "").split())
     if not cleaned:
@@ -46,15 +37,6 @@ async def summarize_for_compression(
 
     if len(cleaned) <= max_chars:
         return cleaned
-
-    if summarizer_backend is not None:
-        try:
-            summary = await summarizer_backend.summarize(cleaned, max_chars=max_chars)
-            summary = " ".join((summary or "").split())
-            if summary:
-                return _truncate(summary, max_chars)
-        except Exception as exc:
-            logger.warning("compression_summarizer_backend_failed", extra={"error": str(exc)})
 
     if llm_client is None:
         return _truncate(cleaned, max_chars)

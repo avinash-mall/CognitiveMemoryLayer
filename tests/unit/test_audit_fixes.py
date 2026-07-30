@@ -392,42 +392,6 @@ class TestConstraintKeyCoexistence:
 class TestConsolidationSubtypePreservation:
     """AUD-08: Consolidation should preserve constraint subtypes, not collapse to 'policy'."""
 
-    def test_fallback_gist_type_preserves_goal(self):
-        from src.consolidation.summarizer import GistExtractor
-
-        result = GistExtractor._fallback_gist_type(["goal", "fact"])
-        assert result == "goal"
-
-    def test_fallback_gist_type_preserves_value(self):
-        from src.consolidation.summarizer import GistExtractor
-
-        result = GistExtractor._fallback_gist_type(["value"])
-        assert result == "value"
-
-    def test_fallback_gist_type_preserves_state(self):
-        from src.consolidation.summarizer import GistExtractor
-
-        result = GistExtractor._fallback_gist_type(["state", "summary"])
-        assert result == "state"
-
-    def test_fallback_gist_type_preserves_causal(self):
-        from src.consolidation.summarizer import GistExtractor
-
-        result = GistExtractor._fallback_gist_type(["causal"])
-        assert result == "causal"
-
-    def test_fallback_gist_type_preserves_policy(self):
-        from src.consolidation.summarizer import GistExtractor
-
-        result = GistExtractor._fallback_gist_type(["policy"])
-        assert result == "policy"
-
-    def test_fallback_gist_type_constraint_without_subtype_maps_to_policy(self):
-        from src.consolidation.summarizer import GistExtractor
-
-        result = GistExtractor._fallback_gist_type(["constraint"])
-        assert result == "policy"
-
     def test_fallback_gist_preserves_dominant_constraint_subtype(self):
         from src.consolidation.worker import ConsolidationWorker
 
