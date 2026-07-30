@@ -34,10 +34,8 @@ _DASHBOARD_DIR = pathlib.Path(__file__).resolve().parent.parent / "dashboard" / 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan handler."""
-    settings = get_settings()
-
     # Validate embedding dimensions match DB schema at startup
-    validate_embedding_dimensions(settings)
+    validate_embedding_dimensions()
 
     db_manager = await DatabaseManager.create()
     app.state.db = db_manager

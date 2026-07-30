@@ -272,19 +272,24 @@ def get_settings() -> Settings:
 
 
 def get_embedding_dimensions() -> int:
-    """Return configured embedding dimension (from EMBEDDING_INTERNAL__DIMENSIONS), or 768.
-    Safe when embedding_internal is missing (e.g. older settings or env quirks)."""
-    s = get_settings()
-    ei = getattr(s, "embedding_internal", None)
-    return (getattr(ei, "dimensions", None) if ei is not None else None) or 768
+    """Return the configured embedding dimension (EMBEDDING_INTERNAL__DIMENSIONS), or 768.
+
+    The `or 768` is load-bearing, not defensiveness: the field is typed `int | None`
+    (its own default is 768, but it accepts an explicit None), so this function cannot
+    promise `int` without it."""
+    return get_settings().embedding_internal.dimensions or 768
 
 
-def validate_embedding_dimensions(settings: Settings | None = None) -> None:
+def validate_embedding_dimensions() -> None:
     """Validate that the configured embedding dimension matches the DB schema.
 
     Call this at application startup (e.g. in the lifespan handler) to
     catch mismatches between ``EMBEDDING_INTERNAL__DIMENSIONS`` and the ``Vector(N)``
     column defined in ``MemoryRecordModel`` (MED-04).
+
+    Reads the live settings via ``get_settings()``. It used to accept a ``settings``
+    argument and never read it, so a caller validating a *different* Settings object
+    silently validated the process-wide one instead.
 
     Raises ``ValueError`` if the dimensions disagree.
     """

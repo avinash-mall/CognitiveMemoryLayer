@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
+from openai import AsyncOpenAI
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from ..core.config import EmbeddingInternalSettings, get_embedding_dimensions, get_settings
+from ..core.config import get_embedding_dimensions, get_settings
 from .micro_batcher import AsyncMicroBatcher
 
 # Retryable exceptions for embedding API calls (transient network/rate-limit).
@@ -41,11 +42,6 @@ except ImportError:
 # nomic-ai/nomic-embed-text-v2-moe (768 dims, 512 max sequence length)
 _DEFAULT_EMBEDDING_MODEL = "nomic-ai/nomic-embed-text-v2-moe"
 _DEFAULT_EMBEDDING_DIMENSIONS = 768
-
-try:
-    from openai import AsyncOpenAI
-except ImportError:
-    AsyncOpenAI = None  # type: ignore[assignment,misc]
 
 _logger = structlog.get_logger(__name__)
 _EMBEDDING_CLIENT_CACHE: dict[
@@ -93,10 +89,8 @@ class OpenAIEmbeddings(EmbeddingClient):
     ) -> None:
         import os
 
-        if AsyncOpenAI is None:
-            raise ImportError("openai package is required for OpenAIEmbeddings")
         settings = get_settings()
-        ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
+        ei = settings.embedding_internal
         key = api_key or ei.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.model = model or ei.model or _DEFAULT_EMBEDDING_MODEL
         self._dimensions = (
@@ -175,7 +169,7 @@ class LocalEmbeddings(EmbeddingClient):
         except ImportError:
             pass
         settings = get_settings()
-        ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
+        ei = settings.embedding_internal
         name = model_name or ei.local_model or _DEFAULT_EMBEDDING_MODEL
         model_revision = revision or ei.revision
         # HuggingFace repo id cannot contain ':' (e.g. :latest); strip tag for download
@@ -496,7 +490,7 @@ def get_embedding_client() -> EmbeddingClient:
     import os
 
     settings = get_settings()
-    ei = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
+    ei = settings.embedding_internal
     provider = ei.provider if ei.provider is not None else "local"
     dims = ei.dimensions if ei.dimensions is not None else _DEFAULT_EMBEDDING_DIMENSIONS
     model = ei.model or _DEFAULT_EMBEDDING_MODEL

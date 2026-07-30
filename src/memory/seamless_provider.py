@@ -5,13 +5,12 @@ Makes memory recall unconscious, like human association.
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from ..core.schemas import MemoryPacket, RetrievedMemory
 
-try:
+if TYPE_CHECKING:
     from ..memory.orchestrator import MemoryOrchestrator
-except ImportError:
-    MemoryOrchestrator = None  # type: ignore
 
 
 @dataclass

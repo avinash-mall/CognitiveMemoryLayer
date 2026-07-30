@@ -6,14 +6,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from openai import AsyncOpenAI
+
 from ..core.config import get_settings
 from .logging_config import get_logger
-
-try:
-    from openai import AsyncOpenAI
-except ImportError:
-    AsyncOpenAI = None  # type: ignore
-
 
 logger = get_logger(__name__)
 
@@ -112,8 +108,6 @@ class OpenAICompatibleClient(LLMClient):
         extra_body: dict | None = None,
     ) -> None:
         """Create client. Pass base_url/model/api_key, or leave None to use llm_internal config."""
-        if AsyncOpenAI is None:
-            raise ImportError("openai package is required for OpenAICompatibleClient")
         import os
 
         settings = get_settings()

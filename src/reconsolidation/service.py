@@ -15,11 +15,6 @@ from .labile_tracker import LabileStateTracker
 
 logger = get_logger(__name__)
 
-try:
-    from ..utils.llm import LLMClient
-except ImportError:
-    LLMClient = None  # type: ignore
-
 
 @dataclass
 class ReconsolidationResult:

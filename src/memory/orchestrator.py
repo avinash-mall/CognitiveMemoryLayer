@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from ..consolidation.worker import ConsolidationWorker
-from ..core.enums import MemoryStatus
+from ..core.enums import MemoryStatus, MemoryType
 from ..core.exceptions import MemoryAccessDenied, MemoryNotFoundError
 from ..core.schemas import MemoryPacket
 from ..extraction.fact_extractor import LLMFactExtractor
@@ -37,11 +37,6 @@ from ..utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 _SESSION_CONTEXT_LIMIT = 50  # Max memories to return in session context
-
-try:
-    from ..core.enums import MemoryType
-except ImportError:
-    MemoryType = None  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -1134,11 +1129,10 @@ class MemoryOrchestrator:
 
         # Count per type using dedicated count queries (not limited to first N records)
         by_type: dict[str, int] = {}
-        if MemoryType is not None:
-            for mt in MemoryType:
-                cnt = await self.hippocampal.store.count(tenant_id, filters={"type": mt.value})
-                if cnt > 0:
-                    by_type[mt.value] = cnt
+        for mt in MemoryType:
+            cnt = await self.hippocampal.store.count(tenant_id, filters={"type": mt.value})
+            if cnt > 0:
+                by_type[mt.value] = cnt
 
         # Sample a limited set for aggregate statistics
         records = await self.hippocampal.store.scan(tenant_id, limit=1000, order_by="-timestamp")

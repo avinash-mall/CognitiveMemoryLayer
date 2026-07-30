@@ -17,6 +17,24 @@ from src.storage.postgres import PostgresMemoryStore
 from src.utils.embeddings import MockEmbeddingClient
 
 
+def _force_llm_settings(monkeypatch):
+    """Patch get_settings() to a real Settings with the LLM write path forced on.
+
+    Built by copying the real Settings rather than hand-rolling a stub object: the
+    previous `type("S", (), {"features": ...})()` triples carried only `features`, so
+    any production code that read another settings field — e.g.
+    `get_embedding_dimensions()` reading `embedding_internal` — raised AttributeError
+    against the double while working fine in production.
+    """
+    from src.core.config import Settings
+
+    settings = Settings()
+    settings.features = settings.features.model_copy(
+        update={"use_llm_enabled": True, "pii_redaction_enabled": True}
+    )
+    monkeypatch.setattr("src.core.config.get_settings", lambda: settings)
+
+
 def _make_store_with_unified(session_factory):
     """Create HippocampalStore with mock UnifiedWritePathExtractor."""
     pg_store = PostgresMemoryStore(session_factory)
@@ -66,23 +84,7 @@ async def test_encode_batch_with_unified_extractor_uses_llm_results(
     pg_session_factory, monkeypatch
 ):
     """When unified extractor is present and use_llm_enabled, encode_batch uses LLM results."""
-    monkeypatch.setattr(
-        "src.core.config.get_settings",
-        lambda: type(
-            "S",
-            (),
-            {
-                "features": type(
-                    "F",
-                    (),
-                    {
-                        "use_llm_enabled": True,
-                        "pii_redaction_enabled": True,
-                    },
-                )()
-            },
-        )(),
-    )
+    _force_llm_settings(monkeypatch)
     store = _make_store_with_unified(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
     chunks = [
@@ -144,23 +146,7 @@ async def test_encode_batch_uses_llm_confidence_context_tags_decay_rate(
     pg_session_factory, monkeypatch
 ):
     """When use_llm_enabled is True, store uses LLM confidence, context_tags, decay_rate."""
-    monkeypatch.setattr(
-        "src.core.config.get_settings",
-        lambda: type(
-            "S",
-            (),
-            {
-                "features": type(
-                    "F",
-                    (),
-                    {
-                        "use_llm_enabled": True,
-                        "pii_redaction_enabled": True,
-                    },
-                )()
-            },
-        )(),
-    )
+    _force_llm_settings(monkeypatch)
     store = _make_store_with_llm_fields_mock(
         pg_session_factory,
         confidence=0.85,
@@ -218,23 +204,7 @@ def _make_store_with_memory_type_mock(session_factory, memory_type: str):
 @pytest.mark.asyncio
 async def test_encode_batch_uses_llm_memory_type(pg_session_factory, monkeypatch):
     """When use_llm_enabled is True and unified extractor returns memory_type, store uses it."""
-    monkeypatch.setattr(
-        "src.core.config.get_settings",
-        lambda: type(
-            "S",
-            (),
-            {
-                "features": type(
-                    "F",
-                    (),
-                    {
-                        "use_llm_enabled": True,
-                        "pii_redaction_enabled": True,
-                    },
-                )()
-            },
-        )(),
-    )
+    _force_llm_settings(monkeypatch)
     store = _make_store_with_memory_type_mock(pg_session_factory, "preference")
     tenant_id = f"t-{uuid4().hex[:8]}"
     chunks = [

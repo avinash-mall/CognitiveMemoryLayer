@@ -54,9 +54,14 @@ def _get_tiktoken_encoder() -> Any | None:
         try:
             import tiktoken
 
+            # get_encoding downloads the cl100k_base ranks on first use, so this
+            # fails offline with a network error, not ImportError — tiktoken itself
+            # is a core dependency and always imports. Catching only ImportError
+            # left the documented None fallback unreachable in the one situation
+            # it exists for.
             _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
             _tiktoken_available = True
-        except ImportError:
+        except Exception:
             _tiktoken_available = False
     return _tiktoken_encoder
 

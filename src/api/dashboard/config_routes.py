@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...core.config import EmbeddingInternalSettings, get_settings
+from ...core.config import get_settings
 from ...core.env_file import get_env_path, update_env
 from ...storage.connection import DatabaseManager
 from ..auth import AuthContext, require_admin_permission
@@ -260,7 +260,7 @@ async def dashboard_config(
     )
 
     # ── Embedding (Internal) ───────────────────────────────────────────────────
-    emb = getattr(settings, "embedding_internal", None) or EmbeddingInternalSettings()
+    emb = settings.embedding_internal
     sections.append(
         ConfigSection(
             name="Embedding (Internal)",
