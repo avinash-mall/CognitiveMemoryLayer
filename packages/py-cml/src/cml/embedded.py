@@ -8,15 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
-from cml._embedded_engine import (
-    ensure_engine_available,
-    get_embedding_client,
-    import_llm_client,
-    import_memory_orchestrator,
-    import_packet_builder,
-    import_seamless_provider,
-    import_settings,
-)
+from cml._embedded_engine import ensure_engine_available
 from cml.embedded_config import EmbeddedConfig
 from cml.models import (
     ForgetResponse,
@@ -90,7 +82,9 @@ def _packet_to_read_response(query: str, packet: Any, elapsed_ms: float = 0.0) -
     constraints = [_retrieved_to_memory_item(m) for m in getattr(packet, "constraints", [])]
     all_items = facts + preferences + episodes + procedures + constraints
     try:
-        builder = import_packet_builder()()
+        from src.retrieval.packet_builder import MemoryPacketBuilder
+
+        builder = MemoryPacketBuilder()
         llm_context = builder.to_llm_context(packet, max_tokens=4000)
     except Exception as e:
         logger.warning(
@@ -205,6 +199,8 @@ class EmbeddedCognitiveMemoryLayer:
             if hasattr(get_engine_settings, "cache_clear"):
                 get_engine_settings.cache_clear()
             clear_embedding_client_cache()
+            from src.utils.embeddings import get_embedding_client
+
             embedding_client = get_embedding_client()
         finally:
             for key, value in previous_embedding_env.items():
@@ -219,7 +215,9 @@ class EmbeddedCognitiveMemoryLayer:
         # Respect master LLM switch: in non-LLM mode, do not construct an LLM client.
         llm_enabled = False
         try:
-            s = import_settings()()
+            from src.core.config import get_settings
+
+            s = get_settings()
             llm_enabled = bool(getattr(s.features, "use_llm_enabled", False))
             if llm_enabled:
                 li = s.llm_internal
@@ -233,13 +231,17 @@ class EmbeddedCognitiveMemoryLayer:
             llm_enabled = False
 
         if llm_enabled:
-            llm_client = import_llm_client()(
+            from src.utils.llm import OpenAICompatibleClient
+
+            llm_client = OpenAICompatibleClient(
                 model=self._config.llm.model,
                 base_url=self._config.llm.base_url,
                 api_key=self._config.llm.api_key or "dummy",
             )
 
-        self._orchestrator = await import_memory_orchestrator().create_lite(
+        from src.memory.orchestrator import MemoryOrchestrator
+
+        self._orchestrator = await MemoryOrchestrator.create_lite(
             self._sqlite_store,
             embedding_client,
             llm_client,
@@ -368,7 +370,9 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> TurnResponse:
         """Process a conversational turn."""
         self._ensure_initialized()
-        provider = import_seamless_provider()(
+        from src.memory.seamless_provider import SeamlessMemoryProvider
+
+        provider = SeamlessMemoryProvider(
             self._orchestrator,
             max_context_tokens=max_context_tokens,
         )

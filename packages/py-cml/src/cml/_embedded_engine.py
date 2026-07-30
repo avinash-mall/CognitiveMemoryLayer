@@ -1,13 +1,13 @@
-"""Internal bridge for embedded engine imports.
+"""Embedded-mode dependency check.
 
-This keeps `cml.embedded` decoupled from direct `src.*` imports so the public
-package surface can stay stable even while the in-repo engine remains the
-implementation behind embedded mode.
+Only the availability check lives here. Six `import_*` pass-through wrappers were
+removed: each one lazily imported a `src.*` symbol and returned it, which did not
+actually decouple `cml.embedded` from the engine — it still imports `src.*`, just
+through one more call. The call sites now do the lazy import inline, which is both
+shorter and honest about the dependency.
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 
 def ensure_engine_available() -> None:
@@ -23,39 +23,3 @@ def ensure_engine_available() -> None:
         raise ImportError(
             'Embedded mode requires the CML engine. From repo root: pip install -e ".[embedded]".'
         ) from exc
-
-
-def import_memory_orchestrator() -> Any:
-    from src.memory.orchestrator import MemoryOrchestrator
-
-    return MemoryOrchestrator
-
-
-def import_seamless_provider() -> Any:
-    from src.memory.seamless_provider import SeamlessMemoryProvider
-
-    return SeamlessMemoryProvider
-
-
-def import_packet_builder() -> Any:
-    from src.retrieval.packet_builder import MemoryPacketBuilder
-
-    return MemoryPacketBuilder
-
-
-def get_embedding_client() -> Any:
-    from src.utils.embeddings import get_embedding_client as _get_embedding_client
-
-    return _get_embedding_client()
-
-
-def import_settings() -> Any:
-    from src.core.config import get_settings
-
-    return get_settings
-
-
-def import_llm_client() -> Any:
-    from src.utils.llm import OpenAICompatibleClient
-
-    return OpenAICompatibleClient
