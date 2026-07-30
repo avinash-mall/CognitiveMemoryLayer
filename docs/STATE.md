@@ -6,20 +6,28 @@ link them below. Delete notes when they stop being true.
 
 ## Where things stand
 
-- **CI is green** (lint + test + build, plus py-cml and CodeQL) as of `215da0f`. That is
-  the first passing `CI/CD Pipeline` run in the visible history — every run back through
-  2026-06-20 failed at the Docker build, so the integration suite had not executed in six
-  weeks. If CI goes red, it was genuinely green here.
+- **CI is green** (lint + test + build, plus py-cml and CodeQL) as of `9929413`, the tip
+  of the 2.0.0 cleanup. It was first made green at `215da0f` — the first passing
+  `CI/CD Pipeline` run in the visible history, since every run back through 2026-06-20
+  failed at the Docker build and the integration suite had not executed in six weeks. If
+  CI goes red, it was genuinely green here. The `build` job takes ~35 min and is the slow
+  leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
+  signal because it runs the integration suite in containers against fresh
+  Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
 - Suite sizes, so drift is visible: **716** unit (hermetic), **327** integration + e2e +
   py-cml against a live server. Down from 759/338: deleted tests for deleted code, offset
   by new tests for `rrf_merge` and `src/utils/similarity.py`. Not regressions.
-- **The cleanup pass is complete and released as 2.0.0** (~-19,900 lines across 24
-  commits). Removed: all obsolete docs, five unwired modules, the event-log surface, the
-  async storage pipeline, answer verification/compression, the BM25 index, the retrieval
-  hot-cache path, nine unread config keys, and the SDK surface that depended on them.
-  See `CHANGELOG.md` [2.0.0] for the breaking inventory. `VERSION`, `.env.minimal` and
-  `cml/_version.py` are now all 2.0.0 — note `.env` (untracked) shadows the VERSION file,
-  so a fresh clone needs its own `.env` VERSION line or it falls back to the file.
+- **The cleanup pass is complete and released as 2.0.0** (−19,600 lines across 27
+  commits, ending at `9929413`). Removed: all obsolete docs, five unwired modules, the
+  event-log surface, the async storage pipeline, answer verification/compression, the
+  BM25 index, the retrieval hot-cache path, nine unread config keys, and the SDK surface
+  that depended on them. See `CHANGELOG.md` [2.0.0] for the breaking inventory.
+- **Version lives in three places and they must agree**: the tracked `VERSION` file,
+  `.env.minimal`, and `packages/py-cml/src/cml/_version.py` (which `hatch_build.py` does
+  *not* feed — it is a separate hardcoded string). `hatch_build.get_version()` resolves
+  `VERSION` env → `.env` → `VERSION` file, so an untracked local `.env` shadows the file;
+  CI has no `.env` and therefore reads the file. They had drifted to 1.4.2 while
+  `CHANGELOG.md` already documented a released 1.5.0. All three now say 2.0.0.
 - The modelpack removal (`51afd15`) and its follow-up cleanup are complete: dead code,
   stale docs, dead env keys, vendored assets, cache volumes.
 
@@ -40,6 +48,14 @@ link them below. Delete notes when they stop being true.
 - Local dev LLMs: qwen35-4b (vLLM, `http://localhost:8012/v1`, thinking
   disabled via `LLM_INTERNAL__EXTRA_BODY`) internal; Qwen3.6-27B-FP8
   (`http://localhost:8002/v1`) eval. Embeddings: local nomic-embed-text-v2-moe.
+- Similarity primitives live in one place: `src/utils/similarity.py`
+  (`word_set`, `jaccard`, `cosine_similarity`), used by the reranker, interference
+  detection, schema alignment, and clustering. `consolidation/worker.py:_token_set` is
+  the one deliberate exception — regex-tokenised, feeding an intersection check rather
+  than a ratio; its `# ponytail:` comment says why. The SDK keeps its own cosine copy in
+  `packages/py-cml/src/cml/storage/sqlite_store.py` — `py-cml` is a separate distribution
+  and imports `src.*` only lazily inside `cml/embedded.py`, never at module scope, so it
+  must not depend on `src/utils/similarity.py`.
 
 ## Invariants — do not "simplify" these
 
@@ -115,9 +131,11 @@ resident vLLM servers).
   The table and `migrations/versions/001_initial_schema.py` were deliberately left alone
   — a destructive migration doesn't belong in a cleanup. Drop it in a migration whenever
   someone is willing to own the data loss, or resurrect the writer instead.
-- **`packages/models/trained_models/` still exists locally** — 241 untracked files
-  (15 `.joblib`) with absolute paths from another host. Nothing can load them. Left in
-  place deliberately: not in git, so deleting is unrecoverable. Needs an explicit call.
+- **`packages/models/trained_models/` still exists locally** — **25 GB**, 241 untracked
+  files (17 `.joblib`) across 93 top-level entries, with absolute paths from another host.
+  Nothing in the tree can load them since the modelpack removal. Left in place
+  deliberately: `git ls-files` returns zero, so deleting is unrecoverable. Needs an
+  explicit call — but it is by far the largest reclaimable thing in the working copy.
 - **Unshipped retrieval improvements**, salvaged from the deleted `Improvement_Report.md`
   (levers A, B and D shipped as `extraction/prospective_indexer.py`, the BM25+RRF hybrid,
   and `extraction/temporal_resolver.py`. The BM25 half has since been removed as unwired —
@@ -143,8 +161,23 @@ resident vLLM servers).
   directory's README. There is **no build step** — `src/api/app.py` serves the static
   tree verbatim, so any CDN URL added to it ships straight to users. Keep
   `grep -rn "https://" src/dashboard/static` (excluding `vendor/`) empty.
+- **No test anywhere touches `src/dashboard/static/js/**`.** Neither suite imports it and
+  CI cannot see it, so a removed field, a dead import, or a stale `data-page` target ships
+  silently. Deleting a Python response field without deleting its JS reader renders
+  `undefined`/`NaN` rather than erroring; a missing module import kills the *entire*
+  dashboard, not one page. When changing either side, verify by loading the dashboard in a
+  real browser and walking every nav target with the console open. Playwright's chromium
+  is already cached under `~/.cache/ms-playwright`, and `uv run --with playwright python`
+  drives it without touching the project env. Two cheap static checks catch the fatal
+  classes without a browser: every `import {a, b} from './x.js'` resolves to a file that
+  exports those names, and every `data-page="x"` has both a `pages.x` entry in `app.js`
+  and a `#page-x` div in `index.html` (currently 15 pages, 13 of them in the nav —
+  `overview` and `detail` are reached without a nav item).
 - Dashboard POST routes require `X-Requested-With: XMLHttpRequest` (CSRF middleware in
   `src/api/app.py`) — without it you get 403, which is easy to misread as a real failure.
+- The Config page's editable fields are created **on click** of a `.config-edit-btn`
+  pencil, not rendered up front — so "0 inputs on the page" is expected, and a config item
+  that renders but does nothing is only visible by opening its editor.
 - The API resolves the tenant from the API key, plus `X-Tenant-Id` for admin keys. A
   `tenant_id` in a request body is ignored, so a curl that passes it there silently reads
   the default tenant.
