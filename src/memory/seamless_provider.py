@@ -1,14 +1,10 @@
 """
 Seamless memory provider: automatic retrieval and storage per turn.
 Makes memory recall unconscious, like human association.
-
-Supports an optional :class:`AsyncStoragePipeline` to decouple writes
-from the hot response path (set ``FEATURES__STORE_ASYNC=true``).
 """
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from ..core.schemas import MemoryPacket, RetrievedMemory
 
@@ -16,11 +12,6 @@ try:
     from ..memory.orchestrator import MemoryOrchestrator
 except ImportError:
     MemoryOrchestrator = None  # type: ignore
-
-try:
-    from ..storage.async_pipeline import AsyncStoragePipeline
-except ImportError:
-    AsyncStoragePipeline = None  # type: ignore
 
 
 @dataclass
@@ -45,13 +36,11 @@ class SeamlessMemoryProvider:
         max_context_tokens: int = 1500,
         auto_store: bool = True,
         relevance_threshold: float = 0.3,
-        async_pipeline: Any | None = None,
     ):
         self.orchestrator = orchestrator
         self.max_context_tokens = max_context_tokens
         self.auto_store = auto_store
         self.relevance_threshold = relevance_threshold
-        self.async_pipeline = async_pipeline
 
     async def process_turn(
         self,
@@ -66,11 +55,8 @@ class SeamlessMemoryProvider:
         """
         Process a conversation turn:
         1. Auto-retrieve relevant memories for user message
-        2. Optionally store salient information (sync or async)
+        2. Optionally store salient information
         3. Run reconsolidation if assistant responded
-
-        When ``async_pipeline`` is enabled, steps 2 and 3 are enqueued
-        to a background worker so the response returns after step 1 only.
         """
         # Step 1: Retrieve relevant context BEFORE response (always sync)
         memory_context, injected_memories = await self._retrieve_context(
@@ -81,46 +67,33 @@ class SeamlessMemoryProvider:
         reconsolidation_applied = False
 
         if self.auto_store:
-            # --- Async storage path ---
-            if self.async_pipeline and self.async_pipeline.enabled:
-                await self.async_pipeline.enqueue(
+            # Step 2: Store user message
+            write_result = await self.orchestrator.write(
+                tenant_id=tenant_id,
+                content=user_message,
+                session_id=session_id,
+                context_tags=["conversation", "user_input"],
+                timestamp=timestamp,
+            )
+            stored_count += write_result.get("chunks_created", 0) or (
+                1 if write_result.get("memory_id") else 0
+            )
+
+            # Step 3: Store assistant response + reconsolidate
+            if assistant_response:
+                resp_result = await self._process_response(
                     tenant_id=tenant_id,
                     user_message=user_message,
                     assistant_response=assistant_response,
                     session_id=session_id,
                     turn_id=turn_id,
+                    retrieved_memories=[m.record for m in injected_memories],
                     timestamp=timestamp,
                 )
-                stored_count = -1  # Indicates "queued for async processing"
-            else:
-                # --- Synchronous storage path (original) ---
-                # Step 2: Store user message
-                write_result = await self.orchestrator.write(
-                    tenant_id=tenant_id,
-                    content=user_message,
-                    session_id=session_id,
-                    context_tags=["conversation", "user_input"],
-                    timestamp=timestamp,
+                stored_count += resp_result.get("chunks_created", 0) or (
+                    1 if resp_result.get("memory_id") else 0
                 )
-                stored_count += write_result.get("chunks_created", 0) or (
-                    1 if write_result.get("memory_id") else 0
-                )
-
-                # Step 3: Store assistant response + reconsolidate
-                if assistant_response:
-                    resp_result = await self._process_response(
-                        tenant_id=tenant_id,
-                        user_message=user_message,
-                        assistant_response=assistant_response,
-                        session_id=session_id,
-                        turn_id=turn_id,
-                        retrieved_memories=[m.record for m in injected_memories],
-                        timestamp=timestamp,
-                    )
-                    stored_count += resp_result.get("chunks_created", 0) or (
-                        1 if resp_result.get("memory_id") else 0
-                    )
-                    reconsolidation_applied = resp_result.get("reconsolidation_applied", False)
+                reconsolidation_applied = resp_result.get("reconsolidation_applied", False)
 
         return SeamlessTurnResult(
             memory_context=memory_context,

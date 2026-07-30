@@ -140,9 +140,6 @@ class FeatureFlags(PydanticBaseModel):
     batch_embeddings_enabled: bool = Field(
         default=True, description="Phase 2.1: batch embed_batch() calls"
     )
-    store_async: bool = Field(
-        default=False, description="Phase 2.2: async storage pipeline (opt-in)"
-    )
     cached_embeddings_enabled: bool = Field(
         default=True, description="Phase 2.3: Redis embedding cache"
     )

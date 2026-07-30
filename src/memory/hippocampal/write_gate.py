@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 class WriteDecision(StrEnum):
     STORE = "store"
     STORE_SYNC = "store"  # Alias for backward compatibility
-    STORE_ASYNC = "store"  # Alias: async path uses AsyncStoragePipeline when STORE_ASYNC=true
     SKIP = "skip"
     REDACT_AND_STORE = "redact_and_store"
 

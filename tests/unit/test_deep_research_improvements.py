@@ -29,7 +29,6 @@ from src.memory.working.models import ChunkType, SemanticChunk
 from src.retrieval.planner import RetrievalPlan, RetrievalPlanner, RetrievalSource, RetrievalStep
 from src.retrieval.query_types import QueryAnalysis, QueryIntent
 from src.retrieval.retriever import HybridRetriever
-from src.storage.async_pipeline import AsyncStoragePipeline
 from src.utils.bounded_state import BoundedStateMap
 from src.utils.embeddings import EmbeddingResult, MockEmbeddingClient
 
@@ -340,39 +339,6 @@ class TestBatchEmbeddings:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Phase 2.2: Async storage pipeline
-# ═══════════════════════════════════════════════════════════════════
-
-
-class TestAsyncStoragePipeline:
-    @pytest.mark.asyncio
-    async def test_enqueue_returns_job_id(self):
-        redis = AsyncMock()
-        redis.exists = AsyncMock(return_value=False)
-        redis.rpush = AsyncMock()
-
-        pipeline = AsyncStoragePipeline(redis_client=redis, enabled=True)
-        job_id = await pipeline.enqueue(
-            tenant_id="t1",
-            user_message="Hello",
-        )
-        assert job_id  # Non-empty
-        redis.rpush.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_enqueue_dedup_skips_duplicate(self):
-        redis = AsyncMock()
-        redis.exists = AsyncMock(return_value=True)  # Already processed
-
-        pipeline = AsyncStoragePipeline(redis_client=redis, enabled=True)
-        job_id = await pipeline.enqueue(
-            tenant_id="t1",
-            user_message="Hello",
-        )
-        assert job_id.startswith("dedup:")
-
-
-# ═══════════════════════════════════════════════════════════════════
 # Phase 3: Retrieval reliability
 # ═══════════════════════════════════════════════════════════════════
 
@@ -607,10 +573,6 @@ class TestFeatureFlags:
         assert flags.db_dependency_counts is True
         assert flags.bounded_state_enabled is True
         assert flags.hnsw_ef_search_tuning is True
-
-    def test_store_async_defaults_false(self):
-        flags = FeatureFlags()
-        assert flags.store_async is False
 
     def test_retrieval_settings_defaults(self):
         rs = RetrievalSettings()

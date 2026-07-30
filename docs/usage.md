@@ -210,7 +210,6 @@ Source of truth: `src/core/config.py`.
 - `FEATURES__SKIP_IF_FOUND_CROSS_GROUP`
 - `FEATURES__DB_DEPENDENCY_COUNTS`
 - `FEATURES__HNSW_EF_SEARCH_TUNING`
-- `FEATURES__STORE_ASYNC`
 - All fine-grained `FEATURES__USE_LLM_*` flags
 
 ### Dashboard config editability
@@ -324,9 +323,6 @@ curl -X POST "http://localhost:8000/api/v1/memory/read" \
 
 ## Current Caveats
 
-- `FEATURES__STORE_ASYNC` exists, and `SeamlessMemoryProvider` supports `AsyncStoragePipeline`, but `/memory/turn` does not currently inject the async pipeline and runs synchronous writes.
-- `src/core/tenant_flags.py` exists for per-tenant Redis overrides, but it is not wired into the active API/orchestrator runtime path.
-- `event_log` table and repository exist, but the core write/read/update/forget flow does not currently append event-log records automatically.
 - `POST /memory/forget` accepts `delete|archive|silence`, but non-`delete` actions currently execute the same soft-delete path in storage.
 
 ## Related Docs

@@ -752,18 +752,6 @@ async def dashboard_config(
                     options=["true", "false"],
                 ),
                 ConfigItem(
-                    key="features.store_async",
-                    value=feat.store_async,
-                    default_value=False,
-                    is_editable=True,
-                    source=_config_source("FEATURES__STORE_ASYNC"),
-                    description="Enqueue writes to Redis for async storage. Reduces write latency. Requires Redis and Celery worker.",
-                    requires_restart=True,
-                    is_required=False,
-                    env_var="FEATURES__STORE_ASYNC",
-                    options=["true", "false"],
-                ),
-                ConfigItem(
                     key="features.retrieval_timeouts_enabled",
                     value=feat.retrieval_timeouts_enabled,
                     default_value=True,
