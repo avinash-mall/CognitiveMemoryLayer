@@ -1,5 +1,6 @@
 """Database connection manager for PostgreSQL, Neo4j, and Redis."""
 
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -19,9 +20,25 @@ from ..core.config import ensure_asyncpg_url, get_settings
 
 _logger = structlog.get_logger(__name__)
 
-# Pool sizing: max persistent connections and extra under peak load
-_PG_POOL_SIZE = 40
-_PG_MAX_OVERFLOW = 20
+# Pool sizing: max persistent connections and extra under peak load.
+# The budget is PER PROCESS, so it must shrink as uvicorn workers grow: postgres
+# ships max_connections=100, and a flat 40+20 per worker means two workers can
+# already exceed it under load (and the startup pre-warm in app.py made 3+
+# workers die with "Application startup failed" before serving a request).
+_PG_TOTAL_POOL_BUDGET = 40
+_PG_TOTAL_OVERFLOW_BUDGET = 20
+
+
+def pg_pool_sizes() -> tuple[int, int]:
+    """(pool_size, max_overflow) for THIS process, scaled by UVICORN_WORKERS."""
+    try:
+        workers = max(1, int(os.environ.get("UVICORN_WORKERS", "1")))
+    except ValueError:
+        workers = 1
+    return (
+        max(5, _PG_TOTAL_POOL_BUDGET // workers),
+        max(2, _PG_TOTAL_OVERFLOW_BUDGET // workers),
+    )
 
 
 def _neo4j_host_allows_empty_password(url: str) -> bool:
@@ -81,10 +98,11 @@ class DatabaseManager:
         """Synchronous connection setup (engines, drivers, pools)."""
         settings = get_settings()
         db = settings.database
+        _pool_size, _max_overflow = pg_pool_sizes()
         self.pg_engine = create_async_engine(
             ensure_asyncpg_url(db.postgres_url),
-            pool_size=_PG_POOL_SIZE,
-            max_overflow=_PG_MAX_OVERFLOW,
+            pool_size=_pool_size,
+            max_overflow=_max_overflow,
             pool_pre_ping=True,
         )
         _attach_pool_metrics(self.pg_engine)

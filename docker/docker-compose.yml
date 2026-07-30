@@ -137,6 +137,9 @@ services:
     env_file:
       - ../.env
     environment:
+      # The command interpolates ${UVICORN_WORKERS} at compose time, but the app
+      # also reads it at runtime to divide the per-process PG pool budget.
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
       DATABASE__POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-memory}:${POSTGRES_PASSWORD:-memory}@postgres:5432/${POSTGRES_DB:-memory}
       DATABASE__NEO4J_URL: bolt://neo4j:7687
       DATABASE__NEO4J_USER: ${NEO4J_USER:-neo4j}

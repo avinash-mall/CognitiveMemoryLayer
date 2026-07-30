@@ -41,12 +41,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     app.state.db = db_manager
 
     # Pre-warm the PostgreSQL connection pool so early requests don't pay
-    # the 150ms-per-connection cold-start cost under concurrent load.
+    # the 150ms-per-connection cold-start cost under concurrent load. Capped at
+    # this process's pool_size: a flat 20 here, times N workers, exceeded
+    # postgres max_connections=100 and killed multi-worker startup.
+    from ..storage.connection import pg_pool_sizes
+
     async def _pg_ping() -> None:
         async with db_manager.pg_session() as _s:
             await _s.execute(sql_text("SELECT 1"))
 
-    await asyncio.gather(*[_pg_ping() for _ in range(20)])
+    _prewarm = min(20, pg_pool_sizes()[0])
+    await asyncio.gather(*[_pg_ping() for _ in range(_prewarm)])
 
     from ..memory.orchestrator import MemoryOrchestrator
 
