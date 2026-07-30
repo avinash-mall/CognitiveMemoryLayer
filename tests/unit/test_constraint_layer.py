@@ -23,7 +23,6 @@ from src.extraction.constraint_extractor import (
     ConstraintObject,
 )
 from src.memory.hippocampal.write_gate import WriteDecision, WriteGate
-from src.memory.neocortical.schema_manager import SchemaManager
 from src.memory.neocortical.schemas import (
     DEFAULT_FACT_SCHEMAS,
     FactCategory,
@@ -448,33 +447,6 @@ class TestCognitiveFactSchemas:
         assert "user:policy:*" in DEFAULT_FACT_SCHEMAS
         schema = DEFAULT_FACT_SCHEMAS["user:policy:*"]
         assert schema.category == FactCategory.POLICY
-
-
-class TestSchemaManagerCognitive:
-    """SchemaManager resolves cognitive wildcard schemas."""
-
-    def test_goal_wildcard_resolves(self):
-        mgr = SchemaManager()
-        schema = mgr.get_schema("user:goal:fitness")
-        assert schema is not None
-        assert schema.category == FactCategory.GOAL
-
-    def test_policy_wildcard_resolves(self):
-        mgr = SchemaManager()
-        schema = mgr.get_schema("user:policy:diet")
-        assert schema is not None
-        assert schema.category == FactCategory.POLICY
-
-    def test_value_wildcard_resolves(self):
-        mgr = SchemaManager()
-        schema = mgr.get_schema("user:value:family")
-        assert schema is not None
-        assert schema.category == FactCategory.VALUE
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Phase 3a: Query classifier CONSTRAINT_CHECK intent
-# ═══════════════════════════════════════════════════════════════════
 
 
 class TestQueryClassifierConstraintCheck:

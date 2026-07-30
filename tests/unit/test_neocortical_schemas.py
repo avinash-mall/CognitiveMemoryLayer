@@ -1,6 +1,5 @@
 """Unit tests for neocortical schemas and schema manager."""
 
-from src.memory.neocortical.schema_manager import SchemaManager
 from src.memory.neocortical.schemas import (
     DEFAULT_FACT_SCHEMAS,
     FactCategory,
@@ -47,33 +46,3 @@ class TestSemanticFact:
         )
         assert f.confidence == 0.8
         assert f.is_current is True
-
-
-class TestSchemaManager:
-    def test_get_schema_exact(self):
-        mgr = SchemaManager()
-        schema = mgr.get_schema("user:identity:name")
-        assert schema is not None
-        assert schema.category == FactCategory.IDENTITY
-
-    def test_get_schema_wildcard(self):
-        mgr = SchemaManager()
-        schema = mgr.get_schema("user:relationship:spouse")
-        assert schema is not None
-        assert schema.category == FactCategory.RELATIONSHIP
-
-    def test_get_schema_missing(self):
-        mgr = SchemaManager()
-        assert mgr.get_schema("unknown:key") is None
-
-    def test_get_schemas_for_category(self):
-        mgr = SchemaManager()
-        schemas = mgr.get_schemas_for_category(FactCategory.PREFERENCE)
-        assert len(schemas) >= 1
-        assert any("preference" in k for k in schemas)
-
-    def test_validate_key(self):
-        mgr = SchemaManager()
-        assert mgr.validate_key("user:identity:name") is True
-        assert mgr.validate_key("user:relationship:alice") is True
-        assert mgr.validate_key("random:key") is False

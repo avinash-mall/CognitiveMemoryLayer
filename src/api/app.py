@@ -35,9 +35,6 @@ _DASHBOARD_DIR = pathlib.Path(__file__).resolve().parent.parent / "dashboard" / 
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan handler."""
     settings = get_settings()
-    from ..utils.tracing import configure_tracing
-
-    configure_tracing(service_name="cognitive-memory-layer")
 
     # Validate embedding dimensions match DB schema at startup
     validate_embedding_dimensions(settings)

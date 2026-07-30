@@ -58,7 +58,7 @@ Run `python scripts/update_readme_badges.py` from the repo root to refresh versi
 | `test_constraint_layer.py` | Constraint layer (extraction, retrieval, consolidation) |
 | `test_deep_research_improvements.py` | Stable keys, batch embeddings, retrieval timeouts, write-time facts, BoundedStateMap |
 | `test_consolidation_migrator_sampler.py` | Consolidation migrator and episode sampler |
-| `test_storage_*.py`, `test_routes_helpers.py`, `test_forgetting_executor.py`, `test_timestamp_feature.py`, `test_utils_timing_metrics.py`, `test_core_exceptions.py` | Storage, routes, forgetting executor, utils, core |
+| `test_storage_*.py`, `test_routes_helpers.py`, `test_forgetting_executor.py`, `test_timestamp_feature.py`, `test_core_exceptions.py` | Storage, routes, forgetting executor, utils, core |
 
 ### Integration test files (by domain)
 

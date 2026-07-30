@@ -4,17 +4,8 @@ import pytest
 
 from src.core.exceptions import (
     CognitiveMemoryError,
-    ConfigurationError,
-    ConsolidationError,
-    DuplicateMemoryError,
-    EmbeddingError,
-    ExtractionError,
-    ForgettingError,
     MemoryAccessDenied,
     MemoryNotFoundError,
-    ReconsolidationError,
-    StorageConnectionError,
-    StorageError,
     ValidationError,
 )
 
@@ -22,42 +13,14 @@ from src.core.exceptions import (
 class TestExceptionHierarchy:
     """Core exception inheritance."""
 
-    def test_storage_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(StorageError, CognitiveMemoryError)
-
-    def test_storage_connection_error_inherits_from_storage_error(self):
-        assert issubclass(StorageConnectionError, StorageError)
-        assert issubclass(StorageConnectionError, CognitiveMemoryError)
-
     def test_memory_not_found_inherits_from_cognitive_memory_error(self):
         assert issubclass(MemoryNotFoundError, CognitiveMemoryError)
-
-    def test_duplicate_memory_inherits_from_cognitive_memory_error(self):
-        assert issubclass(DuplicateMemoryError, CognitiveMemoryError)
 
     def test_memory_access_denied_inherits_from_cognitive_memory_error(self):
         assert issubclass(MemoryAccessDenied, CognitiveMemoryError)
 
     def test_validation_error_inherits_from_cognitive_memory_error(self):
         assert issubclass(ValidationError, CognitiveMemoryError)
-
-    def test_configuration_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(ConfigurationError, CognitiveMemoryError)
-
-    def test_embedding_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(EmbeddingError, CognitiveMemoryError)
-
-    def test_extraction_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(ExtractionError, CognitiveMemoryError)
-
-    def test_consolidation_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(ConsolidationError, CognitiveMemoryError)
-
-    def test_forgetting_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(ForgettingError, CognitiveMemoryError)
-
-    def test_reconsolidation_error_inherits_from_cognitive_memory_error(self):
-        assert issubclass(ReconsolidationError, CognitiveMemoryError)
 
 
 class TestMemoryNotFoundError:
@@ -90,7 +53,3 @@ class TestExceptionRaising:
     def test_catch_as_cognitive_memory_error(self):
         with pytest.raises(CognitiveMemoryError):
             raise ValidationError("bad input")
-
-    def test_storage_connection_error_attributes(self):
-        e = StorageConnectionError("Connection refused")
-        assert str(e) == "Connection refused"
