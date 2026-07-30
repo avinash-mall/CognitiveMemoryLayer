@@ -427,7 +427,7 @@ class HippocampalStore:
                 surviving.append((_idx, _chunk, _gate, _text))
 
         if not surviving:
-            return ([], gate_results_list if return_gate_results else None, [], [], [])
+            return ([], gate_results_list if return_gate_results else None, [], [])
 
         # ---- Phase 1.5: Unified extraction (when LLM flags enabled) ----
         if unified_results is None:

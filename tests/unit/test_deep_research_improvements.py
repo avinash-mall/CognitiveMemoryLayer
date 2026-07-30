@@ -273,6 +273,31 @@ class TestBatchEmbeddings:
         assert len(results) == 2
 
     @pytest.mark.asyncio
+    async def test_encode_batch_arity_is_stable_when_nothing_survives_the_gate(self):
+        """The early-return path must return the same shape as the main path.
+
+        encode_batch returns early when the write gate skips every chunk (and for empty
+        input). That branch is easy to miss when the tuple changes: callers unpack a fixed
+        arity, so a stale early return raises ValueError only for writes where everything
+        is skipped — which no main-path test reaches. Embedded lite mode hit it first.
+        """
+        from src.memory.hippocampal.store import HippocampalStore
+
+        mock_store = AsyncMock()
+        mock_store.scan = AsyncMock(return_value=[])
+
+        store = HippocampalStore(
+            vector_store=mock_store,
+            embedding_client=MockEmbeddingClient(dimensions=8),
+        )
+
+        empty = await store.encode_batch("tenant1", [])
+        main = await store.encode_batch("tenant1", [_make_chunk("fact one")])
+        assert len(empty) == len(main), (
+            f"early-return arity {len(empty)} != main-path arity {len(main)}"
+        )
+
+    @pytest.mark.asyncio
     async def test_search_calls_increment_access_counts_once_with_result_ids(self):
         """search() invokes increment_access_counts once with the list of result IDs (no N+1)."""
         from src.memory.hippocampal.store import HippocampalStore
