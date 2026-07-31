@@ -88,6 +88,9 @@ COPY packages ./packages
 COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations/
+# The repo-root markers find_repo_root() scans for include docker/docker-compose.yml,
+# so /app must look like a real checkout or eval path defaults silently become None.
+COPY docker ./docker
 COPY docker/entrypoint.sh /entrypoint.sh
 
 # Install package with the extras required by the full GitHub test suite.

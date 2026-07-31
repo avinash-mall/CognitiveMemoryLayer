@@ -29,6 +29,8 @@ instead. If you add one, list it in the STATE.md notes index so it is discoverab
    general rule and let the reported case be one instance of it.
 4. **Full test after every major change — before committing.**
 5. **Ponytail.** Fix root causes, don't over-build, no speculative extras.
+6. **Commit and push straight to `main`.** No feature branches, no PRs — CI
+   runs on push to main, so that is where fixes get verified.
 
 ## Commands
 
