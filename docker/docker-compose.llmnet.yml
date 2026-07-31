@@ -1,0 +1,35 @@
+# LLM-network override — use when the internal LLM runs in a *different* compose stack.
+#
+# `localhost:PORT` in .env works for a server run from source and is unreachable from
+# inside the container. host.docker.internal (set in the base file) covers a host-run LLM
+# that listens on 0.0.0.0, but not one published to 127.0.0.1 only — a container cannot
+# reach the host's loopback. Joining the LLM's own network is the way through.
+#
+# Usage:
+#   export LLM_NETWORK=chatbot_chatnet                     # the external network's name
+#   export LLM_INTERNAL__BASE_URL=http://slm-container:8000/v1
+#   docker compose -f docker/docker-compose.yml \
+#                  -f docker/docker-compose.llmnet.yml up -d api
+#
+# Find the network and the address to use with:
+#   docker inspect <llm-container> --format '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}'
+#   docker port <llm-container>          # the CONTAINER-side port, not the published one
+#
+# Verify before starting the API, so a failure is one line rather than a crash loop:
+#   docker run --rm --network "$LLM_NETWORK" curlimages/curl -s -o /dev/null \
+#     -w '%{http_code}\n' "$LLM_INTERNAL__BASE_URL/models"
+services:
+  api:
+    networks:
+      - default
+      - llm
+
+  app:
+    networks:
+      - default
+      - llm
+
+networks:
+  llm:
+    external: true
+    name: ${LLM_NETWORK:?set LLM_NETWORK to the external network your LLM container is on}

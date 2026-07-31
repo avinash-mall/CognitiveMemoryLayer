@@ -148,6 +148,11 @@ services:
       DATABASE__REDIS_URL: redis://redis:6379
       # Uses local sentence-transformers on GPU; override to 'openai' for API-based embeddings.
       EMBEDDING_INTERNAL__PROVIDER: ${EMBEDDING_INTERNAL__PROVIDER:-local}
+      # Declared here so the shell can override it. Values from `env_file` beat the
+      # shell environment, so without this line a `.env` pointing at localhost:PORT
+      # (correct for a source-run server, unreachable from inside a container) could not
+      # be overridden without editing .env.
+      LLM_INTERNAL__BASE_URL: ${LLM_INTERNAL__BASE_URL:-}
       # Pass CI markers through so startup LLM validation can auto-skip in GitHub Actions.
       CI: ${CI:-}
       GITHUB_ACTIONS: ${GITHUB_ACTIONS:-}
@@ -161,6 +166,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # `localhost` inside a container is the container. An LLM_INTERNAL__BASE_URL of
+    # http://localhost:PORT/v1 works when the server runs from source and silently
+    # becomes unreachable here, which fails startup validation. This makes
+    # host.docker.internal resolvable so a host-run LLM can be addressed as
+    # http://host.docker.internal:PORT/v1 — provided it listens on 0.0.0.0 rather than
+    # 127.0.0.1. If the LLM lives in another compose stack, use
+    # docker/docker-compose.llmnet.yml instead.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-6000}:8000"
     volumes:
