@@ -39,10 +39,10 @@ link them below. Delete notes when they stop being true.
 
 ## Active work
 
-- **LoCoMo-Plus subset A/B is pending.** Everything below is implemented and committed;
-  the measurement is not run. Arms, in order, each against a server run from source on
-  `:8000` using `evaluation/locomo_plus/data/unified_input_subset_v2.json`
-  (43 conversations, 16,706 turns, 677 samples, ~1.5-2 h per arm):
+- **LoCoMo-Plus subset A/B is running.** Everything below is implemented and committed.
+  Arms, each against a server run from source on `:8000` using
+  `evaluation/locomo_plus/data/unified_input_subset_v2.json` (43 conversations,
+  16,484 turns, 677 samples, ~1.5-2 h per arm) and **its own `--tenant-prefix`**:
   - **0** — free, already computed: `make_locomo_subset.py --baseline` restricts the
     committed full-run artifact to the subset. Overall 0.4993 there vs 0.4631 full.
   - **A** — eval mode now writes graph + facts (`6d8138e`). Watch multi-hop, single-hop.
@@ -51,6 +51,18 @@ link them below. Delete notes when they stop being true.
     common-sense for gain and **adversarial for regression** — that decides the default.
 
   Compare per-category against arm 0, not against the full run's 0.4631.
+
+  **Arms A and B are bundled**, deliberately: both are committed and both are keepers, so
+  separating them would cost another ~2 h to attribute between two changes neither of
+  which is going to be reverted. The decision-bearing split — prospective on vs off — is
+  preserved. Do not read per-category movement inside A+B as attributable to one of them.
+
+  **Always pass `--tenant-prefix`.** Tenants are `{prefix}-{canonical_index}` and the
+  index is relative to whichever `--unified-file` was passed, so a subset run reuses the
+  full run's tenant IDs for entirely different conversations. This bit once: a subset run
+  collided on `lp-199`, which held 369 records from the full run's conversation 199, and
+  that single tenant carries 242 of the subset's 677 samples (36%). The run was killed
+  and the flag added (`d26b683`) rather than deleting the older data.
 
 ## What was wrong with the write path (fixed 2026-07-31)
 
