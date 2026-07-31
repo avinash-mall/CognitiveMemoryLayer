@@ -212,7 +212,7 @@ resident vLLM servers).
 - **LoCoMo-Plus re-run complete (2026-07-31)** — first reproducible run since the
   modelpack removal. **Overall 0.4631** (1105.5/2387, all valid, 0 errors); by category:
   adversarial 0.78, single-hop 0.54, multi-hop 0.34, temporal 0.31, common-sense 0.24,
-  Cognitive 0.21. Artifact: `evaluation/results/locomo_plus_2026-07-31.json`. Conditions:
+  Cognitive 0.21. Artifacts: `evaluation/results/locomo_plus_2026-07-31_{summary,judged}.json` (summary + per-sample judge records). Conditions:
   server at 983a9f9 (4 uvicorn workers, CPU embedder), ingestion via eval-mode writes
   (X-Eval-Mode skips unified extraction — no LLM enrichment on stored memories), QA+judge
   on local Qwen3.6-27B-FP8. Per lever G these numbers are NOT comparable to published
