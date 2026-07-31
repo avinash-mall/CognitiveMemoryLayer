@@ -11,8 +11,8 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1233-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
-[![Version](https://img.shields.io/badge/version-1.5.0-blue?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/Tests-1048-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue?style=for-the-badge)](#)
 
 <br/>
 
@@ -76,7 +76,12 @@ Human memory is not a single store &mdash; it is a **pipeline**. Information flo
        └─── Decay                         └─── Displacement            └─── Interference
 ```
 
-**In CML:** Raw input enters the `SensoryBuffer` (token-level encoding via tiktoken). A `WorkingMemoryManager` enforces the ~7-item capacity limit. `SemchunkChunker` handles semantic segmentation before long-term encoding.
+**In CML:** Raw input enters the `SensoryBuffer` (token-level encoding via tiktoken, with time- and capacity-based decay). A `WorkingMemoryManager` enforces a bounded capacity — 10 chunks, not Miller's 7, with a displacement policy that protects the most recent items and evicts the rest by salience. `SemchunkChunker` handles semantic segmentation before long-term encoding.
+
+> **Caveat:** the buffer and the working-memory store are currently write-only. The
+> encoding path uses each turn's fresh chunks directly, so the retained set that
+> survives displacement is never read back. The capacity limit is enforced but does
+> not yet influence what gets encoded.
 
 > **Reference**: Miller, G.A. (1956). ["The magical number seven, plus or minus two."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
 
@@ -91,7 +96,12 @@ The brain uses **two complementary systems** that learn at fundamentally differe
 
 The hippocampus captures today's lunch conversation in full context. Over time &mdash; during sleep &mdash; **sharp-wave ripples** replay these episodes, training the neocortex to extract the durable semantic pattern: *"this person is vegetarian."*
 
-**In CML:** `HippocampalStore` performs one-shot episodic encoding with dense vector embeddings. `NeocorticalStore` maintains structured semantic facts with schema alignment. The `ConsolidationEngine` performs the equivalent of sleep-replay: sampling, clustering, gist extraction, and migration from hippocampal to neocortical stores.
+**In CML:** `HippocampalStore` performs one-shot episodic encoding with dense vector embeddings. `NeocorticalStore` maintains structured semantic facts, routed to a schema key on write. The consolidation pipeline samples episodes, clusters them, extracts a gist, and migrates it to the neocortical store.
+
+> **Caveat:** this is inspired by replay, not an implementation of it. Episode
+> selection is a single deterministic top-k by weighted score — no repeated sampling,
+> no stochasticity, no iteration. Consolidation is also not scheduled: it runs only
+> when triggered manually via the admin API or dashboard.
 
 > **Reference**: McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C. (1995). ["Why there are complementary learning systems in the hippocampus and neocortex."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
 
@@ -99,7 +109,13 @@ The hippocampus captures today's lunch conversation in full context. Over time &
 
 A discovery that upended memory science: retrieved memories become **temporarily unstable** ("labile") and can be modified before restabilizing. Memory is not read-only &mdash; every retrieval is a potential rewrite.
 
-**In CML:** The `LabileStateTracker` marks retrieved memories as labile for 5 minutes. The `ConflictDetector` identifies contradictions, refinements, and supersessions. The `BeliefRevisionEngine` applies one of 6 strategies (reinforce, correct, time-slice, merge, demote, supersede) before restabilizing.
+**In CML:** The `LabileStateTracker` marks memories labile while a conversational turn is being processed. The `ConflictDetector` identifies contradictions, refinements, and supersessions. The `BeliefRevisionEngine` then applies a revision strategy — `REINFORCE`, `TIME_SLICE`, `MERGE`, or `ADD_HYPOTHESIS` — before restabilizing.
+
+> **Caveat:** the labile window is bookkeeping, not a delay. It is opened and closed
+> within a single turn, so the configured 5-minute duration never elapses, and no
+> read or write path consults labile state before acting. Reconsolidation requires
+> the full `/turn` endpoint; a plain read never marks anything labile. Three further
+> strategies (`OVERWRITE`, `INVALIDATE`, `NOOP`) are declared but unreachable.
 
 > **Reference**: Nader, K., Schafe, G.E., & Le Doux, J.E. (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
 
@@ -235,7 +251,7 @@ Every module in CML corresponds to a specific biological mechanism. Click to exp
 | Biology | Code | Location |
 | :--- | :--- | :--- |
 | Sensory register | `SensoryBuffer` (tiktoken token-ID storage) | `src/memory/sensory/buffer.py` |
-| Working memory (7&plusmn;2) | `WorkingMemoryManager` (max=10) + `BoundedStateMap` | `src/memory/working/manager.py` |
+| Bounded working memory (max=10, not 7&plusmn;2) | `WorkingMemoryManager` + `BoundedStateMap` | `src/memory/working/manager.py` |
 | Semantic chunking | `SemchunkChunker` (Hugging Face tokenizer) | `src/memory/working/chunker.py` |
 
 </details>
@@ -259,8 +275,13 @@ Not all experiences become memories. CML's `WriteGate` mirrors the CREB protein'
 | Biology | Code | Location |
 | :--- | :--- | :--- |
 | One-shot encoding | `HippocampalStore.encode_batch()` | `src/memory/hippocampal/store.py` |
-| Pattern separation | SHA256 stable keys + unique embeddings | `PostgresMemoryStore` |
+| Deduplication (*not* pattern separation) | SHA256 stable keys — see note | `PostgresMemoryStore` |
 | Unified extraction | Entities, relations, constraints, facts in one call | `src/extraction/unified_write_extractor.py` |
+
+The SHA256 key is a deduplication device, not a dentate-gyrus analog. Any one-character
+difference yields an unrelated key, so it gives maximal separation with no similarity
+structure at all. Near-duplicate suppression is done separately, by the write gate's
+lexical novelty check.
 
 </details>
 
@@ -271,7 +292,7 @@ Not all experiences become memories. CML's `WriteGate` mirrors the CREB protein'
 | :--- | :--- | :--- |
 | Schema-based storage | `FactSchema` + `FactCategory` | `src/memory/neocortical/schemas.py` |
 | Cognitive categories | GOAL, STATE, VALUE, CAUSAL, POLICY | `src/memory/neocortical/schemas.py` |
-| Graph traversal | Personalized PageRank on Neo4j | `src/storage/neo4j.py` |
+| Graph traversal | Personalized PageRank on Neo4j (requires the GDS plugin; otherwise a variable-length path-count fallback) | `src/storage/neo4j.py` |
 
 </details>
 
@@ -294,10 +315,14 @@ Memory retrieval is not lookup &mdash; it is **ecphory**: the interaction betwee
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
-| Episode sampling | `EpisodeSampler` (7d episodes, 90d constraints) | `src/consolidation/sampler.py` |
+| Episode selection (single top-k pass, not replay) | `EpisodeSampler` (7d episodes, 90d constraints) | `src/consolidation/sampler.py` |
 | Semantic clustering | `SemanticClusterer` | `src/consolidation/clusterer.py` |
 | Gist extraction | `GistSummarizer` (preserves constraint types) | `src/consolidation/summarizer.py` |
 | Migration | `ConsolidationMigrator` (hippo &rarr; neocortex) | `src/consolidation/migrator.py` |
+
+Migration is additive: source episodes are flagged `consolidated` but stay active and
+searchable, so the gist and its source episodes currently coexist in the same result
+set. There is no trace weakening on migration.
 
 </details>
 
@@ -613,9 +638,8 @@ curl -X POST http://localhost:8000/api/v1/memory/read \
 ### Step 7 — Run the Test Suite
 
 ```bash
-pytest tests/unit -v --tb=short          # unit tests, hermetic (no DB/LLM needed)
-pytest tests/integration -v --tb=short  # 88 integration tests (requires running stack)
-pytest tests/e2e -v                     # 5 end-to-end API tests
+pytest tests/unit -q                                        # hermetic (no DB/LLM needed)
+pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running stack
 ```
 
 ---
@@ -631,7 +655,19 @@ pytest tests/e2e -v                     # 5 end-to-end API tests
 
 ## Evaluation Highlights
 
-Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall. CML uses a **fully local** `google/gemma-4-31b-it` model via vLLM &mdash; **zero API dependency**, zero per-query cost.
+> ### ⚠️ These numbers are historical and not reproducible
+>
+> They were produced before the model-pack removal (`51afd15`) and their source
+> artifacts were never committed, so they cannot be re-derived from this tree. They
+> are also **not comparable to published baselines**: the LoCoMo-Plus paper judges
+> with `gemini-2.5-flash` under a specific constraint-consistency protocol, while
+> this harness uses a local Qwen judge. Only relative movement within our own runs
+> is meaningful. Treat the table as a record of a past run, not a current claim.
+>
+> Re-running is opt-in and expensive: the harness expands 2,387 samples into 411
+> conversations ≈ 242,658 turn ingests, roughly 18 h of ingestion on a 4×A100 host.
+
+Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall. CML used a **fully local** `google/gemma-4-31b-it` model via vLLM &mdash; **zero API dependency**, zero per-query cost.
 
 | Category | CML (local 31B) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
 | :--- | :--- | :--- | :--- | :--- |
@@ -640,9 +676,10 @@ Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first ben
 | **Single-hop** | 56.96% | 78.13% | 80.20% | 76.90% |
 | **Overall** | **48.58%** | 62.99% | 57.24% | 59.64% |
 
-> **Adversarial robustness:** CML more than doubles Mem0's adversarial score (64.80% vs 30.50%) and beats GPT-4o full-context by +15.81% &mdash; using a local 31B model vs closed-source APIs. This demonstrates that CML's constraint-aware retrieval architecture provides real robustness, independent of model size.
-
-> **Temporal reasoning:** CML outperforms GPT-4o full-context (48.60% vs 45.79%) through explicit timestamp handling and temporal context in retrieval.
+The shape of the result — strong on adversarial and temporal categories, weak on
+single-hop — is the interesting part, and it is what the constraint-aware retrieval
+architecture was built for. The absolute percentages are not, for the reasons above:
+the competitor columns come from the paper's judge, ours from a local one.
 
 Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
 
@@ -651,9 +688,11 @@ Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evalua
 ## Testing
 
 ```bash
-pytest tests/unit -v --tb=short        # 812 unit tests
-pytest tests/integration -v --tb=short  # 88 integration tests
-pytest tests/e2e -v                     # 5 end-to-end API tests
+# 721 hermetic unit tests — no DB, no LLM, mock embeddings
+pytest tests/unit -q
+
+# 327 tests against a live server on :8000
+pytest tests/integration tests/e2e packages/py-cml/tests -q
 ```
 
 Full-stack quality test with LLM-as-judge: `python scripts/test_memory_quality.py`
