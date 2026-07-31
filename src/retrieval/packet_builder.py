@@ -273,12 +273,25 @@ class MemoryPacketBuilder:
             for e in relevant_episodes[:episode_limit]:
                 # Include temporal metadata when available for temporal reasoning
                 meta = e.record.metadata or {}
-                date_str = ""
-                event_date = meta.get("event_date")
-                if event_date:
-                    date_str = f" [{event_date}]"
-                elif hasattr(e.record.timestamp, "strftime"):
-                    date_str = f" [{e.record.timestamp.strftime('%Y-%m-%d')}]"
+                # The turn date is always shown, and an event date is *added* rather
+                # than substituted. These answer different questions — when it was said
+                # versus when it happened — and an unlabelled bracket that silently
+                # means one or the other, line by line, is worse than either alone.
+                # event_date used to substitute, which was invisible while nothing
+                # produced event dates and cost 0.16 on the temporal category the moment
+                # something did.
+                said = (
+                    e.record.timestamp.strftime("%Y-%m-%d")
+                    if hasattr(e.record.timestamp, "strftime")
+                    else ""
+                )
+                event_date = str(meta.get("event_date") or "")[:10]
+                if said and event_date and event_date != said:
+                    date_str = f" [said {said}, refers to {event_date}]"
+                elif said:
+                    date_str = f" [{said}]"
+                else:
+                    date_str = f" [{event_date}]" if event_date else ""
                 speaker = meta.get("speaker", "")
                 speaker_prefix = f"({speaker}) " if speaker else ""
                 line = (

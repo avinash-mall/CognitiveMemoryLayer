@@ -109,3 +109,49 @@ class TestSourceMonitoring:
             query="q",
         )
         assert "[inferred]" in packet.to_context_string()
+
+
+class TestEpisodeDates:
+    """When it was said and when it happened are different questions.
+
+    event_date used to *replace* the turn date in the rendered bracket. That was
+    invisible while nothing produced event dates, and cost 0.16 on the temporal
+    category the moment the write path started producing them — the model lost the
+    "when was this said" anchor, and the bracket silently meant one thing on some
+    lines and another on others.
+    """
+
+    def _episode(self, text: str, said: datetime, event_date: str | None):
+        mem = _memory(text)
+        mem.record.timestamp = said
+        if event_date:
+            mem.record.metadata = {"event_date": event_date}
+        return mem
+
+    def test_turn_date_is_always_present(self):
+        builder = MemoryPacketBuilder()
+        said = datetime(2023, 1, 20, tzinfo=UTC)
+        packet = builder.build(
+            [self._episode("Lost my job yesterday.", said, "2023-01-19T00:00:00")], query="job"
+        )
+        rendered = builder.to_llm_context(packet)
+        assert "said 2023-01-20" in rendered
+        assert "refers to 2023-01-19" in rendered
+
+    def test_no_event_date_renders_the_turn_date_alone(self):
+        builder = MemoryPacketBuilder()
+        said = datetime(2023, 1, 20, tzinfo=UTC)
+        packet = builder.build([self._episode("A plain statement.", said, None)], query="q")
+        rendered = builder.to_llm_context(packet)
+        assert "[2023-01-20]" in rendered
+        assert "refers to" not in rendered
+
+    def test_event_date_equal_to_the_turn_date_is_not_repeated(self):
+        builder = MemoryPacketBuilder()
+        said = datetime(2023, 1, 20, tzinfo=UTC)
+        packet = builder.build(
+            [self._episode("It happened today.", said, "2023-01-20T00:00:00")], query="q"
+        )
+        rendered = builder.to_llm_context(packet)
+        assert "[2023-01-20]" in rendered
+        assert "refers to" not in rendered
