@@ -14,7 +14,7 @@ link them below. Delete notes when they stop being true.
   leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
   signal because it runs the integration suite in containers against fresh
   Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
-- Suite sizes, so drift is visible: **745** unit (hermetic), **341** integration + e2e +
+- Suite sizes, so drift is visible: **756** unit (hermetic), **341** integration + e2e +
   py-cml against a live server. Grew from 716/327 across two passes: source monitoring,
   gist demotion, the retention curve, then temporal resolution, prospective indexing,
   the scan_texts_for_gate SQL guard and multi-valued facts. Not regressions.
@@ -45,10 +45,12 @@ link them below. Delete notes when they stop being true.
   16,484 turns, 677 samples, ~1.5-2 h per arm) and **its own `--tenant-prefix`**:
   - **0** — free, already computed: `make_locomo_subset.py --baseline` restricts the
     committed full-run artifact to the subset. Overall 0.4993 there vs 0.4631 full.
-  - **A** — eval mode now writes graph + facts (`6d8138e`). Watch multi-hop, single-hop.
-  - **B** — temporal resolution live (`bb3a4a5`). Watch temporal.
-  - **C** — `FEATURES__PROSPECTIVE_INDEXING_ENABLED=true`. Watch Cognitive and
-    common-sense for gain and **adversarial for regression** — that decides the default.
+  - **A+B** — run twice, see the results table below. Still net-negative; three bugs
+    found and fixed, the last two after the second run, so a third arm is owed.
+  - **C** — `FEATURES__PROSPECTIVE_INDEXING_ENABLED=true`. **Not run.** The flag stays
+    off. Watch Cognitive and common-sense for gain and **adversarial for regression** —
+    that decides the default. Do not run it until A+B is verified non-negative, or the
+    two effects cannot be separated.
 
   Compare per-category against arm 0, not against the full run's 0.4631.
 
@@ -63,6 +65,59 @@ link them below. Delete notes when they stop being true.
   collided on `lp-199`, which held 369 records from the full run's conversation 199, and
   that single tenant carries 242 of the subset's 677 samples (36%). The run was killed
   and the flag added (`d26b683`) rather than deleting the older data.
+
+## Subset A/B results, and the three bugs the measurement found (2026-07-31)
+
+Two full subset runs, 677 samples each, against arm 0 = the committed full run restricted
+to the same samples (overall **0.4993**).
+
+| category | arm 0 | armAB v1 | armAB2 (v2) |
+| :--- | ---: | ---: | ---: |
+| Cognitive | 0.200 | 0.325 | 0.275 |
+| adversarial | 0.808 | 0.735 | 0.768 |
+| common-sense | 0.350 | 0.375 | 0.313 |
+| multi-hop | 0.330 | 0.225 | 0.270 |
+| single-hop | 0.520 | 0.496 | 0.510 |
+| temporal | 0.323 | 0.125 | 0.167 |
+| **overall** | **0.499** | **0.439** | **0.458** |
+
+**The write-path fixes are still net-negative on this subset and the cause is now
+understood but not yet re-measured.** Three bugs were found by the measurement, all the
+same shape — a branch that could not be wrong while the feature feeding it never ran:
+
+1. **The LLM's `event_date` overrode the regex's** (`a909f0c`). 178 of 1,328 records
+   (13.4%) carried a date inconsistent with their own timestamp, and every one carried
+   the *same* hallucinated day. Re-running `extract_event_date` on the stored text and
+   timestamp reproduces the correct date every time, so the resolver was fine and the
+   precedence was not. v1 → v2 is this fix alone: +0.019 overall, +0.042 temporal.
+2. **`event_date` *replaced* the turn date in the packet** (`342a32e`). `packet_builder`
+   rendered `event_date if event_date else timestamp`, so 1,328 episodes lost the "when
+   was this said" anchor and the bracket silently meant different things on different
+   lines. Now `[said X, refers to Y]`, collapsing to one date when they agree.
+3. **Graph relevance is unbounded and outranked everything** (`18c947b`). One real query
+   returned graph blobs at 315.67 / 265.33 / **744.50** against episodes at 0.27-0.40.
+   Ranking happens on the raw value before the reranker clamps, so the blobs took every
+   top slot and pushed every conversation turn below `episode_relevance_threshold`,
+   emptying Recent Events. Now rank-normalised into [0.55, 0.85].
+
+**Not yet re-measured:** fixes 2 and 3 landed after the v2 run. A third arm is needed
+before any claim that the write-path work is net-positive.
+
+**Do not use `--skip-ingestion` to re-score a corpus.** It was tried as a cheap code-only
+A/B and produced adversarial 1.0 with single-hop, temporal and common-sense all exactly
+0.0 — the signature of the model refusing every question. The retrieved packet came from
+the wrong conversation, so the QA phase does not reproduce the ingest-time tenant mapping
+on that path. Those numbers are an artifact; ignore the `armAB3` output directory.
+
+## Open, with evidence, not yet acted on
+
+- **Episodes routinely score below `episode_relevance_threshold` (0.5).** After fix 3,
+  the top eight results for a real query were all conversation turns — scoring 0.29-0.40.
+  The packet's episode filter is `relevance_score > threshold`, so Recent Events is
+  *still* empty and the model sees only facts and preferences. This is a pre-existing
+  tuning question, not a regression: cosine similarity on this corpus simply does not
+  reach 0.5. Lowering the threshold is the obvious move and is exactly the kind of change
+  that needs a measurement rather than a guess, so it was left alone.
 
 ## What was wrong with the write path (fixed 2026-07-31)
 
