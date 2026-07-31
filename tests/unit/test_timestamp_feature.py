@@ -115,7 +115,6 @@ class TestTimestampBackwardCompatibility:
         """Timestamp parameter should be optional throughout the stack."""
         import inspect
 
-        from src.memory.hippocampal.store import HippocampalStore
         from src.memory.orchestrator import MemoryOrchestrator
         from src.memory.seamless_provider import SeamlessMemoryProvider
         from src.memory.short_term import ShortTermMemory
@@ -128,13 +127,13 @@ class TestTimestampBackwardCompatibility:
             (ShortTermMemory, "ingest_turn"),
             (WorkingMemoryManager, "process_input"),
             (SemchunkChunker, "chunk"),
-            (HippocampalStore, "encode_chunk"),
             (SeamlessMemoryProvider, "process_turn"),
-            # encode_batch is deliberately absent: it timestamps each record from
-            # that record's own chunk.timestamp, which the chunker stamps from this
-            # same write timestamp. It used to accept a `timestamp` kwarg and
-            # silently ignore it, which this assertion could not tell apart from
-            # honouring it.
+            # The hippocampal store is deliberately absent. encode_chunk used to be
+            # listed here, but it had no production caller and was deleted; encode_batch,
+            # the only live path, timestamps each record from that record's own
+            # chunk.timestamp, which the chunker stamps from this same write timestamp.
+            # encode_batch once accepted a `timestamp` kwarg and silently ignored it,
+            # which this assertion could not tell apart from honouring it.
         ]
 
         for cls, method_name in methods_to_check:

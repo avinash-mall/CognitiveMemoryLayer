@@ -128,7 +128,7 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
             timestamp=datetime.now(UTC),
         ),
     ]:
-        await hippocampal.encode_chunk(tenant_id, chunk, existing_memories=None)
+        await hippocampal.encode_batch(tenant_id, [chunk])
 
     packet = await retriever.retrieve(
         tenant_id, "coffee and meetings", memory_types=["preference"], max_results=10
@@ -162,16 +162,17 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
 
     from src.memory.working.models import ChunkType, SemanticChunk
 
-    await hippocampal.encode_chunk(
+    await hippocampal.encode_batch(
         tenant_id,
-        SemanticChunk(
-            id="c1",
-            text="theme",
-            chunk_type=ChunkType.EVENT,
-            salience=0.8,
-            timestamp=datetime.now(UTC),
-        ),
-        existing_memories=None,
+        [
+            SemanticChunk(
+                id="c1",
+                text="theme",
+                chunk_type=ChunkType.EVENT,
+                salience=0.8,
+                timestamp=datetime.now(UTC),
+            )
+        ],
     )
     await neocortical.store_fact(tenant_id, "user:preference:theme", "dark", confidence=0.9)
 

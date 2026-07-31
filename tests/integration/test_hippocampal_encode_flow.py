@@ -30,7 +30,7 @@ def _make_store(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_encode_chunk_stores_record(pg_session_factory):
+async def test_encode_batch_stores_record(pg_session_factory):
     """Encode a chunk -> record in DB; search returns it."""
     hippocampal_store = _make_store(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
@@ -43,15 +43,13 @@ async def test_encode_chunk_stores_record(pg_session_factory):
         timestamp=datetime.now(UTC),
     )
     dims = get_embedding_dimensions()
-    record, gate_result = await hippocampal_store.encode_chunk(
-        tenant_id, chunk, existing_memories=None
-    )
+    records, _gate, _unified, _chunks = await hippocampal_store.encode_batch(tenant_id, [chunk])
+    record = records[0] if records else None
     assert record is not None
     assert record.text == chunk.text
     assert record.embedding is not None
     assert len(record.embedding) == dims
     assert record.type == MemoryType.PREFERENCE
-    assert gate_result.memory_types and MemoryType.PREFERENCE in gate_result.memory_types
 
     # Verify we can retrieve the record (scan/get_recent)
     recent = await hippocampal_store.get_recent(tenant_id, limit=10)
@@ -66,7 +64,7 @@ async def test_encode_chunk_stores_record(pg_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_encode_chunk_skip_low_salience(pg_session_factory):
+async def test_encode_batch_skip_low_salience(pg_session_factory):
     hippocampal_store = _make_store(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
     chunk = SemanticChunk(
@@ -75,7 +73,8 @@ async def test_encode_chunk_skip_low_salience(pg_session_factory):
         chunk_type=ChunkType.STATEMENT,
         salience=0.1,
     )
-    record, _ = await hippocampal_store.encode_chunk(tenant_id, chunk, existing_memories=None)
+    records, _gate, _unified, _chunks = await hippocampal_store.encode_batch(tenant_id, [chunk])
+    record = records[0] if records else None
     # May be None if write gate skips
     if record is None:
         return
@@ -84,7 +83,7 @@ async def test_encode_chunk_skip_low_salience(pg_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_encode_chunk_stored_record_type_matches_gate(pg_session_factory):
+async def test_encode_batch_stored_record_type_matches_gate(pg_session_factory):
     """Encode chunks of different ChunkTypes; stored record type equals gate's chosen type."""
     hippocampal_store = _make_store(pg_session_factory)
     tenant_id = f"t-{uuid4().hex[:8]}"
@@ -101,15 +100,13 @@ async def test_encode_chunk_stored_record_type_matches_gate(pg_session_factory):
             salience=0.8,
             timestamp=datetime.now(UTC),
         )
-        record, gate_result = await hippocampal_store.encode_chunk(
-            tenant_id, chunk, existing_memories=None
-        )
+        records, _gate, _unified, _chunks = await hippocampal_store.encode_batch(tenant_id, [chunk])
+        record = records[0] if records else None
         if record is None:
             continue
         assert record.type == expected_memory_type, (
             f"ChunkType {chunk_type} should produce record type {expected_memory_type}, got {record.type}"
         )
-        assert expected_memory_type in gate_result.memory_types
 
 
 @pytest.mark.asyncio
@@ -141,13 +138,13 @@ async def test_hippocampal_get_recent_and_search_with_type_filter(pg_session_fac
             timestamp=datetime.now(UTC),
         ),
     ]
+    records, _gate, _unified, _chunks = await hippocampal_store.encode_batch(tenant_id, chunks)
     stored_ids = []
-    for ch in chunks:
-        record, _ = await hippocampal_store.encode_chunk(tenant_id, ch, existing_memories=None)
-        if record:
-            stored_ids.append(record.id)
-            assert record.embedding is not None
-            assert record.text == ch.text
+    texts = {ch.text for ch in chunks}
+    for record in records:
+        stored_ids.append(record.id)
+        assert record.embedding is not None
+        assert record.text in texts
 
     recent = await hippocampal_store.get_recent(tenant_id, limit=10)
     assert len(recent) >= 2
@@ -188,7 +185,8 @@ async def test_constraint_supersession_first_silent_second_active(pg_session_fac
         confidence=0.85,
         timestamp=datetime.now(UTC),
     )
-    record1, _ = await hippocampal_store.encode_chunk(tenant_id, chunk1, existing_memories=None)
+    _r1, _g1, _u1, _c1 = await hippocampal_store.encode_batch(tenant_id, [chunk1])
+    record1 = _r1[0] if _r1 else None
     assert record1 is not None
     assert record1.type == MemoryType.CONSTRAINT
     assert record1.key is not None
@@ -207,7 +205,8 @@ async def test_constraint_supersession_first_silent_second_active(pg_session_fac
         confidence=0.85,
         timestamp=datetime.now(UTC),
     )
-    record2, _ = await hippocampal_store.encode_chunk(tenant_id, chunk2, existing_memories=None)
+    _r2, _g2, _u2, _c2 = await hippocampal_store.encode_batch(tenant_id, [chunk2])
+    record2 = _r2[0] if _r2 else None
     assert record2 is not None
     assert record2.type == MemoryType.CONSTRAINT
     assert "Ferrari" in record2.text

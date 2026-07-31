@@ -138,218 +138,6 @@ class HippocampalStore:
         finally:
             self._scan_futures.pop(tenant_id, None)
 
-    async def encode_chunk(
-        self,
-        tenant_id: str,
-        chunk: SemanticChunk,
-        context_tags: list[str] | None = None,
-        source_session_id: str | None = None,
-        agent_id: str | None = None,
-        existing_memories: list[dict[str, Any]] | None = None,
-        namespace: str | None = None,
-        timestamp: datetime | None = None,
-        request_metadata: dict[str, Any] | None = None,
-        memory_type_override: MemoryType | None = None,
-    ) -> tuple[MemoryRecord | None, WriteGateResult]:
-        # S-04: single settings load for the entire method
-        from ...core.config import get_settings
-
-        _features = get_settings().features
-
-        unified_result: UnifiedExtractionResult | None = None
-        if self._use_unified_write_path() and self.unified_extractor:
-            unified_result = await self.unified_extractor.extract(chunk)
-
-        gate_result = self.write_gate.evaluate(
-            chunk,
-            existing_memories=existing_memories,
-            unified_result=unified_result,
-        )
-        if gate_result.decision == WriteDecision.SKIP:
-            return (None, gate_result)
-
-        text = chunk.text
-        llm_pii_spans = (
-            [(s.start, s.end, s.pii_type) for s in unified_result.pii_spans]
-            if unified_result and unified_result.pii_spans and _features.use_llm_enabled
-            else None
-        )
-        if gate_result.redaction_required or llm_pii_spans:
-            text = self.redactor.redact(text, additional_spans=llm_pii_spans).redacted_text
-
-        embedding_result = await self.embeddings.embed(text)
-
-        entities: list[EntityMention] = []
-        relations: list[Relation] = []
-        if unified_result is not None:
-            entities = unified_result.entities or []
-            relations = unified_result.relations or []
-        else:
-            if self.entity_extractor:
-                entities = await self.entity_extractor.extract(text)
-            if self.relation_extractor:
-                entity_texts = [e.normalized for e in entities]
-                relations = await self.relation_extractor.extract(text, entities=entity_texts)
-
-        # Use caller-provided memory_type override, else LLM memory_type, else gate/constraint
-        settings = _features
-        memory_type = memory_type_override
-        if (
-            memory_type is None
-            and unified_result
-            and settings.use_llm_enabled
-            and unified_result.memory_type
-        ):
-            try:
-                memory_type = MemoryType(unified_result.memory_type)
-            except ValueError:
-                structlog.get_logger(__name__).debug(
-                    "invalid_llm_memory_type",
-                    raw_type=unified_result.memory_type,
-                )
-        if memory_type is None:
-            memory_type = (
-                gate_result.memory_types[0]
-                if gate_result.memory_types
-                else MemoryType.EPISODIC_EVENT
-            )
-
-        # Constraint extraction: unified LLM or heuristic path
-        if unified_result and settings.use_llm_enabled:
-            extracted_constraints = unified_result.constraints
-        else:
-            extracted_constraints = self.constraint_extractor.extract(chunk)
-        constraint_dicts = [c.to_dict() for c in extracted_constraints]
-
-        # If high-confidence constraint extracted and no API/LLM override, override memory type.
-        # Do NOT override when chunk is already PREFERENCE — honor caller's classification.
-        if (
-            memory_type_override is None
-            and chunk.chunk_type.value != "preference"
-            and not (unified_result and settings.use_llm_enabled and unified_result.memory_type)
-            and extracted_constraints
-            and any(c.confidence >= 0.7 for c in extracted_constraints)
-        ):
-            memory_type = MemoryType.CONSTRAINT
-
-        if memory_type == MemoryType.CONSTRAINT and extracted_constraints:
-            from ...extraction.constraint_extractor import ConstraintExtractor
-
-            key = ConstraintExtractor.constraint_fact_key(extracted_constraints[0])
-        else:
-            key = self._generate_key(chunk, memory_type) or ""
-
-        # Importance: unified LLM or gate
-        importance = gate_result.importance
-        if unified_result and settings.use_llm_enabled:
-            importance = unified_result.importance
-
-        # Merge request-level metadata with system metadata; request metadata wins on conflict
-        system_metadata: dict[str, Any] = {
-            "chunk_type": chunk.chunk_type.value,
-            "source_turn_id": chunk.source_turn_id,
-            "source_role": chunk.source_role,
-        }
-        if constraint_dicts:
-            system_metadata["constraints"] = constraint_dicts
-
-        # --- Temporal resolution: resolve relative time refs to absolute dates ---
-        if _features.temporal_resolution_enabled:
-            try:
-                from ...extraction.temporal_resolver import (
-                    extract_event_date,
-                    resolve_temporal_references,
-                )
-
-                session_date = timestamp or chunk.timestamp
-                temporal_refs = resolve_temporal_references(text, session_date)
-                if temporal_refs:
-                    system_metadata["temporal_references"] = [
-                        {
-                            "original": ref["original"],
-                            "resolved_date": ref["resolved_date"].isoformat(),
-                            "approximate": ref["approximate"],
-                        }
-                        for ref in temporal_refs
-                    ]
-                event_date = extract_event_date(text, session_date)
-                if event_date:
-                    system_metadata["event_date"] = event_date.isoformat()
-            except Exception:
-                pass  # Temporal resolution is best-effort
-
-        if request_metadata:
-            merged_metadata = {**system_metadata, **request_metadata}
-        else:
-            merged_metadata = system_metadata
-
-        effective_context_tags = context_tags or []
-        if (
-            not effective_context_tags
-            and unified_result
-            and settings.use_llm_enabled
-            and getattr(unified_result, "context_tags", None)
-        ):
-            effective_context_tags = unified_result.context_tags
-
-        conf = chunk.confidence
-        if unified_result and settings.use_llm_enabled and hasattr(unified_result, "confidence"):
-            conf = unified_result.confidence
-
-        decay_rate_val: float | None = None
-        dr = getattr(unified_result, "decay_rate", None) if unified_result else None
-        if unified_result and settings.use_llm_enabled and dr is not None and 0.01 <= dr <= 0.5:
-            decay_rate_val = dr
-
-        # --- Enhanced metadata from Improvement Report ---
-        if unified_result:
-            if unified_result.speaker:
-                merged_metadata["speaker"] = unified_result.speaker
-            if unified_result.causal_chain:
-                merged_metadata["causal_chain"] = unified_result.causal_chain
-            if unified_result.event_date:
-                merged_metadata["event_date"] = unified_result.event_date
-
-        record = MemoryRecordCreate(
-            tenant_id=tenant_id,
-            context_tags=effective_context_tags,
-            source_session_id=source_session_id,
-            agent_id=agent_id,
-            namespace=namespace,
-            type=memory_type,
-            text=text,
-            key=key,
-            embedding=embedding_result.embedding,
-            entities=entities,
-            relations=relations,
-            metadata=merged_metadata,
-            timestamp=timestamp or chunk.timestamp,
-            confidence=conf,
-            importance=importance,
-            decay_rate=decay_rate_val,
-            provenance=Provenance(
-                source=MemorySource.AGENT_INFERRED,
-                evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
-                model_version=embedding_result.model,
-            ),
-        )
-        stored = await self.store.upsert(record)
-
-        # --- Prospective indexing: store implications as linked memories ---
-        if stored is not None:
-            await self._store_prospective_indexes(
-                tenant_id=tenant_id,
-                source_record=stored,
-                unified_result=unified_result,
-                context_tags=effective_context_tags,
-                source_session_id=source_session_id,
-                agent_id=agent_id,
-                namespace=namespace,
-                timestamp=timestamp or chunk.timestamp,
-            )
-
-        return (stored, gate_result)
-
     async def encode_batch(
         self,
         tenant_id: str,
@@ -463,6 +251,22 @@ class HippocampalStore:
                 pii_spans = [(s.start, s.end, s.pii_type) for s in ures.pii_spans]
                 text = self.redactor.redact(chunk.text, additional_spans=pii_spans).redacted_text
             final_texts.append(text)
+
+        # ---- Temporal resolution: "yesterday" -> an absolute date ----
+        # Pure regex, no LLM, anchored on each chunk's own timestamp. packet_builder
+        # renders event_date on the Recent Events section, which is what lets the model
+        # answer "when did X happen". Kept as one flat loop rather than folded into
+        # _process_chunk so the regex passes stay off the concurrent gather.
+        from ...extraction.temporal_resolver import extract_event_date
+
+        event_dates: list[str | None] = []
+        for (_idx, chunk, _gr, _txt), etext in zip(surviving, final_texts, strict=True):
+            resolved = (
+                extract_event_date(etext, chunk.timestamp)
+                if cfg.temporal_resolution_enabled
+                else None
+            )
+            event_dates.append(resolved.isoformat() if resolved else None)
 
         # ---- Phase 2: Embed ----
         _t_p2 = _phase_time.perf_counter()
@@ -585,7 +389,17 @@ class HippocampalStore:
             }
             if constraint_dicts:
                 system_metadata["constraints"] = constraint_dicts
+            # Precedence, deliberately three-tiered: the regex date goes in before the
+            # merge so an explicit caller-supplied event_date wins over it, and the LLM's
+            # speaker/event_date go in after so the model wins over both.
+            if event_dates[idx]:
+                system_metadata["event_date"] = event_dates[idx]
             merged_metadata = {**system_metadata, **(request_metadata or {})}
+            if unified_res:
+                if unified_res.speaker:
+                    merged_metadata["speaker"] = unified_res.speaker
+                if unified_res.event_date:
+                    merged_metadata["event_date"] = unified_res.event_date
 
             effective_ct = context_tags or []
             if (
