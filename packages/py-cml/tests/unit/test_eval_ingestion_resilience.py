@@ -27,7 +27,7 @@ class TestPhaseAContinuesPastFailures:
     def _run(self, tmp_path, failing: set[int]):
         checkpoint = tmp_path / "ck.json"
 
-        def fake_ingest(url, key, idx, sample, delay, pbar=None):
+        def fake_ingest(url, key, idx, sample, delay, pbar=None, tenant_prefix="lp"):
             if idx in failing:
                 raise requests.exceptions.ReadTimeout("boom")
 
@@ -66,7 +66,7 @@ class TestPhaseAContinuesPastFailures:
             self._run(tmp_path, failing={2})
         calls: list[int] = []
 
-        def recording(url, key, idx, sample, delay, pbar=None):
+        def recording(url, key, idx, sample, delay, pbar=None, tenant_prefix="lp"):
             calls.append(idx)
 
         with patch.object(locomo, "_ingest_sample", side_effect=recording):

@@ -320,6 +320,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--cml-api-key", type=str, default=os.environ.get("CML_API_KEY", "test-key"))
     p.add_argument("--max-results", type=int, default=25)
     p.add_argument("--limit-samples", type=int, default=None)
+    p.add_argument(
+        "--tenant-prefix",
+        type=str,
+        default="lp",
+        help=(
+            "Tenant namespace for this run (default 'lp'). Tenants are "
+            "{prefix}-{conversation_index}, and the index is relative to the "
+            "--unified-file passed, so two runs over different files collide and the "
+            "second retrieves against the first's memories. Use a fresh prefix per run."
+        ),
+    )
     p.add_argument("--skip-ingestion", action="store_true")
     p.add_argument(
         "--skip-consolidation",
@@ -754,9 +765,10 @@ def _ingest_sample(
     sample: dict,
     ingestion_delay_sec: float,
     pbar: tqdm | None = None,
+    tenant_prefix: str = "lp",
 ) -> None:
-    """Ingest one sample: batch turns for tenant lp-{sample_idx}."""
-    tenant_id = f"lp-{sample_idx}"
+    """Ingest one sample: batch turns for tenant {tenant_prefix}-{sample_idx}."""
+    tenant_id = f"{tenant_prefix}-{sample_idx}"
     input_prompt = sample.get("input_prompt", "")
     turns = _parse_input_prompt_into_turns(input_prompt)
     turn_timestamps = sample.get("turn_timestamps") or []
@@ -847,6 +859,7 @@ def phase_a_ingestion(
     limit: int | None,
     ingestion_workers: int = 10,
     checkpoint_file: Path | None = None,
+    tenant_prefix: str = "lp",
 ) -> None:
     samples_to_ingest = samples[:limit] if limit else samples
 
@@ -918,14 +931,23 @@ def phase_a_ingestion(
     with _tqdm(total=total_turns, desc="Ingestion", unit="turn", disable=False) as pbar:
         if ingestion_workers <= 1:
             for i, sample in pending:
-                _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay, pbar)
+                _ingest_sample(
+                    cml_url, cml_api_key, i, sample, ingestion_delay, pbar, tenant_prefix
+                )
                 _save_checkpoint(i)
         else:
             failed: list[tuple[int, Exception]] = []
             with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
                 futures = {
                     executor.submit(
-                        _ingest_sample, cml_url, cml_api_key, i, sample, ingestion_delay, pbar
+                        _ingest_sample,
+                        cml_url,
+                        cml_api_key,
+                        i,
+                        sample,
+                        ingestion_delay,
+                        pbar,
+                        tenant_prefix,
                     ): i
                     for i, sample in pending
                 }
@@ -960,6 +982,7 @@ def phase_ab_consolidation(
     cml_api_key: str,
     limit: int | None,
     checkpoint_file: Path | None = None,
+    tenant_prefix: str = "lp",
 ) -> None:
     """Run consolidation then reconsolidation for each eval tenant (between Phase A and Phase B)."""
     samples_scope = samples[:limit] if limit else samples
@@ -980,7 +1003,9 @@ def phase_ab_consolidation(
         except (json.JSONDecodeError, OSError):
             pass
 
-    pending_indices = [i for i in canonical_indices if f"lp-{i}" not in completed_tenants]
+    pending_indices = [
+        i for i in canonical_indices if f"{tenant_prefix}-{i}" not in completed_tenants
+    ]
     if not pending_indices:
         print("\n[Phase A-B] All tenants already consolidated (checkpoint). Skipping.", flush=True)
         return
@@ -992,7 +1017,7 @@ def phase_ab_consolidation(
         flush=True,
     )
     for i in _tqdm(pending_indices, desc="Phase A-B", unit="tenant", disable=False):
-        tenant_id = f"lp-{i}"
+        tenant_id = f"{tenant_prefix}-{i}"
         body = {"tenant_id": tenant_id, "user_id": None}
         requests_lib = cast("Any", requests)
         try:
@@ -1040,6 +1065,7 @@ def phase_b_qa(
     out_dir: Path,
     verbose: bool = False,
     backend: str = "openai_compatible",
+    tenant_prefix: str = "lp",
 ) -> list[dict]:
     _, qa_model, _ = _get_llm_qa_config()
     samples_qa = samples[:limit] if limit else samples
@@ -1110,7 +1136,7 @@ def phase_b_qa(
         for i, sample in _tqdm(
             enumerate(remaining, start=start_index), desc="CML read", unit="sample"
         ):
-            tenant_id = f"lp-{sample_to_conv.get(i, i)}"
+            tenant_id = f"{tenant_prefix}-{sample_to_conv.get(i, i)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
             read_result = _cml_read(
@@ -1179,7 +1205,7 @@ def phase_b_qa(
             range(start_index, len(samples_qa)), desc="QA", unit="sample", disable=False
         ):
             sample = samples_qa[i]
-            tenant_id = f"lp-{sample_to_conv.get(i, i)}"
+            tenant_id = f"{tenant_prefix}-{sample_to_conv.get(i, i)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
             if category == "Cognitive":
@@ -1341,6 +1367,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
             config.limit_samples,
             ingestion_workers=config.ingestion_workers,
             checkpoint_file=out_dir / "locomo_ingestion_checkpoint.json",
+            tenant_prefix=config.tenant_prefix,
         )
 
     if not config.skip_consolidation:
@@ -1350,6 +1377,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
             config.cml_api_key,
             config.limit_samples,
             checkpoint_file=out_dir / "locomo_consolidation_checkpoint.json",
+            tenant_prefix=config.tenant_prefix,
         )
 
     records = phase_b_qa(
@@ -1361,6 +1389,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
         out_dir,
         verbose=config.verbose,
         backend=config.qa_backend,
+        tenant_prefix=config.tenant_prefix,
     )
 
     phase_c_judge(records, out_dir, config.judge_model, judge_backend=config.judge_backend)
@@ -1377,6 +1406,7 @@ def main(argv: list[str] | None = None) -> int:
         cml_api_key=str(args.cml_api_key),
         max_results=int(args.max_results),
         limit_samples=args.limit_samples,
+        tenant_prefix=str(args.tenant_prefix),
         skip_ingestion=bool(args.skip_ingestion),
         skip_consolidation=bool(args.skip_consolidation),
         score_only=bool(args.score_only),

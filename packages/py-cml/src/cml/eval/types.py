@@ -14,6 +14,12 @@ class LocomoEvalConfig:
     cml_api_key: str
     max_results: int = 25
     limit_samples: int | None = None
+    # Tenant namespace for this run. Tenants are named {tenant_prefix}-{canonical_idx},
+    # and the index is relative to whichever --unified-file was passed. Two runs over
+    # different files therefore reuse the same tenant IDs for entirely different
+    # conversations, and the second run retrieves against the first one's memories.
+    # Give every run its own prefix unless you intend to reuse a corpus.
+    tenant_prefix: str = "lp"
     skip_ingestion: bool = False
     skip_consolidation: bool = False
     score_only: bool = False
