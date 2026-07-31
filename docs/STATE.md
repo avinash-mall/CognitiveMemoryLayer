@@ -72,11 +72,13 @@ written on the write path and read by nothing that ranks or renders. Three commi
 
 Both halves were verified against real data, not just unit tests:
 
-- **The forgetting curve change is a no-op on this database.** Scored 3,321 real records
-  (every `decay_rate > 0.05` row plus a random 3,000) under the old `0.5**(age/30)` and
-  the new `exp(-decay_rate*age)`: **zero** suggested-action changes, COMPRESS steady at
-  42. The distribution is 187,731 rows at 0.01, 477 at 0.05, 321 at 0.1, and **none at
-  0.5** — the profile that would move (`decay_rate=0.5`, ~7d) simply does not occur here.
+- **The forgetting curve change is a no-op on this database.** Scored 3,804 real records
+  under the old `0.5**(age/30)` and the new `exp(-decay_rate*age)`: every row with
+  `decay_rate > 0.05` (321), every row at exactly `0.05` (483 — the largest *relative*
+  shift of any rate present: at 90 days 0.125 → 0.011), plus a random 3,000 of the rest.
+  **Zero** suggested-action changes in all three cohorts; COMPRESS steady at 42. The
+  distribution is 187,731 rows at 0.01, 477-483 at 0.05, 321 at 0.1, and **none at 0.5**
+  — the profile that would move (`decay_rate=0.5`, ~7d) simply does not occur here.
   Synthetically it shifts `decay` → `silence`, never toward COMPRESS/DELETE, so the
   destructive band is not in play. Worth re-checking if the extractor ever starts
   emitting 0.5 in volume, since `forgetting-daily` is the one job that *is* scheduled.
