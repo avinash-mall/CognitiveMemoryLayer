@@ -186,6 +186,19 @@ resident vLLM servers).
 
 ## Known issues / open decisions
 
+- **The running `docker-api-1` container (published on `:6000`) is slow enough to fail
+  the live suite, and that is unrelated to any code in this tree.** Measured 2026-07-31
+  with nothing else running: three sequential writes took **8.4 s, 16.1 s, 18.8 s** —
+  degrading, against the 3.03 s/turn baseline below. A full live suite against it took
+  **54:45 and failed 15 of 337**, every failure a 120 s client timeout on a write path
+  (`test_write_read`, `test_turn`, `test_batch`, `test_api_ingestion`). The identical
+  suite against a server started from source on `:8000`, same Postgres/Neo4j/Redis,
+  passes **337/337 in 2:24**. So it is the container, not the code — the image predates
+  these commits and does not contain them.
+  Not diagnosed further, only measured. The one datum worth having: GPU3, which the
+  container pins via `CUDA_VISIBLE_DEVICES=3`, sat at **89% utilisation and 79.4/81.9 GB**
+  while idle from CML's perspective, and the container reports `device: "auto"`,
+  `batch_size: 0`. Rebuilding or restarting it is a deployment decision, not a code fix.
 - **`scripts/test_memory_quality.py` is not reproducible enough for small A/Bs.** Three
   identical runs of identical code against a frozen tenant (`--skip-ingestion --tenant`)
   gave MISS/PASS/PASS on the same `semantic_disconnect` probe — 97%/100%/100% recall,
