@@ -6,6 +6,7 @@ from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
+from ..utils.retention import frequency_score, retention
 from ..utils.similarity import jaccard, word_set
 
 # Recency weights by memory type stability
@@ -22,8 +23,12 @@ class RerankerConfig:
     recency_weight: float = 0.1  # BUG-04: reduced from 0.2 to limit recency bias
     confidence_weight: float = 0.2
     diversity_weight: float = 0.1
+    frequency_weight: float = 0.05  # retrieval practice; smallest term by design
     diversity_threshold: float = 0.8
     max_results: int = 20
+    # Fraction of its own score a consolidated episode loses when the gist fact it
+    # was folded into is also in the result set. Demotion, not exclusion.
+    consolidated_penalty: float = 0.4
 
 
 class MemoryReranker:
@@ -69,6 +74,22 @@ class MemoryReranker:
                 breakdowns[idx]["constraint_boost"] = boost
                 base_scores[idx] += boost
 
+        # Consolidation is additive: migrating a cluster of episodes into a gist fact
+        # leaves every source episode active and embedded, so a query can match both
+        # halves and the packet carries the same content twice. Demote the source when
+        # its gist is present in this same result set. Demote, not drop — detail that
+        # survives only in the episode would otherwise become unreachable.
+        gist_keys = {
+            mem.record.key for mem in memories if mem.retrieval_source == "facts" and mem.record.key
+        }
+        if gist_keys:
+            for idx, mem in enumerate(memories):
+                fact_key = (mem.record.metadata or {}).get("consolidated_into_fact_key")
+                if fact_key and fact_key in gist_keys:
+                    penalty = base_scores[idx] * self.config.consolidated_penalty
+                    base_scores[idx] -= penalty
+                    breakdowns[idx]["notes"].append("demoted_superseded_by_gist")
+
         scored = [(score, memories[idx], idx) for idx, score in base_scores.items()]
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -93,6 +114,7 @@ class MemoryReranker:
                         "recency": breakdowns[idx]["recency"],
                         "confidence": breakdowns[idx]["confidence"],
                         "diversity": breakdowns[idx]["diversity"],
+                        "frequency": breakdowns[idx]["frequency"],
                         "recency_weight": breakdowns[idx]["recency_weight"],
                         "constraint_boost": breakdowns[idx].get("constraint_boost", 0.0),
                     },
@@ -151,8 +173,16 @@ class MemoryReranker:
             age_days = (now - tz_ts).days
         else:
             age_days = 0
-        recency = 1.0 / (1.0 + age_days * 0.1)
+        # Same curve the forgetting scorer uses, reading the same per-record rate.
+        # These were two different functions until now, so a memory aged at one speed
+        # when deciding what to delete and another when deciding what to show.
+        recency = retention(age_days, getattr(memory.record, "decay_rate", None))
         confidence = memory.record.confidence
+        # Retrieval practice: what you use often gets easier to find, not merely
+        # harder to delete. Deliberately the smallest weight in the sum — this is a
+        # rich-get-richer loop, and only the vector prong increments access_count,
+        # so a large weight would systematically bury fact- and graph-sourced hits.
+        frequency = frequency_score(getattr(memory.record, "access_count", 0) or 0)
 
         diversity_cap = min(len(all_memories), 20)
         if len(all_memories) <= 5:
@@ -179,6 +209,7 @@ class MemoryReranker:
             self.config.relevance_weight * relevance
             + self.config.confidence_weight * confidence
             + self.config.diversity_weight * diversity
+            + self.config.frequency_weight * frequency
         )
         if recency_weight > 0:
             score += recency_weight * recency
@@ -187,6 +218,7 @@ class MemoryReranker:
             "recency": recency,
             "confidence": confidence,
             "diversity": diversity,
+            "frequency": frequency,
             "recency_weight": recency_weight,
             "base_score": score,
             "notes": notes,

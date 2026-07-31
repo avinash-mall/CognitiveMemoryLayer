@@ -1,12 +1,12 @@
 """Relevance scoring for active forgetting."""
 
-import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryRecord
+from ..utils.retention import frequency_score, retention
 
 
 @dataclass
@@ -55,7 +55,8 @@ class ScorerConfig:
     """Configuration for RelevanceScorer."""
 
     weights: RelevanceWeights = field(default_factory=RelevanceWeights)
-    recency_half_life_days: float = 30.0
+    # Aging is per-record now (MemoryRecord.decay_rate via utils.retention), so there
+    # is deliberately no global half-life knob here any more.
     frequency_log_base: float = 10.0
     type_bonuses: dict[str, float] = field(
         default_factory=lambda: {
@@ -99,10 +100,11 @@ class RelevanceScorer:
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
         age_days = (now - ts).total_seconds() / 86400
-        recency = pow(0.5, age_days / self.config.recency_half_life_days)
+        # Per-record rate, not a global half-life: the write path assigns each memory
+        # a decay_rate (0.01 stable .. 0.5 ephemeral) and this is what reads it.
+        recency = retention(age_days, record.decay_rate)
 
-        frequency = math.log(1 + record.access_count, self.config.frequency_log_base)
-        frequency = min(frequency, 1.0)
+        frequency = frequency_score(record.access_count, self.config.frequency_log_base)
 
         confidence = record.confidence
 
