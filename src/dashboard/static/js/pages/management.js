@@ -30,7 +30,7 @@ export async function renderManagement({ tenantId } = {}) {
         const [tenantsData, jobsData, labileData, sessionsData] = await Promise.all([
             getTenants(),
             getJobs(null, null, 25).catch(() => ({ items: [], total: 0 })),
-            getLabile(tenantId).catch(() => ({ tenants: [], total_db_labile: 0, total_redis_scopes: 0, total_redis_sessions: 0, total_redis_memories: 0 })),
+            getLabile(tenantId).catch(() => ({ tenants: [], total_redis_scopes: 0, total_redis_sessions: 0, total_redis_memories: 0 })),
             getReconsolidationSessions(tenantId).catch(() => ({ items: [], total: 0 })),
         ]);
         tenants = tenantsData.tenants || [];
@@ -54,7 +54,6 @@ function buildPage(jobsData, labileData, sessionsData, tenantId) {
         </p>
 
         <div class="kpi-grid" style="margin-bottom:16px;">
-            <div class="kpi-card"><div class="kpi-label">DB Labile Memories</div><div class="kpi-value">${formatNumber(labileData.total_db_labile || 0)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Redis Scopes</div><div class="kpi-value">${formatNumber(labileData.total_redis_scopes || 0)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Redis Sessions</div><div class="kpi-value">${formatNumber(labileData.total_redis_sessions || 0)}</div></div>
             <div class="kpi-card"><div class="kpi-label">Inspectable Sessions</div><div class="kpi-value">${formatNumber(sessionsData.total || 0)}</div></div>

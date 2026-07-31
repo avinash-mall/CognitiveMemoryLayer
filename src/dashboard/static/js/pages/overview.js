@@ -20,7 +20,7 @@ export async function renderOverview({ tenantId } = {}) {
             getOverview(tenantId),
             getTimeline(30, tenantId),
             getComponents(),
-            getLabile(tenantId).catch(() => ({ total_db_labile: 0, total_redis_scopes: 0, total_redis_sessions: 0, total_redis_memories: 0 })),
+            getLabile(tenantId).catch(() => ({ total_redis_scopes: 0, total_redis_sessions: 0, total_redis_memories: 0 })),
             getRequestStats(24).catch(() => ({ points: [], total_last_24h: 0 })),
         ]);
 
@@ -70,11 +70,10 @@ function buildOverviewHTML(overview, timeline, components, labile, reqStats) {
         </div>
 
         <!-- Reconsolidation Quick Status -->
-        ${labile.total_db_labile > 0 || labile.total_redis_scopes > 0 ? `
+        ${labile.total_redis_scopes > 0 ? `
         <div class="card" style="margin-bottom:16px;border-left:3px solid var(--warning);">
             <div class="card-title">Reconsolidation Queue</div>
             <div style="display:flex;gap:32px;flex-wrap:wrap;">
-                <div class="component-detail"><span class="component-detail-label">DB Labile</span><span class="component-detail-value">${formatNumber(labile.total_db_labile)}</span></div>
                 <div class="component-detail"><span class="component-detail-label">Redis Scopes</span><span class="component-detail-value">${formatNumber(labile.total_redis_scopes)}</span></div>
                 <div class="component-detail"><span class="component-detail-label">Redis Sessions</span><span class="component-detail-value">${formatNumber(labile.total_redis_sessions)}</span></div>
                 <div class="component-detail"><span class="component-detail-label">Redis Memories</span><span class="component-detail-value">${formatNumber(labile.total_redis_memories)}</span></div>

@@ -39,7 +39,6 @@ class SensoryBufferConfig:
 
     max_tokens: int = 500
     decay_seconds: float = 30.0
-    cleanup_interval_seconds: float = 5.0
 
 
 # Module-level tiktoken encoder (shared, thread-safe, lazy)
@@ -191,17 +190,6 @@ class SensoryBuffer:
     def last_activity(self) -> float:
         """Unix timestamp of last ingest activity."""
         return self._last_activity
-
-    async def start_cleanup_loop(self) -> None:
-        """Start background cleanup task."""
-
-        async def cleanup_loop() -> None:
-            while True:
-                await asyncio.sleep(self.config.cleanup_interval_seconds)
-                async with self._lock:
-                    self._cleanup(time.time())
-
-        self._cleanup_task = asyncio.create_task(cleanup_loop())
 
     async def stop_cleanup_loop(self) -> None:
         """Stop background cleanup task."""

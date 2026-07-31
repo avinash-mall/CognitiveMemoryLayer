@@ -141,20 +141,13 @@ class TestShortTermMemory:
         assert isinstance(result["chunks_for_encoding"], list)
 
     @pytest.mark.asyncio
-    async def test_get_immediate_context(self):
-        config = ShortTermMemoryConfig()
-        stm = ShortTermMemory(config=config)
-        await stm.ingest_turn("t1", "u1", "Hello world.")
-        ctx = await stm.get_immediate_context("t1", "u1", include_sensory=True)
-        assert "working_memory" in ctx
-        assert "recent_text" in ctx
-
-    @pytest.mark.asyncio
-    async def test_clear(self):
+    async def test_clear_empties_both_stores(self):
+        """Verified through the subsystems directly: ShortTermMemory's own read
+        accessors were deleted as dead code (no caller anywhere), so clear() is
+        checked against what it actually clears."""
         config = ShortTermMemoryConfig()
         stm = ShortTermMemory(config=config)
         await stm.ingest_turn("t1", "u1", "Some text.")
         await stm.clear("t1", "u1")
-        ctx = await stm.get_immediate_context("t1", "u1")
-        assert ctx["working_memory"] == ""
-        assert ctx["recent_text"] == ""
+        assert await stm.working.get_current_context("t1", "u1", 5) == ""
+        assert await stm.sensory.get_recent_text("t1", "u1", max_tokens=200) == ""

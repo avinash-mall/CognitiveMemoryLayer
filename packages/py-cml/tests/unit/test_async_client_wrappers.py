@@ -197,7 +197,6 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
         if path == "/dashboard/labile":
             return {
                 "tenants": [],
-                "total_db_labile": 0,
                 "total_redis_scopes": 0,
                 "total_redis_sessions": 0,
                 "total_redis_memories": 0,
@@ -262,7 +261,7 @@ async def test_async_client_dashboard_and_admin_wrappers_build_expected_requests
     assert (await client.dashboard_neo4j_config()).server_user == "neo4j"
     assert (await client.get_config()).sections == []
     assert (await client.update_config({"debug": True}))["success"] is True
-    assert (await client.get_labile_status()).total_db_labile == 0
+    assert (await client.get_labile_status()).total_redis_scopes == 0
     assert (await client.test_retrieval("food")).query == "food"
     assert (await client.get_jobs()).total == 0
     assert (await client.reset_database(confirm=True))["success"] is True

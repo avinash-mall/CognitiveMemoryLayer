@@ -1,4 +1,10 @@
-"""Integration tests for full short-term memory ingest flow."""
+"""Integration tests for full short-term memory ingest flow.
+
+These exercise ``stm.sensory`` / ``stm.working`` directly. ShortTermMemory used to wrap
+them in ``get_immediate_context`` / ``get_encodable_chunks``, but those wrappers had no
+caller anywhere in the codebase and were deleted; the behaviour they covered is real and
+kept here, one layer down.
+"""
 
 import pytest
 
@@ -14,9 +20,8 @@ async def test_sensory_buffer_content_and_token_count():
     text = "I prefer coffee and my name is Bob."
     r = await stm.ingest_turn("tenant-a", "user-a", text, turn_id="turn-1", role="user")
     assert r["tokens_buffered"] > 0
-    ctx = await stm.get_immediate_context("tenant-a", "user-a", include_sensory=True)
-    assert "recent_text" in ctx
-    assert "coffee" in ctx["recent_text"] or "Bob" in ctx["recent_text"]
+    recent_text = await stm.sensory.get_recent_text("tenant-a", "user-a", max_tokens=200)
+    assert "coffee" in recent_text or "Bob" in recent_text
 
 
 @pytest.mark.asyncio
@@ -34,7 +39,9 @@ async def test_chunks_for_encoding_respect_min_salience():
         turn_id="turn-1",
         role="user",
     )
-    encodable = await stm.get_encodable_chunks("tenant-a", "user-a")
+    encodable = await stm.working.get_chunks_for_encoding(
+        "tenant-a", "user-a", min_salience=config.min_salience_for_encoding
+    )
     for c in encodable:
         assert c.salience >= 0.6, f"Encodable chunk has salience {c.salience} < 0.6"
     encodable_ids = {c.id for c in encodable}
@@ -79,7 +86,9 @@ async def test_chunks_for_encoding_handoff_to_write_gate_preserves_fields():
         turn_id="turn-1",
         role="user",
     )
-    encodable = await stm.get_encodable_chunks("tenant-a", "user-a")
+    encodable = await stm.working.get_chunks_for_encoding(
+        "tenant-a", "user-a", min_salience=config.min_salience_for_encoding
+    )
     assert encodable, "Chunker should produce at least one encodable chunk with min_salience=0"
     gate = WriteGate()
     for chunk in encodable:
@@ -111,7 +120,9 @@ async def test_full_ingest_flow():
     )
     assert r1["tokens_buffered"] > 0
     assert r1["chunks_created"] >= 1
-    encodable = await stm.get_encodable_chunks("tenant-a", "user-a")
+    encodable = await stm.working.get_chunks_for_encoding(
+        "tenant-a", "user-a", min_salience=config.min_salience_for_encoding
+    )
     assert len(encodable) >= 1
     high_salience = [c for c in encodable if c.salience >= 0.5]
     assert len(high_salience) >= 1
@@ -127,14 +138,10 @@ async def test_full_ingest_flow():
     assert r2["chunks_created"] >= 1
 
     # Context includes both
-    ctx = await stm.get_immediate_context(
-        "tenant-a",
-        "user-a",
-        include_sensory=True,
-        max_working_chunks=10,
-    )
-    assert ctx["working_memory"]
-    assert "vegetarian" in ctx["recent_text"] or "Alex" in ctx["recent_text"]
+    working_context = await stm.working.get_current_context("tenant-a", "user-a", 10)
+    recent_text = await stm.sensory.get_recent_text("tenant-a", "user-a", max_tokens=200)
+    assert working_context
+    assert "vegetarian" in recent_text or "Alex" in recent_text
 
     # Stats
     stats = await stm.working.get_stats("tenant-a", "user-a")
@@ -143,5 +150,7 @@ async def test_full_ingest_flow():
 
     # Clear
     await stm.clear("tenant-a", "user-a")
-    encodable_after = await stm.get_encodable_chunks("tenant-a", "user-a")
+    encodable_after = await stm.working.get_chunks_for_encoding(
+        "tenant-a", "user-a", min_salience=config.min_salience_for_encoding
+    )
     assert len(encodable_after) == 0

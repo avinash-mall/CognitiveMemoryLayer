@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select, update
 
 from ...storage.connection import DatabaseManager
-from ...storage.models import DashboardJobModel, MemoryRecordModel
+from ...storage.models import DashboardJobModel
 from ..auth import AuthContext, require_admin_permission
 from ._shared import (
     DashboardConsolidateRequest,
@@ -62,19 +62,14 @@ async def dashboard_labile(
     auth: AuthContext = Depends(require_admin_permission),
     db: DatabaseManager = Depends(_get_db),
 ):
-    """Labile (short-term) memory overview: DB labile counts, Redis scope and session counts. Optionally filter by tenant."""
-    try:
-        async with db.pg_session() as session:
-            q = (
-                select(MemoryRecordModel.tenant_id, func.count().label("cnt"))
-                .where(MemoryRecordModel.labile.is_(True))
-                .group_by(MemoryRecordModel.tenant_id)
-            )
-            if tenant_id:
-                q = q.where(MemoryRecordModel.tenant_id == tenant_id)
-            rows = (await session.execute(q)).all()
-            db_map = {r[0]: r[1] for r in rows}
+    """Labile (short-term) memory overview from Redis scope and session counts.
 
+    Deliberately does not query ``memory_records.labile``. That column is assigned
+    nowhere in the codebase — labile state lives entirely in ``LabileStateTracker``'s
+    Redis keys — so the old "DB Labile Memories" figure was structurally 0 and read as
+    "nothing is labile" rather than "we do not track it here".
+    """
+    try:
         redis_scope_map: dict[str, dict[str, int]] = {}
         if db.redis:
             cursor = 0
@@ -108,11 +103,10 @@ async def dashboard_labile(
                 if cursor == 0:
                     break
 
-        all_tenants = sorted(set(db_map.keys()) | set(redis_scope_map.keys()))
+        all_tenants = sorted(redis_scope_map.keys())
         tenants = [
             TenantLabileInfo(
                 tenant_id=tid,
-                db_labile_count=db_map.get(tid, 0),
                 redis_scope_count=redis_scope_map.get(tid, {}).get("scopes", 0),
                 redis_session_count=redis_scope_map.get(tid, {}).get("sessions", 0),
                 redis_memory_count=redis_scope_map.get(tid, {}).get("memories", 0),
@@ -122,7 +116,6 @@ async def dashboard_labile(
 
         return DashboardLabileResponse(
             tenants=tenants,
-            total_db_labile=sum(db_map.values()),
             total_redis_scopes=sum(v.get("scopes", 0) for v in redis_scope_map.values()),
             total_redis_sessions=sum(v.get("sessions", 0) for v in redis_scope_map.values()),
             total_redis_memories=sum(v.get("memories", 0) for v in redis_scope_map.values()),

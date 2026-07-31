@@ -37,7 +37,7 @@ def _request(*, orchestrator: object, db: object | None = None) -> SimpleNamespa
 
 
 @pytest.mark.asyncio
-async def test_dashboard_labile_merges_database_and_redis_counts() -> None:
+async def test_dashboard_labile_reports_redis_scope_and_session_counts() -> None:
     redis = RedisStub(
         scan_results=[(0, ["labile:scope:tenant-a:scope-1", "labile:scope:tenant-c:scope-2"])],
         lrange_values={
@@ -50,21 +50,18 @@ async def test_dashboard_labile_merges_database_and_redis_counts() -> None:
             "labile:session:sess-3": json.dumps({"memories": {"m3": {}}}),
         },
     )
-    db, _ = make_db(
-        pg_results=[ResultStub(all_rows=[("tenant-a", 2), ("tenant-b", 1)])],
-        redis=redis,
-    )
+    # No pg_results: the route no longer queries memory_records.labile, because that
+    # column is assigned nowhere and the figure was structurally 0.
+    db, _ = make_db(pg_results=[], redis=redis)
 
     result = await jobs_routes.dashboard_labile(tenant_id=None, auth=ADMIN_AUTH, db=db)
 
     by_tenant = {item.tenant_id: item for item in result.tenants}
-    assert [item.tenant_id for item in result.tenants] == ["tenant-a", "tenant-b", "tenant-c"]
-    assert by_tenant["tenant-a"].db_labile_count == 2
+    assert [item.tenant_id for item in result.tenants] == ["tenant-a", "tenant-c"]
     assert by_tenant["tenant-a"].redis_scope_count == 1
     assert by_tenant["tenant-a"].redis_session_count == 2
     assert by_tenant["tenant-a"].redis_memory_count == 2
     assert by_tenant["tenant-c"].redis_memory_count == 1
-    assert result.total_db_labile == 3
     assert result.total_redis_scopes == 2
     assert result.total_redis_sessions == 3
     assert result.total_redis_memories == 3
@@ -72,7 +69,10 @@ async def test_dashboard_labile_merges_database_and_redis_counts() -> None:
 
 @pytest.mark.asyncio
 async def test_dashboard_labile_returns_http_500_on_error() -> None:
-    db, _ = make_db(session=SessionStub([RuntimeError("labile boom")]))
+    # Injected through Redis, not the pg session: labile state is read from Redis only.
+    redis = RedisStub(scan_results=[(0, ["labile:scope:tenant-a:scope-1"])])
+    redis.lrange = AsyncMock(side_effect=RuntimeError("labile boom"))
+    db, _ = make_db(pg_results=[], redis=redis)
 
     with pytest.raises(HTTPException, match="labile boom"):
         await jobs_routes.dashboard_labile(tenant_id=None, auth=ADMIN_AUTH, db=db)

@@ -387,7 +387,6 @@ class TestWriteGateConstraint:
         result = gate.evaluate(chunk)
         assert result.decision in (
             WriteDecision.STORE,
-            WriteDecision.STORE_SYNC,
             WriteDecision.REDACT_AND_STORE,
         )
         # Must include CONSTRAINT memory type

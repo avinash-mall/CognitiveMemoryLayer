@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 class WriteDecision(StrEnum):
     STORE = "store"
-    STORE_SYNC = "store"  # Alias for backward compatibility
     SKIP = "skip"
     REDACT_AND_STORE = "redact_and_store"
 
@@ -37,7 +36,6 @@ class WriteGateConfig:
     min_novelty: float = 0.2
     pii_patterns: list[str] = field(default_factory=list)
     secret_patterns: list[str] = field(default_factory=list)
-    sync_importance_threshold: float = 0.7
 
     def __post_init__(self) -> None:
         if not self.pii_patterns:

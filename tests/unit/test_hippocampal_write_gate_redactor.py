@@ -45,8 +45,8 @@ class TestWriteGate:
         assert result.decision == WriteDecision.SKIP
         assert "threshold" in result.reason.lower()
 
-    def test_store_sync_high_importance(self):
-        gate = WriteGate(WriteGateConfig(sync_importance_threshold=0.5))
+    def test_high_importance_chunk_is_stored(self):
+        gate = WriteGate(WriteGateConfig())
         chunk = SemanticChunk(
             id="2",
             text="My name is Alice and I live in Paris.",
@@ -56,7 +56,6 @@ class TestWriteGate:
         result = gate.evaluate(chunk)
         assert result.decision in (
             WriteDecision.STORE,
-            WriteDecision.STORE_SYNC,
             WriteDecision.REDACT_AND_STORE,
         )
         assert result.memory_types
@@ -231,7 +230,6 @@ class TestWriteGateConfig:
         config = WriteGateConfig()
         assert config.min_importance == 0.3
         assert config.min_novelty == 0.2
-        assert config.sync_importance_threshold == 0.7
 
     def test_custom_thresholds(self):
         config = WriteGateConfig(

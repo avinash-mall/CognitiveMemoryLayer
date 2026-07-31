@@ -326,7 +326,6 @@ class TenantLabileInfo(BaseModel):
     """Labile state info per tenant."""
 
     tenant_id: str
-    db_labile_count: int = 0
     redis_scope_count: int = 0
     redis_session_count: int = 0
     redis_memory_count: int = 0
@@ -336,7 +335,6 @@ class DashboardLabileResponse(BaseModel):
     """Labile state overview."""
 
     tenants: list[TenantLabileInfo] = Field(default_factory=list)
-    total_db_labile: int = 0
     total_redis_scopes: int = 0
     total_redis_sessions: int = 0
     total_redis_memories: int = 0

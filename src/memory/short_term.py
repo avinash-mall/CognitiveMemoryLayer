@@ -7,7 +7,6 @@ from typing import Any
 from .sensory.buffer import SensoryBufferConfig
 from .sensory.manager import SensoryBufferManager
 from .working.manager import WorkingMemoryManager
-from .working.models import SemanticChunk
 
 
 @dataclass
@@ -72,37 +71,6 @@ class ShortTermMemory:
             "chunks_for_encoding": chunks_for_encoding,
             "all_chunks": new_chunks,
         }
-
-    async def get_immediate_context(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        include_sensory: bool = True,
-        max_working_chunks: int = 5,
-    ) -> dict[str, Any]:
-        """Get immediate context for the current conversation."""
-        result = {
-            "working_memory": await self.working.get_current_context(
-                tenant_id, scope_id, max_working_chunks
-            ),
-        }
-        if include_sensory:
-            result["recent_text"] = await self.sensory.get_recent_text(
-                tenant_id, scope_id, max_tokens=200
-            )
-        return result
-
-    async def get_encodable_chunks(
-        self,
-        tenant_id: str,
-        scope_id: str,
-    ) -> list[SemanticChunk]:
-        """Get all chunks that should be encoded into long-term memory."""
-        return await self.working.get_chunks_for_encoding(
-            tenant_id,
-            scope_id,
-            min_salience=self.config.min_salience_for_encoding,
-        )
 
     async def clear(self, tenant_id: str, scope_id: str) -> None:
         """Clear short-term memory for scope."""

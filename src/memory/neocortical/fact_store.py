@@ -403,6 +403,20 @@ class SemanticFactStore:
         model = existing_model
         existing = self._model_to_fact(model)
 
+        # A multi-valued schema accumulates rather than supersedes. Without this the one
+        # schema declared multi_valued (user:preference:cuisine) lost "Italian" the
+        # moment the user also said "Thai" — the `schema` argument was accepted here and
+        # never read.
+        if schema is not None and schema.multi_valued and existing.value != new_value:
+            merged = list(existing.value) if isinstance(existing.value, list) else [existing.value]
+            incoming = new_value if isinstance(new_value, list) else [new_value]
+            for item in incoming:
+                if item not in merged:
+                    merged.append(item)
+            # Equal means the incoming values were already known — fall through to the
+            # reinforcement branch below rather than writing a new version.
+            new_value = merged if merged != existing.value else existing.value
+
         if existing.value == new_value:
             setattr(
                 model,
