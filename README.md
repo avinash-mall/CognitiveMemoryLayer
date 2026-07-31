@@ -670,8 +670,13 @@ all 2,387 samples judged with zero errors, everything served locally (QA + judge
 > **Judge comparability caveat, before the table:** the paper baselines were judged by
 > `gemini-2.5-flash`; our column is judged by a local Qwen model. Cross-column absolute
 > comparisons are indicative only &mdash; the committed artifact exists so that *relative
-> movement across our own runs* is measurable. Ingestion used eval-mode writes, which skip
-> LLM enrichment: these scores measure the raw episodic retrieval path.
+> movement across our own runs* is measurable.
+>
+> **These scores also measured a partly-disabled system.** Eval-mode ingestion skipped
+> Neo4j graph sync and write-time facts, so multi-hop was scored against an empty graph
+> and the fact prong returned nothing; temporal resolution never ran on any write path at
+> all. Both are fixed, so these figures are a floor, not a ceiling. (Eval mode does *not*
+> skip LLM enrichment, contrary to what this note used to say.)
 
 | Category | CML 2026-07-31 (local 27B judge) | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
 | :--- | :--- | :--- | :--- | :--- | :--- |

@@ -203,8 +203,15 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 ### CML Run, 2026-07-31 (current) — `Qwen3.6-27B-FP8` (local, via vLLM)
 
 Reproducible: artifact at [`results/locomo_plus_2026-07-31.json`](results/locomo_plus_2026-07-31.json),
-server at `983a9f9`, all 2,387 samples judged, zero errors. Ingestion via eval-mode writes
-(`X-Eval-Mode` skips LLM enrichment — scores measure the raw episodic retrieval path).
+server at `983a9f9`, all 2,387 samples judged, zero errors.
+
+> **What this run actually measured.** `X-Eval-Mode` does **not** skip LLM enrichment —
+> `encode_batch` re-runs unified extraction per chunk, and 218,418 of 245,386 records
+> carry extracted entities. What it did skip was `_sync_to_graph` (the only writer of
+> Neo4j entities) plus write-time facts and constraints, so **multi-hop was scored against
+> an empty graph** and single-hop/common-sense against a dead fact prong. Separately,
+> temporal resolution never ran on any write path, so **temporal was scored with
+> `event_date` absent**. All three are fixed; treat these numbers as a floor.
 
 | Metric | Value |
 |--------|--------|
@@ -267,7 +274,8 @@ Table 1). Same evaluation protocol: LLM-as-judge, constraint consistency, no tas
    conversation and retries timeouts (see `983a9f9` for the failure it now survives).
 4. **Two write-path modes, measured 2026-07-30 at commit `485ad77`** — the unified LLM
    extractor at 0.33 turns/s (mean 3.03 s/turn, `qwen35-4b`), or heuristic-only at
-   17.31 turns/s. Eval ingestion uses a third mode (eval-mode: gate+embed only, no LLM).
+   17.31 turns/s. Eval mode is not a third mode: it still runs the LLM extractor, one
+   call per chunk instead of one batched call, and now also writes the graph and facts.
 
 ### Key Weaknesses
 

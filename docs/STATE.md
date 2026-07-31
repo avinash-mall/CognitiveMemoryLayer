@@ -14,9 +14,10 @@ link them below. Delete notes when they stop being true.
   leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
   signal because it runs the integration suite in containers against fresh
   Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
-- Suite sizes, so drift is visible: **740** unit (hermetic), **337** integration + e2e +
-  py-cml against a live server. Unit was 716, then 721 (uncommitted drift), then +19 for
-  source monitoring, gist demotion and the retention curve. Not regressions.
+- Suite sizes, so drift is visible: **745** unit (hermetic), **341** integration + e2e +
+  py-cml against a live server. Grew from 716/327 across two passes: source monitoring,
+  gist demotion, the retention curve, then temporal resolution, prospective indexing,
+  the scan_texts_for_gate SQL guard and multi-valued facts. Not regressions.
 - **The Docker `api` container bakes its source in — there is no volume mount.** Editing
   `src/` does not change what the running container serves, so a live suite against it
   tests the last image build, not your working tree. For verifying local changes, run
@@ -38,7 +39,33 @@ link them below. Delete notes when they stop being true.
 
 ## Active work
 
-(nothing in flight)
+- **LoCoMo-Plus subset A/B is pending.** Everything below is implemented and committed;
+  the measurement is not run. Arms, in order, each against a server run from source on
+  `:8000` using `evaluation/locomo_plus/data/unified_input_subset_v2.json`
+  (43 conversations, 16,706 turns, 677 samples, ~1.5-2 h per arm):
+  - **0** — free, already computed: `make_locomo_subset.py --baseline` restricts the
+    committed full-run artifact to the subset. Overall 0.4993 there vs 0.4631 full.
+  - **A** — eval mode now writes graph + facts (`6d8138e`). Watch multi-hop, single-hop.
+  - **B** — temporal resolution live (`bb3a4a5`). Watch temporal.
+  - **C** — `FEATURES__PROSPECTIVE_INDEXING_ENABLED=true`. Watch Cognitive and
+    common-sense for gain and **adversarial for regression** — that decides the default.
+
+  Compare per-category against arm 0, not against the full run's 0.4631.
+
+## What was wrong with the write path (fixed 2026-07-31)
+
+`HippocampalStore.encode_chunk` had **zero production callers** — only `encode_batch` is
+live. Everything that existed solely inside it therefore never ran, despite being
+feature-flagged on. The database was the proof, across 245,386 records: 0 prospective
+records, 117 with `event_date`, 0 with `causal_chain`, but 218,418 *with* extracted
+entities (so unified extraction, which lives in `encode_batch`, always ran).
+
+Fixed across `6d8138e`, `bb3a4a5`, `f662975`, `e3635ad`. See the eval-mode correction
+under Known issues for what this means for the 0.4631 score.
+
+Deliberately still not carried over: `metadata["temporal_references"]` and
+`metadata["causal_chain"]`. Nothing reads either, and adding them would recreate the
+write-only bug class the previous pass removed. ~8 lines each when a renderer wants them.
 
 ## The write-path/read-path disconnect (fixed 2026-07-31)
 
@@ -213,13 +240,26 @@ resident vLLM servers).
   modelpack removal. **Overall 0.4631** (1105.5/2387, all valid, 0 errors); by category:
   adversarial 0.78, single-hop 0.54, multi-hop 0.34, temporal 0.31, common-sense 0.24,
   Cognitive 0.21. Artifacts: `evaluation/results/locomo_plus_2026-07-31_{summary,judged}.json` (summary + per-sample judge records). Conditions:
-  server at 983a9f9 (4 uvicorn workers, CPU embedder), ingestion via eval-mode writes
-  (X-Eval-Mode skips unified extraction — no LLM enrichment on stored memories), QA+judge
-  on local Qwen3.6-27B-FP8. Per lever G these numbers are NOT comparable to published
-  gemini-judged baselines — only relative movement against this artifact is meaningful.
-  Multi-hop and temporal remain the weak categories, consistent with lever E being unshipped.
-  Full pipeline cost on this host: ~11.5h ingestion (218k turns, shared GPUs) + ~2h QA +
-  ~0.5h judge.
+  server at 983a9f9 (4 uvicorn workers, CPU embedder), QA+judge on local Qwen3.6-27B-FP8.
+  Per lever G these numbers are NOT comparable to published gemini-judged baselines — only
+  relative movement against this artifact is meaningful. Full pipeline cost on this host:
+  ~11.5h ingestion (218k turns, shared GPUs) + ~2h QA + ~0.5h judge.
+
+  **What it actually measured, corrected 2026-07-31.** This entry used to say
+  "X-Eval-Mode skips unified extraction — no LLM enrichment on stored memories". That was
+  false, and the same claim was in README.md and evaluation/README.md. `encode_batch`
+  re-runs unified extraction per chunk whenever `unified_results is None`
+  (`store.py:444-453`), so eval mode substitutes N per-chunk `extract()` calls for one
+  `extract_batch()` and can be *more* LLM work, not less. 218,418 of 245,386 records carry
+  extracted entities, which is the proof.
+
+  What eval mode did skip was `_sync_to_graph` — the only writer of Neo4j entities — plus
+  write-time facts and constraints. So **multi-hop 0.34 was scored against an empty graph
+  and single-hop/common-sense against a dead fact prong**; Neo4j held ~2,291 nodes against
+  218,418 entity-carrying records. Fixed in `6d8138e`, verified by node count. Separately,
+  temporal resolution never ran on any write path at all (`encode_chunk` had no caller),
+  so **temporal 0.31 was measured with `event_date` absent** from all but 117 records —
+  fixed in `bb3a4a5`. Those three categories are the ones to watch on a re-run.
 - **Write throughput is LLM-token-bound, measured not guessed.** One LLM call per write
   (~884 prompt + ~481 output tokens) is 95.8% of write latency; under sustained conc=40
   load vLLM holds 40 running / 0 waiting while GPU2 (qwen35-4b) pins at 93-99% and
@@ -248,11 +288,19 @@ resident vLLM servers).
   The table and `migrations/versions/001_initial_schema.py` were deliberately left alone
   — a destructive migration doesn't belong in a cleanup. Drop it in a migration whenever
   someone is willing to own the data loss, or resurrect the writer instead.
-- **Unshipped retrieval improvements**, salvaged from the deleted `Improvement_Report.md`
-  (levers A, B and D shipped as `extraction/prospective_indexer.py`, the BM25+RRF hybrid,
-  and `extraction/temporal_resolver.py`. The BM25 half has since been removed as unwired —
-  no plan step ever produced a sparse retrieval step — leaving `rrf_merge` in
-  `src/retrieval/rrf.py` for the HyDE merge):
+- **Unshipped retrieval improvements**, salvaged from the deleted `Improvement_Report.md`.
+  This list used to claim levers A, B and D had *shipped*. Two of those three had not:
+  - **A — prospective indexing.** Written, then wired only into `encode_chunk`, which had
+    no caller. Zero prospective records existed across 245,386. Now genuinely live
+    (`f662975`), batched to one `embed_batch` per write, and **default off** pending the
+    LoCoMo subset A/B. `extraction/prospective_indexer.py` was deleted — its per-record
+    LLM fallback was the wrong shape for a batch path.
+  - **B — BM25+RRF hybrid.** Removed as unwired; no plan step ever produced a sparse
+    retrieval step. `rrf_merge` survives in `src/retrieval/rrf.py` for the HyDE merge.
+  - **D — temporal resolution.** Same story as A: only 117 of 245,386 records carried
+    `event_date`. Live on `encode_batch` since `bb3a4a5`.
+
+  Genuinely unshipped:
   - **C — bi-temporal graph edges** (Graphiti-style `valid_from`/`valid_to` on relations),
     so the graph can answer "what did I believe then" rather than only "now". Related and
     larger: there is no sequence structure at all, so "what happened before X" is
