@@ -18,6 +18,13 @@ from .query_types import QueryAnalysis
 
 logger = get_logger(__name__)
 
+# Band that graph hits are rank-normalised into. The ceiling sits below 1.0 on purpose:
+# an entity profile summarises a neighbourhood rather than answering a question, so it
+# should compete with strong episodes without automatically displacing them. The floor
+# keeps the weakest graph hit above the packet's episode_relevance_threshold default.
+GRAPH_RELEVANCE_FLOOR = 0.55
+GRAPH_RELEVANCE_CEILING = 0.85
+
 
 @dataclass
 class RetrievalResult:
@@ -583,7 +590,19 @@ class HybridRetriever:
             return []
         results = await self.neocortical.multi_hop_query(tenant_id, seed_entities=step.seeds)
         items = []
-        for r in results:
+        # Graph scores are raw Neo4j co-occurrence counts on an unbounded scale — 315,
+        # 744 have both been observed — while every other prong emits cosine-like 0..1.
+        # Ranking is done on the raw value before the reranker's clamp ever runs, so
+        # unnormalised graph hits take every top-k slot and push real episodes below
+        # `episode_relevance_threshold`, which drops them from the packet entirely.
+        # That was invisible for as long as the graph stayed empty. Rank-normalise into
+        # the same band the other prongs use, preserving order among graph hits, which
+        # a flat clamp to 1.0 would destroy.
+        raw = [float(r.get("relevance_score", 0.5) or 0.0) for r in results]
+        hi = max(raw, default=0.0)
+        lo = min(raw, default=0.0)
+        span = hi - lo
+        for r, score in zip(results, raw, strict=True):
             text = self._format_entity_info(r)
             # Skip entity profiles with garbage/short relations.
             # Require at least 3 relations with meaningful related_entity (>= 3 words).
@@ -593,13 +612,22 @@ class HybridRetriever:
             ]
             if len(meaningful) < 3:
                 continue
+            # Top graph hit lands at GRAPH_RELEVANCE_CEILING, not 1.0: an entity profile
+            # is a summary of a neighbourhood, not an answer, so it should be able to
+            # rank alongside strong episodes without automatically outranking them.
+            normalised = (
+                GRAPH_RELEVANCE_CEILING
+                if span <= 0
+                else GRAPH_RELEVANCE_FLOOR
+                + (score - lo) / span * (GRAPH_RELEVANCE_CEILING - GRAPH_RELEVANCE_FLOOR)
+            )
             items.append(
                 {
                     "type": "graph",
                     "source": "graph",
                     "entity": r.get("entity"),
                     "text": text,
-                    "relevance": r.get("relevance_score", 0.5),
+                    "relevance": normalised,
                     "record": r,
                 }
             )
