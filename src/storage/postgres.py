@@ -337,6 +337,16 @@ class PostgresMemoryStore(MemoryStoreBase):
 
         Avoids transferring 768-dim embedding vectors (150KB per 50 records)
         that the gate discards immediately.
+
+        Prospective-index rows are excluded. They are LLM-written paraphrases of a real
+        memory, and with several per chunk they would quickly fill this 10-row window —
+        the gate would then measure the next genuine turn's novelty against machine
+        paraphrases of itself, which are high-similarity by construction, and start
+        skipping real input.
+
+        The ``or_`` is load-bearing: most episodic rows have ``key IS NULL``, and
+        ``NULL NOT LIKE 'x'`` evaluates to NULL, which SQL treats as false. A bare
+        ``notlike`` would therefore drop nearly every row and blind the gate entirely.
         """
         async with self.session_factory() as session:
             q = (
@@ -344,6 +354,10 @@ class PostgresMemoryStore(MemoryStoreBase):
                 .where(
                     MemoryRecordModel.tenant_id == tenant_id,
                     MemoryRecordModel.status == "active",
+                    or_(
+                        MemoryRecordModel.key.is_(None),
+                        ~MemoryRecordModel.key.like("prospective:%"),
+                    ),
                 )
                 .order_by(MemoryRecordModel.timestamp.desc())
                 .limit(limit)

@@ -153,9 +153,12 @@ class FeatureFlags(PydanticBaseModel):
     )
     # --- Improvement Report features (LoCoMo-Plus / Kumiho-inspired) ---
     prospective_indexing_enabled: bool = Field(
-        default=True,
+        default=False,
         description="Generate forward-looking implications at write time (Kumiho-inspired). "
-        "Bridges cue-trigger semantic disconnect for cognitive memory queries.",
+        "Bridges cue-trigger semantic disconnect for cognitive memory queries. "
+        "Off by default: it multiplies the store by roughly the implication count with "
+        "LLM-invented records that compete in retrieval against real user statements, "
+        "and it had never actually executed before, so 'on' is not the status quo.",
     )
     prospective_index_count: int = Field(
         default=4,

@@ -468,6 +468,11 @@ class HippocampalStore:
                 aligned_chunks.append(surviving[i][1])
                 existing_dicts.append({"text": rec.text})
 
+        # Deliberately after the aligned lists are built and NOT appended to `results`:
+        # that list feeds graph sync, the write-time facts/constraints phases and the
+        # write response's memory_id, none of which should see synthetic rows.
+        await self._store_prospective_indexes(results, aligned_unified)
+
         structlog.get_logger("encode_timing").info(
             "encode_batch_full_timing",
             scan_ms=round((_t_scan_end - _t_scan_start) * 1000, 1),
@@ -568,21 +573,17 @@ class HippocampalStore:
 
     async def _store_prospective_indexes(
         self,
-        tenant_id: str,
-        source_record: MemoryRecord,
-        unified_result: UnifiedExtractionResult | None,
-        context_tags: list[str],
-        source_session_id: str | None,
-        agent_id: str | None,
-        namespace: str | None,
-        timestamp: datetime,
+        records: list[MemoryRecord],
+        unified_results: list[UnifiedExtractionResult | None],
     ) -> None:
-        """Store prospective implication indexes as linked memory records.
+        """Store the LLM's forward-looking implications as linked, searchable records.
 
-        Each implication is embedded and stored as a separate record with
-        type=EPISODIC_EVENT and metadata linking back to the source memory.
-        At retrieval time, queries match against both the original memory
-        embedding and the prospective index embeddings.
+        One ``embed_batch`` for the whole write, not one per source record: in a batch
+        of N chunks the per-record form issued N small embedding calls.
+
+        There is deliberately no fallback to a dedicated indexer when the unified result
+        carries no implications. That fallback made one extra LLM call *per record*, on
+        a path where the LLM is already 95.8% of write latency.
         """
         from ...core.config import get_settings
 
@@ -590,77 +591,61 @@ class HippocampalStore:
         if not features.prospective_indexing_enabled:
             return
 
-        implications: list[str] = []
-
-        # Try unified LLM result first (already extracted during write)
-        if unified_result and unified_result.prospective_implications:
-            implications = unified_result.prospective_implications
-
-        # Fallback: use dedicated prospective indexer if LLM is enabled
-        if not implications and features.use_llm_enabled:
-            try:
-                from ...extraction.prospective_indexer import ProspectiveIndexer
-                from ...utils.llm import get_internal_llm_client
-
-                llm = get_internal_llm_client()
-                if llm is not None:
-                    indexer = ProspectiveIndexer(
-                        llm,
-                        max_implications=features.prospective_index_count,
-                    )
-                    indexes = await indexer.generate(
-                        source_record.text,
-                        memory_id=str(source_record.id),
-                    )
-                    implications = [idx.implication for idx in indexes]
-            except Exception as exc:
-                structlog.get_logger(__name__).debug(
-                    "prospective_indexer_fallback_failed",
-                    error=str(exc),
-                )
-
-        if not implications:
+        pairs: list[tuple[MemoryRecord, str]] = []
+        for record, unified in zip(records, unified_results, strict=False):
+            implications = getattr(unified, "prospective_implications", None) if unified else None
+            for text in (implications or [])[: features.prospective_index_count]:
+                pairs.append((record, text))
+        if not pairs:
             return
 
-        # Embed and store each implication
         try:
-            texts = implications[: features.prospective_index_count]
-            embed_results = await self.embeddings.embed_batch(texts)
-
-            for imp_text, emb_result in zip(texts, embed_results, strict=False):
-                imp_key = f"prospective:{source_record.id}:{hashlib.sha256(imp_text.encode()).hexdigest()[:12]}"
-                imp_record = MemoryRecordCreate(
-                    tenant_id=tenant_id,
-                    context_tags=context_tags,
-                    source_session_id=source_session_id,
-                    agent_id=agent_id,
-                    namespace=namespace,
-                    type=MemoryType.EPISODIC_EVENT,
-                    text=imp_text,
-                    key=imp_key,
-                    embedding=emb_result.embedding,
-                    entities=[],
-                    relations=[],
-                    metadata={
-                        "prospective_source_id": str(source_record.id),
-                        "prospective_source_text": source_record.text[:500],
-                        "is_prospective_index": True,
-                    },
-                    timestamp=timestamp,
-                    confidence=source_record.confidence * 0.9,
-                    importance=source_record.importance * 0.8,
-                    provenance=Provenance(
-                        source=MemorySource.AGENT_INFERRED,
-                        evidence_refs=[str(source_record.id)],
-                    ),
-                )
-                await self.store.upsert(imp_record)
+            embeddings = await self.embeddings.embed_batch([text for _r, text in pairs])
+            await asyncio.gather(
+                *[
+                    self.store.upsert(self._prospective_record(record, text, emb.embedding))
+                    for (record, text), emb in zip(pairs, embeddings, strict=True)
+                ],
+                return_exceptions=True,
+            )
         except Exception as exc:
             structlog.get_logger(__name__).warning(
                 "prospective_index_storage_failed",
                 error=str(exc),
-                source_id=str(source_record.id),
+                count=len(pairs),
             )
+
+    @staticmethod
+    def _prospective_record(
+        source: MemoryRecord, text: str, embedding: list[float]
+    ) -> MemoryRecordCreate:
+        """One implication, tagged so it can never be mistaken for user testimony."""
+        digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+        return MemoryRecordCreate(
+            tenant_id=source.tenant_id,
+            context_tags=list(source.context_tags or []),
+            source_session_id=source.source_session_id,
+            agent_id=source.agent_id,
+            namespace=source.namespace,
+            type=MemoryType.EPISODIC_EVENT,
+            text=text,
+            key=f"prospective:{source.id}:{digest}",
+            embedding=embedding,
+            entities=[],
+            relations=[],
+            metadata={
+                "prospective_source_id": str(source.id),
+                "prospective_source_text": source.text[:500],
+                "is_prospective_index": True,
+            },
+            timestamp=source.timestamp,
+            confidence=source.confidence * 0.9,
+            importance=source.importance * 0.8,
+            provenance=Provenance(
+                source=MemorySource.AGENT_INFERRED,
+                evidence_refs=[str(source.id)],
+            ),
+        )
 
     def _generate_key(self, chunk: SemanticChunk, memory_type: MemoryType) -> str | None:
         """Generate a stable, unique key for deduplication.
