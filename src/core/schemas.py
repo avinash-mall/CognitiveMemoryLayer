@@ -19,6 +19,30 @@ class Provenance(BaseModel):
     extraction_prompt_hash: str | None = None  # For reproducibility
 
 
+# Source monitoring: what the model is told about where a memory came from.
+# Testimony (the user said it) is the unmarked default so the common case stays
+# terse; everything the system produced itself is marked, because rendering an
+# inference identically to a user statement invites the model to quote its own
+# speculation back as fact.
+_SOURCE_LABELS: dict[MemorySource, str] = {
+    MemorySource.AGENT_INFERRED: "inferred",
+    MemorySource.CONSOLIDATION: "consolidated",
+    MemorySource.RECONSOLIDATION: "revised",
+    MemorySource.TOOL_RESULT: "tool output",
+}
+
+
+def source_label(record: Any) -> str:
+    """Return a bracketed origin marker, or '' for direct user testimony.
+
+    Every renderer that puts memory text in front of a model routes through this,
+    so agent-authored content cannot be presented as something the user said.
+    """
+    source = getattr(getattr(record, "provenance", None), "source", None)
+    label = _SOURCE_LABELS.get(source) if isinstance(source, MemorySource) else None
+    return f" [{label}]" if label else ""
+
+
 class EntityMention(BaseModel):
     """An entity mentioned in the memory."""
 
@@ -168,7 +192,10 @@ class MemoryPacket(BaseModel):
             if memories:
                 lines.append(f"## {category}")
                 for m in memories[:5]:  # Limit per category
-                    lines.append(f"- {m.record.text} (confidence: {m.record.confidence:.2f})")
+                    lines.append(
+                        f"- {m.record.text}{source_label(m.record)} "
+                        f"(confidence: {m.record.confidence:.2f})"
+                    )
 
         result = "\n".join(lines)
         if len(result) <= max_chars:

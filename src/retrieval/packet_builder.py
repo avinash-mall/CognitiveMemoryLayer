@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 from ..core.enums import MemoryType
-from ..core.schemas import MemoryPacket, RetrievedMemory
+from ..core.schemas import MemoryPacket, RetrievedMemory, source_label
 
 # Fallback constants when config unavailable (BUG-02: avoid diluting constraints)
 EPISODE_RELEVANCE_THRESHOLD = 0.5
@@ -126,6 +126,19 @@ class MemoryPacketBuilder:
         return packet.to_context_string(max_chars=max_tokens * 4)
 
     @staticmethod
+    def _source_label(mem: RetrievedMemory) -> str:
+        """Origin marker for a retrieved memory; see ``schemas.source_label``.
+
+        Suppressed for the fact prong: ``semantic_facts`` has no provenance column,
+        so ``_fact_to_record`` stamps every row AGENT_INFERRED as a placeholder.
+        Rendering that would label every fact identically — no signal, and it would
+        weaken constraint wording on the strength of a value nobody recorded.
+        """
+        if mem.retrieval_source == "facts":
+            return ""
+        return source_label(mem.record)
+
+    @staticmethod
     def _constraint_provenance(mem: RetrievedMemory) -> str:
         """Extract compact provenance string from a constraint memory."""
         meta = mem.record.metadata or {}
@@ -223,7 +236,7 @@ class MemoryPacketBuilder:
             fact_lines: list[str] = []
             for f in packet.facts[:8]:
                 conf = f"[{f.record.confidence:.0%}]" if f.record.confidence < 1.0 else ""
-                line = f"- {f.record.text} {conf}\n"
+                line = f"- {f.record.text}{self._source_label(f)} {conf}\n"
                 if len(header) + sum(len(x) for x in fact_lines) + len(line) <= remaining:
                     fact_lines.append(line)
                 else:
@@ -239,7 +252,7 @@ class MemoryPacketBuilder:
             header = "## User Preferences\n"
             pref_lines: list[str] = []
             for p in packet.preferences[:8]:
-                line = f"- {p.record.text}\n"
+                line = f"- {p.record.text}{self._source_label(p)}\n"
                 if len(header) + sum(len(x) for x in pref_lines) + len(line) <= remaining:
                     pref_lines.append(line)
                 else:
@@ -268,7 +281,10 @@ class MemoryPacketBuilder:
                     date_str = f" [{e.record.timestamp.strftime('%Y-%m-%d')}]"
                 speaker = meta.get("speaker", "")
                 speaker_prefix = f"({speaker}) " if speaker else ""
-                line = f"- {speaker_prefix}{e.record.text}{date_str} (confidence: {e.record.confidence:.2f})\n"
+                line = (
+                    f"- {speaker_prefix}{e.record.text}{self._source_label(e)}{date_str} "
+                    f"(confidence: {e.record.confidence:.2f})\n"
+                )
                 if len(header) + sum(len(x) for x in ep_lines) + len(line) <= remaining:
                     ep_lines.append(line)
                 else:
@@ -296,12 +312,21 @@ class MemoryPacketBuilder:
         """Format as JSON string."""
         data = {
             "facts": [
-                {"text": f.record.text, "confidence": f.record.confidence} for f in packet.facts[:8]
+                {
+                    "text": f.record.text,
+                    "confidence": f.record.confidence,
+                    "source": self._source_label(f).strip(" []") or "user",
+                }
+                for f in packet.facts[:8]
             ],
-            "preferences": [{"text": p.record.text} for p in packet.preferences[:8]],
+            "preferences": [
+                {"text": p.record.text, "source": self._source_label(p).strip(" []") or "user"}
+                for p in packet.preferences[:8]
+            ],
             "recent": [
                 {
                     "text": e.record.text,
+                    "source": self._source_label(e).strip(" []") or "user",
                     "date": (
                         e.record.timestamp.isoformat()
                         if hasattr(e.record.timestamp, "isoformat")
@@ -314,6 +339,7 @@ class MemoryPacketBuilder:
                 {
                     "text": c.record.text,
                     "confidence": c.record.confidence,
+                    "source": self._source_label(c).strip(" []") or "user",
                     "provenance": self._constraint_provenance(c),
                 }
                 for c in packet.constraints[:6]
