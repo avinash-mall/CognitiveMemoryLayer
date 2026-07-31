@@ -313,8 +313,11 @@ class MemoryOrchestrator:
             _get_settings(),
             has_unified_extractor=getattr(self.hippocampal, "unified_extractor", None) is not None,
         )
-        # In eval_mode, skip extraction phases that produce low-quality data
-        # and add significant latency (unified extraction, constraint deactivation).
+        # eval_mode skips the *batched* unified extraction and constraint deactivation.
+        # Note it does not skip LLM enrichment: encode_batch re-runs unified extraction
+        # per chunk when unified_results is None, so eval mode substitutes N per-chunk
+        # extract() calls for one extract_batch(). Deactivation stays skipped because it
+        # is the one phase here that makes extra LLM calls (detect_supersession).
         if not eval_mode:
             unified_results = await self._phase_unified_extraction(chunks_for_encoding, wpc)
         else:
@@ -346,39 +349,40 @@ class MemoryOrchestrator:
         )
         _t_encode = _time.perf_counter()
 
-        # In eval_mode, skip facts/constraints/graph — they add latency
-        # and produce low-quality neocortical data for eval workloads.
-        if not eval_mode:
-            graph_task = None
-            if stored:
-                graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored))
-            # stored_chunks is positionally aligned with stored / unified_results
-            # (one entry per stored record), so stored[idx] always corresponds to
-            # chunks[idx] in both phases — even when the write gate skipped some
-            # chunks or an upsert was dropped.
-            _facts_coro = self._phase_write_time_facts(
-                tenant_id,
-                stored_chunks,
-                stored,
-                unified_results,
-                timestamp,
-                wpc,
-            )
-            _constraints_coro = self._phase_write_constraints(
-                tenant_id, stored_chunks, stored, unified_results, timestamp, wpc
-            )
-            await asyncio.gather(_facts_coro, _constraints_coro)
-            _t_facts = _time.perf_counter()
-            _t_constraints = _t_facts
+        # These run on the eval path too. They used to be skipped as "low-quality
+        # neocortical data", but _sync_to_graph is the only writer of Neo4j entities and
+        # relations in the codebase, so skipping it left the graph empty for every eval
+        # tenant — and the LoCoMo-Plus multi-hop score was therefore measured against
+        # nothing. Same for the fact prong: no write-time facts meant _retrieve_facts had
+        # nothing to return. None of the three calls an LLM; the latency argument for
+        # skipping them does not hold.
+        graph_task = asyncio.create_task(self._sync_to_graph(tenant_id, stored)) if stored else None
+        # stored_chunks is positionally aligned with stored / unified_results
+        # (one entry per stored record), so stored[idx] always corresponds to
+        # chunks[idx] in both phases — even when the write gate skipped some
+        # chunks or an upsert was dropped.
+        _facts_coro = self._phase_write_time_facts(
+            tenant_id,
+            stored_chunks,
+            stored,
+            unified_results,
+            timestamp,
+            wpc,
+        )
+        _constraints_coro = self._phase_write_constraints(
+            tenant_id, stored_chunks, stored, unified_results, timestamp, wpc
+        )
+        await asyncio.gather(_facts_coro, _constraints_coro)
+        _t_facts = _time.perf_counter()
+        _t_constraints = _t_facts
 
-            if graph_task is not None and not graph_task.done():
-                try:
-                    await asyncio.wait_for(graph_task, timeout=2.0)
-                except Exception as exc:
-                    logger.warning("graph_sync_incomplete", extra={"error": str(exc)})
-        else:
-            _t_facts = _t_encode
-            _t_constraints = _t_encode
+        # Awaited here, not inside the block that created it: an un-awaited task is
+        # GC-eligible mid-flight, which is how graph writes would silently vanish.
+        if graph_task is not None:
+            try:
+                await asyncio.wait_for(graph_task, timeout=2.0)
+            except Exception as exc:
+                logger.warning("graph_sync_incomplete", extra={"error": str(exc)})
         _t_graph = _time.perf_counter()
 
         logger.info(

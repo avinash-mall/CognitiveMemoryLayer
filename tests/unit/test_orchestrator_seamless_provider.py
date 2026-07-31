@@ -506,8 +506,14 @@ class TestMemoryOrchestrator:
         mock_dependencies["neocortical"].store_relations_batch.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_write_eval_mode_skips_graph_sync(self, orchestrator, mock_dependencies):
-        """In eval_mode, graph sync is skipped to reduce latency for bulk eval workloads."""
+    async def test_write_eval_mode_still_syncs_graph(self, orchestrator, mock_dependencies):
+        """eval_mode must NOT skip graph sync.
+
+        _sync_to_graph is the only writer of Neo4j entities and relations, so skipping
+        it under eval_mode left the graph empty for every eval tenant and made the
+        LoCoMo-Plus multi-hop score a measurement of nothing. It calls no LLM, so the
+        latency argument that justified the skip never applied.
+        """
         entity = EntityMention(text="Tokyo", normalized="Tokyo", entity_type="LOCATION")
         stored_record = _make_memory_record(text="I traveled to Tokyo")
         stored_record.entities = [entity]
@@ -537,7 +543,7 @@ class TestMemoryOrchestrator:
             tenant_id="t1", content="I traveled to Tokyo", eval_mode=True
         )
         assert result["eval_outcome"] == "stored"
-        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_not_called()
+        mock_dependencies["neocortical"].graph.merge_nodes_batch.assert_called()
 
 
 class TestOrchestratorFactory:
