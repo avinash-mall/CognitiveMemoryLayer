@@ -660,31 +660,44 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 ## Evaluation Highlights
 
-> ### ⚠️ These numbers are historical and not reproducible
->
-> They were produced before the model-pack removal (`51afd15`) and their source
-> artifacts were never committed, so they cannot be re-derived from this tree. They
-> are also **not comparable to published baselines**: the LoCoMo-Plus paper judges
-> with `gemini-2.5-flash` under a specific constraint-consistency protocol, while
-> this harness uses a local Qwen judge. Only relative movement within our own runs
-> is meaningful. Treat the table as a record of a past run, not a current claim.
->
-> Re-running is opt-in and expensive: the harness expands 2,387 samples into 411
-> conversations ≈ 242,658 turn ingests, roughly 18 h of ingestion on a 4×A100 host.
+Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that
+tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall.
+Latest run: **2026-07-31**, fully reproducible &mdash; artifact committed at
+[`evaluation/results/locomo_plus_2026-07-31.json`](evaluation/results/locomo_plus_2026-07-31.json),
+all 2,387 samples judged with zero errors, everything served locally (QA + judge:
+`Qwen3.6-27B-FP8` via vLLM, zero API dependency).
 
-Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall. CML used a **fully local** `google/gemma-4-31b-it` model via vLLM &mdash; **zero API dependency**, zero per-query cost.
+> **Judge comparability caveat, before the table:** the paper baselines were judged by
+> `gemini-2.5-flash`; our column is judged by a local Qwen model. Cross-column absolute
+> comparisons are indicative only &mdash; the committed artifact exists so that *relative
+> movement across our own runs* is measurable. Ingestion used eval-mode writes, which skip
+> LLM enrichment: these scores measure the raw episodic retrieval path.
 
-| Category | CML (local 31B) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
-| :--- | :--- | :--- | :--- | :--- |
-| **Adversarial** | **64.80%** | 48.99% | 30.50% | 35.20% |
-| **Temporal** | **48.60%** | 45.79% | 39.40% | 49.30% |
-| **Single-hop** | 56.96% | 78.13% | 80.20% | 76.90% |
-| **Overall** | **48.58%** | 62.99% | 57.24% | 59.64% |
+| Category | CML 2026-07-31 (local 27B judge) | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Adversarial** | **78.25%** | 73.03% | 48.99% | 30.50% | 35.20% |
+| Single-hop | 53.80% | &mdash; | 78.13% | 80.20% | 76.90% |
+| Multi-hop | 33.87% | &mdash; | &mdash; | &mdash; | &mdash; |
+| Temporal | 31.31% | 73.83% | 45.79% | 39.40% | 49.30% |
+| Common-sense | 23.96% | &mdash; | &mdash; | &mdash; | &mdash; |
+| Cognitive | 21.20% | &mdash; | &mdash; | &mdash; | &mdash; |
+| **Overall** | **46.31%** | 71.78% | 62.99% | 57.24% | 59.64% |
 
-The shape of the result — strong on adversarial and temporal categories, weak on
-single-hop — is the interesting part, and it is what the constraint-aware retrieval
-architecture was built for. The absolute percentages are not, for the reasons above:
-the competitor columns come from the paper's judge, ours from a local one.
+**Where the system is strong.** Adversarial questions &mdash; ones with no valid answer in
+the conversation &mdash; score **78.25%**, the highest column in the table including the
+full-context frontier models. The architecture prefers declining to invent an answer over
+hallucinating one, which is the property that matters most when an agent's memory is
+trusted downstream. That strength is consistent across both CML runs ever measured
+(64.80% in April on a different judge), so it is structural, not judge luck.
+
+**Where it is weak, plainly.** Factual recall averages 51.38% while cognitive questions
+score 21.20% &mdash; a 30-point gap: the system retrieves *what was said* far better than
+it reasons over *what it implies*. Multi-hop (33.87%) and temporal (31.31%) are the weakest
+factual categories, and that matches a known architectural gap: "multi-hop" retrieval
+currently has no iterative depth (it is one Personalized-PageRank pass &mdash; see
+`docs/STATE.md`), and the IRCoT-style reason/retrieve loop that would add it is designed
+but unshipped. Single-hop (53.80%) trails GPT-4o-backed memory systems (~77&ndash;80%),
+the expected cost of answering with a local model instead of a ~200B API model.
 
 Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
 

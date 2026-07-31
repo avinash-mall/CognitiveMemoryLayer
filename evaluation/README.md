@@ -200,6 +200,26 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 
 ## CML vs Other Methods (Comparison)
 
+### CML Run, 2026-07-31 (current) — `Qwen3.6-27B-FP8` (local, via vLLM)
+
+Reproducible: artifact at [`results/locomo_plus_2026-07-31.json`](results/locomo_plus_2026-07-31.json),
+server at `983a9f9`, all 2,387 samples judged, zero errors. Ingestion via eval-mode writes
+(`X-Eval-Mode` skips LLM enrichment — scores measure the raw episodic retrieval path).
+
+| Metric | Value |
+|--------|--------|
+| **Overall average** | **46.31%** |
+| **LoCoMo (factual) average** | **51.38%** (single-hop 53.80%, multi-hop 33.87%, temporal 31.31%, commonsense 23.96%, adversarial 78.25%) |
+| **LoCoMo-Plus (Cognitive)** | **21.20%** |
+| **Gap** (factual − cognitive) | **30.18%** |
+| Total samples | 2,387 (zero errors) |
+| QA + Judge model | `Qwen3.6-27B-FP8` — fully local, zero API cost |
+
+The two CML runs below each other are **not** directly comparable either — different QA and
+judge models, and the April run predates the modelpack removal. The one signal stable across
+both: adversarial is the top category by a wide margin (78.25% now, 64.80% then), and the
+factual-vs-cognitive gap is large and real (30.18% now, 19.48% then).
+
 > **The CML numbers below are historical and not reproducible.** They were measured in
 > April 2026 against the pre-51afd15 write path, which used custom DeBERTa/sklearn models
 > that no longer exist, with a different QA model (`gemma-4-31b-it`) than is configured now.
@@ -231,24 +251,37 @@ Table 1). Same evaluation protocol: LLM-as-judge, constraint consistency, no tas
 | A-Mem | GPT-4o | 59.64% | 35.20% | 49.30% | Memory system |
 | SeCom | GPT-4o | 57.53% | 31.80% | 42.30% | Memory system |
 | Mem0 | GPT-4o | 57.24% | 30.50% | 39.40% | Memory system |
-| **CML** | **gemma-4-31b-it (local)** | **48.58%** | **64.80%** | **48.60%** | **Zero API cost** |
+| **CML 2026-07-31** | **Qwen3.6-27B (local)** | **46.31%** | **78.25%** | **31.31%** | **Zero API cost, reproducible artifact** |
+| CML 2026-04 (superseded) | gemma-4-31b-it (local) | 48.58% | 64.80% | 48.60% | Pre-51afd15, unreproducible |
 | RAG (emb-large) | GPT-4o | ~39% | 59.73% | 40.00% | Basic retrieval |
 
 ### Key Strengths
 
-1. **Adversarial: 64.80%** — outperforms GPT-4o full-context (48.99%), more than doubles Mem0 (30.50%), SeCom (31.80%), A-Mem (35.20%). Best adversarial score of any memory system.
-2. **Temporal: 48.60%** — beats GPT-4o full-context (45.79%) and Mem0 (39.40%) by +9.20%.
-3. **Fully local inference** — `google/gemma-4-31b-it` via vLLM on a single GPU. Zero API dependency, zero per-query cost, privacy-preserving.
+1. **Adversarial: 78.25% (2026-07-31)** — the highest column in the table, above
+   Gemini-2.5-Pro full-context (73.03%) and more than double every GPT-4o-backed memory
+   system. Consistent across both CML runs on different judges (64.80% in April), so it is
+   a property of the architecture — the system declines to invent answers — not of a judge.
+2. **Fully local and reproducible** — QA and judge on `Qwen3.6-27B-FP8` via vLLM; zero API
+   dependency; the run artifact is committed so future changes can be measured against it.
+3. **Zero errors across 2,387 samples** — the ingestion harness checkpoints per
+   conversation and retries timeouts (see `983a9f9` for the failure it now survives).
 4. **Two write-path modes, measured 2026-07-30 at commit `485ad77`** — the unified LLM
    extractor at 0.33 turns/s (mean 3.03 s/turn, `qwen35-4b`), or heuristic-only at
-   17.31 turns/s with no LLM calls but no entity/relation extraction. The custom DeBERTa
-   models this line used to credit were removed in 51afd15. See
-   [EVALUATION_REPORT.md §5](EVALUATION_REPORT.md#5-write-path-throughput-measured-2026-07-30).
-5. **Zero errors** across 2,387 samples — robust retry logic and local serving reliability.
+   17.31 turns/s. Eval ingestion uses a third mode (eval-mode: gate+embed only, no LLM).
+
+### Key Weaknesses
+
+1. **Cognitive: 21.20%** — a 30-point gap below factual recall. The system retrieves what
+   was said far better than it reasons over what it implies (constraints, beliefs, causes).
+2. **Multi-hop 33.87% / temporal 31.31%** — matches a known architectural gap: multi-hop
+   retrieval is a single Personalized-PageRank pass with no iterative depth; the
+   reason/retrieve loop that would add it (lever E in `docs/STATE.md`) is unshipped.
+3. **Single-hop 53.80%** trails GPT-4o-backed systems (~77–80%) — the cost of a local QA
+   model roughly 10× smaller than the API models the baselines use.
 
 ### Key Takeaway
 
-CML achieves competitive overall scores with a **local 31B-parameter model** while competitors rely on **GPT-4o** (~200B+ parameters, closed-source, paid API). On adversarial and temporal tasks — where memory architecture matters most — CML **outperforms** systems backed by much larger models.
+CML runs entirely on local models while every baseline memory system relies on GPT-4o (closed-source, paid API). Its signature result is adversarial robustness — it beats even frontier full-context models at knowing when *not* to answer — while cognitive reasoning and iterative multi-hop retrieval remain the measured, documented gaps to close (levers C/E/F in `docs/STATE.md`).
 
 Full analysis: [EVALUATION_REPORT.md](EVALUATION_REPORT.md)
 
