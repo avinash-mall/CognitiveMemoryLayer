@@ -1,0 +1,52 @@
+{
+  "total_score": 1105.5,
+  "total_samples": 2387,
+  "valid_samples": 2387,
+  "error_count": 0,
+  "max_possible": 2387,
+  "overall_avg": 0.4631,
+  "by_category": {
+    "Cognitive": {
+      "score": 85.0,
+      "count": 401,
+      "valid": 401,
+      "errors": 0,
+      "avg": 0.212
+    },
+    "adversarial": {
+      "score": 349.0,
+      "count": 446,
+      "valid": 446,
+      "errors": 0,
+      "avg": 0.7825
+    },
+    "common-sense": {
+      "score": 23.0,
+      "count": 96,
+      "valid": 96,
+      "errors": 0,
+      "avg": 0.2396
+    },
+    "multi-hop": {
+      "score": 95.5,
+      "count": 282,
+      "valid": 282,
+      "errors": 0,
+      "avg": 0.3387
+    },
+    "single-hop": {
+      "score": 452.5,
+      "count": 841,
+      "valid": 841,
+      "errors": 0,
+      "avg": 0.538
+    },
+    "temporal": {
+      "score": 100.5,
+      "count": 321,
+      "valid": 321,
+      "errors": 0,
+      "avg": 0.3131
+    }
+  }
+}

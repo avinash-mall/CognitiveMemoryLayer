@@ -209,11 +209,17 @@ resident vLLM servers).
   reranker work and caught only by re-running. Anything that moves ranking by a few
   percent needs repeated runs per side, or `FEATURES__HYDE_RETRIEVAL_ENABLED=false` to
   make retrieval deterministic first.
-- **LoCoMo-Plus has not been re-run** — and it is ~41x bigger than this note used to
-  claim. The runner expands 2,387 samples into 411 unique conversations = **242,658 turn
-  ingests** (not 5,882), plus 2,387 QA + 2,387 judge calls. At the measured 3.78 turns/s
-  (4 workers, conc=40) ingestion alone is ~18h on this host. Datasets are committed;
-  opt-in, not scheduled.
+- **LoCoMo-Plus re-run complete (2026-07-31)** — first reproducible run since the
+  modelpack removal. **Overall 0.4631** (1105.5/2387, all valid, 0 errors); by category:
+  adversarial 0.78, single-hop 0.54, multi-hop 0.34, temporal 0.31, common-sense 0.24,
+  Cognitive 0.21. Artifact: `evaluation/results/locomo_plus_2026-07-31.json`. Conditions:
+  server at 983a9f9 (4 uvicorn workers, CPU embedder), ingestion via eval-mode writes
+  (X-Eval-Mode skips unified extraction — no LLM enrichment on stored memories), QA+judge
+  on local Qwen3.6-27B-FP8. Per lever G these numbers are NOT comparable to published
+  gemini-judged baselines — only relative movement against this artifact is meaningful.
+  Multi-hop and temporal remain the weak categories, consistent with lever E being unshipped.
+  Full pipeline cost on this host: ~11.5h ingestion (218k turns, shared GPUs) + ~2h QA +
+  ~0.5h judge.
 - **Write throughput is LLM-token-bound, measured not guessed.** One LLM call per write
   (~884 prompt + ~481 output tokens) is 95.8% of write latency; under sustained conc=40
   load vLLM holds 40 running / 0 waiting while GPU2 (qwen35-4b) pins at 93-99% and
