@@ -11,7 +11,7 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1048-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Tests](https://img.shields.io/badge/Tests-1076-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
 [![Version](https://img.shields.io/badge/version-2.0.0-blue?style=for-the-badge)](#)
 
 <br/>
@@ -619,16 +619,21 @@ curl http://localhost:8000/api/v1/health
 ```bash
 # Write
 curl -X POST http://localhost:8000/api/v1/memory/write \
-  -H "Authorization: Bearer test-key" \
+  -H "X-API-Key: test-key" \
   -H "Content-Type: application/json" \
-  -d '{"content": "I never eat shellfish — severe allergy.", "tenant_id": "demo"}'
+  -d '{"content": "I never eat shellfish — severe allergy."}'
 
 # Read
 curl -X POST http://localhost:8000/api/v1/memory/read \
-  -H "Authorization: Bearer test-key" \
+  -H "X-API-Key: test-key" \
   -H "Content-Type: application/json" \
-  -d '{"query": "Recommend a restaurant for tonight", "tenant_id": "demo"}'
+  -d '{"query": "Recommend a restaurant for tonight"}'
 ```
+
+Authentication is the `X-API-Key` header, not `Authorization: Bearer`. The tenant is
+resolved from the API key — a `tenant_id` in the request body is **ignored**, so a
+call that passes one there silently reads the default tenant. Admin keys can select a
+tenant with the `X-Tenant-Id` header.
 
 **Admin dashboard:** open [http://localhost:8000/dashboard/](http://localhost:8000/dashboard/) and authenticate with `AUTH__ADMIN_API_KEY` (default `test-key` from `.env.minimal`).
 
@@ -688,10 +693,10 @@ Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evalua
 ## Testing
 
 ```bash
-# 721 hermetic unit tests — no DB, no LLM, mock embeddings
+# 739 hermetic unit tests — no DB, no LLM, mock embeddings
 pytest tests/unit -q
 
-# 327 tests against a live server on :8000
+# 337 tests against a live server on :8000
 pytest tests/integration tests/e2e packages/py-cml/tests -q
 ```
 

@@ -70,6 +70,22 @@ written on the write path and read by nothing that ranks or renders. Three commi
   source episode when its gist is present. Conditional on the key, so an unrelated fact
   in the results penalises nothing.
 
+Both halves were verified against real data, not just unit tests:
+
+- **The forgetting curve change is a no-op on this database.** Scored 3,321 real records
+  (every `decay_rate > 0.05` row plus a random 3,000) under the old `0.5**(age/30)` and
+  the new `exp(-decay_rate*age)`: **zero** suggested-action changes, COMPRESS steady at
+  42. The distribution is 187,731 rows at 0.01, 477 at 0.05, 321 at 0.1, and **none at
+  0.5** — the profile that would move (`decay_rate=0.5`, ~7d) simply does not occur here.
+  Synthetically it shifts `decay` → `silence`, never toward COMPRESS/DELETE, so the
+  destructive band is not in play. Worth re-checking if the extractor ever starts
+  emitting 0.5 in volume, since `forgetting-daily` is the one job that *is* scheduled.
+- **The gist demotion fires on real consolidated data.** `consolidated_into_fact_key`
+  values all resolve to live `semantic_facts.key` rows (checked across 10 keys), and
+  reranking a real consolidated episode ("User said they like pizza", relevance 0.92)
+  against its real gist (`user:preference:food_preference`, relevance 0.70) puts the gist
+  first with `demoted_superseded_by_gist` on the episode. The join is sound.
+
 Still disconnected, deliberately (each would recreate the same bug class or needs a
 schema change nobody reads yet): `MemoryRecordModel.labile` is never assigned;
 `FactSchema.multi_valued`/`validators` are ignored by `_update_fact`, so the one
@@ -80,6 +96,10 @@ of behaviour nothing observes; `WriteDecision.STORE_SYNC` is a `StrEnum` alias c
 with `STORE`; `SensoryBuffer.start_cleanup_loop` is never called.
 
 ## Architecture facts (load-bearing)
+
+- **Auth is the `X-API-Key` header** (`src/api/auth.py:16`), not `Authorization: Bearer`.
+  The README's curl examples said Bearer and returned 401 for everyone who copied them;
+  fixed 2026-07-31. Admin keys additionally accept `X-Tenant-Id`.
 
 - Single LLM path: `FEATURES__USE_LLM_ENABLED` is the only LLM switch.
   On: the unified extractor (`src/extraction/unified_write_extractor.py`)
