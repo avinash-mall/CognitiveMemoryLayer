@@ -458,7 +458,12 @@ def _cml_write_batch(
     requests_lib = cast("Any", requests)
     url = f"{base_url.rstrip('/')}/api/v1/memory/write_batch"
     headers = {"X-API-Key": api_key, "X-Tenant-ID": tenant_id, "X-Eval-Mode": "true"}
-    write_timeout = 300  # Batch may take longer
+    # A 50-turn batch is processed turn-by-turn server-side; under LLM contention
+    # a single batch legitimately takes >300s, and an unretried client timeout used
+    # to abandon the rest of the conversation (and, via as_completed, zombie the
+    # whole run). The server keeps processing a timed-out batch, so a retry is
+    # absorbed by the write gate's duplicate detection rather than double-storing.
+    write_timeout = 1800
     write_retries = 3
     payload = {"turns": turns}
     for retry in range(write_retries):
@@ -489,7 +494,11 @@ def _cml_write_batch(
                     return
                 resp.raise_for_status()
                 return
-            except (requests_lib.exceptions.ConnectionError, OSError):
+            except (
+                requests_lib.exceptions.ConnectionError,
+                requests_lib.exceptions.Timeout,
+                OSError,
+            ):
                 if retry < write_retries - 1:
                     time.sleep(5 * (retry + 1))
                     break
@@ -912,6 +921,7 @@ def phase_a_ingestion(
                 _ingest_sample(cml_url, cml_api_key, i, sample, ingestion_delay, pbar)
                 _save_checkpoint(i)
         else:
+            failed: list[tuple[int, Exception]] = []
             with ThreadPoolExecutor(max_workers=ingestion_workers) as executor:
                 futures = {
                     executor.submit(
@@ -919,9 +929,29 @@ def phase_a_ingestion(
                     ): i
                     for i, sample in pending
                 }
+                # Never re-raise from inside this loop: `with executor` runs
+                # shutdown(wait=True), which still executes every queued future —
+                # an early raise here once left the run a zombie for six hours
+                # (threads ingesting, checkpoints dead, QA never reached).
                 for future in as_completed(futures):
-                    future.result()  # Propagate any exception
-                    _save_checkpoint(futures[future])
+                    idx = futures[future]
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        failed.append((idx, exc))
+                        print(
+                            f"\n[Phase A] Warning: conversation {idx} failed and will "
+                            f"not be checkpointed: {exc}",
+                            flush=True,
+                        )
+                        continue
+                    _save_checkpoint(idx)
+            if failed:
+                raise RuntimeError(
+                    f"{len(failed)} of {len(pending)} conversations failed ingestion; "
+                    f"completed ones are checkpointed — rerun to retry only the failures. "
+                    f"First failure: conversation {failed[0][0]}: {failed[0][1]}"
+                )
 
 
 def phase_ab_consolidation(
