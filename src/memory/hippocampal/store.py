@@ -398,7 +398,12 @@ class HippocampalStore:
             if unified_res:
                 if unified_res.speaker:
                     merged_metadata["speaker"] = unified_res.speaker
-                if unified_res.event_date:
+                # Only when the regex found nothing. The regex resolves against this
+                # record's own timestamp, so it is right by construction; the LLM is
+                # guessing. Measured on a LoCoMo subset: letting the model win put a
+                # wrong date on 178 of 1,328 records (13.4%), every one the same
+                # hallucinated day, and dropped the temporal category from 0.32 to 0.13.
+                if unified_res.event_date and "event_date" not in merged_metadata:
                     merged_metadata["event_date"] = unified_res.event_date
 
             effective_ct = context_tags or []
