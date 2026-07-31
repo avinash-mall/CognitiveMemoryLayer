@@ -14,9 +14,14 @@ link them below. Delete notes when they stop being true.
   leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
   signal because it runs the integration suite in containers against fresh
   Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
-- Suite sizes, so drift is visible: **716** unit (hermetic), **327** integration + e2e +
-  py-cml against a live server. Down from 759/338: deleted tests for deleted code, offset
-  by new tests for `rrf_merge` and `src/utils/similarity.py`. Not regressions.
+- Suite sizes, so drift is visible: **740** unit (hermetic), **337** integration + e2e +
+  py-cml against a live server. Unit was 716, then 721 (uncommitted drift), then +19 for
+  source monitoring, gist demotion and the retention curve. Not regressions.
+- **The Docker `api` container bakes its source in — there is no volume mount.** Editing
+  `src/` does not change what the running container serves, so a live suite against it
+  tests the last image build, not your working tree. For verifying local changes, run
+  `uvicorn src.api.app:app --port 8000` from source against the same Postgres/Neo4j/Redis
+  (the container publishes on `:6000`, so the two coexist). Full live suite: ~2.5 min.
 - **The cleanup pass is complete and released as 2.0.0** (−19,600 lines across 27
   commits, ending at `9929413`). Removed: all obsolete docs, five unwired modules, the
   event-log surface, the async storage pipeline, answer verification/compression, the
@@ -34,6 +39,45 @@ link them below. Delete notes when they stop being true.
 ## Active work
 
 (nothing in flight)
+
+## The write-path/read-path disconnect (fixed 2026-07-31)
+
+An audit of the memory subsystems against the README found the gap was not missing
+biology — it was that the biology already implemented was *disconnected*. Fields were
+written on the write path and read by nothing that ranks or renders. Three commits
+(`9fa06dd`, `3d04dfb`, `5f04478`) closed the load-bearing ones:
+
+- `provenance.source` was surfaced only for constraints, so LLM-generated prospective
+  implications (on by default) rendered identically to user statements. Now rendered by
+  all three renderers from `core.schemas.source_label`. The fact prong is exempt on
+  purpose — `semantic_facts` has no provenance column, so `_fact_to_record` stamps every
+  row `AGENT_INFERRED` as a placeholder; labelling from it would have downgraded
+  "Earlier you said" to "Inferred" on constraints.
+- `decay_rate` was written per record and read by no scorer. The forgetting scorer and
+  the reranker used two *different* curves (exponential 30-day half-life vs. hyperbolic
+  `1/(1+age*0.1)`). Both now call `src/utils/retention.py`. Near-identical at the default
+  rate — which is why the scorer's threshold tests did not move — but a memory marked
+  ephemeral now retains 3% after a week instead of 85%.
+- `access_count` reaches the forgetting scorer but still not the reranker, and that is
+  now a deliberate, tested decision rather than an oversight. A frequency term was built
+  and removed: only the vector prong increments the counter and `semantic_facts` has no
+  such column, so any weight biases against fact- and graph-sourced hits, and the counter
+  grows with every query — ranking would stop being a function of the query alone. It
+  also could not be shown to help, because the quality harness is too noisy to resolve
+  it (see the reproducibility note under Known issues).
+- `consolidated_into_fact_key` was written by the migrator and read by nothing in
+  retrieval, so gist and verbatim competed in one result set. The reranker now demotes a
+  source episode when its gist is present. Conditional on the key, so an unrelated fact
+  in the results penalises nothing.
+
+Still disconnected, deliberately (each would recreate the same bug class or needs a
+schema change nobody reads yet): `MemoryRecordModel.labile` is never assigned;
+`FactSchema.multi_valued`/`validators` are ignored by `_update_fact`, so the one
+multi-valued schema (`user:preference:cuisine`) supersedes instead of appending;
+`ShortTermMemory.get_immediate_context`/`get_encodable_chunks` have no callers, making
+the sensory buffer's decay and working memory's capacity policy correct implementations
+of behaviour nothing observes; `WriteDecision.STORE_SYNC` is a `StrEnum` alias colliding
+with `STORE`; `SensoryBuffer.start_cleanup_loop` is never called.
 
 ## Architecture facts (load-bearing)
 
@@ -120,6 +164,16 @@ resident vLLM servers).
 
 ## Known issues / open decisions
 
+- **`scripts/test_memory_quality.py` is not reproducible enough for small A/Bs.** Three
+  identical runs of identical code against a frozen tenant (`--skip-ingestion --tenant`)
+  gave MISS/PASS/PASS on the same `semantic_disconnect` probe — 97%/100%/100% recall,
+  9.6-9.9 judge. HyDE (`FEATURES__HYDE_RETRIEVAL_ENABLED`, on by default) generates a
+  hypothetical document per query through the LLM, so the query embedding itself differs
+  run to run, and probes sitting near a ranking boundary flip. A single before/after pair
+  will therefore "prove" whatever it happened to draw — that mistake was made during the
+  reranker work and caught only by re-running. Anything that moves ranking by a few
+  percent needs repeated runs per side, or `FEATURES__HYDE_RETRIEVAL_ENABLED=false` to
+  make retrieval deterministic first.
 - **LoCoMo-Plus has not been re-run** — and it is ~41x bigger than this note used to
   claim. The runner expands 2,387 samples into 411 unique conversations = **242,658 turn
   ingests** (not 5,882), plus 2,387 QA + 2,387 judge calls. At the measured 3.78 turns/s
@@ -159,9 +213,17 @@ resident vLLM servers).
   no plan step ever produced a sparse retrieval step — leaving `rrf_merge` in
   `src/retrieval/rrf.py` for the HyDE merge):
   - **C — bi-temporal graph edges** (Graphiti-style `valid_from`/`valid_to` on relations),
-    so the graph can answer "what did I believe then" rather than only "now".
+    so the graph can answer "what did I believe then" rather than only "now". Related and
+    larger: there is no sequence structure at all, so "what happened before X" is
+    unanswerable — it needs X resolved to a timestamp first, and nothing does that.
+    `planner.py` handles three English literals ("today"/"yesterday"/"week").
   - **E — multi-hop iterative retrieval** (IRCoT-style reason/retrieve loop). Multi-hop is
     the weakest measured category, so this is the highest-value one.
+  - **H — `semantic_facts` usage tracking.** The table has no `access_count`,
+    `last_accessed_at` or `importance`, so consolidation migrates knowledge *out of* both
+    the strengthening and the decay loops. This is why the retention and frequency terms
+    only half-work. Do not add the columns until a reader exists — that is exactly the
+    write-only bug class fixed above.
   - **F — category-aware answer prompt** for the QA path.
   - **G — judge comparability caveat:** LoCoMo-Plus scores in the paper use
     gemini-2.5-flash with a constraint-consistency protocol. Our harness uses a local

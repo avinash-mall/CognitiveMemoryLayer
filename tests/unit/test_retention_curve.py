@@ -79,26 +79,23 @@ class TestRerankerReadsUsage:
         return RetrievedMemory(record=record, relevance_score=relevance, retrieval_source="vector")
 
     @pytest.mark.asyncio
-    async def test_often_retrieved_memory_outranks_an_identical_unused_one(self):
-        """The testing effect: use makes a memory easier to find, not just harder
-        to delete. access_count was previously read only by the forgetting path."""
+    async def test_access_count_does_not_influence_ranking(self):
+        """Retrieval ranking must stay a function of the query, not of how often
+        the corpus has been probed before.
+
+        A frequency term was tried here and removed: only the vector prong
+        increments access_count and semantic_facts has no such column, so any
+        weight on it biases against fact- and graph-sourced hits, and the counter
+        grows with every query. See the note in reranker._score_components before
+        re-adding one.
+        """
         reranker = MemoryReranker()
-        used = self._retrieved(_record(access_count=50, text="used often"))
+        used = self._retrieved(_record(access_count=100_000, text="used often"))
         unused = self._retrieved(_record(access_count=0, text="never used"))
 
-        ranked = await reranker.rerank([unused, used], "q")
-        assert ranked[0].record.text == "used often"
-
-    @pytest.mark.asyncio
-    async def test_frequency_cannot_outrank_a_real_relevance_gap(self):
-        """Guards the rich-get-richer loop: only the vector prong increments
-        access_count, so a heavy weight would bury fact- and graph-sourced hits."""
-        reranker = MemoryReranker()
-        popular = self._retrieved(_record(access_count=100_000, text="popular"), relevance=0.1)
-        relevant = self._retrieved(_record(access_count=0, text="relevant"), relevance=0.9)
-
-        ranked = await reranker.rerank([popular, relevant], "q")
-        assert ranked[0].record.text == "relevant"
+        _, breakdown = await reranker.rerank_with_breakdown([used, unused], "q")
+        scores = {b["text"]: b["final_score"] for b in breakdown}
+        assert scores["used often"] == pytest.approx(scores["never used"])
 
     @pytest.mark.asyncio
     async def test_reranker_ages_memories_by_their_own_rate(self):

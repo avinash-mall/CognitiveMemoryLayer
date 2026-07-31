@@ -6,7 +6,7 @@ from typing import Any
 
 from ..core.enums import MemoryType
 from ..core.schemas import RetrievedMemory
-from ..utils.retention import frequency_score, retention
+from ..utils.retention import retention
 from ..utils.similarity import jaccard, word_set
 
 # Recency weights by memory type stability
@@ -23,7 +23,6 @@ class RerankerConfig:
     recency_weight: float = 0.1  # BUG-04: reduced from 0.2 to limit recency bias
     confidence_weight: float = 0.2
     diversity_weight: float = 0.1
-    frequency_weight: float = 0.05  # retrieval practice; smallest term by design
     diversity_threshold: float = 0.8
     max_results: int = 20
     # Fraction of its own score a consolidated episode loses when the gist fact it
@@ -114,7 +113,6 @@ class MemoryReranker:
                         "recency": breakdowns[idx]["recency"],
                         "confidence": breakdowns[idx]["confidence"],
                         "diversity": breakdowns[idx]["diversity"],
-                        "frequency": breakdowns[idx]["frequency"],
                         "recency_weight": breakdowns[idx]["recency_weight"],
                         "constraint_boost": breakdowns[idx].get("constraint_boost", 0.0),
                     },
@@ -178,11 +176,23 @@ class MemoryReranker:
         # when deciding what to delete and another when deciding what to show.
         recency = retention(age_days, getattr(memory.record, "decay_rate", None))
         confidence = memory.record.confidence
-        # Retrieval practice: what you use often gets easier to find, not merely
-        # harder to delete. Deliberately the smallest weight in the sum — this is a
-        # rich-get-richer loop, and only the vector prong increments access_count,
-        # so a large weight would systematically bury fact- and graph-sourced hits.
-        frequency = frequency_score(getattr(memory.record, "access_count", 0) or 0)
+        # There is deliberately no access_count term here. One was tried (the testing
+        # effect: what you retrieve often should get easier to find) and removed again
+        # for two reasons, neither of which is "it measurably hurt" -- see below.
+        #
+        # 1. Only the vector prong increments access_count (hippocampal/store.py), and
+        #    semantic_facts has no such column at all, so any weight on it
+        #    systematically favours vector hits over fact- and graph-sourced ones.
+        # 2. The counter grows every time a corpus is queried, so ranking stops being
+        #    a function of the query alone and starts depending on probe history.
+        #
+        # It could not be shown to help either: scripts/test_memory_quality.py is not
+        # reproducible enough to resolve a 0.05-weight effect. Three identical runs of
+        # identical code over frozen data gave MISS/PASS/PASS on one semantic_disconnect
+        # probe (97%/100%/100% recall) -- HyDE generates a hypothetical document per
+        # query through the LLM, so retrieval varies run to run. Any future attempt
+        # needs per-source normalisation and a harness that can tell signal from that
+        # noise; a single before/after pair cannot.
 
         diversity_cap = min(len(all_memories), 20)
         if len(all_memories) <= 5:
@@ -209,7 +219,6 @@ class MemoryReranker:
             self.config.relevance_weight * relevance
             + self.config.confidence_weight * confidence
             + self.config.diversity_weight * diversity
-            + self.config.frequency_weight * frequency
         )
         if recency_weight > 0:
             score += recency_weight * recency
@@ -218,7 +227,6 @@ class MemoryReranker:
             "recency": recency,
             "confidence": confidence,
             "diversity": diversity,
-            "frequency": frequency,
             "recency_weight": recency_weight,
             "base_score": score,
             "notes": notes,
