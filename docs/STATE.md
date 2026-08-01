@@ -69,6 +69,22 @@ link them below. Delete notes when they stop being true.
   that single tenant carries 242 of the subset's 677 samples (36%). The run was killed
   and the flag added (`d26b683`) rather than deleting the older data.
 
+## Full LoCoMo-Plus re-run in flight (started 2026-08-01 08:55 UTC)
+
+All fixes, defaults as shipped: prospective off, graph excluded from packet,
+`episode_relevance_threshold` 0.4. Tenant prefix `full2`, out-dir
+`evaluation/outputs/full2`, 1 uvicorn worker, 20 ingestion workers.
+
+411 conversations / 242,658 turns — identical scope to the committed 2026-07-31 run that
+scored **0.4631**, which is the comparison. Budget ~11.5 h ingestion + ~2 h QA + ~0.5 h
+judge. The subset predicted **0.536 vs 0.499** (+0.037) on the same changes, so a full-run
+result near 0.50 would be consistent; a large divergence from that would mean the subset
+was not representative after all and is worth investigating rather than reporting.
+
+Ingestion checkpoints per conversation, so a crash resumes rather than restarts — but
+re-running **must** keep `--out-dir evaluation/outputs/full2`, or QA silently switches to
+per-sample tenants (see the `--skip-ingestion` note under Known issues).
+
 ## Subset A/B results, and the three bugs the measurement found (2026-07-31)
 
 Two full subset runs, 677 samples each, against arm 0 = the committed full run restricted
