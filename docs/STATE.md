@@ -45,8 +45,10 @@ link them below. Delete notes when they stop being true.
   16,484 turns, 677 samples, ~1.5-2 h per arm) and **its own `--tenant-prefix`**:
   - **0** — free, already computed: `make_locomo_subset.py --baseline` restricts the
     committed full-run artifact to the subset. Overall 0.4993 there vs 0.4631 full.
-  - **A+B** — run three times; see the results table below. Arm 3 carries all fixes and
-    is a wash overall (0.480 vs 0.499), with multi-hop the one real regression.
+  - **A+B** — run three times; see the results table below. Arm 3 carries all write-path
+    fixes and is a wash overall (0.480 vs 0.499).
+  - **4** — arm 3's frozen corpus re-scored with `FEATURES__GRAPH_RESULTS_IN_PACKET=false`.
+    **0.513, the only arm above baseline.** Flag flipped to false on that evidence.
   - **C** — `FEATURES__PROSPECTIVE_INDEXING_ENABLED=true`. **Not run.** The flag stays
     off. Watch Cognitive and common-sense for gain and **adversarial for regression** —
     that decides the default. Note Cognitive swings 0.200-0.325 across identical-code
@@ -144,15 +146,20 @@ All three fixes were verified live on arm 3's own data before that run was score
 0 anchor mismatches (was 178/1328), graph blobs at 0.69 (were 315-744), and a Recent
 Events section present in the packet where it had been absent.
 
-**`--skip-ingestion` is fine — an earlier note here said otherwise and was wrong.** A
-re-score of an already-ingested corpus produced adversarial 1.0 with single-hop, temporal
-and common-sense all exactly 0.0, the signature of the model refusing every question, and
-that was blamed on the tenant mapping. The mapping is correct: sample 0 maps to
-`{prefix}-0` and returns Caroline/LGBTQ content for a Caroline question. The real cause
-was the unbounded graph relevance (`18c947b`) emptying the packet, which was still
-unfixed at the time. The diagnosis was mine and it was based on hand-picking the wrong
-tenant to query. Ignore the `armAB3` output directory, but do use `--skip-ingestion` for
-read-path A/Bs — it turns a ~2 h arm into ~55 min on a frozen corpus.
+**`--skip-ingestion` needs `--out-dir` pointed at the run that ingested the corpus.**
+`phase_b_qa` reads `locomo_ingestion_checkpoint.json` *from out_dir* to decide whether
+tenants are per-conversation or per-sample. A fresh out-dir has no checkpoint, so it
+silently falls back to `{i: i}` and every query targets `{prefix}-{sample_index}` instead
+of `{prefix}-{canonical_index}` — tenants that mostly do not exist. Median context length
+26 characters instead of 1737, and a score of adversarial 1.0 with single-hop, temporal
+and common-sense exactly 0.0, because refusing is correct for adversarial and wrong for
+everything else.
+
+That pattern was produced twice and misdiagnosed twice — first as a broken
+`--skip-ingestion`, then as unbounded graph relevance. Both wrong; it was the out-dir.
+`b0027e4` now raises instead of scoring. Either point `--out-dir` at the original run or
+copy its checkpoint across; a read-path A/B on a frozen corpus is then ~55 min instead of
+~2 h, and is by far the most trustworthy comparison available here.
 
 ## Open, with evidence, not yet acted on
 
