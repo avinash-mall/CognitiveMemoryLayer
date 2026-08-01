@@ -1066,6 +1066,7 @@ def phase_b_qa(
     verbose: bool = False,
     backend: str = "openai_compatible",
     tenant_prefix: str = "lp",
+    skip_ingestion: bool = False,
 ) -> list[dict]:
     _, qa_model, _ = _get_llm_qa_config()
     samples_qa = samples[:limit] if limit else samples
@@ -1081,6 +1082,20 @@ def phase_b_qa(
             use_conv_tenants = bool(ck.get("conversation_dedup"))
         except (json.JSONDecodeError, OSError):
             pass
+    elif skip_ingestion:
+        # Without the checkpoint this silently falls back to one tenant per sample. If
+        # the corpus was ingested with conversation dedup — it always is — every query
+        # then goes to a tenant that does not exist, every packet comes back empty, and
+        # the run still "succeeds" with adversarial 1.0 and everything else 0.0, because
+        # refusing to answer is correct for adversarial and wrong for everything else.
+        # That looked like a result twice before it was diagnosed. Fail instead.
+        raise RuntimeError(
+            f"--skip-ingestion needs the ingestion checkpoint from the run that "
+            f"populated the corpus, and {ingestion_checkpoint} does not exist. Point "
+            f"--out-dir at that run's directory, or copy its "
+            f"locomo_ingestion_checkpoint.json into this one. Without it every query "
+            f"targets the wrong tenant and the scores are meaningless."
+        )
     if use_conv_tenants:
         sample_to_conv, _ = _build_conversation_groups(samples_qa)
     else:
@@ -1390,6 +1405,7 @@ def run_locomo_plus(config: LocomoEvalConfig) -> list[dict]:
         verbose=config.verbose,
         backend=config.qa_backend,
         tenant_prefix=config.tenant_prefix,
+        skip_ingestion=config.skip_ingestion,
     )
 
     phase_c_judge(records, out_dir, config.judge_model, judge_backend=config.judge_backend)
