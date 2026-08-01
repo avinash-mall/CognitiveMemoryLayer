@@ -45,12 +45,13 @@ link them below. Delete notes when they stop being true.
   16,484 turns, 677 samples, ~1.5-2 h per arm) and **its own `--tenant-prefix`**:
   - **0** — free, already computed: `make_locomo_subset.py --baseline` restricts the
     committed full-run artifact to the subset. Overall 0.4993 there vs 0.4631 full.
-  - **A+B** — run twice, see the results table below. Still net-negative; three bugs
-    found and fixed, the last two after the second run, so a third arm is owed.
+  - **A+B** — run three times; see the results table below. Arm 3 carries all fixes and
+    is a wash overall (0.480 vs 0.499), with multi-hop the one real regression.
   - **C** — `FEATURES__PROSPECTIVE_INDEXING_ENABLED=true`. **Not run.** The flag stays
     off. Watch Cognitive and common-sense for gain and **adversarial for regression** —
-    that decides the default. Do not run it until A+B is verified non-negative, or the
-    two effects cannot be separated.
+    that decides the default. Note Cognitive swings 0.200-0.325 across identical-code
+    runs at n=40, so arm C needs either a bigger Cognitive quota or repeated runs to say
+    anything about the category it targets.
 
   Compare per-category against arm 0, not against the full run's 0.4631.
 
@@ -71,19 +72,42 @@ link them below. Delete notes when they stop being true.
 Two full subset runs, 677 samples each, against arm 0 = the committed full run restricted
 to the same samples (overall **0.4993**).
 
-| category | arm 0 | armAB v1 | armAB2 (v2) |
-| :--- | ---: | ---: | ---: |
-| Cognitive | 0.200 | 0.325 | 0.275 |
-| adversarial | 0.808 | 0.735 | 0.768 |
-| common-sense | 0.350 | 0.375 | 0.313 |
-| multi-hop | 0.330 | 0.225 | 0.270 |
-| single-hop | 0.520 | 0.496 | 0.510 |
-| temporal | 0.323 | 0.125 | 0.167 |
-| **overall** | **0.499** | **0.439** | **0.458** |
+| category | n | arm 0 | v1 | v2 | **arm 3** | spread across runs |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cognitive | 40 | 0.200 | 0.325 | 0.275 | **0.200** | 0.125 |
+| adversarial | 151 | 0.808 | 0.735 | 0.768 | **0.782** | 0.073 |
+| common-sense | 40 | 0.350 | 0.375 | 0.313 | **0.400** | 0.087 |
+| multi-hop | 100 | 0.330 | 0.225 | 0.270 | **0.260** | 0.105 |
+| single-hop | 250 | 0.520 | 0.496 | 0.510 | **0.528** | 0.032 |
+| temporal | 96 | 0.323 | 0.125 | 0.167 | **0.260** | 0.198 |
+| **overall** | 677 | **0.499** | **0.439** | **0.458** | **0.480** | |
 
-**The write-path fixes are still net-negative on this subset and the cause is now
-understood but not yet re-measured.** Three bugs were found by the measurement, all the
-same shape — a branch that could not be wrong while the feature feeding it never ran:
+**Verdict: the write-path work is a wash overall, and multi-hop is a real regression.**
+Arm 3 lands at 0.480 against arm 0's 0.499 — a gap of ~13 of 677 samples, smaller than
+the spread single-hop alone shows across identical-code runs, so overall is not
+distinguishable from baseline. Per category, four of six sit inside the run-to-run
+spread. Two do not:
+
+- **common-sense +0.050** — the one clear gain.
+- **multi-hop −0.070** — and this is the important one, because it is the category
+  commit `6d8138e` was meant to fix. *Every* arm with a populated graph (0.225, 0.270,
+  0.260) scores below arm 0's empty-graph 0.330. Populating the knowledge graph makes
+  multi-hop **worse**, reproducibly.
+
+  The mechanism is already documented above: `multi_hop_query` has no hop loop. It runs
+  one PPR pass and returns *entity profiles* — "Entity: user / LOCATION: Seattle / …" —
+  which summarise a neighbourhood rather than answering anything. Those blobs then take
+  packet slots from episodes that would. Normalising their relevance (`18c947b`) stopped
+  them dominating but did not make them useful. Lever E (iterative reason/retrieve) is
+  what would; until it exists, the graph prong is not earning its place in the packet,
+  and excluding graph results from the packet is worth measuring as a cheap alternative.
+
+  Note this does **not** argue for reverting `6d8138e`. Eval mode hiding the graph meant
+  the benchmark was not measuring the shipped system. It is now, and what it measures is
+  that this graph prong does not help.
+
+Three bugs were found by the measurement, all the same shape — a branch that could not be
+wrong while the feature feeding it never ran:
 
 1. **The LLM's `event_date` overrode the regex's** (`a909f0c`). 178 of 1,328 records
    (13.4%) carried a date inconsistent with their own timestamp, and every one carried
@@ -100,8 +124,9 @@ same shape — a branch that could not be wrong while the feature feeding it nev
    top slot and pushed every conversation turn below `episode_relevance_threshold`,
    emptying Recent Events. Now rank-normalised into [0.55, 0.85].
 
-**Not yet re-measured:** fixes 2 and 3 landed after the v2 run. A third arm is needed
-before any claim that the write-path work is net-positive.
+All three fixes were verified live on arm 3's own data before that run was scored:
+0 anchor mismatches (was 178/1328), graph blobs at 0.69 (were 315-744), and a Recent
+Events section present in the packet where it had been absent.
 
 **Do not use `--skip-ingestion` to re-score a corpus.** It was tried as a cheap code-only
 A/B and produced adversarial 1.0 with single-hop, temporal and common-sense all exactly
