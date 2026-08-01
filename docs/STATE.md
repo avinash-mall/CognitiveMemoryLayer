@@ -163,13 +163,14 @@ copy its checkpoint across; a read-path A/B on a frozen corpus is then ~55 min i
 
 ## Open, with evidence, not yet acted on
 
-- **Episodes routinely score below `episode_relevance_threshold` (0.5).** After fix 3,
-  the top eight results for a real query were all conversation turns — scoring 0.29-0.40.
-  The packet's episode filter is `relevance_score > threshold`, so Recent Events is
-  *still* empty and the model sees only facts and preferences. This is a pre-existing
-  tuning question, not a regression: cosine similarity on this corpus simply does not
-  reach 0.5. Lowering the threshold is the obvious move and is exactly the kind of change
-  that needs a measurement rather than a guess, so it was left alone.
+- **`episode_relevance_threshold` (0.5) is binding but not fatal — an earlier note here
+  said episodes "routinely score below" it and that was wrong.** That claim came from one
+  hand-picked query. Sampled properly across 40 real queries from the subset (n=383
+  episodes): p10 0.462, median **0.555**, p90 0.680, max 0.838. **74.9% already clear
+  0.5**; 97.7% clear 0.4. So Recent Events is usually populated, not usually empty.
+  It is still binding at the margin: ~7.2 episodes survive per query against a
+  `max_episodes_default` of 8, so the threshold rather than the cap is what limits the
+  section. Lowering to 0.4 lets the cap bind instead — measured as arm 5.
 
 ## What was wrong with the write path (fixed 2026-07-31)
 
