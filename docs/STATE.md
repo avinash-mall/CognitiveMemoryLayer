@@ -128,11 +128,15 @@ All three fixes were verified live on arm 3's own data before that run was score
 0 anchor mismatches (was 178/1328), graph blobs at 0.69 (were 315-744), and a Recent
 Events section present in the packet where it had been absent.
 
-**Do not use `--skip-ingestion` to re-score a corpus.** It was tried as a cheap code-only
-A/B and produced adversarial 1.0 with single-hop, temporal and common-sense all exactly
-0.0 — the signature of the model refusing every question. The retrieved packet came from
-the wrong conversation, so the QA phase does not reproduce the ingest-time tenant mapping
-on that path. Those numbers are an artifact; ignore the `armAB3` output directory.
+**`--skip-ingestion` is fine — an earlier note here said otherwise and was wrong.** A
+re-score of an already-ingested corpus produced adversarial 1.0 with single-hop, temporal
+and common-sense all exactly 0.0, the signature of the model refusing every question, and
+that was blamed on the tenant mapping. The mapping is correct: sample 0 maps to
+`{prefix}-0` and returns Caroline/LGBTQ content for a Caroline question. The real cause
+was the unbounded graph relevance (`18c947b`) emptying the packet, which was still
+unfixed at the time. The diagnosis was mine and it was based on hand-picking the wrong
+tenant to query. Ignore the `armAB3` output directory, but do use `--skip-ingestion` for
+read-path A/Bs — it turns a ~2 h arm into ~55 min on a frozen corpus.
 
 ## Open, with evidence, not yet acted on
 

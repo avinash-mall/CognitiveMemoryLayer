@@ -164,6 +164,15 @@ class FeatureFlags(PydanticBaseModel):
         default=4,
         description="Number of prospective implications to generate per memory.",
     )
+    graph_results_in_packet: bool = Field(
+        default=True,
+        description="Let knowledge-graph entity profiles compete for slots in the memory "
+        "packet. A knob rather than a constant because the evidence points both ways: "
+        "on the LoCoMo-Plus subset, every arm with a populated graph scored below the "
+        "empty-graph baseline on multi-hop (0.33 -> 0.23/0.27/0.26), since "
+        "multi_hop_query has no hop loop and returns neighbourhood summaries rather "
+        "than answers. Turning this off is the cheap alternative to building lever E.",
+    )
     hyde_retrieval_enabled: bool = Field(
         default=True,
         description="Use Hypothetical Document Embedding (HyDE) for cognitive memory queries.",

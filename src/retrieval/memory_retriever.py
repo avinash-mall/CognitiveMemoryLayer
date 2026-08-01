@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from ..core.config import get_settings
-from ..core.schemas import MemoryPacket
+from ..core.schemas import MemoryPacket, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.llm import LLMClient
@@ -17,6 +17,24 @@ from .retriever import HybridRetriever
 from .rrf import rrf_merge
 
 _logger = get_logger(__name__)
+
+
+GRAPH_RETRIEVAL_SOURCE = "graph"
+
+
+def drop_graph_results(memories: list[RetrievedMemory], *, enabled: bool) -> list[RetrievedMemory]:
+    """Remove knowledge-graph hits from the candidate set.
+
+    Called before the rerank cap, not after: filtering at packet-build time would leave
+    the slots a graph hit consumed already spent, which defeats the point. Everything
+    else — vector, facts, constraints — passes through untouched.
+
+    ``enabled`` is inverted from the feature flag at the call site so the flag can stay
+    positively named (graph_results_in_packet) while this function stays a filter.
+    """
+    if not enabled:
+        return memories
+    return [m for m in memories if m.retrieval_source != GRAPH_RETRIEVAL_SOURCE]
 
 
 def _reranker_config_from_settings() -> RerankerConfig:
@@ -217,6 +235,10 @@ class MemoryRetriever:
                         seen_ids.add(rid)
                         deduped_results.append(item["mem"])
                 raw_results = deduped_results
+
+        raw_results = drop_graph_results(
+            raw_results, enabled=not settings.features.graph_results_in_packet
+        )
 
         reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
         retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
