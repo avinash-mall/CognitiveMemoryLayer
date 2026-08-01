@@ -74,6 +74,11 @@ class TestDropGraphResults:
 
 
 class TestFlagDefault:
-    def test_graph_results_are_kept_by_default(self):
-        """Default preserves today's behaviour; the measurement decides any flip."""
-        assert FeatureFlags().graph_results_in_packet is True
+    def test_graph_results_are_excluded_by_default(self):
+        """Flipped on measured evidence, not preference.
+
+        Frozen LoCoMo-Plus corpus, only this flag changed: overall 0.480 -> 0.513,
+        temporal +0.084, multi-hop +0.050, single-hop +0.048. Turn it back on when
+        lever E makes the graph prong return answers rather than neighbourhood summaries.
+        """
+        assert FeatureFlags().graph_results_in_packet is False

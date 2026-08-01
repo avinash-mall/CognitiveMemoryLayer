@@ -72,15 +72,31 @@ link them below. Delete notes when they stop being true.
 Two full subset runs, 677 samples each, against arm 0 = the committed full run restricted
 to the same samples (overall **0.4993**).
 
-| category | n | arm 0 | v1 | v2 | **arm 3** | spread across runs |
+| category | n | arm 0 | v1 | v2 | arm 3 | **arm 4** |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Cognitive | 40 | 0.200 | 0.325 | 0.275 | **0.200** | 0.125 |
-| adversarial | 151 | 0.808 | 0.735 | 0.768 | **0.782** | 0.073 |
-| common-sense | 40 | 0.350 | 0.375 | 0.313 | **0.400** | 0.087 |
-| multi-hop | 100 | 0.330 | 0.225 | 0.270 | **0.260** | 0.105 |
-| single-hop | 250 | 0.520 | 0.496 | 0.510 | **0.528** | 0.032 |
-| temporal | 96 | 0.323 | 0.125 | 0.167 | **0.260** | 0.198 |
-| **overall** | 677 | **0.499** | **0.439** | **0.458** | **0.480** | |
+| Cognitive | 40 | 0.200 | 0.325 | 0.275 | 0.200 | **0.250** |
+| adversarial | 151 | 0.808 | 0.735 | 0.768 | 0.782 | **0.748** |
+| common-sense | 40 | 0.350 | 0.375 | 0.313 | 0.400 | **0.400** |
+| multi-hop | 100 | 0.330 | 0.225 | 0.270 | 0.260 | **0.310** |
+| single-hop | 250 | 0.520 | 0.496 | 0.510 | 0.528 | **0.576** |
+| temporal | 96 | 0.323 | 0.125 | 0.167 | 0.260 | **0.344** |
+| **overall** | 677 | **0.499** | **0.439** | **0.458** | **0.480** | **0.513** |
+
+**Arm 4 is the trustworthy one, and it is the only result above baseline.** It re-scored
+arm 3's *frozen* corpus with a single flag changed — no re-ingestion, so none of the
+run-to-run variance that makes the other columns hard to read. Excluding graph results
+from the packet: **overall 0.480 -> 0.513**, temporal +0.084, multi-hop +0.050,
+single-hop +0.048. `FEATURES__GRAPH_RESULTS_IN_PACKET` now defaults to **false** on that
+evidence.
+
+The one cost is adversarial, 0.782 -> 0.748. That is coherent rather than surprising:
+adversarial rewards refusing when the answer is not present, so a packet carrying more
+usable context makes the model refuse less, and it sometimes answers an adversarial
+question it should have declined. Within the 0.073 spread that category shows across
+runs, and a good trade for +0.033 overall.
+
+Turn the flag back on when lever E (iterative reason/retrieve) makes the graph prong
+return answers instead of neighbourhood summaries.
 
 **Verdict: the write-path work is a wash overall, and multi-hop is a real regression.**
 Arm 3 lands at 0.480 against arm 0's 0.499 — a gap of ~13 of 677 samples, smaller than
