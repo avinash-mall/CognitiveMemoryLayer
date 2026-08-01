@@ -155,3 +155,18 @@ class TestEpisodeDates:
         rendered = builder.to_llm_context(packet)
         assert "[2023-01-20]" in rendered
         assert "refers to" not in rendered
+
+
+def test_episode_threshold_defaults_agree():
+    """Two defaults for one knob. They must not drift apart.
+
+    Lowered 0.5 -> 0.4 on measured evidence: episode relevance runs p10 0.462 /
+    median 0.555 on a real corpus, so 0.5 discarded ~25% of retrieved episodes and was
+    what limited the section rather than max_episodes_default. Frozen-corpus A/B:
+    overall 0.513 -> 0.536.
+    """
+    from src.core.config import RetrievalSettings
+    from src.retrieval.packet_builder import EPISODE_RELEVANCE_THRESHOLD
+
+    assert RetrievalSettings().episode_relevance_threshold == EPISODE_RELEVANCE_THRESHOLD
+    assert EPISODE_RELEVANCE_THRESHOLD == 0.4

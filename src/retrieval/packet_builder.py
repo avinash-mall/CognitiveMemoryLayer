@@ -6,8 +6,10 @@ from datetime import datetime
 from ..core.enums import MemoryType
 from ..core.schemas import MemoryPacket, RetrievedMemory, source_label
 
-# Fallback constants when config unavailable (BUG-02: avoid diluting constraints)
-EPISODE_RELEVANCE_THRESHOLD = 0.5
+# Fallback constants when config unavailable (BUG-02: avoid diluting constraints).
+# Keep EPISODE_RELEVANCE_THRESHOLD in step with RetrievalSettings.episode_relevance_
+# threshold — two defaults for one knob that disagree is worse than either value.
+EPISODE_RELEVANCE_THRESHOLD = 0.4
 MAX_EPISODES_WHEN_CONSTRAINTS = 5
 MAX_EPISODES_DEFAULT = 8
 MAX_CONSTRAINT_TOKENS = 400

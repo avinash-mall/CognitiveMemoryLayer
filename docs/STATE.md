@@ -74,15 +74,30 @@ link them below. Delete notes when they stop being true.
 Two full subset runs, 677 samples each, against arm 0 = the committed full run restricted
 to the same samples (overall **0.4993**).
 
-| category | n | arm 0 | v1 | v2 | arm 3 | **arm 4** |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Cognitive | 40 | 0.200 | 0.325 | 0.275 | 0.200 | **0.250** |
-| adversarial | 151 | 0.808 | 0.735 | 0.768 | 0.782 | **0.748** |
-| common-sense | 40 | 0.350 | 0.375 | 0.313 | 0.400 | **0.400** |
-| multi-hop | 100 | 0.330 | 0.225 | 0.270 | 0.260 | **0.310** |
-| single-hop | 250 | 0.520 | 0.496 | 0.510 | 0.528 | **0.576** |
-| temporal | 96 | 0.323 | 0.125 | 0.167 | 0.260 | **0.344** |
-| **overall** | 677 | **0.499** | **0.439** | **0.458** | **0.480** | **0.513** |
+| category | n | arm 0 | v1 | v2 | arm 3 | arm 4 | **arm 5** |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Cognitive | 40 | 0.200 | 0.325 | 0.275 | 0.200 | 0.250 | **0.325** |
+| adversarial | 151 | 0.808 | 0.735 | 0.768 | 0.782 | 0.748 | **0.755** |
+| common-sense | 40 | 0.350 | 0.375 | 0.313 | 0.400 | 0.400 | **0.375** |
+| multi-hop | 100 | 0.330 | 0.225 | 0.270 | 0.260 | 0.310 | **0.370** |
+| single-hop | 250 | 0.520 | 0.496 | 0.510 | 0.528 | 0.576 | **0.588** |
+| temporal | 96 | 0.323 | 0.125 | 0.167 | 0.260 | 0.344 | **0.385** |
+| **overall** | 677 | **0.499** | **0.439** | **0.458** | **0.480** | **0.513** | **0.536** |
+
+Arms 4 and 5 are the trustworthy ones: both re-scored arm 3's *frozen* corpus with a
+single setting changed, so neither carries re-ingestion variance. Arm 4 excluded graph
+results (+0.033); arm 5 additionally lowered `episode_relevance_threshold` 0.5 -> 0.4
+(+0.024). **Final: 0.536 vs the 0.499 baseline, +0.037, with every category above
+baseline except adversarial.** Both defaults are now flipped in config.
+
+Adversarial is the one consistent cost, 0.808 -> 0.755. It is a genuine trade rather
+than a bug: that category rewards *refusing* when the answer is absent, so a packet
+carrying more usable context makes the model refuse less and occasionally answer
+something it should have declined. Everything that improves recall will show up here as
+a small loss.
+
+Do not push the threshold below 0.4 — 0.3 admits 100% of retrieved episodes, so it stops
+being a filter at all, and the remaining headroom between 0.4 (97.7%) and 0.3 is 2.3%.
 
 **Arm 4 is the trustworthy one, and it is the only result above baseline.** It re-scored
 arm 3's *frozen* corpus with a single flag changed — no re-ingestion, so none of the

@@ -201,8 +201,14 @@ class RetrievalSettings(PydanticBaseModel):
     """Retrieval tuning knobs."""
 
     episode_relevance_threshold: float = Field(
-        default=0.5,
-        description="Min relevance for episodes in context (avoid diluting constraints)",
+        default=0.4,
+        description="Min relevance for episodes in context (avoid diluting constraints). "
+        "Lowered from 0.5 on measured evidence: episode relevance on a real corpus runs "
+        "p10 0.462 / median 0.555, so 0.5 discarded ~25% of retrieved episodes and it, "
+        "rather than max_episodes_default, was what limited the section. At 0.4 the cap "
+        "binds instead. Frozen-corpus A/B: overall 0.513 -> 0.536, Cognitive +0.075, "
+        "multi-hop +0.060, temporal +0.041. Going lower is pointless — 0.3 admits "
+        "everything, so it is not a filter at all.",
     )
     max_episodes_when_constraints: int = Field(
         default=5,
