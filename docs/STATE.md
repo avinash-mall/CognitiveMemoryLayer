@@ -14,10 +14,11 @@ link them below. Delete notes when they stop being true.
   leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
   signal because it runs the integration suite in containers against fresh
   Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
-- Suite sizes, so drift is visible: **756** unit (hermetic), **341** integration + e2e +
-  py-cml against a live server. Grew from 716/327 across two passes: source monitoring,
-  gist demotion, the retention curve, then temporal resolution, prospective indexing,
-  the scan_texts_for_gate SQL guard and multi-valued facts. Not regressions.
+- Suite sizes, so drift is visible: **799** unit (hermetic), **341** integration + e2e +
+  py-cml against a live server. Grew from 716/327 across three passes: source monitoring,
+  gist demotion, the retention curve; then temporal resolution, prospective indexing,
+  the scan_texts_for_gate SQL guard and multi-valued facts; then the graph-as-index fix,
+  temporal contiguity and the sufficiency signal. Not regressions.
 - **The Docker `api` container bakes its source in — there is no volume mount.** Editing
   `src/` does not change what the running container serves, so a live suite against it
   tests the last image build, not your working tree. For verifying local changes, run
@@ -38,6 +39,47 @@ link them below. Delete notes when they stop being true.
   stale docs, dead env keys, vendored assets, cache volumes.
 
 ## Active work
+
+### Human-memory research pass (2026-08-02)
+
+Plan and evidence: [memory-redesign-plan.md](memory-redesign-plan.md). Three retrieval
+items implemented; one was killed by its own measurement.
+
+- **Item 1 — graph prong is an index, not content** (`412a3e3`). Resolves ranked entities
+  to the episodic records their edges cite (`evidence_ids`) instead of rendering
+  `Entity: x\n - REL: y`. Also dropped the fallback traversal from 3 hops to 2 and capped
+  resolved records at `step.top_k`. **The prong used to time out and contribute nothing**
+  (1.5–3.5 s against a 2 s budget); it now completes in ~174 ms.
+  `FEATURES__GRAPH_RESULTS_IN_PACKET` is back to default **true** — the evidence for
+  `false` was about entity profiles, which no longer exist.
+  *Frozen-corpus arm running: `evaluation/outputs/item1/`, provenance in
+  `ARM_PROVENANCE.txt`.*
+- **Item 3 — temporal contiguity** (`48e4d71`, fixed in `f4b40fa`). Expands the top 3
+  vector hits into the ±2 turns around them. Ordered by `metadata.turn_idx`, **not**
+  timestamp: every turn of a LoCoMo session shares one identical timestamp (28 turns,
+  span 0.000000 s), and `written_at` is scrambled by concurrent ingestion workers.
+  Not yet measured.
+- **Item 2 — sufficiency gate. Signal shipped, abstention deliberately not.** Measured at
+  25 queries/category: no retrieval-score statistic separates unanswerable from
+  answerable (top cosine 0.624 vs 0.638; mean-of-top-5 0.596 vs 0.586, *the wrong way*;
+  margin 0.063 vs 0.065). A test pins the refusal nudge out. `packet.sufficiency`,
+  `open_questions` and `warnings` now reach `ReadMemoryResponse` — all three were
+  computed and reached no caller before.
+
+**Two facts worth more than the items themselves:**
+
+- **Post-rerank relevance is a constant, not a signal.** 60 sampled queries through the
+  live read path returned a top score of *exactly 0.850* every time —
+  `GRAPH_RELEVANCE_CEILING`. Prong scores are per-source constants (facts 0.8,
+  constraints 0.75, graph banded 0.55–0.85). Anything thresholding the reranked set is
+  thresholding a constant; only the vector prong's cosine varies with the query.
+- **Consolidation never fires on its own.** `start_background_worker` has no caller
+  anywhere and `check_triggers` is called only from tests, so the documented 6-hour
+  interval and 500-episode quota have never run — the two HTTP routes are the only live
+  entry points. Third instance of the class that produced two wrong conclusions already
+  (`encode_chunk`, eval-mode graph blindness).
+
+### Earlier
 
 - **LoCoMo-Plus subset A/B is running.** Everything below is implemented and committed.
   Arms, each against a server run from source on `:8000` using
