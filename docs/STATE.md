@@ -50,10 +50,22 @@ items implemented; one was killed by its own measurement.
   `Entity: x\n - REL: y`. Also dropped the fallback traversal from 3 hops to 2 and capped
   resolved records at `step.top_k`. **The prong used to time out and contribute nothing**
   (1.5–3.5 s against a 2 s budget); it now completes in ~174 ms.
-  `FEATURES__GRAPH_RESULTS_IN_PACKET` is back to default **true** — the evidence for
-  `false` was about entity profiles, which no longer exist.
-  *Frozen-corpus arm running: `evaluation/outputs/item1/`, provenance in
-  `ARM_PROVENANCE.txt`.*
+  **Measured and it lost.** Full 2,387-sample frozen-corpus arm
+  (`evaluation/outputs/item1/`, provenance in `ARM_PROVENANCE.txt`, server pid verified
+  unchanged across the run): **0.4860 → 0.4292**, every factual category down (single-hop
+  −0.097, temporal −0.098, multi-hop −0.090) and adversarial *up* +0.074. Median context
+  1583 → 2741 chars.
+
+  Cause was **ranking, not resolution**. Graph hits carried the traversal score, which
+  normalises into a constant 0.55–0.85 band; the median vector cosine is ~0.62, so about
+  half of every graph batch outranked the median genuine match *regardless of the
+  question*, and 10–15 were injected into a packet with 5–8 episode slots. The prong went
+  from emitting neighbourhood summaries to emitting well-ranked irrelevant episodes.
+
+  Graph-resolved records are now scored by **cosine against the query** — graph decides
+  candidacy, similarity decides rank. Unmeasured, so
+  `FEATURES__GRAPH_RESULTS_IN_PACKET` is back to default **false** and `main` sits at the
+  known-best 0.4860 config. Turning it on is the next arm.
 - **Item 3 — temporal contiguity** (`48e4d71`, fixed in `f4b40fa`). Expands the top 3
   vector hits into the ±2 turns around them. Ordered by `metadata.turn_idx`, **not**
   timestamp: every turn of a LoCoMo session shares one identical timestamp (28 turns,

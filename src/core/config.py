@@ -165,15 +165,19 @@ class FeatureFlags(PydanticBaseModel):
         description="Number of prospective implications to generate per memory.",
     )
     graph_results_in_packet: bool = Field(
-        default=True,
+        default=False,
         description="Let the knowledge-graph prong compete for slots in the memory packet. "
-        "This was off by default while the prong returned entity neighbourhood profiles: "
-        "excluding them moved a frozen LoCoMo-Plus corpus 0.480 -> 0.513 (temporal +0.084, "
-        "multi-hop +0.050, single-hop +0.048) because a profile summarises a neighbourhood "
-        "instead of answering, and displaced the episodes that would have. The prong now "
-        "resolves its PPR-ranked entities to the episodic records those entities index, so "
-        "it emits grounded source text and that evidence no longer applies. Off makes the "
-        "graph contribute nothing to retrieval.",
+        "Off on measured evidence, twice over. First while the prong returned entity "
+        "neighbourhood profiles (excluding them: 0.480 -> 0.513 on a frozen corpus). Then "
+        "again after it was changed to resolve entities to the episodic text they index: "
+        "that arm scored 0.4292 against a 0.4860 baseline on the full 2,387-sample set, "
+        "with every factual category down (single-hop -0.097, temporal -0.098, multi-hop "
+        "-0.090) and adversarial *up* +0.074 — the signature of a packet so diluted the "
+        "model refuses more. Median context grew 1583 -> 2741 chars. The cause was "
+        "ranking, not resolution: graph hits carried the traversal score, a constant band "
+        "sitting above the median vector cosine, so they displaced better-matching "
+        "episodes regardless of the question. They are now scored by cosine against the "
+        "query instead. Turn this on to measure that fix; it has not yet been measured.",
     )
     temporal_contiguity_enabled: bool = Field(
         default=True,

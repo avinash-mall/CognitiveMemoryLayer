@@ -135,6 +135,57 @@ class TestResolvesToEpisodicText:
         assert items[0]["relevance"] == pytest.approx(GRAPH_RELEVANCE_CEILING)
 
 
+class TestRanking:
+    """The graph decides candidacy; it must not decide rank.
+
+    Measured the hard way. Scoring graph hits by the traversal score put them all in a
+    constant 0.55-0.85 band irrespective of the question — above the median vector cosine
+    (~0.62) — so they displaced better-matching episodes. Full 2,387-sample arm: 0.4292
+    against a 0.4860 baseline, every factual category down, adversarial up because the
+    packet got worse. Cosine against the query puts both prongs on one scale.
+    """
+
+    @pytest.mark.asyncio
+    async def test_relevance_is_query_similarity_not_the_traversal_score(self):
+        near, far = str(uuid4()), str(uuid4())
+        a, b = _record("near", near), _record("far", far)
+        a.embedding = [1.0, 0.0]
+        b.embedding = [0.0, 1.0]
+        # `far` wins on traversal score; `near` must still win on the query.
+        r = _retriever([_entity("u", 1.0, [near]), _entity("v", 100.0, [far])], [a, b])
+
+        by_text = {
+            i["text"]: i["relevance"]
+            for i in await r._retrieve_graph(TENANT, _step(["u"]), [1.0, 0.0])
+        }
+
+        assert by_text["near"] > by_text["far"]
+        assert by_text["near"] == pytest.approx(1.0)
+        assert by_text["far"] == pytest.approx(0.0)
+
+    @pytest.mark.asyncio
+    async def test_a_record_without_an_embedding_keeps_the_traversal_score(self):
+        """Falling through to 0.0 would silently bury records the graph found."""
+        rid = str(uuid4())
+        rec = _record("no embedding", rid)
+        r = _retriever([_entity("u", 10.0, [rid])], [rec])
+
+        items = await r._retrieve_graph(TENANT, _step(["u"]), [1.0, 0.0])
+
+        assert items[0]["relevance"] == pytest.approx(GRAPH_RELEVANCE_CEILING)
+
+    @pytest.mark.asyncio
+    async def test_no_query_embedding_keeps_the_traversal_score(self):
+        rid = str(uuid4())
+        rec = _record("x", rid)
+        rec.embedding = [1.0, 0.0]
+        r = _retriever([_entity("u", 10.0, [rid])], [rec])
+
+        items = await r._retrieve_graph(TENANT, _step(["u"]), None)
+
+        assert items[0]["relevance"] == pytest.approx(GRAPH_RELEVANCE_CEILING)
+
+
 class TestCandidateCap:
     @pytest.mark.asyncio
     async def test_resolved_records_are_capped_at_step_top_k(self):

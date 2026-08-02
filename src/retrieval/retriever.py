@@ -13,6 +13,7 @@ from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.logging_config import get_logger
+from ..utils.similarity import cosine_similarity
 from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
 
@@ -214,7 +215,9 @@ class HybridRetriever:
                     timeout_ms=200,
                 )
                 try:
-                    graph_results = await self._retrieve_graph(tenant_id, graph_step)
+                    graph_results = await self._retrieve_graph(
+                        tenant_id, graph_step, query_embedding
+                    )
                     all_results.extend(graph_results)
                     if debug:
                         debug_steps.append(
@@ -428,7 +431,7 @@ class HybridRetriever:
                     tenant_id, step, context_filter, query_embedding
                 )
             elif step.source == RetrievalSource.GRAPH:
-                items = await self._retrieve_graph(tenant_id, step)
+                items = await self._retrieve_graph(tenant_id, step, query_embedding)
             elif step.source == RetrievalSource.CONSTRAINTS:
                 items = await self._retrieve_constraints(
                     tenant_id, step, context_filter, query_embedding
@@ -707,6 +710,7 @@ class HybridRetriever:
         self,
         tenant_id: str,
         step: RetrievalStep,
+        query_embedding: list[float] | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieve via knowledge graph PPR. Holistic: tenant-only."""
         if not step.seeds:
@@ -775,11 +779,37 @@ class HybridRetriever:
                     "type": record.type.value,
                     "source": "graph",
                     "text": record.text,
-                    "relevance": best.get(str(record.id), GRAPH_RELEVANCE_FLOOR),
+                    "relevance": self._graph_relevance(
+                        record, best.get(str(record.id), GRAPH_RELEVANCE_FLOOR), query_embedding
+                    ),
                     "record": record,
                 }
             )
         return items
+
+    @staticmethod
+    def _graph_relevance(
+        record: Any,
+        graph_score: float,
+        query_embedding: list[float] | None,
+    ) -> float:
+        """Rank a graph-resolved episode by how well it answers *this* query.
+
+        The graph decides which records are candidates; it must not decide how they
+        rank. Scoring them by the traversal score put every graph hit in a constant
+        0.55-0.85 band irrespective of the question, which sits above the median vector
+        cosine (~0.62) — so graph candidates displaced better-matching vector hits and
+        every factual category fell (measured: overall 0.486 -> 0.429, single-hop
+        -0.097, temporal -0.098, multi-hop -0.090, while adversarial *rose* +0.074
+        because the packet got worse and the model refused more).
+
+        Cosine against the query is the same scale the vector prong emits, so the two
+        compete on merit. The traversal score is kept only as the fallback for a record
+        with no stored embedding, which would otherwise silently rank at zero.
+        """
+        if query_embedding and record.embedding:
+            return cosine_similarity(query_embedding, record.embedding)
+        return graph_score
 
     async def _retrieve_constraints(
         self,

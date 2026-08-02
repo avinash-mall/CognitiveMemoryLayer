@@ -74,14 +74,23 @@ class TestDropGraphResults:
 
 
 class TestFlagDefault:
-    def test_graph_results_are_included_by_default(self):
-        """Back on because the prong changed shape, not because the old evidence expired.
+    def test_graph_results_are_excluded_by_default(self):
+        """Off on measured evidence, twice, for two different reasons.
 
-        Frozen LoCoMo-Plus corpus, only this flag changed: excluding entity profiles was
-        worth overall 0.480 -> 0.513 (temporal +0.084, multi-hop +0.050, single-hop
-        +0.048). That measured a prong emitting neighbourhood summaries. It now resolves
-        PPR entities to the episodic records they index and emits grounded source text,
-        so the measurement no longer describes what the flag gates. Off now means the
-        graph contributes nothing at all.
+        First while the prong emitted entity neighbourhood profiles: excluding them was
+        worth 0.480 -> 0.513 on a frozen corpus.
+
+        Then again after it was changed to resolve entities to the episodic text they
+        index — which the literature predicted would help and which did not. Full
+        2,387-sample arm: **0.4292 against a 0.4860 baseline**, every factual category
+        down (single-hop -0.097, temporal -0.098, multi-hop -0.090) and adversarial
+        *up* +0.074, the signature of a packet diluted until the model refuses more.
+        Median context grew 1583 -> 2741 chars.
+
+        The resolution was not the problem; the ranking was. Graph hits carried the
+        traversal score — a constant band above the median vector cosine — so they
+        displaced better-matching episodes regardless of the question. Scoring by cosine
+        against the query is in, but unmeasured, so the default stays off until an arm
+        says otherwise.
         """
-        assert FeatureFlags().graph_results_in_packet is True
+        assert FeatureFlags().graph_results_in_packet is False

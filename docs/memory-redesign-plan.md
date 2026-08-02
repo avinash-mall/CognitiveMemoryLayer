@@ -83,9 +83,33 @@ Cost is quoted in the only unit that matters here — how the change gets measur
 Frozen-corpus A/B is ~55 min and needs the ingestion checkpoint copied into the new
 `--out-dir`; a fresh-ingest arm is ~2 h and needs its own `--tenant-prefix`.
 
-### 1. Graph as index, not content — resolve PPR hits to episodic text
+### 1. Graph as index, not content — resolve entity hits to episodic text
 
-*Incremental. Retrieval-only. Frozen-corpus A/B (~55 min). ~40 lines.*
+*Incremental. Retrieval-only. **Measured: the first version lost 0.057.** Flag off.*
+
+> **Result, 2026-08-02.** Full 2,387-sample frozen-corpus arm, only this change:
+> **0.4860 → 0.4292**. Every factual category fell — single-hop −0.097, temporal −0.098,
+> multi-hop −0.090, common-sense −0.063, Cognitive −0.060 — and adversarial *rose*
+> +0.074, which is the standing signature of a packet so degraded the model refuses more.
+> Median context grew 1583 → 2741 characters.
+>
+> **The resolution was not the problem; the ranking was.** Graph hits carried the
+> traversal score, which the retriever normalises into a constant 0.55–0.85 band. The
+> median vector cosine is ~0.62, so roughly half of every graph batch outranked the
+> median genuine match *regardless of the question*, and 10–15 of them were injected into
+> a packet with 5–8 episode slots. The prong stopped emitting neighbourhood summaries and
+> started emitting well-ranked irrelevant episodes instead — a better failure, still a
+> failure. This is the "post-rerank relevance is a constant" finding from item 2 doing
+> real damage.
+>
+> **Fix in, unmeasured:** graph-resolved records are now scored by cosine against the
+> query, so the graph decides *candidacy* and similarity decides *rank* — which is what
+> "entity structures are an index, text is the content" should have meant all along. The
+> flag stays **off** until an arm says otherwise.
+>
+> **Do not read this as "the literature was wrong."** The Entity-Only ablation is about
+> what reaches the generator, and grounded text still beats entity profiles there. What
+> this arm adds is that index-driven *recall* must not become index-driven *ranking*.
 
 **Human analogue.** Hippocampal index theory: the index is not the memory. A cue
 pattern-completes to an index, and the index *reinstates* the cortical trace. You never
