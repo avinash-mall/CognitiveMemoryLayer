@@ -662,8 +662,8 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that
 tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall.
-Latest run: **2026-07-31**, fully reproducible &mdash; artifact committed at
-[`evaluation/results/locomo_plus_2026-07-31.json`](evaluation/results/locomo_plus_2026-07-31.json),
+Latest run: **2026-08-02**, fully reproducible &mdash; artifact committed at
+[`evaluation/results/locomo_plus_2026-08-02_summary.json`](evaluation/results/locomo_plus_2026-08-02_summary.json),
 all 2,387 samples judged with zero errors, everything served locally (QA + judge:
 `Qwen3.6-27B-FP8` via vLLM, zero API dependency).
 
@@ -672,21 +672,25 @@ all 2,387 samples judged with zero errors, everything served locally (QA + judge
 > comparisons are indicative only &mdash; the committed artifact exists so that *relative
 > movement across our own runs* is measurable.
 >
-> **These scores also measured a partly-disabled system.** Eval-mode ingestion skipped
-> Neo4j graph sync and write-time facts, so multi-hop was scored against an empty graph
-> and the fact prong returned nothing; temporal resolution never ran on any write path at
-> all. Both are fixed, so these figures are a floor, not a ceiling. (Eval mode does *not*
-> skip LLM enrichment, contrary to what this note used to say.)
+> **What changed since the previous run (46.31% &rarr; 48.60%).** That run measured a
+> partly-disabled system: eval-mode ingestion skipped Neo4j graph sync and write-time
+> facts, so multi-hop scored against an empty graph and the fact prong returned nothing,
+> and temporal resolution never ran on any write path at all. All fixed. Two retrieval
+> defaults also changed on measured evidence &mdash; graph entity profiles no longer take
+> packet slots, and the episode relevance threshold moved 0.5 &rarr; 0.4. Five of six
+> categories improved. Adversarial fell 2.9 points, which is the standing trade: that
+> category rewards *refusing* when the answer is absent, so a packet carrying more usable
+> context makes the model refuse less.
 
-| Category | CML 2026-07-31 (local 27B judge) | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Adversarial** | **78.25%** | 73.03% | 48.99% | 30.50% | 35.20% |
-| Single-hop | 53.80% | &mdash; | 78.13% | 80.20% | 76.90% |
-| Multi-hop | 33.87% | &mdash; | &mdash; | &mdash; | &mdash; |
-| Temporal | 31.31% | 73.83% | 45.79% | 39.40% | 49.30% |
-| Common-sense | 23.96% | &mdash; | &mdash; | &mdash; | &mdash; |
-| Cognitive | 21.20% | &mdash; | &mdash; | &mdash; | &mdash; |
-| **Overall** | **46.31%** | 71.78% | 62.99% | 57.24% | 59.64% |
+| Category | CML 2026-08-02 (local 27B judge) | prev. 2026-07-31 | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Adversarial** | **75.34%** | 78.25% | 73.03% | 48.99% | 30.50% | 35.20% |
+| Single-hop | 57.55% | 53.80% | &mdash; | 78.13% | 80.20% | 76.90% |
+| Temporal | 35.51% | 31.31% | 73.83% | 45.79% | 39.40% | 49.30% |
+| Multi-hop | 34.57% | 33.87% | &mdash; | &mdash; | &mdash; | &mdash; |
+| Common-sense | 27.60% | 23.96% | &mdash; | &mdash; | &mdash; | &mdash; |
+| Cognitive | 25.44% | 21.20% | &mdash; | &mdash; | &mdash; | &mdash; |
+| **Overall** | **48.60%** | 46.31% | 71.78% | 62.99% | 57.24% | 59.64% |
 
 **Where the system is strong.** Adversarial questions &mdash; ones with no valid answer in
 the conversation &mdash; score **78.25%**, the highest column in the table including the

@@ -200,26 +200,31 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 
 ## CML vs Other Methods (Comparison)
 
-### CML Run, 2026-07-31 (current) — `Qwen3.6-27B-FP8` (local, via vLLM)
+### CML Run, 2026-08-02 (current) — `Qwen3.6-27B-FP8` (local, via vLLM)
 
-Reproducible: artifact at [`results/locomo_plus_2026-07-31.json`](results/locomo_plus_2026-07-31.json),
-server at `983a9f9`, all 2,387 samples judged, zero errors.
+Reproducible: artifacts at
+[`results/locomo_plus_2026-08-02_summary.json`](results/locomo_plus_2026-08-02_summary.json)
+and `..._judged.json`, all 2,387 samples judged, zero errors.
 
-> **What this run actually measured.** `X-Eval-Mode` does **not** skip LLM enrichment —
-> `encode_batch` re-runs unified extraction per chunk, and 218,418 of 245,386 records
-> carry extracted entities. What it did skip was `_sync_to_graph` (the only writer of
-> Neo4j entities) plus write-time facts and constraints, so **multi-hop was scored against
-> an empty graph** and single-hop/common-sense against a dead fact prong. Separately,
-> temporal resolution never ran on any write path, so **temporal was scored with
-> `event_date` absent**. All three are fixed; treat these numbers as a floor.
+> **What changed from 2026-07-31 (46.31% → 48.60%).** That run measured a partly-disabled
+> system. `X-Eval-Mode` skipped `_sync_to_graph` — the only writer of Neo4j entities —
+> plus write-time facts and constraints, so multi-hop scored against an empty graph and
+> single-hop/common-sense against a dead fact prong. Temporal resolution never ran on any
+> write path, so temporal scored with `event_date` absent. All fixed; this run wrote
+> 136,217 semantic facts and 18,490 `event_date` records where the previous corpus had
+> ~4,400 and 117. Two retrieval defaults also changed on measured evidence: graph entity
+> profiles no longer take packet slots, and `episode_relevance_threshold` moved 0.5 → 0.4.
+>
+> For the record, `X-Eval-Mode` does **not** skip LLM enrichment — `encode_batch` re-runs
+> unified extraction per chunk. An earlier version of this note claimed otherwise.
 
-| Metric | Value |
-|--------|--------|
-| **Overall average** | **46.31%** |
-| **LoCoMo (factual) average** | **51.38%** (single-hop 53.80%, multi-hop 33.87%, temporal 31.31%, commonsense 23.96%, adversarial 78.25%) |
-| **LoCoMo-Plus (Cognitive)** | **21.20%** |
-| **Gap** (factual − cognitive) | **30.18%** |
-| Total samples | 2,387 (zero errors) |
+| Metric | Value | prev. 2026-07-31 |
+|--------|--------|--------|
+| **Overall average** | **48.60%** | 46.31% |
+| **LoCoMo (factual) average** | **54.11%** (single-hop 57.55%, multi-hop 34.57%, temporal 35.51%, commonsense 27.60%, adversarial 75.34%) | 51.38% |
+| **LoCoMo-Plus (Cognitive)** | **25.44%** | 21.20% |
+| **Gap** (factual − cognitive) | **28.67%** | 30.18% |
+| Total samples | 2,387 (zero errors) | 2,387 |
 | QA + Judge model | `Qwen3.6-27B-FP8` — fully local, zero API cost |
 
 The two CML runs below each other are **not** directly comparable either — different QA and
@@ -258,7 +263,8 @@ Table 1). Same evaluation protocol: LLM-as-judge, constraint consistency, no tas
 | A-Mem | GPT-4o | 59.64% | 35.20% | 49.30% | Memory system |
 | SeCom | GPT-4o | 57.53% | 31.80% | 42.30% | Memory system |
 | Mem0 | GPT-4o | 57.24% | 30.50% | 39.40% | Memory system |
-| **CML 2026-07-31** | **Qwen3.6-27B (local)** | **46.31%** | **78.25%** | **31.31%** | **Zero API cost, reproducible artifact** |
+| **CML 2026-08-02** | **Qwen3.6-27B (local)** | **48.60%** | **75.34%** | **35.51%** | **Zero API cost, reproducible artifact** |
+| CML 2026-07-31 (superseded) | Qwen3.6-27B (local) | 46.31% | 78.25% | 31.31% | Graph + fact prong disabled during eval |
 | CML 2026-04 (superseded) | gemma-4-31b-it (local) | 48.58% | 64.80% | 48.60% | Pre-51afd15, unreproducible |
 | RAG (emb-large) | GPT-4o | ~39% | 59.73% | 40.00% | Basic retrieval |
 
