@@ -53,12 +53,19 @@ This also revises STATE.md's standing claim that lever E (an iterative hop loop)
 highest-value unshipped item. The evidence for that is genuinely split (see item 5), and
 the index-vs-content fix is both better-evidenced and far cheaper.
 
-**The back-pointer we need already exists.** Relation edges are written with
-`evidence_ids=[str(record.id)]` (`orchestrator.py:862` →
-`neocortical/store.py:201`), and the read path returns `properties(r)` including that
-field (`neo4j.py:526`). So PPR → entities → edges → episodic record IDs → grounded text
-is reachable **with no write-path change and no re-ingestion.** It is a retrieval-only
-change, A/B-able on the frozen corpus.
+**The back-pointer we need already exists, and we throw it away.** Relation edges are
+written with `evidence_ids=[str(record.id)]` (`orchestrator.py:862` →
+`neocortical/store.py:201`), the read path returns `properties(r)` including that field
+(`neo4j.py:526`), and `multi_hop_query` passes it through untouched — then
+`_format_entity_info` (`retriever.py:799-804`) reads only `predicate` and
+`related_entity` and **discards `relation_properties`**. The join key reaches the
+retriever and is dropped one function short of being useful.
+
+Measured on the `full2` corpus (2026-08-02): **583,346 edges, of which 464,511 (79.6%)
+carry a non-empty `evidence_ids`**, and zero carry an empty list. The 118,835 NULLs are
+the fact-sync path (`neocortical/store.py:330-340`), which passes no properties at all.
+So PPR → entities → edges → episodic record IDs → grounded text is reachable **with no
+write-path change and no re-ingestion**, on four fifths of the graph.
 
 ---
 
@@ -93,9 +100,20 @@ most recent episode that asserted it. Union it instead. This is a write-path cha
 it needs a fresh-ingest arm; but the frozen corpus already carries one ID per edge, so
 item 1 is fully A/B-able without it. Ship the union with the next write-path arm.
 
+**Watch the packet slots when flipping the flag.** The graph floor (0.55) sits *above*
+`episode_relevance_threshold` (0.4) and graph hits become `EPISODIC_EVENT`
+(`_dict_to_record` falls back to that type), so **every** surviving graph hit clears the
+episode filter and competes for the 5-or-8 episode slots. That is the mechanism by which
+the prong emptied Recent Events before. Resolving to real episodic records makes those
+slots worth spending, but the arm should check episode-slot occupancy, not just the score.
+
 **Expected.** multi-hop (0.346), single-hop (0.576). Flip
 `FEATURES__GRAPH_RESULTS_IN_PACKET=true` for the arm — the flag exists and its default
 is documented as evidence-driven, so flipping it back is a one-line arm.
+
+**Adjacent dead knob, free to fix here.** `step.top_k` is never passed to
+`multi_hop_query`, whose 20→10 is hardcoded — so the planner's carefully chosen 15
+(multi-hop) and 10 (constraint) are dead for this prong.
 
 ### 2. Sufficiency gate — a metacognitive signal distinct from retrieval score
 
@@ -120,8 +138,23 @@ every "insufficient" verdict discards real wins — threshold it, don't binarise
 
 **Change.** Compute familiarity from the first-pass score distribution in
 `memory_retriever.retrieve` (no LLM), attach it to `MemoryPacket`, surface it in the API
-response, and have the eval answer prompt consume it. There is currently **no** abstention
-or confidence signal anywhere in the packet or API.
+response, and have the answer prompt consume it.
+
+**Half of this is already computed and thrown away.** `packet_builder` builds
+`open_questions` — one entry per memory with `confidence < 0.5` — and it reaches
+**nothing**: not the markdown renderer, not `_format_json`, not `ReadMemoryResponse`,
+which has no field for it. `warnings` is nearly as bad (markdown only, and only if ≥50
+chars of budget survive). The seamless turn path is worse still: it rebuilds a filtered
+packet that structurally drops both, and returns `""` for an empty result set with no
+"nothing relevant" sentinel. Every existing threshold in the system silently *shrinks*
+the packet rather than signalling anything. So this item is partly a plumbing job on
+signals we already compute — the same write-only bug class we have now removed twice.
+
+**Measurement confound — do not repeat the earlier mistake.** This arm only pays off if
+the answer prompt consumes the signal and abstains, so it is *not* a pure retrieval
+change: it moves the QA prompt, and adversarial is the category most sensitive to prompt
+wording. Hold the prompt fixed across the comparison and vary only the signal, or the arm
+measures two things at once. Three arms were spent untangling exactly this shape earlier.
 
 **Expected.** Protects adversarial (0.753) while items 1/4/5 land; secondarily lifts it.
 
@@ -147,7 +180,8 @@ context. Grounded neighbourhood text is doing the work.
 
 ### 4. Bi-temporal fact validity
 
-*Redesign (schema migration). Write-path. Fresh-ingest arm (~2 h).*
+*Incremental, not a migration — the columns already exist. Write-path. Fresh-ingest arm
+(~2 h).*
 
 **Human analogue.** Event time is encoded separately from encoding time; humans date
 events by landmarks and relative order, not by a single stamp.
@@ -160,15 +194,28 @@ LongMemEval/LoCoMo from organising by *semantic* time rather than dialogue time 
 consolidating point-wise memories into durative units. MemoTime: retrieval strategy
 selected per temporal operator (before/after, duration, ordering), up to +24%.
 
-**Where we stand.** Episode-level source monitoring already distinguishes said-date from
-event-date — that half is shipped and verified at scale (18,490 `event_date` records).
-But `semantic_facts` carries a single timestamp and no validity interval, so supersession
-is destructive and "what did I believe in March" is unanswerable. STATE.md lever C.
+**Where we stand — better than STATE.md lever C claims, and worse.** `semantic_facts`
+*already has* `valid_from`, `valid_to` and `is_current`, and reads already filter on
+them. What is missing is that **no path ever sets an interval from content**:
+`valid_from` is stamped with the write time on every create, and `valid_to` is set only
+on supersession. "I was vegetarian until June 2024" produces a fact valid from the moment
+we heard it, with an open end. So the storage layer is ready and the extraction layer
+is not — this is an extractor change, not a migration.
 
-**Change.** Add `valid_from`/`valid_to` to `semantic_facts`; on supersession, close the
-old interval instead of deactivating the row. **Do not add the columns before the reader
-exists** — that is the write-only bug class we already removed once. Reader first: a
-point-in-time fact lookup in the fact prong.
+The episodic side has the mirror-image problem. Source monitoring is shipped and verified
+at scale (18,490 `event_date` records), but `event_date` lives **only in the metadata
+JSON** — never a column, never indexed, and read in exactly one place
+(`packet_builder.py:290`, for rendering). Nothing filters, sorts or ranges on it; the
+planner's time filter and `vector_search` both hit `timestamp`, which is turn time. We
+extract event time correctly and then cannot query by it. `MemoryRecordCreate` also
+exposes neither `valid_from` nor `valid_to`, so an API writer cannot set an interval at
+all.
+
+**Change.** Extract validity intervals from content into the existing fact columns; on
+supersession close the old interval rather than only flipping `is_current`. Promote
+`event_date` to a queryable column with an index, and route the planner's time filter
+through it. **Reader first, in both cases** — that is the write-only bug class we have
+now removed twice, and `event_date` is currently a live example of it.
 
 **Expected.** temporal (0.355), and the knowledge-update failure mode generally.
 
@@ -206,9 +253,36 @@ concatenating packets (ablating that structure costs 1.7 F1, tier 1).
 
 **Expected.** multi-hop (0.346), Cognitive (0.254).
 
-### 6. Recurrence-gated consolidation
+### 6. Make consolidation actually run, then gate it on recurrence
 
 *Incremental. Write-path. Fresh-ingest arm. Primarily a **performance** item.*
+
+**Before any of the below: consolidation never fires on its own.** `ConsolidationWorker.
+start_background_worker()` has **no caller anywhere in the repo**, and
+`ConsolidationScheduler.check_triggers` is called only from
+`tests/unit/test_consolidation_triggers_clusterer_sampler.py`. The documented 6-hour
+interval and 500-episode quota have never fired in production. The only live entry points
+are two HTTP routes (`admin_routes.py:24`, `dashboard/jobs_routes.py:308`) — consolidation
+is **manual-only**.
+
+This is the third instance of the class that has now cost this project two wrong
+conclusions: `encode_chunk` (0 callers, flagged on, documented as shipped), eval-mode
+graph blindness, and now the consolidation scheduler. Anything measured about
+consolidation quality to date was measured about a pipeline that only ran when someone
+clicked. **Verify by trigger count, not by reading the diff.**
+
+Two more limits worth knowing before tuning anything here:
+
+- **The 7-day window is absorbing, not sliding.** `EpisodeSampler` scans
+  `time_window_days=7` (90 for constraints), so an episode not sampled within 7 days of
+  its `timestamp` is never eligible again. With a manual-only trigger, that means most
+  episodes were never consolidation candidates at all.
+- **Nothing re-runs over consolidated material.** `exclude_consolidated=True` is the
+  default and the only call site uses it; consolidation reads only `memory_records` and
+  `semantic_facts` is write-only from here. There is no gist-of-gists pass, no
+  re-clustering, no re-derivation when new evidence lands. This is exactly the
+  "single-pass, no repeated reinstatement" deficit — and the fix is a scheduler plus a
+  second-order pass, not a rewrite.
 
 **Human analogue.** Consolidation is selective and priority-ordered; replay tags what is
 worth keeping rather than transferring everything.
@@ -256,18 +330,28 @@ structure-first designs by +7.8 F1 on LoCoMo multi-hop, with the explicit argume
 embedding/graph compression destroys the contextual dependencies deep reasoning needs.
 Tier 4 agreement: detail-rich episodic memory stays permanently hippocampal, and
 unpredictable experience should *never* be consolidated. Our retention curve and gist
-demotion must keep raw episodes retrievable indefinitely. **Any decay that makes an
-episode unretrievable is now a known regression risk, not a feature.**
+demotion must keep raw episodes retrievable indefinitely.
+
+**This is a live risk, not a hypothetical one.** `forgetting/executor.py` transitions
+records to `SILENT` (`:106`), `COMPRESSED` (`:132`) and `ARCHIVED` (`:179`, `:188`), and
+`vector_search` filters `status='active'`. So a decayed episode becomes genuinely
+**unretrievable** by the vector prong — not merely down-ranked. Against the 81.10 → 51.88
+ablation, every such transition is spending the single most valuable thing in the store.
+Audit what fraction of episodes has left `ACTIVE`, and treat any non-trivial number as a
+regression to investigate before adding consolidation pressure on top.
 
 **Do not build agentic LLM-steered graph traversal as the first move.** See item 5 —
 null depth ablations, one paper contradicting its own table, a killed claim, and Zep
 winning without a loop.
 
-**Do not replace time-based decay with an interference model yet.** Tier 4 says
+**Do not replace time-based decay with a contextual-interference model yet.** Tier 4 says
 forgetting is driven by contextual interference from temporally adjacent events rather
 than by consolidation failure — theoretically better than our decay curve, but it is
 cognitive-science-only with no benchmark behind it, and it touches the retention path we
-just shipped. Item 3 extracts the useful, cheap half of the same finding.
+just shipped. Note the naming trap: `forgetting/interference.py` already exists, but it
+detects near-duplicates and text overlap — *semantic redundancy*, a different mechanism
+from temporal-context interference. Do not read the existing module as this box already
+being ticked. Item 3 extracts the useful, cheap half of the finding.
 
 **Do not chase full episodic re-reading.** The +7.8 F1 above costs **~11.25 s per query**
 against Mem0's P50 ≤1.1 s. Item 3 is the bounded approximation.
@@ -278,6 +362,27 @@ per-user isolation under load are barely measured. Our own write-path work being
 on LoCoMo-Plus is weak evidence that it does not matter.
 
 ---
+
+## Incidental findings
+
+Surfaced while mapping the code for this plan. Not part of any item, individually cheap,
+and each one distorts measurements of the items above — so they are worth clearing first
+or at least knowing about when reading an arm's numbers.
+
+- **The constraint boost swamps every other term.** `rerank_with_breakdown` adds
+  `min(1, relevance) * 2.0` to constraints, against a base score whose maximum is ~0.9.
+  Any constraint therefore outranks every episode, fact and preference unconditionally.
+  If constraints are in the packet, the reranker's weights are decoration.
+- **Gist demotion misses the constraint prong.** `gist_keys` is built only from
+  `retrieval_source == "facts"`, but the constraints prong stamps `"constraints"` — so a
+  gist promoted into a constraint category never demotes the episodes it summarised, and
+  both the gist and its sources occupy the packet.
+- **The fact prong has no tokenisation.** `search_facts` is a whole-query
+  `ILIKE %query%` over key/subject/value with no trigram index and no embeddings, so any
+  multi-word query matches almost nothing. Its results are also scored at a flat 0.8
+  regardless of match quality, as constraint-category facts are at a flat 0.75.
+- **`_apply_diversity` is dead code** — no callers; `_apply_diversity_with_indices` is
+  the live one.
 
 ## Sequencing and measurement
 
