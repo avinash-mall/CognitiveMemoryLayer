@@ -3,6 +3,7 @@
 import re
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from neo4j import AsyncGraphDatabase
 from neo4j.exceptions import ClientError as Neo4jClientError
@@ -416,48 +417,86 @@ class Neo4jGraphStore(GraphStoreBase):
         LIMIT $top_k
         """
 
+        # GDS 2.x removed anonymous projection: gds.pageRank.stream takes a graph *name*,
+        # not a {nodeQuery, relationshipQuery} map. The 1.x form this used to send failed
+        # with "Type mismatch: expected String but was Map" on every call, so the fallback
+        # ran even where GDS was installed. The projection is therefore mandatory, and is
+        # dropped again below — a leaked projection holds its nodes in heap for the life
+        # of the database.
+        # gds.graph.project.cypher warns as deprecated in 2.13 in favour of the
+        # gds.graph.project aggregation form. Kept deliberately: the aggregation form
+        # projects only nodes that appear in a relationship, so an isolated seed entity
+        # would vanish from the graph and take its own PPR mass with it. Revisit when a
+        # GDS version actually removes this, and handle isolated seeds explicitly then.
+        graph_name = f"ppr-{uuid4().hex}"
+        node_query = (
+            "MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.scope_id = $scope_id "
+            "RETURN id(n) AS id"
+        )
+        rel_query = (
+            "MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id "
+            "AND n1.scope_id = $scope_id RETURN id(n1) AS source, id(n2) AS target"
+        )
+
         async with self.driver.session() as session:
             try:
-                node_query = (
-                    "MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.scope_id = $scope_id "
-                    "RETURN id(n) AS id"
-                )
-                rel_query = (
-                    "MATCH (n1:Entity)-[r]->(n2:Entity) WHERE n1.tenant_id = $tenant_id "
-                    "AND n1.scope_id = $scope_id RETURN id(n1) AS source, id(n2) AS target"
-                )
-                gds_query = f"""
-                MATCH (source:Entity)
-                WHERE source.tenant_id = $tenant_id
-                  AND source.scope_id = $scope_id
-                  AND source.entity IN $seeds
-
-                CALL gds.pageRank.stream({{
-                    nodeQuery: '{node_query}',
-                    relationshipQuery: '{rel_query}',
-                    dampingFactor: $damping,
-                    sourceNodes: collect(source)
-                }})
-                YIELD nodeId, score
-
-                MATCH (n:Entity) WHERE id(n) = nodeId
-                RETURN n.entity AS entity,
-                       n.entity_type AS entity_type,
-                       score,
-                       properties(n) AS properties
-                ORDER BY score DESC
-                LIMIT $top_k
-                """
-                result = await session.run(
-                    gds_query,
+                await session.run(
+                    "CALL gds.graph.project.cypher($graph_name, $node_query, $rel_query, "
+                    "{parameters: {tenant_id: $tenant_id, scope_id: $scope_id}}) "
+                    "YIELD graphName RETURN graphName",
+                    graph_name=graph_name,
+                    node_query=node_query,
+                    rel_query=rel_query,
                     tenant_id=tenant_id,
                     scope_id=scope_id,
-                    seeds=seed_entities,
-                    damping=damping,
-                    top_k=top_k,
                 )
+                try:
+                    result = await session.run(
+                        """
+                        MATCH (source:Entity)
+                        WHERE source.tenant_id = $tenant_id
+                          AND source.scope_id = $scope_id
+                          AND source.entity IN $seeds
+                        WITH collect(source) AS sources
+
+                        CALL gds.pageRank.stream($graph_name, {
+                            dampingFactor: $damping,
+                            sourceNodes: sources
+                        })
+                        YIELD nodeId, score
+
+                        MATCH (n:Entity) WHERE id(n) = nodeId
+                        RETURN n.entity AS entity,
+                               n.entity_type AS entity_type,
+                               score,
+                               properties(n) AS properties
+                        ORDER BY score DESC
+                        LIMIT $top_k
+                        """,
+                        graph_name=graph_name,
+                        tenant_id=tenant_id,
+                        scope_id=scope_id,
+                        seeds=seed_entities,
+                        damping=damping,
+                        top_k=top_k,
+                    )
+                    records = await result.data()
+                finally:
+                    # Best-effort: a failed drop must not mask the result or the error
+                    # that got us here, but it must still be attempted on both paths.
+                    try:
+                        await session.run(
+                            "CALL gds.graph.drop($graph_name, false) YIELD graphName "
+                            "RETURN graphName",
+                            graph_name=graph_name,
+                        )
+                    except Exception:
+                        logger.warning("gds_projection_drop_failed", extra={"graph": graph_name})
+                return list(records) if records else []
             except Neo4jClientError:
-                # GDS not available; fall back to multi-hop heuristic
+                # GDS not installed, or the projection was refused. Either way the
+                # fallback is a path-count proximity score, NOT PageRank — which is why
+                # its scores are unbounded and its docstring used to lie.
                 logger.debug("GDS unavailable, falling back to multi-hop heuristic")
                 result = await session.run(
                     fallback_query,
@@ -466,8 +505,8 @@ class Neo4jGraphStore(GraphStoreBase):
                     seeds=seed_entities,
                     top_k=top_k,
                 )
-            records = await result.data()
-            return list(records) if records else []
+                records = await result.data()
+                return list(records) if records else []
 
     async def get_entity_facts(
         self,

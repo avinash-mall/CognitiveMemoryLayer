@@ -66,6 +66,32 @@ items implemented; one was killed by its own measurement.
   `open_questions` and `warnings` now reach `ReadMemoryResponse` — all three were
   computed and reached no caller before.
 
+**GDS is now part of the build** (`docker/neo4j.Dockerfile`, jar pinned to 2.13.4 with a
+sha256 check). Two things this uncovered:
+
+- **The GDS code path could never have worked.** It called
+  `gds.pageRank.stream({nodeQuery: ..., relationshipQuery: ...})` — GDS 1.x anonymous
+  projection, removed in GDS 2.0. Verified against a real GDS 2.13.4 server: *"Type
+  mismatch: expected String but was Map"*. The `except Neo4jClientError` branch then
+  silently substituted the path-count fallback, so **installing the plugin alone would
+  have changed nothing**. Rewritten to the 2.x contract: project a uniquely-named graph,
+  stream, drop in a `finally` (a leaked projection pins its nodes in heap for the life of
+  the database).
+- **`NEO4J_PLUGINS` was not an option** — it downloads the plugin on every container
+  start, breaking rule 1. The jar is fetched at build time, like pip wheels.
+
+CI builds the same image rather than pinning the stock one, because without the plugin
+the fallback makes the tests pass either way — which is how the 1.x call survived.
+
+⚠️ **Not yet deployed.** The live `docker-neo4j-1` still runs the stock image; switching
+it needs `./docker/up.sh build neo4j && ./docker/up.sh up -d neo4j`, which was deferred
+because recreating the container mid-arm would corrupt the running measurement. **Verify
+`MATCH ()-[r]->() RETURN count(r)` is still ~583k afterwards**: Neo4j's data lives on an
+**anonymous** volume (no named volume in `docker-compose.yml`), so a recreate preserves
+it but any `down -v` / `up -V` destroys the frozen corpus and costs ~9.5 h to rebuild.
+Giving it a named volume is worth doing, but it is a data migration, not a plugin install,
+so it was deliberately not bundled here.
+
 **Two facts worth more than the items themselves:**
 
 - **Post-rerank relevance is a constant, not a signal.** 60 sampled queries through the

@@ -25,12 +25,22 @@ services:
       retries: 10
 
   neo4j:
-    image: neo4j:5.26-community
+    # Built, not pulled, so the Graph Data Science plugin is baked in at build time.
+    # NEO4J_PLUGINS would fetch it from the internet on every start; see neo4j.Dockerfile.
+    build:
+      context: .
+      dockerfile: neo4j.Dockerfile
+    image: cml-neo4j:5.26-gds
     environment:
       # The official Neo4j image treats most NEO4J_* env vars as config keys.
       # Passing the whole .env here can turn vars like NEO4J_USER/PASSWORD into
       # invalid neo4j.conf entries and make the container exit at startup.
       NEO4J_AUTH: ${NEO4J_AUTH:-${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}}
+      # GDS runs unmanaged native code, so Neo4j refuses to load it unless the procedure
+      # namespace is explicitly unrestricted. Without both of these the plugin is present
+      # but every gds.* call fails and retrieval silently drops to the fallback.
+      NEO4J_dbms_security_procedures_unrestricted: gds.*
+      NEO4J_dbms_security_procedures_allowlist: gds.*,apoc.*
     ports:
       - "${NEO4J_HTTP_PORT:-6474}:7474"
       - "${NEO4J_BOLT_PORT:-6687}:7687"

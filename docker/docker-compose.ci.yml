@@ -1,9 +1,14 @@
 services:
   neo4j:
-    image: neo4j:5.26-community
+    # No `image:` override here on purpose — it would pin CI back to the stock image and
+    # leave the GDS code path untested, which is exactly how a GDS 1.x call survived in
+    # this repo indefinitely: without the plugin the except-branch silently substitutes
+    # the fallback, so the tests pass either way. CI builds the same GDS image the app
+    # runs against, and inherits it from docker-compose.yml.
     environment:
-      NEO4J_server_memory_heap_initial__size: 256M
-      NEO4J_server_memory_heap_max__size: 512M
+      # GDS holds its projection in heap, so give it more room than the stock CI numbers.
+      NEO4J_server_memory_heap_initial__size: 512M
+      NEO4J_server_memory_heap_max__size: 1G
       NEO4J_server_memory_pagecache_size: 256M
 
   app:
