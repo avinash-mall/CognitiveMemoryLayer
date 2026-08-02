@@ -476,6 +476,16 @@ class ReadMemoryResponse(BaseModel):
     constraints: list[MemoryItem] = Field(default_factory=list)
     llm_context: str | None = None
     retrieval_meta: dict | None = None
+    # Whether retrieval found anything worth answering from, scored from the packet's own
+    # relevance distribution. Separate from retrieval_meta, which reports whether the
+    # prongs *ran*, not whether they found anything.
+    sufficiency: dict | None = None
+    # Both were computed on every read and reached no caller: open_questions is rendered
+    # by neither markdown nor JSON, and warnings only survive in markdown when budget is
+    # left over. A conflict the packet detected is worth more to the caller than to a
+    # renderer that may silently drop it.
+    open_questions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     total_count: int
     elapsed_ms: float
 

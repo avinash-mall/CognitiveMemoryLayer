@@ -37,6 +37,37 @@ def drop_graph_results(memories: list[RetrievedMemory], *, enabled: bool) -> lis
     return [m for m in memories if m.retrieval_source != GRAPH_RETRIEVAL_SOURCE]
 
 
+# Feeling-of-knowing thresholds. A packet is "sufficient" when at least one memory is a
+# strong match and the retrieval is not merely a flat field of weak ones. Calibrated to sit
+# just under the vector prong's typical direct-answer band rather than to any single query.
+SUFFICIENCY_STRENGTH_FLOOR = 0.55
+SUFFICIENCY_SUPPORT_FLOOR = 0.45
+
+
+def assess_sufficiency(memories: list[RetrievedMemory]) -> dict[str, Any]:
+    """Score whether retrieval found anything worth answering from.
+
+    Distinct from relevance rank on purpose. Ranking answers "which of these is best",
+    which is defined even when every candidate is junk; this answers "is there anything
+    here at all", which is what a caller needs in order to decline. Models are
+    demonstrably bad at making that call for themselves — abstention does not improve
+    with scale, and reasoning fine-tuning measurably degrades it — so the memory layer
+    computing it from its own score distribution is more trustworthy than asking the
+    answering model to introspect.
+
+    Cheap by design: mean/max of the first-pass scores, no LLM and no extra query.
+    """
+    scores = sorted((m.relevance_score for m in memories), reverse=True)
+    strength = scores[0] if scores else 0.0
+    support = sum(1 for s in scores if s >= SUFFICIENCY_SUPPORT_FLOOR)
+    return {
+        "evidence_strength": round(strength, 4),
+        "supporting_memories": support,
+        "retrieved": len(scores),
+        "sufficient": bool(scores) and strength >= SUFFICIENCY_STRENGTH_FLOOR,
+    }
+
+
 def _reranker_config_from_settings() -> RerankerConfig:
     """Build RerankerConfig from application settings."""
     settings = get_settings()
@@ -242,11 +273,21 @@ class MemoryRetriever:
 
         reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
         retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
+        # Assessed on the reranked set, not the raw one: raw carries every prong's flat
+        # per-source constant (facts 0.8, constraints 0.75) which would report confident
+        # evidence for a query nothing actually matched.
+        sufficiency = assess_sufficiency(reranked)
         if return_packet:
             packet = self.packet_builder.build(reranked, query)
             packet.retrieval_meta = retrieval_meta
+            packet.sufficiency = sufficiency
             return packet
-        return MemoryPacket(query=query, recent_episodes=reranked, retrieval_meta=retrieval_meta)
+        return MemoryPacket(
+            query=query,
+            recent_episodes=reranked,
+            retrieval_meta=retrieval_meta,
+            sufficiency=sufficiency,
+        )
 
     async def explain(
         self,

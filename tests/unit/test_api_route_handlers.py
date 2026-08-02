@@ -60,6 +60,9 @@ def _packet(*, memories: list[SimpleNamespace] | None = None) -> SimpleNamespace
         recent_episodes=[item for item in items if item.record.type.value == "episodic_event"],
         constraints=[item for item in items if item.record.type.value == "constraint"],
         retrieval_meta={"source": "test"},
+        sufficiency={"sufficient": True},
+        open_questions=[],
+        warnings=[],
     )
 
 

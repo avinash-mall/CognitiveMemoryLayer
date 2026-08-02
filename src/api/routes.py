@@ -248,6 +248,9 @@ async def read_memory(
             constraints=constraints,
             llm_context=llm_context,
             retrieval_meta=packet.retrieval_meta,
+            sufficiency=packet.sufficiency,
+            open_questions=packet.open_questions,
+            warnings=packet.warnings,
             total_count=len(all_memories),
             elapsed_ms=elapsed_ms,
         )
@@ -467,6 +470,9 @@ async def session_read(
             constraints=constraints,
             llm_context=llm_context,
             retrieval_meta=packet.retrieval_meta,
+            sufficiency=packet.sufficiency,
+            open_questions=packet.open_questions,
+            warnings=packet.warnings,
             total_count=len(all_memories),
             elapsed_ms=elapsed_ms,
         )

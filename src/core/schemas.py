@@ -166,6 +166,7 @@ class MemoryPacket(BaseModel):
     open_questions: list[str] = Field(default_factory=list)  # Needs confirmation
     warnings: list[str] = Field(default_factory=list)  # Conflicts detected
     retrieval_meta: dict[str, Any] | None = None
+    sufficiency: dict[str, Any] | None = None  # Is there evidence here at all?
 
     @property
     def all_memories(self) -> list[RetrievedMemory]:

@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -24,6 +24,14 @@ logger = get_logger(__name__)
 # keeps the weakest graph hit above the packet's episode_relevance_threshold default.
 GRAPH_RELEVANCE_FLOOR = 0.55
 GRAPH_RELEVANCE_CEILING = 0.85
+
+# Temporal contiguity expansion. One scan per seed, so the seed count is what bounds the
+# work; the window is wide enough to cover a conversational exchange without spilling into
+# the next session, and neighbours enter strictly below their seed so context can never
+# outrank the episode that actually matched the query.
+_CONTIGUITY_MAX_SEEDS = 3
+_CONTIGUITY_WINDOW_MINUTES = 30
+_CONTIGUITY_RELEVANCE_FACTOR = 0.7
 
 
 @dataclass
@@ -287,6 +295,8 @@ class HybridRetriever:
                     logger.warning(
                         "associative_expansion_failed", extra={"error": str(e)}, exc_info=True
                     )
+
+        await self._expand_temporal_contiguity(tenant_id, all_results)
 
         elapsed_ms = (time.perf_counter() - plan_start) * 1000
         plan.analysis.metadata["retrieval_meta"] = {
@@ -579,6 +589,84 @@ class HybridRetriever:
                     _add(subj)
 
         return seeds[:max_seeds]
+
+    async def _expand_temporal_contiguity(
+        self,
+        tenant_id: str,
+        all_results: list[dict[str, Any]],
+    ) -> None:
+        """Pull the turns encoded around each top vector hit into the candidate set.
+
+        Human recall shows a temporal contiguity effect: retrieving one item preferentially
+        cues items encoded at nearby positions, and the effect survives many intervening
+        memories. In a conversation log "adjacent in encoding" is exact and free, so this is
+        an ordered timestamp lookup rather than new structure.
+
+        The failure it targets: a query often matches the turn that *asks* something while
+        the answer is in the turn after it, or matches a reply whose referent is the turn
+        before. Pure similarity retrieves the match and drops the answer.
+
+        Neighbours enter below their seed and below the packet's episode threshold default,
+        so they act as context that the reranker may promote — never as competitors that
+        displace a directly-matching episode. Mutates ``all_results`` in place.
+        """
+        from ..core.config import get_settings
+
+        settings = get_settings()
+        if not settings.features.temporal_contiguity_enabled:
+            return
+
+        k = settings.features.temporal_contiguity_neighbours
+        seeds = [
+            r
+            for r in all_results
+            if r.get("source") == "vector"
+            and getattr(r.get("record"), "source_session_id", None)
+            and getattr(r.get("record"), "timestamp", None)
+        ]
+        if not seeds:
+            return
+        seeds.sort(key=lambda r: r.get("relevance", 0.0), reverse=True)
+
+        existing_ids = {
+            str(getattr(x.get("record"), "id", "")) for x in all_results if x.get("record")
+        }
+        # One scan per seed, so bound the seeds rather than the total work per seed.
+        for seed in seeds[:_CONTIGUITY_MAX_SEEDS]:
+            record = seed["record"]
+            ts = record.timestamp
+            try:
+                window = timedelta(minutes=_CONTIGUITY_WINDOW_MINUTES)
+                rows = await self.hippocampal.store.scan(
+                    tenant_id,
+                    filters={
+                        "source_session_id": record.source_session_id,
+                        "status": "active",
+                        "since": ts - window,
+                        "until": ts + window,
+                    },
+                    order_by="timestamp",
+                    limit=2 * k + 1,
+                )
+            except Exception as exc:
+                logger.warning("temporal_contiguity_failed", extra={"error": str(exc)})
+                return
+            for row in rows:
+                rid = str(getattr(row, "id", ""))
+                if not rid or rid in existing_ids:
+                    continue
+                existing_ids.add(rid)
+                all_results.append(
+                    {
+                        "type": row.type.value,
+                        "source": "contiguity",
+                        "text": row.text,
+                        "confidence": getattr(row, "confidence", 0.7),
+                        "relevance": seed.get("relevance", 0.5) * _CONTIGUITY_RELEVANCE_FACTOR,
+                        "timestamp": row.timestamp,
+                        "record": row,
+                    }
+                )
 
     async def _retrieve_graph(
         self,

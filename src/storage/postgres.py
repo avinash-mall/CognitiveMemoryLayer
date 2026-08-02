@@ -319,6 +319,10 @@ class PostgresMemoryStore(MemoryStoreBase):
                     since = _naive_utc(filters["since"])
                     if since is not None:
                         q = q.where(MemoryRecordModel.timestamp >= since)
+                if "until" in filters:
+                    until = _naive_utc(filters["until"])
+                    if until is not None:
+                        q = q.where(MemoryRecordModel.timestamp <= until)
             if order_by:
                 col_name = order_by.lstrip("-")
                 col = getattr(MemoryRecordModel, col_name, None)

@@ -175,6 +175,22 @@ class FeatureFlags(PydanticBaseModel):
         "it emits grounded source text and that evidence no longer applies. Off makes the "
         "graph contribute nothing to retrieval.",
     )
+    temporal_contiguity_enabled: bool = Field(
+        default=True,
+        description="Expand each top vector hit into the turns encoded around it in the same "
+        "session. Human recall shows a temporal contiguity effect — retrieving one item "
+        "preferentially cues items encoded at nearby positions — and reinstating the encoding "
+        "context recovers items otherwise scored as forgotten. Conversation logs make "
+        "'adjacent in encoding' exact, so this is an ordered timestamp lookup rather than a new "
+        "structure. Aimed at temporal and multi-hop questions, where the answering turn is "
+        "often next to the turn that matches the query rather than the match itself.",
+    )
+    temporal_contiguity_neighbours: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Turns to pull either side of a vector hit when temporal contiguity is on.",
+    )
     hyde_retrieval_enabled: bool = Field(
         default=True,
         description="Use Hypothetical Document Embedding (HyDE) for cognitive memory queries.",

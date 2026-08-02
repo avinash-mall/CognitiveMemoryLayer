@@ -168,6 +168,16 @@ class MemoryPacketBuilder:
         """
         max_chars = max_tokens * 4
         main_header = "# Retrieved Memory Context\n\n"
+        # Stated before the evidence, not after, so it frames what follows rather than
+        # arriving as an afterthought the model has already reasoned past. A reader that
+        # cannot tell "nothing was found" from "here is the best of a weak field" will
+        # answer confidently from whatever is nearest, which is the failure mode on
+        # questions whose answer was never stored.
+        if packet.sufficiency and not packet.sufficiency.get("sufficient"):
+            main_header += (
+                "> No strongly matching memory was found for this query. If the answer is "
+                "not present below, say so rather than inferring one.\n\n"
+            )
         sections_budget = max_chars - len(main_header)
         try:
             from ..core.config import get_settings
@@ -318,7 +328,7 @@ class MemoryPacketBuilder:
             if len(s) <= remaining:
                 sections.append(s)
 
-        result = "# Retrieved Memory Context\n\n" + "".join(sections)
+        result = main_header + "".join(sections)
         if len(result) > max_chars:
             result = result[:max_chars] + "\n... (truncated)"
         return result
