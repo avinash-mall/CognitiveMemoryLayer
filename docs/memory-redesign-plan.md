@@ -122,6 +122,21 @@ Frozen-corpus A/B is ~55 min and needs the ingestion checkpoint copied into the 
 > Both flags now default on. `FEATURES__GRAPH_RESULTS_IN_PACKET` was flipped three times
 > across this investigation, each time on a measured arm and never on an argument.
 >
+> **Real PageRank is not the missing piece — arm `item1d`.** GDS 2.13.4 was deployed and
+> verified genuinely running (bounded PPR scores through the real code path, zero leaked
+> projections), then measured: **0.5031 against the traversal fallback's 0.5046**, a
+> −0.0015 gap that is under 4 samples out of 2,387. Meanwhile read latency went
+> ~174 ms → ~700 ms, and the first call per worker took 2554 ms, over the 2 s step budget.
+> Four to five times the cost for nothing measurable.
+>
+> This is the clearest confirmation yet of the tier-1 EcphoryRAG result that opened this
+> document: **cue quality and text grounding carry the multi-hop gain, not traversal
+> sophistication.** Swapping a 2-hop path count for real Personalized PageRank — the exact
+> mechanism HippoRAG reports up to 20% from — moved nothing, while changing how the
+> resolved text was *ranked* moved +0.075. `FEATURES__GRAPH_PAGERANK_ENABLED` defaults
+> **off**; the plugin stays installed and the code path stays correct, so this is one env
+> var to re-measure if entity extraction or graph density changes.
+>
 > **Do not read this as "the literature was wrong."** The Entity-Only ablation is about
 > what reaches the generator, and grounded text still beats entity profiles there. What
 > this arm adds is that index-driven *recall* must not become index-driven *ranking*.

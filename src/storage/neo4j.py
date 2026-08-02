@@ -428,6 +428,28 @@ class Neo4jGraphStore(GraphStoreBase):
         # projects only nodes that appear in a relationship, so an isolated seed entity
         # would vanish from the graph and take its own PPR mass with it. Revisit when a
         # GDS version actually removes this, and handle isolated seeds explicitly then.
+        # Skipping GDS is a *measured* default, not a fear of the plugin. On the full
+        # 2,387-sample frozen corpus with GDS live, real PPR scored 0.5031 against the
+        # traversal fallback's 0.5046 — a 0.0015 difference, under 4 samples, noise — while
+        # read latency went from ~174ms to ~700ms. Four to five times the cost for nothing
+        # measurable. This matches the retrieval literature: cue quality and text grounding
+        # carry the multi-hop gain, not traversal sophistication.
+        #
+        # The flag exists so this is an explicit decision. Before it, which algorithm ran
+        # was decided implicitly by whether a plugin happened to be installed — the same
+        # silent-behaviour class that let a GDS 1.x call survive here undetected.
+        if not get_settings().features.graph_pagerank_enabled:
+            async with self.driver.session() as session:
+                result = await session.run(
+                    fallback_query,
+                    tenant_id=tenant_id,
+                    scope_id=scope_id,
+                    seeds=seed_entities,
+                    top_k=top_k,
+                )
+                records = await result.data()
+                return list(records) if records else []
+
         graph_name = f"ppr-{uuid4().hex}"
         node_query = (
             "MATCH (n:Entity) WHERE n.tenant_id = $tenant_id AND n.scope_id = $scope_id "

@@ -47,6 +47,52 @@ def _store(session):
     return Neo4jGraphStore(driver)
 
 
+@pytest.fixture(autouse=True)
+def _gds_on(monkeypatch):
+    """These tests describe the GDS path, which is off by default — see
+    TestPageRankIsOffByDefault for why."""
+    from src.core.config import get_settings
+
+    monkeypatch.setenv("FEATURES__GRAPH_PAGERANK_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+class TestPageRankIsOffByDefault:
+    """Measured, not assumed, and not a fear of the plugin.
+
+    Full 2,387-sample frozen corpus with GDS 2.13.4 live: PPR scored **0.5031** against
+    the traversal fallback's **0.5046** — 0.0015, under 4 samples, noise — while read
+    latency went from ~174ms to ~700ms and the first call per worker took 2554ms, blowing
+    the 2s step budget. Four to five times the cost for nothing measurable.
+
+    Which algorithm runs used to be decided implicitly by whether a plugin happened to be
+    installed. That is the same silent-behaviour class that let a GDS 1.x call survive
+    here undetected, so it is now an explicit flag.
+    """
+
+    def test_the_flag_defaults_off(self):
+        from src.core.config import FeatureFlags
+
+        assert FeatureFlags().graph_pagerank_enabled is False
+
+    @pytest.mark.asyncio
+    async def test_disabled_goes_straight_to_the_traversal(self, monkeypatch):
+        from src.core.config import get_settings
+
+        monkeypatch.setenv("FEATURES__GRAPH_PAGERANK_ENABLED", "false")
+        get_settings.cache_clear()
+        session = _Session()
+
+        out = await _store(session).personalized_pagerank("t", "t", seed_entities=["Gina"])
+
+        assert out == [{"entity": "Gina", "score": 0.15}]
+        assert not any("gds." in q for q in session.queries)
+        assert any("min_distance" in q for q in session.queries)
+        get_settings.cache_clear()
+
+
 class TestGdsPath:
     @pytest.mark.asyncio
     async def test_it_projects_then_streams_then_drops(self):

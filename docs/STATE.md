@@ -144,6 +144,25 @@ budget but 3.5× the 204 ms measured on a 506-node copy, because the projection 
 the whole DB to find one tenant's nodes. **First call in a process took 2554 ms**, so the
 first graph query after a restart still times out.
 
+**And then measured, which is the point.** Arm `item1d` (GDS live, everything else at
+shipped defaults) scored **0.5031 against the traversal fallback's 0.5046** — −0.0015,
+under 4 samples out of 2,387, noise. Per category: common-sense +0.031, multi-hop +0.009,
+temporal +0.005, single-hop −0.004, Cognitive −0.015 — all within a few samples. So real
+PPR buys nothing here while costing 4–5× read latency.
+`FEATURES__GRAPH_PAGERANK_ENABLED` therefore defaults **off**, and with it off reads are
+back to 136–250 ms with the graph prong still completing.
+
+The plugin stays installed and the GDS code path stays correct — the value delivered is
+that the choice is now *explicit and measurable* instead of being decided implicitly by
+whether a plugin happened to be present, which is the same silent-behaviour class that let
+a GDS 1.x call survive here undetected. Re-measure with one env var if entity extraction
+or graph density changes.
+
+This is also the strongest local confirmation of the literature finding that opened
+`memory-redesign-plan.md`: **cue quality and text grounding carry the multi-hop gain, not
+traversal sophistication.** Swapping a 2-hop path count for real Personalized PageRank
+moved nothing; changing how the resolved text was *ranked* moved +0.075.
+
 Two hazards this created or exposed, both worth reading before touching the stack:
 
 - **The old anonymous volumes are now dangling and irreplaceable.** Data

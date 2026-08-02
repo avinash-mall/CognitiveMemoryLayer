@@ -178,6 +178,18 @@ class FeatureFlags(PydanticBaseModel):
         "frozen corpus, contiguity held off): Cognitive +0.020, single-hop +0.016, "
         "multi-hop +0.016, and adversarial +0.011 rather than the usual refusal trade.",
     )
+    graph_pagerank_enabled: bool = Field(
+        default=False,
+        description="Use Neo4j GDS Personalized PageRank to pick graph candidates instead "
+        "of the built-in 2-hop path-count traversal. Off on measured evidence: with GDS "
+        "2.13.4 live on the full 2,387-sample frozen corpus, PPR scored 0.5031 against the "
+        "traversal's 0.5046 — a 0.0015 gap, under 4 samples, noise — while read latency "
+        "went from ~174ms to ~700ms, and the first call in each worker took 2554ms and "
+        "blew the 2s step budget. Four to five times the cost for nothing measurable. "
+        "Requires the GDS plugin (baked into docker/neo4j.Dockerfile); with the plugin "
+        "absent this setting is moot because the projection fails and the traversal runs "
+        "anyway. Turn on to re-measure if entity extraction or graph density changes.",
+    )
     temporal_contiguity_enabled: bool = Field(
         default=True,
         description="Expand each top vector hit into the turns encoded around it in the same "
