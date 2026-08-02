@@ -69,21 +69,38 @@ link them below. Delete notes when they stop being true.
   that single tenant carries 242 of the subset's 677 samples (36%). The run was killed
   and the flag added (`d26b683`) rather than deleting the older data.
 
-## Full LoCoMo-Plus re-run in flight (started 2026-08-01 08:55 UTC)
+## Full LoCoMo-Plus re-run complete (2026-08-02) — 0.4631 -> 0.4860
 
-All fixes, defaults as shipped: prospective off, graph excluded from packet,
-`episode_relevance_threshold` 0.4. Tenant prefix `full2`, out-dir
-`evaluation/outputs/full2`, 1 uvicorn worker, 20 ingestion workers.
+All fixes at shipped defaults: prospective off, graph excluded from the packet,
+`episode_relevance_threshold` 0.4. 411 conversations / 242,658 turns, identical scope to
+the 2026-07-31 run, **2,387/2,387 valid, 0 errors**. Artifacts:
+`evaluation/results/locomo_plus_2026-08-02_{summary,judged}.json`.
 
-411 conversations / 242,658 turns — identical scope to the committed 2026-07-31 run that
-scored **0.4631**, which is the comparison. Budget ~11.5 h ingestion + ~2 h QA + ~0.5 h
-judge. The subset predicted **0.536 vs 0.499** (+0.037) on the same changes, so a full-run
-result near 0.50 would be consistent; a large divergence from that would mean the subset
-was not representative after all and is worth investigating rather than reporting.
+| category | n | 2026-07-31 | **2026-08-02** | delta | subset predicted |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| Cognitive | 401 | 0.2120 | **0.2544** | +0.042 | +0.125 |
+| adversarial | 446 | 0.7825 | **0.7534** | −0.029 | −0.053 |
+| common-sense | 96 | 0.2396 | **0.2760** | +0.036 | +0.025 |
+| multi-hop | 282 | 0.3387 | **0.3457** | +0.007 | +0.040 |
+| single-hop | 841 | 0.5380 | **0.5755** | +0.038 | +0.068 |
+| temporal | 321 | 0.3131 | **0.3551** | +0.042 | +0.062 |
+| **overall** | 2387 | **0.4631** | **0.4860** | **+0.023** | +0.037 |
 
-Ingestion checkpoints per conversation, so a crash resumes rather than restarts — but
-re-running **must** keep `--out-dir evaluation/outputs/full2`, or QA silently switches to
-per-sample tenants (see the `--skip-ingestion` note under Known issues).
+Five of six categories improved; adversarial is the standing trade (more usable context
+means the model refuses less, and refusing is what adversarial rewards).
+
+**The subset over-predicted, consistently.** Direction was right on every category and
+the sign never flipped, but magnitude was roughly 1.6x too large overall and much worse
+on the small categories — Cognitive predicted +0.125 against an actual +0.042 at n=40 vs
+n=401. Treat subset deltas as a directional screen, not an estimate, and discount
+anything from Cognitive or common-sense hardest. Multi-hop is the weakest agreement
+(+0.040 predicted, +0.007 actual): the graph exclusion helped far less at full scale.
+
+Conditions: 1 uvicorn worker, 20 ingestion workers, ~9.5 h ingestion at 6.7 rec/s, ~4 h
+QA, ~0.5 h judge. Per lever G still not comparable to published gemini-judged baselines.
+
+Ingestion checkpoints per conversation, so a crash resumes — but any re-run **must** keep
+`--out-dir evaluation/outputs/full2`, or QA silently switches to per-sample tenants.
 
 ## Subset A/B results, and the three bugs the measurement found (2026-07-31)
 
