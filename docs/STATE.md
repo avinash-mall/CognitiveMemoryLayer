@@ -134,14 +134,41 @@ Real PPR also has a far steeper score distribution than the path-count fallback 
 0.1507, third entity 0.0022). Since ranking is now cosine, that only changes *candidacy*
 — which makes swapping the fallback for real PPR a clean recall experiment.
 
-⚠️ **Not yet deployed.** The live `docker-neo4j-1` still runs the stock image; switching
-it needs `./docker/up.sh build neo4j && ./docker/up.sh up -d neo4j`. Deliberately not done
-unprompted, because it is not cleanly reversible: Neo4j's data lives on an **anonymous**
-volume (no named volume in `docker-compose.yml`). A recreate preserves it, but any
-`down -v` / `up -V` destroys the graph, and every frozen-corpus arm depends on it.
-**Verify `MATCH ()-[r]->() RETURN count(r)` is still ~583k immediately afterwards.**
-Giving it a named volume is worth doing but is a data migration, not a plugin install, so
-it was not bundled here.
+**Deployed 2026-08-02**, together with a migration of the store off its anonymous volume.
+`docker-neo4j-1` now runs `cml-neo4j:5.26-gds` on the named volume **`docker_neo4j-data`**.
+Counts identical across the migration (532,812 nodes / 728,288 rels / 583,346 `full2-`
+rels), all five indexes `ONLINE` at 100.0, no recovery or upgrade warnings. Verified live:
+`gds.version()` = 2.13.4, the real code path returns bounded PPR floats, zero leaked
+projections. Latency on the live 532k-node DB is **median 715 ms** — inside the 2 s step
+budget but 3.5× the 204 ms measured on a 506-node copy, because the projection query scans
+the whole DB to find one tenant's nodes. **First call in a process took 2554 ms**, so the
+first graph query after a restart still times out.
+
+Two hazards this created or exposed, both worth reading before touching the stack:
+
+- **The old anonymous volumes are now dangling and irreplaceable.** Data
+  `6e1f64d7e8ced2190c53cbf09a932bd8b736d13c169f811bb8adba02885c4924`, logs
+  `87fc6551505b7df4cf9f34684e3ddc1d31d47be18114ef267018b65628f5964c`. Nothing prunes
+  automatically on this host, but a manual `docker volume prune` / `system prune --volumes`
+  deletes 2.2 GB that costs ~9.5 h to rebuild. Delete deliberately, and only after a full
+  eval baseline has been re-run green. Tarball backup:
+  `/home/avinashm/neo4j-backup/neo4j-data-2026-08-02.tgz` (295 MB).
+- **The `api` container will not start from bare compose.** It runs
+  `validate_llm_endpoints.py && alembic upgrade head && uvicorn`, and the LLM
+  (`chatbot-slm-1`) publishes only to `127.0.0.1:8012`, which a container cannot reach —
+  not even via `host.docker.internal`. It must join the LLM's own network:
+
+  ```bash
+  set -a && source .env && set +a
+  export LLM_NETWORK=chatbot_chatnet LLM_INTERNAL__BASE_URL=http://chatbot-slm-1:8000/v1
+  docker compose -f docker/docker-compose.yml -f docker/docker-compose.llmnet.yml up -d api
+  ```
+
+  Without it the container exits 1 with `no reachable LLM endpoint` and looks like a
+  broken deploy. This was hit for real during the GDS window. Note `./docker/up.sh` does
+  **not** apply the llmnet override, and `.env`'s
+  `LLM_INTERNAL__BASE_URL=http://localhost:8012/v1` is correct only for a server run from
+  source — inside a container `localhost` is the container.
 
 **Two facts worth more than the items themselves:**
 

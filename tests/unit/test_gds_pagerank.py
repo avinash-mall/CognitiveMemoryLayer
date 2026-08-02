@@ -141,3 +141,49 @@ class TestFallback:
 
         fallback = next(q for q in session.queries if "min_distance" in q)
         assert "[*1..2]" in fallback
+
+
+def looks_like_pagerank(scores: list[float]) -> bool:
+    """Discriminate real PPR output from the path-count fallback, from scores alone.
+
+    The fallback computes ``1.0 / (min_distance + 1) * path_count`` with an integer
+    ``path_count`` and ``min_distance`` in {1, 2} — so every fallback score is a multiple
+    of 1/2 or 1/3, and multiplying by 6 always yields an integer. PageRank mass is
+    normalised and lands on arbitrary floats below 1.
+
+    Sharper than "bounded vs unbounded": a small graph can produce fallback scores under
+    1.0 too (path_count=1, min_distance=2 gives 0.333), so a magnitude check alone would
+    pass the fallback off as PageRank on exactly the small tenants this system has.
+    """
+    if not scores:
+        return False
+    if max(scores) >= 1.0:
+        return False
+    return not all(abs(s * 6 - round(s * 6)) < 1e-9 for s in scores)
+
+
+class TestScoreShapeDiscriminates:
+    """The assertion whose absence let a broken GDS call survive here indefinitely.
+
+    Both paths return a ranked entity list that looks entirely reasonable, so nothing in
+    the output *shape* said which one ran. These are the observed values from each.
+    """
+
+    def test_real_ppr_from_the_live_graph_is_recognised(self):
+        # Measured through the real code path against GDS 2.13.4 on the full2-199 tenant.
+        assert looks_like_pagerank([0.16675, 0.16045, 0.01125, 0.00862, 0.00582])
+
+    def test_fallback_scores_are_recognised_even_when_small(self):
+        """A sparse tenant makes the fallback emit values under 1.0, so a magnitude
+        check alone would wave it through. `min_distance` is in {1, 2} because the
+        traversal is `[*1..2]`, so the only possible denominators are 2 and 3:
+        1/(1+1)*1 = 0.5, 1/(2+1)*1 = 0.333…, 1/(2+1)*2 = 0.666…
+        """
+        assert not looks_like_pagerank([0.5, 1 / 3, 2 / 3])
+
+    def test_a_large_fallback_score_is_rejected_on_magnitude(self):
+        """315 and 744 were both observed on one real query."""
+        assert not looks_like_pagerank([744.0, 315.0, 265.0])
+
+    def test_no_scores_is_not_mistaken_for_pagerank(self):
+        assert not looks_like_pagerank([])

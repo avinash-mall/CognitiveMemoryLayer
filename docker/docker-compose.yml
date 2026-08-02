@@ -45,6 +45,12 @@ services:
       # but every gds.* call fails and retrieval silently drops to the fallback.
       NEO4J_dbms_security_procedures_unrestricted: gds.*
       NEO4J_dbms_security_procedures_allowlist: gds.*,apoc.*
+    volumes:
+      # Named, not anonymous. The store used to land on an anonymous volume created from
+      # the image's VOLUME directive, which a recreate preserves but any `down -v` / `up -V`
+      # silently destroys — and re-deriving the graph costs ~9.5 h of re-ingestion. /logs
+      # is left anonymous on purpose: it is regenerable and not worth the surface.
+      - neo4j-data:/data
     ports:
       - "${NEO4J_HTTP_PORT:-6474}:7474"
       - "${NEO4J_BOLT_PORT:-6687}:7687"
@@ -207,3 +213,4 @@ services:
 volumes:
   hf-cache:
   tiktoken-cache:
+  neo4j-data:

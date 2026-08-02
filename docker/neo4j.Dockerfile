@@ -27,4 +27,8 @@ RUN set -eux; \
     chown neo4j:neo4j /var/lib/neo4j/plugins/neo4j-graph-data-science.jar; \
     apt-get purge -y --auto-remove curl; \
     rm -rf /var/lib/apt/lists/*
-USER neo4j
+# No trailing USER: the stock image runs as root and its entrypoint chowns /data and
+# /logs before dropping to neo4j itself. An earlier version ended with `USER neo4j`,
+# which survived CI and throwaway containers only because those had fresh volumes — on
+# an existing store it risks a permissions failure at startup, which looks like data
+# loss. Match the base image's contract instead of inventing a new one.
