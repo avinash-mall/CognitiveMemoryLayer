@@ -165,14 +165,15 @@ class FeatureFlags(PydanticBaseModel):
         description="Number of prospective implications to generate per memory.",
     )
     graph_results_in_packet: bool = Field(
-        default=False,
-        description="Let knowledge-graph entity profiles compete for slots in the memory "
-        "packet. Off by default on measured evidence: on a frozen LoCoMo-Plus corpus, "
-        "excluding them moved overall 0.480 -> 0.513, temporal +0.084, multi-hop +0.050, "
-        "single-hop +0.048 — the same corpus with only this flag changed. "
-        "multi_hop_query has no hop loop, so it returns neighbourhood summaries rather "
-        "than answers, and those displace episodes that would answer. Turn this back on "
-        "once lever E (iterative reason/retrieve) makes the graph prong produce answers.",
+        default=True,
+        description="Let the knowledge-graph prong compete for slots in the memory packet. "
+        "This was off by default while the prong returned entity neighbourhood profiles: "
+        "excluding them moved a frozen LoCoMo-Plus corpus 0.480 -> 0.513 (temporal +0.084, "
+        "multi-hop +0.050, single-hop +0.048) because a profile summarises a neighbourhood "
+        "instead of answering, and displaced the episodes that would have. The prong now "
+        "resolves its PPR-ranked entities to the episodic records those entities index, so "
+        "it emits grounded source text and that evidence no longer applies. Off makes the "
+        "graph contribute nothing to retrieval.",
     )
     hyde_retrieval_enabled: bool = Field(
         default=True,

@@ -11,8 +11,13 @@ This was invisible for as long as the graph stayed empty, which it was until eva
 stopped skipping graph sync.
 """
 
+from datetime import UTC, datetime
+from uuid import NAMESPACE_URL, uuid5
+
 import pytest
 
+from src.core.enums import MemorySource, MemoryType
+from src.core.schemas import MemoryRecord, Provenance
 from src.retrieval.retriever import (
     GRAPH_RELEVANCE_CEILING,
     GRAPH_RELEVANCE_FLOOR,
@@ -28,15 +33,44 @@ class _Neocortical:
         return self._results
 
 
+class _Store:
+    """Resolves an evidence id to a record whose text is the entity that cited it, so
+    normalisation can still be asserted per entity now that the prong returns text."""
+
+    async def get_by_ids_batch(self, record_ids):
+        return [
+            MemoryRecord(
+                id=rid,
+                tenant_id="t1",
+                context_tags=[],
+                type=MemoryType.EPISODIC_EVENT,
+                text=_names[rid],
+                provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+                timestamp=datetime.now(UTC),
+            )
+            for rid in record_ids
+        ]
+
+
+_names: dict = {}
+
+
+def _eid(name: str):
+    rid = uuid5(NAMESPACE_URL, f"graph-norm/{name}")
+    _names[rid] = name
+    return rid
+
+
 def _entity(name: str, score: float) -> dict:
-    # Three relations of >= 3 words each, or _retrieve_graph filters the profile out.
     return {
         "entity": name,
         "relevance_score": score,
         "relations": [
-            {"predicate": "WORKS_AT", "related_entity": "a big software company"},
-            {"predicate": "LIVES_IN", "related_entity": "the city of Seattle"},
-            {"predicate": "ENJOYS", "related_entity": "long distance trail running"},
+            {
+                "predicate": "WORKS_AT",
+                "related_entity": "a big software company",
+                "relation_properties": {"evidence_ids": [str(_eid(name))]},
+            }
         ],
         "facts": [],
     }
@@ -45,11 +79,13 @@ def _entity(name: str, score: float) -> dict:
 def _retriever(results):
     r = HybridRetriever.__new__(HybridRetriever)
     r.neocortical = _Neocortical(results)
+    r.hippocampal = type("_H", (), {"store": _Store()})()
     return r
 
 
 class _Step:
     seeds = ["user"]
+    top_k = 10
 
 
 class TestGraphNormalisation:
@@ -68,7 +104,7 @@ class TestGraphNormalisation:
         r = _retriever([_entity("user", 315.67), _entity("Tim", 265.33), _entity("John", 744.5)])
         items = await r._retrieve_graph("t1", _Step())
 
-        by_name = {it["entity"]: it["relevance"] for it in items}
+        by_name = {it["text"]: it["relevance"] for it in items}
         assert by_name["John"] > by_name["user"] > by_name["Tim"]
 
     @pytest.mark.asyncio

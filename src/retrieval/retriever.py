@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
@@ -589,7 +589,8 @@ class HybridRetriever:
         if not step.seeds:
             return []
         results = await self.neocortical.multi_hop_query(tenant_id, seed_entities=step.seeds)
-        items = []
+        if not results:
+            return []
         # Graph scores are raw Neo4j co-occurrence counts on an unbounded scale — 315,
         # 744 have both been observed — while every other prong emits cosine-like 0..1.
         # Ranking is done on the raw value before the reranker's clamp ever runs, so
@@ -602,33 +603,57 @@ class HybridRetriever:
         hi = max(raw, default=0.0)
         lo = min(raw, default=0.0)
         span = hi - lo
+
+        # PPR ranks entities; entities are an *index*, not an answer. Returning the
+        # neighbourhood profile ("Entity: user\n - LOCATION: Seattle") is the documented
+        # Entity-Only failure mode — measured here as multi-hop 0.33 -> 0.23/0.27/0.26 on
+        # every populated-graph arm. Resolve each entity to the episodic records its
+        # relations cite instead, and let the grounded text answer the question. An
+        # episode reachable from several entities keeps the best score.
+        best: dict[str, float] = {}
         for r, score in zip(results, raw, strict=True):
-            text = self._format_entity_info(r)
-            # Skip entity profiles with garbage/short relations.
-            # Require at least 3 relations with meaningful related_entity (>= 3 words).
-            relations = r.get("relations", [])
-            meaningful = [
-                rel for rel in relations if len(str(rel.get("related_entity", "")).split()) >= 3
-            ]
-            if len(meaningful) < 3:
-                continue
-            # Top graph hit lands at GRAPH_RELEVANCE_CEILING, not 1.0: an entity profile
-            # is a summary of a neighbourhood, not an answer, so it should be able to
-            # rank alongside strong episodes without automatically outranking them.
             normalised = (
                 GRAPH_RELEVANCE_CEILING
                 if span <= 0
                 else GRAPH_RELEVANCE_FLOOR
                 + (score - lo) / span * (GRAPH_RELEVANCE_CEILING - GRAPH_RELEVANCE_FLOOR)
             )
+            for rel in r.get("relations", []) or []:
+                props = rel.get("relation_properties") or {}
+                for rid in props.get("evidence_ids") or []:
+                    if normalised > best.get(str(rid), 0.0):
+                        best[str(rid)] = normalised
+        if not best:
+            return []
+
+        # Ten entities resolved to 309 distinct records on a real tenant — get_entity_facts_batch
+        # has no LIMIT, so one hub entity drags in hundreds of edges. Feeding all of them to the
+        # reranker swamps every other prong and costs a needless fetch. Keep the best-scoring
+        # `top_k`, which is also the first time this step's top_k has ever been read: the planner
+        # has always set 15 (multi-hop) / 10 (constraint) and multi_hop_query never accepted it.
+        ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)[: step.top_k]
+        ids: list[UUID] = []
+        for rid, _score in ranked:
+            try:
+                ids.append(UUID(rid))
+            except (ValueError, AttributeError, TypeError):
+                continue
+        records = await self.hippocampal.store.get_by_ids_batch(ids)
+
+        items = []
+        for record in records:
+            # get_by_ids_batch is a bare id lookup with no tenant predicate. Edge
+            # evidence comes from this tenant's own graph so this should never fire,
+            # but cross-tenant leakage is not a failure worth trusting transitively.
+            if record.tenant_id != tenant_id:
+                continue
             items.append(
                 {
-                    "type": "graph",
+                    "type": record.type.value,
                     "source": "graph",
-                    "entity": r.get("entity"),
-                    "text": text,
-                    "relevance": normalised,
-                    "record": r,
+                    "text": record.text,
+                    "relevance": best.get(str(record.id), GRAPH_RELEVANCE_FLOOR),
+                    "record": record,
                 }
             )
         return items
@@ -795,13 +820,6 @@ class HybridRetriever:
             )
         retrieved.sort(key=lambda x: x.relevance_score, reverse=True)
         return retrieved
-
-    def _format_entity_info(self, entity_data: dict[str, Any]) -> str:
-        """Format entity data as readable text."""
-        lines = [f"Entity: {entity_data.get('entity', 'Unknown')}"]
-        for rel in entity_data.get("relations", [])[:5]:
-            lines.append(f"  - {rel.get('predicate', '')}: {rel.get('related_entity', '')}")
-        return "\n".join(lines)
 
     def _fact_to_record(self, fact: Any, item: dict[str, Any]) -> MemoryRecord:
         """Build MemoryRecord from SemanticFact-like object. Holistic: context_tags."""

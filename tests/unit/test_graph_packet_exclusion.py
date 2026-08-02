@@ -74,11 +74,14 @@ class TestDropGraphResults:
 
 
 class TestFlagDefault:
-    def test_graph_results_are_excluded_by_default(self):
-        """Flipped on measured evidence, not preference.
+    def test_graph_results_are_included_by_default(self):
+        """Back on because the prong changed shape, not because the old evidence expired.
 
-        Frozen LoCoMo-Plus corpus, only this flag changed: overall 0.480 -> 0.513,
-        temporal +0.084, multi-hop +0.050, single-hop +0.048. Turn it back on when
-        lever E makes the graph prong return answers rather than neighbourhood summaries.
+        Frozen LoCoMo-Plus corpus, only this flag changed: excluding entity profiles was
+        worth overall 0.480 -> 0.513 (temporal +0.084, multi-hop +0.050, single-hop
+        +0.048). That measured a prong emitting neighbourhood summaries. It now resolves
+        PPR entities to the episodic records they index and emits grounded source text,
+        so the measurement no longer describes what the flag gates. Off now means the
+        graph contributes nothing at all.
         """
-        assert FeatureFlags().graph_results_in_packet is False
+        assert FeatureFlags().graph_results_in_packet is True

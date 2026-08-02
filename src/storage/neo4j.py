@@ -380,14 +380,28 @@ class Neo4jGraphStore(GraphStoreBase):
         top_k: int = 20,
         damping: float = 0.85,
     ) -> list[dict[str, Any]]:
-        """Run Personalized PageRank from seed entities. Falls back to multi-hop if GDS unavailable."""
+        """Run Personalized PageRank from seed entities. Falls back to multi-hop if GDS unavailable.
+
+        The fallback is what actually runs on any deployment without the GDS plugin —
+        including this one — so treat it as the primary path, not a safety net. It is a
+        path-count proximity score, not PageRank, which is where the unbounded scores
+        (315, 744 observed) come from.
+
+        Depth is 2, not 3, on measured evidence: on a real tenant, depth 3 reached 504
+        entities against depth 2's 502 — two more — while counting roughly 63x as many
+        paths (max raw score 117153 vs 1849) and taking 2.5x as long, which pushed the
+        prong past its 2s step budget so it timed out and contributed nothing. The extra
+        hop buys reachability that is already there. This also matches the retrieval
+        literature, where hop depth contributes far less than cue quality and text
+        grounding.
+        """
         fallback_query = """
         MATCH (seed:Entity)
         WHERE seed.tenant_id = $tenant_id
           AND seed.scope_id = $scope_id
           AND seed.entity IN $seeds
 
-        MATCH path = (seed)-[*1..3]-(related:Entity)
+        MATCH path = (seed)-[*1..2]-(related:Entity)
         WHERE related.tenant_id = $tenant_id AND related.scope_id = $scope_id
 
         WITH related,
