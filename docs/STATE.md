@@ -68,10 +68,20 @@ items implemented; one was killed by its own measurement.
   band-scored arm): Cognitive +0.040, single-hop +0.038, multi-hop +0.007, temporal
   +0.002, common-sense −0.021, adversarial −0.009.
 
-  ⚠️ **`item1b` bundles two changes.** Its server ran `7ac29fa`, which also carries
-  temporal contiguity (default on). Arm `item1c` (graph on, contiguity off) is running to
-  attribute it. **Defaults stay as they are until it lands** — do not flip
-  `graph_results_in_packet` on a bundled number.
+  **Attributed by arm `item1c`** (graph on, contiguity off), because `item1b`'s server
+  ran `7ac29fa` and therefore bundled both changes:
+
+  | | overall | Cognitive | single-hop | multi-hop | temporal | common-sense | adversarial |
+  | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | baseline | 0.4860 | 0.254 | 0.576 | 0.346 | 0.355 | 0.276 | 0.753 |
+  | + graph (cosine) | **0.4979** | +0.020 | +0.016 | +0.016 | −0.003 | −0.016 | **+0.011** |
+  | + contiguity | **0.5046** | +0.020 | +0.022 | −0.009 | +0.005 | −0.005 | −0.020 |
+
+  Graph alone is **+0.0119**, contiguity on top is **+0.0067**, combined **+0.0186** —
+  roughly additive, and **0.5046 is the best overall recorded on this corpus**. Note
+  graph-only *raises* adversarial (+0.011): the usual refusal trade appears only with
+  contiguity, which is the change that adds context rather than better-ranked context.
+  Both defaults are now on.
 
   **The general trap, now paid for twice:** an eval arm is defined by the *running server
   process*, not by the worktree or the flag. Relaunching a server mid-investigation

@@ -165,19 +165,18 @@ class FeatureFlags(PydanticBaseModel):
         description="Number of prospective implications to generate per memory.",
     )
     graph_results_in_packet: bool = Field(
-        default=False,
+        default=True,
         description="Let the knowledge-graph prong compete for slots in the memory packet. "
-        "Off on measured evidence, twice over. First while the prong returned entity "
-        "neighbourhood profiles (excluding them: 0.480 -> 0.513 on a frozen corpus). Then "
-        "again after it was changed to resolve entities to the episodic text they index: "
-        "that arm scored 0.4292 against a 0.4860 baseline on the full 2,387-sample set, "
-        "with every factual category down (single-hop -0.097, temporal -0.098, multi-hop "
-        "-0.090) and adversarial *up* +0.074 — the signature of a packet so diluted the "
-        "model refuses more. Median context grew 1583 -> 2741 chars. The cause was "
-        "ranking, not resolution: graph hits carried the traversal score, a constant band "
-        "sitting above the median vector cosine, so they displaced better-matching "
-        "episodes regardless of the question. They are now scored by cosine against the "
-        "query instead. Turn this on to measure that fix; it has not yet been measured.",
+        "On by measurement, after two arms that were off for two different reasons. While "
+        "the prong emitted entity neighbourhood profiles, excluding it was worth "
+        "0.480 -> 0.513. Resolving entities to episodic text but ranking that text by the "
+        "traversal score was worse still (0.4292 vs a 0.4860 baseline): the score is a "
+        "constant 0.55-0.85 band, above the median vector cosine, so graph candidates "
+        "displaced better-matching episodes regardless of the question. Ranking them by "
+        "cosine against the query instead — graph decides candidacy, similarity decides "
+        "rank — scores **0.4979, +0.012 over baseline** in isolation (2,387 samples, "
+        "frozen corpus, contiguity held off): Cognitive +0.020, single-hop +0.016, "
+        "multi-hop +0.016, and adversarial +0.011 rather than the usual refusal trade.",
     )
     temporal_contiguity_enabled: bool = Field(
         default=True,

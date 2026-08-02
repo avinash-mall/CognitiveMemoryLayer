@@ -110,13 +110,17 @@ Frozen-corpus A/B is ~55 min and needs the ingestion checkpoint copied into the 
 > multi-hop +0.007, temporal +0.002; common-sense −0.021 and adversarial only −0.009,
 > a far smaller refusal trade than any previous packet-enriching change.
 >
-> ⚠️ **`item1b` is a two-change bundle, not an isolated result.** Its server ran commit
-> `7ac29fa`, which also carries temporal contiguity (item 3, default on), so +0.019
-> covers *both*. That is the confound this document warned about: a server relaunched
-> from a later worktree silently bundles everything committed since. Arm `item1c`
-> (graph on, contiguity off) is running to attribute it; contiguity's own effect is then
-> approximately `item1b − item1c`. **Do not quote +0.019 as the graph number** until that
-> lands.
+> **Attributed.** `item1b` bundled two changes — its server ran `7ac29fa`, which also
+> carries temporal contiguity (item 3, default on). Arm `item1c` (graph on, contiguity
+> off) splits them: **graph +0.0119, contiguity +0.0067**, roughly additive. The graph
+> number to quote is **+0.012**, not +0.019.
+>
+> Graph-only *raises* adversarial (+0.011). The refusal trade shows up only with
+> contiguity — which fits: contiguity adds more context, while cosine-ranked graph
+> results mostly reorder context that was already competing for the same slots.
+>
+> Both flags now default on. `FEATURES__GRAPH_RESULTS_IN_PACKET` was flipped three times
+> across this investigation, each time on a measured arm and never on an argument.
 >
 > **Do not read this as "the literature was wrong."** The Entity-Only ablation is about
 > what reaches the generator, and grounded text still beats entity profiles there. What
