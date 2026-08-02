@@ -448,9 +448,10 @@ resident vLLM servers).
   `max_hops` and never read it (the retriever passed `3`), which is worth knowing
   because multi-hop is the weakest measured retrieval category — lever E in the
   unshipped list below is the thing that would actually add iterative depth.
-- **Graph relevance is clamped, not normalized.** Every graph hit now lands at exactly 1.0,
-  so graph results no longer dominate but are also no longer ordered among themselves. A
-  proper per-source normalization is an open improvement.
+- **Graph relevance is rank-normalized** into `[GRAPH_RELEVANCE_FLOOR, CEILING]` =
+  [0.55, 0.85] (`retriever.py`), which both stops unbounded Neo4j scores (315/265/744
+  observed) from taking every top slot and keeps graph hits ordered among themselves.
+  This line previously claimed hits were clamped to exactly 1.0 — stale since `18c947b`.
 - **`event_log` is now an orphan table.** Nothing ever wrote a row, so its whole read
   surface (routes, dashboard panels, SDK `get_events`, `EventLogModel`) was removed.
   The table and `migrations/versions/001_initial_schema.py` were deliberately left alone
@@ -474,8 +475,13 @@ resident vLLM servers).
     larger: there is no sequence structure at all, so "what happened before X" is
     unanswerable — it needs X resolved to a timestamp first, and nothing does that.
     `planner.py` handles three English literals ("today"/"yesterday"/"week").
-  - **E — multi-hop iterative retrieval** (IRCoT-style reason/retrieve loop). Multi-hop is
-    the weakest measured category, so this is the highest-value one.
+  - **E — multi-hop iterative retrieval** (IRCoT-style reason/retrieve loop). This used to
+    be called the highest-value item. The 2026-08-02 research pass demotes it: the
+    evidence for hop loops is split (one paper's depth ablation is null and contradicts
+    its own prose; "PPR matches IRCoT" was refuted 0-3; Zep won its temporal gains with
+    no loop at all), and a cheaper, better-evidenced fix outranks it — the graph prong
+    already runs PPR but returns entity profiles instead of the episodic text they index.
+    See [memory-redesign-plan.md](memory-redesign-plan.md) items 1 and 5.
   - **H — `semantic_facts` usage tracking.** The table has no `access_count`,
     `last_accessed_at` or `importance`, so consolidation migrates knowledge *out of* both
     the strengthening and the decay loops. This is why the retention and frequency terms
@@ -544,3 +550,10 @@ resident vLLM servers).
 
 - [usage.md](usage.md) — durable reference: server API, endpoints, configuration.
   Linked into by README, CONTRIBUTING, and four py-cml docs (some by anchor).
+- [memory-redesign-plan.md](memory-redesign-plan.md) — 2026-08-02 research pass against
+  the human-memory literature and 2024-26 LLM-memory benchmarks. Ordered improvement
+  plan with evidence tiers, plus a "considered and rejected" section that argues against
+  the two biggest available redesigns. Headline: `multi_hop_query` already runs
+  Personalized PageRank (HippoRAG's mechanism) but returns entity profiles instead of
+  the episodic text those entities point at — the documented Entity-Only failure mode.
+  Edges already carry `evidence_ids`, so fixing it is retrieval-only.
