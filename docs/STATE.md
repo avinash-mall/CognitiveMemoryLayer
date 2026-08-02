@@ -442,12 +442,16 @@ resident vLLM servers).
   of a resident vLLM) multi-worker startup OOMed until the container pinned
   CUDA_VISIBLE_DEVICES=3. If multi-worker becomes the norm, either share the embedder or
   teach the knob cuda:N.
-- **"Multi-hop" retrieval has no depth control.** `NeocorticalStore.multi_hop_query`
-  runs Personalized PageRank from the seeds, takes the top 20, keeps 10, and attaches
-  each entity's relations and facts. There is no hop loop. It used to accept
-  `max_hops` and never read it (the retriever passed `3`), which is worth knowing
-  because multi-hop is the weakest measured retrieval category — lever E in the
-  unshipped list below is the thing that would actually add iterative depth.
+- **"Multi-hop" retrieval has no depth control, and does not run PageRank.**
+  `NeocorticalStore.multi_hop_query` calls `personalized_pagerank`, which reaches GDS
+  only when that plugin is installed — **it is not installed here** (`CALL gds.list()`
+  errors), so every query takes the fallback: a `(seed)-[*1..2]-(related)` path count.
+  That is where the unbounded scores came from. Depth was 3 until `412a3e3`; measured on
+  a real tenant, depth 3 reached 504 entities against depth 2's 502 while counting ~63x
+  as many paths and taking 2.5x as long — which pushed the prong past its 2s step budget,
+  so it timed out and contributed nothing at all. At depth 2 it completes in ~174ms.
+  There is still no hop loop. Installing GDS would make the docstring true and is the
+  cheapest way to test whether better cue ranking helps.
 - **Graph relevance is rank-normalized** into `[GRAPH_RELEVANCE_FLOOR, CEILING]` =
   [0.55, 0.85] (`retriever.py`), which both stops unbounded Neo4j scores (315/265/744
   observed) from taking every top slot and keeps graph hits ordered among themselves.
@@ -553,7 +557,9 @@ resident vLLM servers).
 - [memory-redesign-plan.md](memory-redesign-plan.md) — 2026-08-02 research pass against
   the human-memory literature and 2024-26 LLM-memory benchmarks. Ordered improvement
   plan with evidence tiers, plus a "considered and rejected" section that argues against
-  the two biggest available redesigns. Headline: `multi_hop_query` already runs
-  Personalized PageRank (HippoRAG's mechanism) but returns entity profiles instead of
-  the episodic text those entities point at — the documented Entity-Only failure mode.
-  Edges already carry `evidence_ids`, so fixing it is retrieval-only.
+  the two biggest available redesigns. Headline: the graph prong returned entity
+  profiles instead of the episodic text those entities index — the documented
+  Entity-Only failure mode — and edges already carried `evidence_ids`, so fixing it was
+  retrieval-only. Shipped in `412a3e3`. Note the prong does **not** run Personalized
+  PageRank despite its docstring: GDS is not installed, so every query takes the
+  path-count fallback.

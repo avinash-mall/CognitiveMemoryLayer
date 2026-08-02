@@ -26,14 +26,22 @@ context for mechanism choice, never targets to hit.
 
 ## The finding that reorders everything
 
-**We already have HippoRAG's retrieval mechanism, and we render it as HippoRAG's
-documented failure mode.**
+**We have an entity index, and we render it as the documented failure mode.**
 
-`NeocorticalStore.multi_hop_query` (`src/memory/neocortical/store.py:237`) runs
-**Personalized PageRank** over the entity graph — the exact mechanism HippoRAG reports
-up to 20% multi-hop gains from (tier 1). It takes PPR's top 20 entities, keeps 10, and
-then returns `{entity, relations, facts}` — *structured entity records with no source
-text*. `packet_builder` renders that as `Entity: user\n - LOCATION: Seattle`.
+`NeocorticalStore.multi_hop_query` (`src/memory/neocortical/store.py:237`) ranks entities
+from the query's seeds, keeps the top 10, and returns `{entity, relations, facts}` —
+*structured entity records with no source text*. `packet_builder` renders that as
+`Entity: user\n - LOCATION: Seattle`.
+
+**Correction, found while implementing this.** An earlier draft of this document said
+the prong "runs Personalized PageRank", the mechanism HippoRAG reports up to 20%
+multi-hop gains from (tier 1). It does not. `personalized_pagerank` only reaches GDS
+when the plugin is installed, and it is not installed here — `CALL gds.list()` errors.
+Every query takes the fallback: an unbounded `(seed)-[*1..3]-(related)` path count,
+which is also where the unbounded scores (315, 744) came from. So the *ranking* is
+proximity-by-path-count, not PageRank. Real PPR is still an available upgrade; installing
+GDS would make the docstring true and is the cheapest way to test whether better cue
+ranking is worth anything on top of the fix below.
 
 EcphoryRAG ablates precisely this (tier 1, 3-0):
 
@@ -115,9 +123,44 @@ is documented as evidence-driven, so flipping it back is a one-line arm.
 `multi_hop_query`, whose 20→10 is hardcoded — so the planner's carefully chosen 15
 (multi-hop) and 10 (constraint) are dead for this prong.
 
-### 2. Sufficiency gate — a metacognitive signal distinct from retrieval score
+### 2. Sufficiency gate — **the cheap version is dead, measured**
 
-*Incremental. Retrieval-only. Frozen-corpus A/B. **Prerequisite for items 1, 4, 5.***
+*Signal shipped as metadata; the abstention mechanism is NOT shipped. Retrieval-only.*
+
+> **Result, 2026-08-02.** The cheap familiarity signal does not work. Across 25 queries
+> per category against the frozen full2 corpus, **no retrieval-score statistic separates
+> unanswerable questions from answerable ones**:
+>
+> | signal | adversarial | answerable | delta |
+> | :--- | ---: | ---: | ---: |
+> | median top cosine | 0.624 | 0.638 | −0.014 |
+> | median mean-of-top-5 | 0.596 | 0.586 | **+0.010** (wrong way) |
+> | median top1−top5 margin | 0.063 | 0.065 | −0.002 |
+>
+> All three deltas are noise, and the mean points the wrong way. A threshold on any of
+> them fires on correct answers as often as on absent ones, trading five categories for
+> nothing on the sixth. The refusal nudge was written, measured, and removed; a test
+> pins it out so it is not reintroduced without new evidence.
+>
+> A second measurement worth keeping: **post-rerank relevance is not a signal at all.**
+> Sampling 60 queries through the live read path, the top score was *exactly 0.850 on
+> every single one* — `GRAPH_RELEVANCE_CEILING`. Prong scores are per-source constants
+> (facts 0.8, constraints 0.75, graph banded 0.55–0.85), so anything thresholding the
+> reranked set is thresholding a constant. Only the vector prong's cosine varies with
+> the query. Any future confidence work must read that, not the packet.
+>
+> **What survives.** The signal is still computed and returned (`packet.sufficiency`,
+> and on `ReadMemoryResponse`) because "retrieval found nothing at all" is real
+> information and distinct from ranking. It just does not steer the prompt.
+>
+> **Where the evidence actually pointed.** Re-reading the sources after this result: the
+> +2–10% figure came from an **LLM autorater** classifying sufficiency, and RF-Mem's
+> entropy gate routes to a *deeper retrieval path*, not to abstention. Neither claims a
+> score threshold can decide refusal. The remaining honest version of this item is a
+> cheap LLM sufficiency call on the assembled packet — a different, more expensive
+> mechanism, and it should be scoped as one.
+
+The original reasoning, kept because the motivation still holds:
 
 **Human analogue.** Feeling-of-knowing, and the dual-process split between fast coarse
 *familiarity* and deliberate *recollection*.

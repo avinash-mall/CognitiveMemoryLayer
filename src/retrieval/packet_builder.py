@@ -168,16 +168,15 @@ class MemoryPacketBuilder:
         """
         max_chars = max_tokens * 4
         main_header = "# Retrieved Memory Context\n\n"
-        # Stated before the evidence, not after, so it frames what follows rather than
-        # arriving as an afterthought the model has already reasoned past. A reader that
-        # cannot tell "nothing was found" from "here is the best of a weak field" will
-        # answer confidently from whatever is nearest, which is the failure mode on
-        # questions whose answer was never stored.
-        if packet.sufficiency and not packet.sufficiency.get("sufficient"):
-            main_header += (
-                "> No strongly matching memory was found for this query. If the answer is "
-                "not present below, say so rather than inferring one.\n\n"
-            )
+        # There is deliberately no "weak evidence, consider refusing" note here. One was
+        # written, then removed on measurement: across 25 queries per category on the
+        # full2 corpus, no retrieval-score signal separates unanswerable questions from
+        # answerable ones. Median top cosine 0.624 for adversarial against 0.638 for
+        # answerable, mean-of-top-5 0.596 against 0.586 (pointing the wrong way), and
+        # top1-minus-top5 margin 0.063 against 0.065 — all three deltas are noise. A
+        # threshold on any of them fires on correct answers as often as on absent ones.
+        # `packet.sufficiency` is still reported to callers; it just does not steer the
+        # prompt. See docs/memory-redesign-plan.md item 2.
         sections_budget = max_chars - len(main_header)
         try:
             from ..core.config import get_settings

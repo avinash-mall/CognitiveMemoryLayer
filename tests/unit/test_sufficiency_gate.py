@@ -69,18 +69,29 @@ class TestAssessSufficiency:
         assert assess_sufficiency([_mem(SUFFICIENCY_STRENGTH_FLOOR)])["sufficient"] is True
 
 
-class TestItReachesTheReader:
+class TestItDoesNotSteerThePrompt:
+    """Measured, then deliberately not shipped.
+
+    A "weak evidence, consider refusing" note was written and removed. Across 25 queries
+    per category on the full2 corpus, no retrieval-score signal separates unanswerable
+    questions from answerable ones: median top cosine 0.624 adversarial vs 0.638
+    answerable, mean-of-top-5 0.596 vs 0.586 (the wrong way round), margin 0.063 vs
+    0.065. A threshold on any of them suppresses correct answers as often as absent ones.
+
+    This test exists so the note is not reintroduced without new evidence — it is an
+    obvious-looking idea whose obviousness is the problem.
+    """
+
     def _context(self, packet: MemoryPacket) -> str:
         return MemoryPacketBuilder().to_llm_context(packet, max_tokens=3000)
 
-    def test_a_weak_packet_is_labelled_in_the_rendered_context(self):
+    def test_a_weak_packet_does_not_get_a_refusal_nudge(self):
         packet = MemoryPacket(query="q", recent_episodes=[_mem(0.2)])
         packet.sufficiency = assess_sufficiency([_mem(0.2)])
 
-        assert WEAK_NOTE in self._context(packet)
+        assert WEAK_NOTE not in self._context(packet)
 
-    def test_a_strong_packet_is_not_labelled(self):
-        """Nudging toward refusal on every query would trade one failure for another."""
+    def test_a_strong_packet_renders_the_same_way(self):
         packet = MemoryPacket(query="q", recent_episodes=[_mem(0.9)])
         packet.sufficiency = assess_sufficiency([_mem(0.9)])
 
