@@ -102,10 +102,21 @@ Frozen-corpus A/B is ~55 min and needs the ingestion checkpoint copied into the 
 > failure. This is the "post-rerank relevance is a constant" finding from item 2 doing
 > real damage.
 >
-> **Fix in, unmeasured:** graph-resolved records are now scored by cosine against the
-> query, so the graph decides *candidacy* and similarity decides *rank* — which is what
-> "entity structures are an index, text is the content" should have meant all along. The
-> flag stays **off** until an arm says otherwise.
+> **Fix measured, and it works.** Graph-resolved records are now scored by cosine against
+> the query, so the graph decides *candidacy* and similarity decides *rank* — which is
+> what "entity structures are an index, text is the content" should have meant all along.
+> Arm `item1b`: **0.4860 → 0.5046 (+0.019)**, the best overall score recorded on this
+> corpus, and +0.075 against the band-scored arm. Cognitive +0.040, single-hop +0.038,
+> multi-hop +0.007, temporal +0.002; common-sense −0.021 and adversarial only −0.009,
+> a far smaller refusal trade than any previous packet-enriching change.
+>
+> ⚠️ **`item1b` is a two-change bundle, not an isolated result.** Its server ran commit
+> `7ac29fa`, which also carries temporal contiguity (item 3, default on), so +0.019
+> covers *both*. That is the confound this document warned about: a server relaunched
+> from a later worktree silently bundles everything committed since. Arm `item1c`
+> (graph on, contiguity off) is running to attribute it; contiguity's own effect is then
+> approximately `item1b − item1c`. **Do not quote +0.019 as the graph number** until that
+> lands.
 >
 > **Do not read this as "the literature was wrong."** The Entity-Only ablation is about
 > what reaches the generator, and grounded text still beats entity profiles there. What

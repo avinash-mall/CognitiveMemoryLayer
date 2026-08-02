@@ -63,9 +63,21 @@ items implemented; one was killed by its own measurement.
   from emitting neighbourhood summaries to emitting well-ranked irrelevant episodes.
 
   Graph-resolved records are now scored by **cosine against the query** — graph decides
-  candidacy, similarity decides rank. Unmeasured, so
-  `FEATURES__GRAPH_RESULTS_IN_PACKET` is back to default **false** and `main` sits at the
-  known-best 0.4860 config. Turning it on is the next arm.
+  candidacy, similarity decides rank. Arm `item1b` measured that at **0.5046**, the best
+  overall score recorded on this corpus (+0.019 over baseline, +0.075 over the
+  band-scored arm): Cognitive +0.040, single-hop +0.038, multi-hop +0.007, temporal
+  +0.002, common-sense −0.021, adversarial −0.009.
+
+  ⚠️ **`item1b` bundles two changes.** Its server ran `7ac29fa`, which also carries
+  temporal contiguity (default on). Arm `item1c` (graph on, contiguity off) is running to
+  attribute it. **Defaults stay as they are until it lands** — do not flip
+  `graph_results_in_packet` on a bundled number.
+
+  **The general trap, now paid for twice:** an eval arm is defined by the *running server
+  process*, not by the worktree or the flag. Relaunching a server mid-investigation
+  silently folds in everything committed since. Record the pid, its start time and
+  `git rev-parse HEAD` into the arm's out-dir before starting QA — see the
+  `ARM_PROVENANCE.txt` files — and re-check the pid is unchanged before reading results.
 - **Item 3 — temporal contiguity** (`48e4d71`, fixed in `f4b40fa`). Expands the top 3
   vector hits into the ±2 turns around them. Ordered by `metadata.turn_idx`, **not**
   timestamp: every turn of a LoCoMo session shares one identical timestamp (28 turns,
