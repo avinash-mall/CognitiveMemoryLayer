@@ -32,6 +32,23 @@ GRAPH_RELEVANCE_CEILING = 0.85
 _CONTIGUITY_MAX_SEEDS = 3
 _CONTIGUITY_WINDOW_MINUTES = 30
 _CONTIGUITY_RELEVANCE_FACTOR = 0.7
+# The window can cover a whole session when every turn shares one timestamp, so the scan
+# must be able to return the session before neighbours are picked out of it in order.
+_CONTIGUITY_SESSION_SCAN_LIMIT = 200
+
+
+def _neighbours_of(seed: Any, rows: list[Any], k: int) -> list[Any]:
+    """The k rows either side of ``seed`` in encoding order, seed excluded.
+
+    Selecting the window in Python rather than in SQL is what makes this correct when a
+    session's rows are not separable by timestamp: the database cannot order them, but it
+    can hand over the session, and the ordering key lives in metadata.
+    """
+    ordered = HybridRetriever._encoding_order(rows)
+    position = next((i for i, r in enumerate(ordered) if r.id == seed.id), None)
+    if position is None:
+        return []
+    return ordered[max(0, position - k) : position] + ordered[position + 1 : position + 1 + k]
 
 
 @dataclass
@@ -590,6 +607,25 @@ class HybridRetriever:
 
         return seeds[:max_seeds]
 
+    @staticmethod
+    def _encoding_order(rows: list[Any]) -> list[Any]:
+        """Sort a session's records into the order they were encoded.
+
+        ``timestamp`` is the obvious key and is the wrong one wherever a whole session
+        shares a single stamp — in the LoCoMo corpus all 28 turns of a session carry the
+        identical timestamp, so ordering by it is arbitrary and "neighbours" would be a
+        random sample of the session. ``written_at`` is no better: concurrent ingestion
+        workers scramble it (turn order 0, 4, 3, 6, 7, 5 was observed).
+
+        So prefer an explicit ``turn_idx`` when the writer supplied one for every row,
+        and fall back to timestamp otherwise. Mixed populations take the fallback rather
+        than interleaving two incomparable keys.
+        """
+        indices = [(r.metadata or {}).get("turn_idx") for r in rows]
+        if indices and all(isinstance(i, int) for i in indices):
+            return sorted(rows, key=lambda r: (r.metadata or {})["turn_idx"])
+        return sorted(rows, key=lambda r: r.timestamp)
+
     async def _expand_temporal_contiguity(
         self,
         tenant_id: str,
@@ -645,13 +681,12 @@ class HybridRetriever:
                         "since": ts - window,
                         "until": ts + window,
                     },
-                    order_by="timestamp",
-                    limit=2 * k + 1,
+                    limit=_CONTIGUITY_SESSION_SCAN_LIMIT,
                 )
             except Exception as exc:
                 logger.warning("temporal_contiguity_failed", extra={"error": str(exc)})
                 return
-            for row in rows:
+            for row in _neighbours_of(record, rows, k):
                 rid = str(getattr(row, "id", ""))
                 if not rid or rid in existing_ids:
                     continue

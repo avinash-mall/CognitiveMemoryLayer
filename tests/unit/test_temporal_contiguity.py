@@ -32,7 +32,13 @@ def _clear_settings_cache():
     get_settings.cache_clear()
 
 
-def _record(text: str, *, offset_min: int = 0, session: str | None = "s1") -> MemoryRecord:
+def _record(
+    text: str,
+    *,
+    offset_min: int = 0,
+    session: str | None = "s1",
+    turn_idx: int | None = None,
+) -> MemoryRecord:
     return MemoryRecord(
         id=uuid4(),
         tenant_id=TENANT,
@@ -42,6 +48,7 @@ def _record(text: str, *, offset_min: int = 0, session: str | None = "s1") -> Me
         text=text,
         provenance=Provenance(source=MemorySource.USER_EXPLICIT),
         timestamp=T0 + timedelta(minutes=offset_min),
+        metadata={} if turn_idx is None else {"turn_idx": turn_idx},
     )
 
 
@@ -112,6 +119,72 @@ class TestExpansion:
         assert filters["source_session_id"] == "s1"
         assert filters["status"] == "active"
         assert filters["since"] < seed.timestamp < filters["until"]
+
+
+class TestEncodingOrder:
+    """The corpus this targets does not order by timestamp.
+
+    Every turn of a LoCoMo session carries the *identical* timestamp — 28 turns, span
+    0.000000s — so ordering by it is arbitrary and "neighbours" would be a random sample
+    of the session. `written_at` is no better: concurrent ingestion workers scramble it
+    (turn order 0, 4, 3, 6, 7, 5 observed on a real session). The explicit `turn_idx` the
+    writer supplies is the only faithful encoding order.
+    """
+
+    @pytest.mark.asyncio
+    async def test_neighbours_are_by_turn_index_when_timestamps_are_identical(self):
+        turns = [_record(f"turn{i}", offset_min=0, turn_idx=i) for i in range(9)]
+        seed = turns[4]
+        # Handed back in scrambled order, exactly as the DB returns them.
+        r = _retriever([turns[i] for i in (7, 0, 4, 2, 8, 1, 6, 3, 5)])
+        results = [_hit(seed)]
+
+        await r._expand_temporal_contiguity(TENANT, results)
+
+        assert sorted(x["text"] for x in results[1:]) == ["turn2", "turn3", "turn5", "turn6"]
+
+    @pytest.mark.asyncio
+    async def test_the_seed_is_excluded_from_its_own_neighbourhood(self):
+        turns = [_record(f"turn{i}", offset_min=0, turn_idx=i) for i in range(5)]
+        r = _retriever(turns)
+        results = [_hit(turns[2])]
+
+        await r._expand_temporal_contiguity(TENANT, results)
+
+        assert "turn2" not in [x["text"] for x in results[1:]]
+
+    @pytest.mark.asyncio
+    async def test_a_seed_at_the_edge_of_a_session_is_not_an_error(self):
+        turns = [_record(f"turn{i}", offset_min=0, turn_idx=i) for i in range(5)]
+        r = _retriever(turns)
+        results = [_hit(turns[0])]
+
+        await r._expand_temporal_contiguity(TENANT, results)
+
+        assert sorted(x["text"] for x in results[1:]) == ["turn1", "turn2"]
+
+    @pytest.mark.asyncio
+    async def test_timestamps_are_the_fallback_when_no_turn_index_exists(self):
+        turns = [_record(f"t{i}", offset_min=i) for i in range(5)]
+        r = _retriever([turns[3], turns[0], turns[2], turns[4], turns[1]])
+        results = [_hit(turns[2])]
+
+        await r._expand_temporal_contiguity(TENANT, results)
+
+        assert sorted(x["text"] for x in results[1:]) == ["t0", "t1", "t3", "t4"]
+
+    @pytest.mark.asyncio
+    async def test_a_partial_turn_index_population_falls_back_rather_than_interleaving(self):
+        """Two incomparable ordering keys in one session is worse than the weaker key."""
+        a = _record("a", offset_min=0, turn_idx=5)
+        b = _record("b", offset_min=1)
+        c = _record("c", offset_min=2, turn_idx=0)
+        r = _retriever([a, b, c])
+        results = [_hit(b)]
+
+        await r._expand_temporal_contiguity(TENANT, results)
+
+        assert sorted(x["text"] for x in results[1:]) == ["a", "c"]
 
 
 class TestBounds:
