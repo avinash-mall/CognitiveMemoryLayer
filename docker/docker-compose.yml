@@ -31,6 +31,10 @@ services:
       context: .
       dockerfile: neo4j.Dockerfile
     image: cml-neo4j:5.26-gds
+    # This image is never published, so `up` would otherwise try to pull it, log
+    # "pull access denied for cml-neo4j" — which reads exactly like a failure — and only
+    # then fall back to building. Say build outright.
+    pull_policy: build
     environment:
       # The official Neo4j image treats most NEO4J_* env vars as config keys.
       # Passing the whole .env here can turn vars like NEO4J_USER/PASSWORD into

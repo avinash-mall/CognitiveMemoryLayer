@@ -692,6 +692,17 @@ all 2,387 samples judged with zero errors, everything served locally (QA + judge
 | Cognitive | 25.44% | 21.20% | &mdash; | &mdash; | &mdash; | &mdash; |
 | **Overall** | **48.60%** | 46.31% | 71.78% | 62.99% | 57.24% | 59.64% |
 
+> **The shipped defaults now measure 50.46% on this same corpus.** Two retrieval changes
+> landed after the run above and are on by default: the knowledge-graph prong resolves
+> entities to the episodic text they index and ranks it by query similarity (+1.2 points,
+> measured in isolation), and each top vector hit is expanded into the turns encoded
+> around it (+0.7). Biggest movers against the table: Cognitive 25.44% &rarr; 29.43%,
+> single-hop 57.55% &rarr; 61.36%.
+>
+> That number is a **retrieval-only re-score of the identical corpus with the identical
+> judge**, not a fresh end-to-end run, so it is quoted here rather than replacing the
+> column. Per-arm evidence is in `evaluation/results/locomo_plus_2026-08-02_arm-*.json`.
+
 **Where the system is strong.** Adversarial questions &mdash; ones with no valid answer in
 the conversation &mdash; score **78.25%**, the highest column in the table including the
 full-context frontier models. The architecture prefers declining to invent an answer over

@@ -117,14 +117,31 @@ sha256 check). Two things this uncovered:
 CI builds the same image rather than pinning the stock one, because without the plugin
 the fallback makes the tests pass either way — which is how the 1.x call survived.
 
+**CI verified**: run `30738425101` built the image, downloaded the jar and the
+`sha256sum -c` printed `OK`, then the full suite passed. Cost is ~15 s of build.
+`pull_policy: build` was added afterwards because `up` otherwise logs
+`pull access denied for cml-neo4j` before falling back to building, which reads exactly
+like a failure.
+
+**Cost measured, and it is affordable.** A real tenant's graph is small — `full2-199` is
+506 entities / 829 edges (the 583k figure is across *all* tenants) — and a full
+project→stream→drop cycle takes a **median 204 ms** (min 161), well inside the prong's
+2 s step budget, with **zero leaked projections** over 8 runs. One caveat: the first call
+in a process took **2230 ms** and would blow the budget once per worker, so expect the
+first graph query after a restart to time out.
+
+Real PPR also has a far steeper score distribution than the path-count fallback (seeds
+0.1507, third entity 0.0022). Since ranking is now cosine, that only changes *candidacy*
+— which makes swapping the fallback for real PPR a clean recall experiment.
+
 ⚠️ **Not yet deployed.** The live `docker-neo4j-1` still runs the stock image; switching
-it needs `./docker/up.sh build neo4j && ./docker/up.sh up -d neo4j`, which was deferred
-because recreating the container mid-arm would corrupt the running measurement. **Verify
-`MATCH ()-[r]->() RETURN count(r)` is still ~583k afterwards**: Neo4j's data lives on an
-**anonymous** volume (no named volume in `docker-compose.yml`), so a recreate preserves
-it but any `down -v` / `up -V` destroys the frozen corpus and costs ~9.5 h to rebuild.
-Giving it a named volume is worth doing, but it is a data migration, not a plugin install,
-so it was deliberately not bundled here.
+it needs `./docker/up.sh build neo4j && ./docker/up.sh up -d neo4j`. Deliberately not done
+unprompted, because it is not cleanly reversible: Neo4j's data lives on an **anonymous**
+volume (no named volume in `docker-compose.yml`). A recreate preserves it, but any
+`down -v` / `up -V` destroys the graph, and every frozen-corpus arm depends on it.
+**Verify `MATCH ()-[r]->() RETURN count(r)` is still ~583k immediately afterwards.**
+Giving it a named volume is worth doing but is a data migration, not a plugin install, so
+it was not bundled here.
 
 **Two facts worth more than the items themselves:**
 

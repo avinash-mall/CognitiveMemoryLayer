@@ -227,6 +227,30 @@ and `..._judged.json`, all 2,387 samples judged, zero errors.
 | Total samples | 2,387 (zero errors) | 2,387 |
 | QA + Judge model | `Qwen3.6-27B-FP8` — fully local, zero API cost |
 
+### Retrieval arms on the frozen 2026-08-02 corpus
+
+Same 2,387 samples, same corpus, same judge — only retrieval changed, which is what the
+frozen-corpus method exists to isolate. Each arm's server pid and start time were recorded
+before QA and re-verified afterwards (`evaluation/outputs/*/ARM_PROVENANCE.txt`), because
+an arm is defined by the running process, not by the worktree.
+
+| Arm | Overall | Δ | What changed |
+| :--- | ---: | ---: | :--- |
+| baseline (published above) | 0.4860 | — | graph prong excluded |
+| graph resolves to text, **ranked by traversal score** | 0.4292 | −0.057 | every factual category down; adversarial *up* +0.074 |
+| graph resolves to text, **ranked by query cosine** | 0.4979 | **+0.012** | Cognitive +0.020, single-hop +0.016, multi-hop +0.016, adversarial +0.011 |
+| **+ temporal contiguity expansion** | **0.5046** | **+0.019** | single-hop +0.022, Cognitive +0.020; adversarial −0.020 |
+
+The middle row is the useful one. Resolving entities to grounded episodic text was right;
+letting the *traversal score* rank that text was not. It normalises into a constant
+0.55–0.85 band that sits above the median vector cosine (~0.62), so graph candidates
+displaced better-matching episodes regardless of the question. Same candidates, ranked by
+similarity instead: +0.075. **The graph is a recall mechanism — letting it also set
+relevance is what made it harmful.**
+
+Both changes ship on by default. A fresh end-to-end run has not been done at these
+settings, so the headline table above is unchanged.
+
 The two CML runs below each other are **not** directly comparable either — different QA and
 judge models, and the April run predates the modelpack removal. The one signal stable across
 both: adversarial is the top category by a wide margin (78.25% now, 64.80% then), and the
