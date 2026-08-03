@@ -244,11 +244,41 @@ Only the first of that pair survives as an artifact
 during a reset before it was archived, so its 0.4616 is recorded here and in
 `evaluation/outputs/w0-dockerimage/ARM_PROVENANCE.txt` but has no summary file.
 
+**Attributed by arm `w2`** — identical HEAD code, same server process as `w1`, with
+`--skip-consolidation`. It splits the bundle cleanly:
+
+| arm | what it carries | overall | attributed delta |
+| :--- | :--- | ---: | ---: |
+| `w0` | before | 0.5502 | — |
+| `w2` | union + bi-temporal, **no** consolidation | 0.5473 | **−0.0029** (a wash) |
+| `w1` | + consolidation running | 0.5325 | **−0.0148** for consolidation |
+
+**Consolidation is the whole regression.** The `evidence_ids` union and bi-temporal
+writes cost −0.0029, comfortably inside the ±0.0074 noise floor — they are free. Turning
+consolidation from a no-op into a working pass costs **−0.0148**, five times the union +
+bi-temporal effect and twice the noise floor.
+
+`w2` confirms the other two mechanisms fire without consolidation: 1,458 `event_date`
+column values and max 24 `evidence_ids` per edge, with 0 records consolidated as
+instructed. (The compare script prints "STILL A NO-OP" for `w2`; that is expected here —
+the arm skipped consolidation deliberately.)
+
 The signature — multi-hop, temporal and single-hop down together while consolidation
-starts writing 5,087 consolidated records and 1,815 extra semantic facts — is the
-predicted shape of gists competing with the episodes they summarise. Arm `w2` (HEAD with
-`--skip-consolidation`) is running to split the bundle: `w2` vs `w0` isolates the
-evidence_ids union + bi-temporal, `w1` vs `w2` isolates consolidation.
+writes 5,087 consolidated records — is the predicted shape of gists competing with the
+episodes they summarise, and it is the same trade the "never retire raw episodes" section
+of the plan warns about.
+
+**What this means for the shipped defaults.** The scheduler stays off, so nothing
+consolidates automatically. But the sampler fix is unconditional: the manual admin route
+and the eval harness's Phase A-B both now do real work where they previously did nothing,
+so this −0.0148 is live for anyone who triggers consolidation at all. It is a genuine
+trade rather than a bug — consolidation was always meant to run — but on this benchmark
+it does not pay for itself, and item 7 / the recurrence gate were meant to be measured on
+top of a consolidation baseline that is itself negative. Decide whether consolidation
+earns its place before tuning it.
+
+Semantic-fact counts are noisy across arms (8,988 / 10,803 / 13,881 for w0/w1/w2) because
+write-time extraction is LLM-driven; do not read them as an effect.
 
 #### The trap that cost two arms: `.env` redirects the eval harness to a stale container
 
