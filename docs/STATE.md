@@ -203,7 +203,74 @@ Two hazards this created or exposed, both worth reading before touching the stac
   entry points. Third instance of the class that produced two wrong conclusions already
   (`encode_chunk`, eval-mode graph blindness).
 
-### Write-path items shipped, none measured (2026-08-03)
+### Write-path bundle MEASURED (2026-08-03) — it is a regression, −0.018
+
+Paired fresh-ingest subset arms, 43 conversations / 16,484 turns / 677 samples, same
+host, same `:8000` server slot, differing only in code. `w0` = `128f05f` (a git worktree),
+`w1` = HEAD.
+
+| category | w0 (before) | w1 (after) | delta |
+| :--- | ---: | ---: | ---: |
+| Cognitive | 0.3000 | 0.3750 | **+0.0750** |
+| adversarial | 0.7285 | 0.7219 | −0.0066 |
+| common-sense | 0.3750 | 0.3375 | −0.0375 |
+| multi-hop | 0.3400 | 0.3050 | −0.0350 |
+| single-hop | 0.6460 | 0.6320 | −0.0140 |
+| temporal | 0.4167 | 0.3594 | −0.0573 |
+| **overall** | **0.5502** | **0.5325** | **−0.0177** |
+
+Both 677/677 valid, 0 errors, server pid unchanged across each run.
+
+**All three mechanisms verifiably fired**, which is what makes the number mean anything:
+
+| mechanism | w0 | w1 |
+| :--- | ---: | ---: |
+| records consolidated | 0 | **5,087** |
+| `event_date` column populated | 0 | **1,448** |
+| max `evidence_ids` per edge | 1 | **24** (avg 1.15) |
+| `semantic_facts` | 8,988 | 10,803 |
+| facts with `valid_to` | 1,060 | 2,654 |
+
+**Read the overall, not the categories.** Two arms on *identical* code (see the docker
+trap below) differed by **+0.0074 overall** — 0.4542 vs 0.4616 — **with per-category
+swings to ±0.05** (common-sense +0.050, temporal −0.016, multi-hop +0.005). So the
+−0.0177 overall is roughly 2.4× the measured noise floor and probably real; every
+per-category figure above, including the +0.075 Cognitive, sits inside it and should not
+be attributed to anything. Subset deltas also over-predict ~1.6×, so full-scale is
+plausibly nearer −0.011.
+
+Only the first of that pair survives as an artifact
+(`locomo_plus_2026-08-03_arm-noisefloor-a_summary.json`, 0.4542); the second was deleted
+during a reset before it was archived, so its 0.4616 is recorded here and in
+`evaluation/outputs/w0-dockerimage/ARM_PROVENANCE.txt` but has no summary file.
+
+The signature — multi-hop, temporal and single-hop down together while consolidation
+starts writing 5,087 consolidated records and 1,815 extra semantic facts — is the
+predicted shape of gists competing with the episodes they summarise. Arm `w2` (HEAD with
+`--skip-consolidation`) is running to split the bundle: `w2` vs `w0` isolates the
+evidence_ids union + bi-temporal, `w1` vs `w2` isolates consolidation.
+
+#### The trap that cost two arms: `.env` redirects the eval harness to a stale container
+
+**`.env` sets `CML_BASE_URL=http://localhost:6000`, and the harness uses it as the default
+for `--cml-url`.** That is the docker `api` container, which bakes its source in with no
+volume mount. Its image was built `2026-08-02T13:18`, before every commit under test. Two
+full arms ran against it and therefore measured *identical* code while appearing to
+measure a change — they are archived under `evaluation/outputs/{w0,w1}-dockerimage`.
+
+Diagnosing it took far too long because the obvious check is worthless: calling
+`/admin/consolidation/status` on the server *you* started proves nothing about the server
+the *harness* chose. **Always pass `--cml-url` explicitly**, and gate on *behaviour*
+rather than a route: write a record with `event_date` in metadata and assert whether the
+`event_date` **column** populates. That single probe cleanly separates the two code
+versions, and both servers were verified with it before their arms started.
+
+The same container also depresses scores badly — the identical w0 control scored **0.4542**
+against it versus **0.5502** against a server from source, and ingestion ran ~3.5× slower.
+STATE.md already recorded it as slow; it is also a materially worse environment, so no
+number from it is comparable to anything.
+
+### Write-path items shipped (2026-08-03)
 
 The rest of `memory-redesign-plan.md`: the `evidence_ids` union, item 4, item 6, item 7.
 **All four are code + tests only.** They share a ~2 h fresh-ingest cost, so the arm that
