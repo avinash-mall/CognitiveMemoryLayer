@@ -250,13 +250,24 @@ during a reset before it was archived, so its 0.4616 is recorded here and in
 | arm | what it carries | overall | attributed delta |
 | :--- | :--- | ---: | ---: |
 | `w0` | before | 0.5502 | — |
-| `w2` | union + bi-temporal, **no** consolidation | 0.5473 | **−0.0029** (a wash) |
-| `w1` | + consolidation running | 0.5325 | **−0.0148** for consolidation |
+| `w2` | union + bi-temporal, **no** consolidation | 0.5561 | **+0.0059** (a wash) |
+| `w1` | + consolidation running | 0.5325 | **−0.0236** for consolidation |
 
-**Consolidation is the whole regression.** The `evidence_ids` union and bi-temporal
-writes cost −0.0029, comfortably inside the ±0.0074 noise floor — they are free. Turning
-consolidation from a no-op into a working pass costs **−0.0148**, five times the union +
-bi-temporal effect and twice the noise floor.
+**Consolidation is the whole regression, and then some.** The `evidence_ids` union and
+bi-temporal writes come out at +0.0059, inside the ±0.0074 noise floor — they are free.
+Turning consolidation from a no-op into a working pass costs **−0.0236**, about 3× the
+noise floor, which is *more* than the −0.0177 the full bundle shows because the other two
+changes are very slightly positive.
+
+Per category, `w2` → `w1` (consolidation alone): multi-hop **−0.0900** and adversarial
+**−0.0463** carry it, against Cognitive +0.0500 and temporal +0.0261. Multi-hop falling
+hardest is the coherent part — it is the category most dependent on the original turn
+text that gist demotion pushes down.
+
+Source of truth for these numbers is
+`evaluation/results/locomo_plus_2026-08-03_arm-w2-no-consolidation_summary.json`
+(0.5561) and `evaluation/outputs/w2/locomo_plus_qa_cml_judge_summary.json`; an earlier
+draft of this section quoted 0.5473 for `w2`, which no artifact supports.
 
 `w2` confirms the other two mechanisms fire without consolidation: 1,458 `event_date`
 column values and max 24 `evidence_ids` per edge, with 0 records consolidated as
@@ -271,7 +282,7 @@ of the plan warns about.
 **What this means for the shipped defaults.** The scheduler stays off, so nothing
 consolidates automatically. But the sampler fix is unconditional: the manual admin route
 and the eval harness's Phase A-B both now do real work where they previously did nothing,
-so this −0.0148 is live for anyone who triggers consolidation at all. It is a genuine
+so this −0.0236 is live for anyone who triggers consolidation at all. It is a genuine
 trade rather than a bug — consolidation was always meant to run — but on this benchmark
 it does not pay for itself, and item 7 / the recurrence gate were meant to be measured on
 top of a consolidation baseline that is itself negative. Decide whether consolidation
