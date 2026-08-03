@@ -17,6 +17,10 @@ logger = get_logger(__name__)
 
 _REL_TYPE_ALLOWLIST = re.compile(r"^[A-Za-z0-9_\s]+$")
 
+# Most-recent episode IDs kept per edge. Interpolated into Cypher list slices, so it
+# must stay an int literal.
+_EVIDENCE_IDS_CAP = 50
+
 
 def _sanitize_rel_type(predicate: str) -> str:
     """Sanitize predicate for Neo4j relationship type (SEC-01: strict allowlist, reject invalid)."""
@@ -188,11 +192,20 @@ class Neo4jGraphStore(GraphStoreBase):
     ) -> str:
         """Create or update an edge between two nodes. Creates nodes if they don't exist."""
         target = object  # Avoid shadowing built-in 'object'
-        properties = properties or {}
+        properties = dict(properties or {})
         if namespace is not None:
             properties["namespace"] = namespace
         rel_type = _sanitize_rel_type(predicate)
         confidence = properties.get("confidence", 0.8)
+        # evidence_ids is a union across every episode that asserted the edge; `r +=`
+        # would overwrite it with only the most recent episode's IDs. Handled apart
+        # from the property map, and only when non-empty so fact-sync edges (which
+        # pass no evidence) keep their NULL instead of gaining an empty list.
+        # ponytail: capped at _EVIDENCE_IDS_CAP most-recent IDs. A hot edge re-asserted
+        # every session would otherwise grow the list without bound, and the reader
+        # (_retrieve_graph) truncates to step.top_k anyway. Raise the cap if a consumer
+        # ever needs full assertion history.
+        evidence_ids = properties.pop("evidence_ids", None) or []
         now = datetime.now(UTC).isoformat()
 
         query = f"""
@@ -220,6 +233,12 @@ class Neo4jGraphStore(GraphStoreBase):
             r.updated_at = $now,
             r.access_count = coalesce(r.access_count, 0) + 1,
             r += $properties
+        SET r.evidence_ids = CASE
+            WHEN size($evidence_ids) > 0 THEN
+                ([x IN coalesce(r.evidence_ids, []) WHERE NOT x IN $evidence_ids]
+                    + $evidence_ids)[-{_EVIDENCE_IDS_CAP}..]
+            ELSE r.evidence_ids
+        END
 
         RETURN elementId(r) AS edge_id
         """
@@ -233,6 +252,7 @@ class Neo4jGraphStore(GraphStoreBase):
                 target=target,
                 properties=properties,
                 confidence=confidence,
+                evidence_ids=evidence_ids,
                 now=now,
             )
             record = await result.single()
@@ -264,6 +284,9 @@ class Neo4jGraphStore(GraphStoreBase):
                     "subject": edge["subject"],
                     "object": edge["object"],
                     "confidence": props.pop("confidence", 0.8),
+                    # Unioned separately in the Cypher below — `r +=` would overwrite
+                    # it with only the most recent episode's IDs on every re-assertion.
+                    "evidence_ids": props.pop("evidence_ids", None) or [],
                     "properties": props,
                 }
             )
@@ -299,6 +322,12 @@ class Neo4jGraphStore(GraphStoreBase):
                     r.updated_at = $now,
                     r.access_count = coalesce(r.access_count, 0) + 1,
                     r += edge.properties
+                SET r.evidence_ids = CASE
+                    WHEN size(edge.evidence_ids) > 0 THEN
+                        ([x IN coalesce(r.evidence_ids, []) WHERE NOT x IN edge.evidence_ids]
+                            + edge.evidence_ids)[-{_EVIDENCE_IDS_CAP}..]
+                    ELSE r.evidence_ids
+                END
 
                 RETURN elementId(r) AS edge_id
                 """

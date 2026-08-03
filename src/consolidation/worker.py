@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from ..core.config import get_settings
 from ..memory.neocortical.store import NeocorticalStore
 from ..storage.base import MemoryStoreBase
 from ..utils.llm import LLMClient
@@ -15,7 +16,7 @@ from .migrator import ConsolidationMigrator, MigrationResult
 from .sampler import EpisodeSampler
 from .schema_aligner import SchemaAligner
 from .summarizer import ExtractedGist, GistExtractor
-from .triggers import ConsolidationScheduler, ConsolidationTask
+from .triggers import ConsolidationScheduler, ConsolidationTask, TriggerType
 
 logger = get_logger(__name__)
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -43,6 +44,11 @@ class ConsolidationReport:
 
     elapsed_seconds: float
 
+    #: Clusters below the recurrence threshold, so never sent to the LLM.
+    clusters_skipped_no_recurrence: int = 0
+    #: Gists the detail-recovery pass added on top of the first-pass summaries.
+    details_recovered: int = 0
+
     @property
     def success(self) -> bool:
         return len(self.migration.errors) == 0
@@ -58,6 +64,7 @@ class ConsolidationWorker:
         llm_client: LLMClient | None,
         scheduler: ConsolidationScheduler | None = None,
     ):
+        self.episodic_store = episodic_store
         self.sampler = EpisodeSampler(episodic_store)
         self.clusterer = SemanticClusterer()
         self.extractor = GistExtractor(llm_client)
@@ -69,6 +76,25 @@ class ConsolidationWorker:
 
         self._running = False
         self._worker_task: asyncio.Task | None = None
+        self._sweep_task: asyncio.Task | None = None
+
+        # Counters, not logs. The plan's instruction for this item is "verify by trigger
+        # count, not by reading the diff" — three features have shipped here flagged-on
+        # with no caller, and each time the diff looked correct.
+        self.sweeps_run = 0
+        self.tasks_enqueued = 0
+        self.consolidations_run = 0
+
+    @property
+    def status(self) -> dict:
+        """Whether the scheduler is actually firing. Surfaced by the admin route."""
+        return {
+            "running": self._running,
+            "sweeps_run": self.sweeps_run,
+            "tasks_enqueued": self.tasks_enqueued,
+            "consolidations_run": self.consolidations_run,
+            "pending_tasks": self.scheduler.pending_count(),
+        }
 
     async def consolidate(
         self,
@@ -185,8 +211,34 @@ class ConsolidationWorker:
                     )
 
         clusters = self.clusterer.cluster(episodes)
-        gists = await self.extractor.extract_from_clusters(clusters)
-        gists = self._apply_gist_guardrails(gists, clusters)
+
+        # Recurrence gate: only clusters showing repetition earn an LLM call. A cluster
+        # of one is a single episode with nothing to generalise from, so "extracting a
+        # gist" restates it and then demotes the original in favour of the restatement.
+        # Skipping it costs nothing retrievable — raw episodes stay in episodic memory,
+        # and the strongest ablation in the research pass (81.10 -> 51.88 when the raw
+        # layer is removed) says that is the layer to protect.
+        #
+        # Defaults to 1, which gates nothing: at 2 a tenant whose episodes never cluster
+        # stops producing gists entirely, and that trade is unmeasured. The knob is what
+        # the fresh-ingest arm moves.
+        settings = get_settings()
+        recurrence_min = settings.features.consolidation_recurrence_min
+        recurrent = [c for c in clusters if len(c.episodes) >= recurrence_min]
+        skipped = len(clusters) - len(recurrent)
+
+        gists = await self.extractor.extract_from_clusters(recurrent)
+        gists = self._apply_gist_guardrails(gists, recurrent)
+
+        # Second pass, conditioned on the gist: a summary generalises, and generalising
+        # drops the named entities and quantities a later question asks about. Its own
+        # flag rather than the scheduler's, so the fresh-ingest arm can attribute this
+        # separately — bundling two changes into one arm has cost this project three
+        # arms of untangling already.
+        recovered: list[ExtractedGist] = []
+        if settings.features.consolidation_detail_recovery_enabled:
+            recovered = await self.extractor.recover_details(recurrent, gists)
+            gists = gists + recovered
 
         alignments = await self.aligner.align_batch(tenant_id, gists)
         migration = await self.migrator.migrate(
@@ -204,23 +256,72 @@ class ConsolidationWorker:
             completed_at=completed,
             episodes_sampled=len(episodes),
             clusters_formed=len(clusters),
+            clusters_skipped_no_recurrence=skipped,
             gists_extracted=len(gists),
+            details_recovered=len(recovered),
             migration=migration,
             elapsed_seconds=(completed - started).total_seconds(),
         )
 
     async def start_background_worker(self):
-        """Start background consolidation worker."""
+        """Start the consolidation consumer and the sweep that feeds it.
+
+        Starting only the consumer — which is all this method used to do, and it had no
+        caller — produces a loop that polls an empty queue forever, because nothing but
+        the two admin HTTP routes ever enqueued anything.
+        """
+        if self._running:
+            return
         self._running = True
         self._worker_task = asyncio.create_task(self._worker_loop())
+        self._sweep_task = asyncio.create_task(self._sweep_loop())
 
     async def stop_background_worker(self):
         """Stop background worker."""
         self._running = False
-        if self._worker_task:
-            self._worker_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._worker_task
+        for task in (self._worker_task, self._sweep_task):
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        self._worker_task = None
+        self._sweep_task = None
+
+    async def sweep_once(self) -> int:
+        """Enqueue consolidation for every tenant over the episode quota.
+
+        Returns the number of tenants enqueued. Separate from the loop so it can be
+        driven directly by a test or an admin route — a background-only entry point is
+        how this subsystem went unverified for so long.
+        """
+        self.sweeps_run += 1
+        candidates = await self.episodic_store.unconsolidated_counts_by_tenant(
+            min_count=self.scheduler.quota_episodes,
+        )
+        for tenant_id, count in candidates:
+            await self.scheduler.enqueue(
+                tenant_id,
+                tenant_id,
+                TriggerType.QUOTA,
+                f"Quota: {count} un-consolidated records",
+            )
+            self.tasks_enqueued += 1
+        if candidates:
+            logger.info(
+                "consolidation_sweep_enqueued",
+                extra={"tenants": len(candidates), "quota": self.scheduler.quota_episodes},
+            )
+        return len(candidates)
+
+    async def _sweep_loop(self):
+        """Periodically look for tenants with enough un-consolidated material."""
+        interval = self.scheduler.default_interval.total_seconds()
+        while self._running:
+            try:
+                await self.sweep_once()
+            except Exception:
+                logger.exception("consolidation_sweep_failed")
+            await asyncio.sleep(interval)
 
     async def _worker_loop(self):
         """Background worker loop."""
@@ -234,6 +335,7 @@ class ConsolidationWorker:
                         task.user_id,
                         task,
                     )
+                    self.consolidations_run += 1
                     if report.gists_extracted:
                         log.info(
                             "consolidation complete",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import structlog
@@ -20,6 +21,21 @@ from ..utils.llm import LLMClient
 from ..utils.parsing import safe_float, safe_int
 from .constraint_extractor import ConstraintObject
 from .write_time_facts import ExtractedFact
+
+
+def _parse_iso_date(raw: Any) -> datetime | None:
+    """Parse a model-supplied ISO date into a fact validity bound.
+
+    Anything unparseable is dropped rather than raised on — a malformed date must not
+    lose the fact it was attached to, and an absent bound is the pre-existing default.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return datetime.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Result schema
@@ -118,7 +134,7 @@ EXCLUDE from entities and relations: system prompts, role instructions (e.g. "Yo
 - "confidence" (float 0.0-1.0)
 
 **constraints**: array of objects with constraint_type, subject, description, scope, confidence
-**facts**: array of objects with key (format: user:{{category}}:{{predicate}}), category, predicate, value, confidence
+**facts**: array of objects with key (format: user:{{category}}:{{predicate}}), category, predicate, value, confidence, and optionally valid_from / valid_to — ISO dates (YYYY-MM-DD) bounding when the fact *held*, not when it was said. Set valid_to only when the text says the fact stopped being true ("I was vegetarian until June 2024" -> valid_to 2024-06-30; "I stopped running in 2023" -> valid_to 2023-12-31). Set valid_from when the text says when it started ("I've been vegan since March 2022" -> valid_from 2022-03-01). Omit both when the text gives no such bound.
 **salience**: float 0.0-1.0
 **importance**: float 0.0-1.0
 **memory_type**: string — MUST be one of: episodic_event, semantic_fact, preference, task_state, procedure, constraint, hypothesis, conversation, message, tool_result, reasoning_step, scratch, knowledge, observation, plan. Classify by content: preferences/likes -> preference; rules/policies/never-do -> constraint; factual statements -> semantic_fact; events/what happened -> episodic_event; instructions/how-to -> procedure; uncertain inferences -> hypothesis; task progress -> task_state; etc.
@@ -365,6 +381,8 @@ class UnifiedWritePathExtractor:
                     predicate=predicate,
                     value=str(item.get("value", "")),
                     confidence=safe_float(item.get("confidence", 0.6), 0.6),
+                    valid_from=_parse_iso_date(item.get("valid_from")),
+                    valid_to=_parse_iso_date(item.get("valid_to")),
                 )
             )
 

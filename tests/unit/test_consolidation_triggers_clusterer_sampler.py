@@ -8,7 +8,6 @@ import pytest
 from src.consolidation.clusterer import SemanticClusterer
 from src.consolidation.triggers import (
     ConsolidationScheduler,
-    TriggerCondition,
     TriggerType,
 )
 from src.core.enums import MemorySource, MemoryType
@@ -52,30 +51,23 @@ class TestConsolidationScheduler:
         assert task.trigger_reason == "Manual"
 
     @pytest.mark.asyncio
-    async def test_check_triggers_quota(self):
-        s = ConsolidationScheduler(quota_threshold_episodes=10)
-        # Register only QUOTA so scheduled first-run doesn't win
-        s.register_user("t", "u", conditions=[TriggerCondition(TriggerType.QUOTA, min_episodes=10)])
-        triggered = await s.check_triggers("t", "u", episode_count=15, memory_size_mb=1.0)
-        assert triggered is True
+    async def test_enqueue_carries_the_trigger_type_and_reason(self):
+        s = ConsolidationScheduler()
+        await s.enqueue("t", "u", TriggerType.QUOTA, "Quota: 900 un-consolidated records")
         task = await s.get_next_task()
         assert task is not None
         assert task.trigger_type == TriggerType.QUOTA
-
-    @pytest.mark.asyncio
-    async def test_check_triggers_scheduled_first_run(self):
-        s = ConsolidationScheduler()
-        s.register_user("t", "u")
-        triggered = await s.check_triggers("t", "u", episode_count=0, memory_size_mb=0.0)
-        assert triggered is True
-        task = await s.get_next_task()
-        assert task.trigger_type == TriggerType.SCHEDULED
+        assert "900" in task.trigger_reason
 
     @pytest.mark.asyncio
     async def test_get_next_task_timeout_returns_none(self):
         s = ConsolidationScheduler()
         task = await s.get_next_task()
         assert task is None
+
+    def test_the_quota_default_is_the_documented_one(self):
+        """The sweep reads this; it was previously read only by dead code."""
+        assert ConsolidationScheduler().quota_episodes == 500
 
 
 class TestSemanticClusterer:

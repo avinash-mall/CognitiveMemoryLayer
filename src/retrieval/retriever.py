@@ -833,7 +833,7 @@ class HybridRetriever:
             "exclude_expired": True,
         }
         if step.time_filter:
-            for k in ("since", "until", "source_session_id"):
+            for k in ("since", "until", "source_session_id", "time_basis"):
                 if k in step.time_filter:
                     constraint_filters[k] = step.time_filter[k]
         try:

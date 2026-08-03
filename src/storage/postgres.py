@@ -21,6 +21,56 @@ _DATETIME_KEYS = frozenset(
 )
 
 
+def _time_column(filters: dict[str, Any] | None):
+    """The column ``since``/``until`` compare against.
+
+    Defaults to ``timestamp`` — turn time — which is what every caller meant before
+    ``event_date`` was queryable, and what temporal contiguity still means: it anchors a
+    window on a seed's own ``record.timestamp`` to pull neighbouring turns, so resolving
+    that window against event time would drop exactly the neighbours whose turn recalls
+    a distant event.
+
+    ``time_basis="event"`` — set by the planner, whose filters come from a *question*
+    about when something happened — coalesces to event time where it is known. Coalesce
+    rather than a plain compare because only 4.3% of stored records carry an
+    ``event_date``; filtering on the bare column would hide the other 95.7%.
+    """
+    if filters and filters.get("time_basis") == "event":
+        return func.coalesce(MemoryRecordModel.event_date, MemoryRecordModel.timestamp)
+    return MemoryRecordModel.timestamp
+
+
+def _parse_event_date(metadata: dict[str, Any] | None) -> datetime | None:
+    """Read ``metadata['event_date']`` into a column value.
+
+    The extractor writes ISO strings, date-only or full. Anything unparseable is
+    dropped rather than raised on: a bad event_date must not fail a write, because the
+    turn text is the thing worth keeping and the metadata copy survives regardless.
+    """
+    if not metadata:
+        return None
+    raw = metadata.get("event_date")
+    if isinstance(raw, datetime):
+        return _naive_utc(raw)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return _naive_utc(datetime.fromisoformat(raw.strip()))
+    except ValueError:
+        return None
+
+
+def _unconsolidated_clause():
+    """Records the consolidation migrator has not already absorbed into a gist.
+
+    ``consolidated`` lives in the metadata JSON, so this is a ``->>`` text compare
+    rather than a column predicate. Absent key and explicit false both count as
+    un-consolidated.
+    """
+    marker = MemoryRecordModel.meta.op("->>")("consolidated")
+    return or_(marker.is_(None), marker != "true")
+
+
 class PostgresMemoryStore(MemoryStoreBase):
     """PostgreSQL-based memory store with pgvector."""
 
@@ -99,6 +149,9 @@ class PostgresMemoryStore(MemoryStoreBase):
                 meta=record.metadata,
                 timestamp=ts,
                 written_at=now_naive,
+                event_date=_parse_event_date(record.metadata),
+                valid_from=_naive_utc(record.valid_from),
+                valid_to=_naive_utc(record.valid_to),
                 confidence=record.confidence,
                 importance=record.importance,
                 decay_rate=record.decay_rate if record.decay_rate is not None else 0.01,
@@ -253,14 +306,15 @@ class PostgresMemoryStore(MemoryStoreBase):
                         q = q.where(MemoryRecordModel.source_session_id.in_(source_session_id))
                     else:
                         q = q.where(MemoryRecordModel.source_session_id == source_session_id)
+                time_col = _time_column(filters)
                 if "since" in filters:
                     since = _naive_utc(filters["since"])
                     if since is not None:
-                        q = q.where(MemoryRecordModel.timestamp >= since)
+                        q = q.where(time_col >= since)
                 if "until" in filters:
                     until = _naive_utc(filters["until"])
                     if until is not None:
-                        q = q.where(MemoryRecordModel.timestamp <= until)
+                        q = q.where(time_col <= until)
                 if "min_confidence" in filters:
                     q = q.where(MemoryRecordModel.confidence >= filters["min_confidence"])
                 if filters.get("exclude_expired"):
@@ -315,14 +369,17 @@ class PostgresMemoryStore(MemoryStoreBase):
                         q = q.where(MemoryRecordModel.type.in_(t))
                     else:
                         q = q.where(MemoryRecordModel.type == t)
+                time_col = _time_column(filters)
                 if "since" in filters:
                     since = _naive_utc(filters["since"])
                     if since is not None:
-                        q = q.where(MemoryRecordModel.timestamp >= since)
+                        q = q.where(time_col >= since)
                 if "until" in filters:
                     until = _naive_utc(filters["until"])
                     if until is not None:
-                        q = q.where(MemoryRecordModel.timestamp <= until)
+                        q = q.where(time_col <= until)
+                if filters.get("unconsolidated"):
+                    q = q.where(_unconsolidated_clause())
             if order_by:
                 col_name = order_by.lstrip("-")
                 col = getattr(MemoryRecordModel, col_name, None)
@@ -394,16 +451,48 @@ class PostgresMemoryStore(MemoryStoreBase):
                     q = q.where(MemoryRecordModel.type.in_(t))
                 else:
                     q = q.where(MemoryRecordModel.type == t)
+            time_col = _time_column(filters)
             if filters and "since" in filters:
                 since = _naive_utc(filters["since"])
                 if since is not None:
-                    q = q.where(MemoryRecordModel.timestamp >= since)
+                    q = q.where(time_col >= since)
             if filters and "until" in filters:
                 until = _naive_utc(filters["until"])
                 if until is not None:
-                    q = q.where(MemoryRecordModel.timestamp <= until)
+                    q = q.where(time_col <= until)
+            if filters and filters.get("unconsolidated"):
+                q = q.where(_unconsolidated_clause())
             r = await session.execute(q)
             return r.scalar() or 0
+
+    async def unconsolidated_counts_by_tenant(
+        self,
+        min_count: int,
+        types: list[str] | None = None,
+    ) -> list[tuple[str, int]]:
+        """Tenants holding at least ``min_count`` un-consolidated active records.
+
+        One GROUP BY rather than a count per tenant: the sweep runs on an interval
+        against every tenant in the database, and N round-trips would scale with
+        tenant count for a question a single aggregate answers.
+        """
+        async with self.session_factory() as session:
+            q = (
+                select(MemoryRecordModel.tenant_id, func.count(MemoryRecordModel.id).label("n"))
+                .where(
+                    and_(
+                        MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                        _unconsolidated_clause(),
+                    )
+                )
+                .group_by(MemoryRecordModel.tenant_id)
+                .having(func.count(MemoryRecordModel.id) >= min_count)
+                .order_by(func.count(MemoryRecordModel.id).desc())
+            )
+            if types:
+                q = q.where(MemoryRecordModel.type.in_(types))
+            r = await session.execute(q)
+            return [(row[0], int(row[1])) for row in r.all()]
 
     async def delete_by_filter(
         self,

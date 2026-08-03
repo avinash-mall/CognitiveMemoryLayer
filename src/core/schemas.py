@@ -132,6 +132,11 @@ class MemoryRecordCreate(BaseModel):
     relations: list[Relation] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime | None = None
+    # When the described state of affairs held, as opposed to when the turn was
+    # written. The columns and the reader already existed — vector_search's
+    # exclude_expired filters on valid_to — but nothing could set them on a write.
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
     confidence: float = 0.5
     importance: float = 0.5
     decay_rate: float | None = None

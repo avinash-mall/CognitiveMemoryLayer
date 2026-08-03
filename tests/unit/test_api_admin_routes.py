@@ -13,7 +13,13 @@ AUTH = SimpleNamespace(tenant_id="tenant-a")
 
 @pytest.mark.asyncio
 async def test_trigger_consolidation_returns_summary() -> None:
-    report = SimpleNamespace(episodes_sampled=7, clusters_formed=3, gists_extracted=2)
+    report = SimpleNamespace(
+        episodes_sampled=7,
+        clusters_formed=3,
+        clusters_skipped_no_recurrence=1,
+        gists_extracted=2,
+        details_recovered=4,
+    )
     orchestrator = SimpleNamespace(
         consolidation=SimpleNamespace(consolidate=AsyncMock(return_value=report))
     )
@@ -29,7 +35,9 @@ async def test_trigger_consolidation_returns_summary() -> None:
         "user_id": "user-1",
         "episodes_sampled": 7,
         "clusters_formed": 3,
+        "clusters_skipped_no_recurrence": 1,
         "gists_extracted": 2,
+        "details_recovered": 4,
     }
 
 

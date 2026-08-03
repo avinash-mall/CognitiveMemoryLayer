@@ -81,6 +81,7 @@ class FactStoreLike(Protocol):
         evidence_ids: list[str] | None = None,
         valid_from: datetime | None = None,
         context_tags: list[str] | None = None,
+        valid_to: datetime | None = None,
     ) -> SemanticFact: ...
 
     async def get_fact(
@@ -148,6 +149,7 @@ class NeocorticalStore:
         evidence_ids: list[str] | None = None,
         context_tags: list[str] | None = None,
         valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
     ) -> SemanticFact:
         """Store a semantic fact; optionally sync to graph if relation-like. Holistic: tenant-only."""
         fact = await self.facts.upsert_fact(
@@ -158,6 +160,7 @@ class NeocorticalStore:
             evidence_ids,
             context_tags=context_tags,
             valid_from=valid_from,
+            valid_to=valid_to,
         )
         if ":" in key and isinstance(value, str):
             await self._sync_fact_to_graph(tenant_id, fact)

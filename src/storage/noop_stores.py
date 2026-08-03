@@ -91,6 +91,7 @@ class NoOpFactStore:
         evidence_ids: list[str] | None = None,
         valid_from: datetime | None = None,
         context_tags: list[str] | None = None,
+        valid_to: datetime | None = None,
     ) -> SemanticFact:
         parts = key.split(":")
         subject = parts[0] if len(parts) > 0 else "unknown"

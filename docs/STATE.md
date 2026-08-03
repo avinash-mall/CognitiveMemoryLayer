@@ -14,11 +14,12 @@ link them below. Delete notes when they stop being true.
   leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
   signal because it runs the integration suite in containers against fresh
   Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
-- Suite sizes, so drift is visible: **799** unit (hermetic), **341** integration + e2e +
-  py-cml against a live server. Grew from 716/327 across three passes: source monitoring,
+- Suite sizes, so drift is visible: **878** unit (hermetic), **341** integration + e2e +
+  py-cml against a live server. Grew from 716/327 across four passes: source monitoring,
   gist demotion, the retention curve; then temporal resolution, prospective indexing,
   the scan_texts_for_gate SQL guard and multi-valued facts; then the graph-as-index fix,
-  temporal contiguity and the sufficiency signal. Not regressions.
+  temporal contiguity and the sufficiency signal; then the write-path items (evidence_ids
+  union, bi-temporal, consolidation scheduler, detail recovery). Not regressions.
 - **The Docker `api` container bakes its source in — there is no volume mount.** Editing
   `src/` does not change what the running container serves, so a live suite against it
   tests the last image build, not your working tree. For verifying local changes, run
@@ -201,6 +202,71 @@ Two hazards this created or exposed, both worth reading before touching the stac
   interval and 500-episode quota have never run — the two HTTP routes are the only live
   entry points. Third instance of the class that produced two wrong conclusions already
   (`encode_chunk`, eval-mode graph blindness).
+
+### Write-path items shipped, none measured (2026-08-03)
+
+The rest of `memory-redesign-plan.md`: the `evidence_ids` union, item 4, item 6, item 7.
+**All four are code + tests only.** They share a ~2 h fresh-ingest cost, so the arm that
+would justify their defaults has not been run — do not read "implemented" as "measured".
+
+- **`evidence_ids` union** (item 1's companion fix). `merge_edge` *and*
+  `merge_edges_batch` both did `r += properties` on MATCH, so each edge pointed only at
+  the most recent episode that asserted it. Now unioned, deduped, capped at the 50 most
+  recent. Verified against live Neo4j 5.26 before being written down; a fact-sync edge
+  that never carries evidence still reads NULL rather than `[]`, which is what keeps
+  "never had evidence" distinguishable from "had it, lost it".
+- **Item 4 — bi-temporal.** Two mirror-image write-only bugs. *Facts*: the columns and
+  the reader (`valid_to IS NULL OR valid_to >= now`) already existed, but nothing set an
+  interval from content — the extractor now emits `valid_from`/`valid_to` and a fact that
+  arrives already over is created `is_current=False`, so the flag and the reader agree.
+  *Episodes*: `event_date` is now a column with an index (`002_event_date_column.py`),
+  backfilled 23,463/23,463 with zero mismatches.
+
+  **The planner's time filter carries `time_basis="event"`, and nothing else does.** The
+  store coalesces to `event_date` only under that key. Two reasons: only **4.3%** of
+  records (23,463 of 549,582) carry an event_date, so a bare-column compare would hide
+  95.7% of the corpus and read as a scoring collapse rather than a filter bug; and
+  temporal contiguity anchors its window on a seed's own `record.timestamp`, so
+  re-dating that window would drop exactly the neighbours whose turn recalls a distant
+  event. Verified on real data: a record whose event is a year before its turn matches on
+  the event basis and not the turn basis, while all 375 un-dated records in a tenant
+  still come back on the event basis.
+- **Item 6 — consolidation fires on its own.** `start_background_worker` had no caller,
+  **and** the registry its loop polled was never populated — nothing called
+  `register_user`, so `check_triggers` could not fire for any user on any deployment.
+  Wiring only the consumer would have produced a loop polling an empty queue forever.
+  There is now a sweep that enumerates tenants over the episode quota in one GROUP BY and
+  enqueues them, started from `lifespan` behind `FEATURES__CONSOLIDATION_SCHEDULER_ENABLED`
+  (**default off**). The dead registry was deleted rather than wired up.
+
+  Counters (`sweeps_run`, `tasks_enqueued`, `consolidations_run`) are exposed at
+  `GET /api/v1/admin/consolidation/status`, because the plan's instruction for this item
+  is *verify by trigger count, not by reading the diff* — reading the diff is what missed
+  this three times. The sampler's 7-day window was **absorbing, not sliding**: an episode
+  not sampled inside it was never eligible again. Eligibility is now "un-consolidated",
+  pushed into SQL, with no age bound; recency still ranks, it just no longer excludes.
+- **Item 7 — gist-conditioned detail recovery**, behind
+  `FEATURES__CONSOLIDATION_DETAIL_RECOVERY_ENABLED` (**default off**). Its own flag, not
+  the scheduler's, so the arm can attribute the two — bundling has cost this project
+  three arms of untangling already. Restatements of the gist are dropped, or they would
+  migrate as a second fact competing with the first.
+- **The recurrence gate is a knob defaulting to a no-op.** `consolidation_recurrence_min`
+  is 1, which gates nothing. At 2 it skips singleton clusters — and two integration tests
+  caught that this stops a tenant whose episodes never cluster from producing gists at
+  all. That trade is unmeasured, so the default preserves shipped behaviour and the arm
+  moves the knob. RecMem's 87% token saving is reported at k=4-5.
+
+**Hazard, and the reason the scheduler flag matters more than usual here.** 664 tenants
+in this database sit over the 500-episode quota, and **859 of them are the frozen eval
+corpus** (`lp-*`, `full2-*`). Turning `FEATURES__CONSOLIDATION_SCHEDULER_ENABLED` on
+against this host would consolidate the corpus that every frozen-corpus A/B arm depends
+on — marking episodes consolidated and migrating gists into `semantic_facts` — and that
+is not reversible from the checkpoint. Run the scheduler arm against its own
+`--tenant-prefix`, never against this store with the default quota.
+
+The database is also the evidence that consolidation never ran: **307 of 549,580 records
+(0.06%) carry a consolidated marker**, and 200 of those are the `default` tenant from
+manual HTTP triggers.
 
 ### Earlier
 

@@ -97,6 +97,19 @@ class MemoryStoreBase(ABC):
         """Delete records matching filters. Holistic: tenant-only. Returns count of deleted records."""
         ...
 
+    async def unconsolidated_counts_by_tenant(
+        self,
+        min_count: int,
+        types: list[str] | None = None,
+    ) -> list[tuple[str, int]]:
+        """Tenants holding at least ``min_count`` un-consolidated active records.
+
+        Cross-tenant on purpose: the consolidation sweep has no tenant to scope to
+        until this answers. Not abstract — a store that cannot answer it just yields
+        no sweep candidates rather than breaking the worker.
+        """
+        return []
+
     async def scan_texts_for_gate(
         self,
         tenant_id: str,

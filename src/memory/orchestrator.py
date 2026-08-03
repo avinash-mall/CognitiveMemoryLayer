@@ -667,7 +667,11 @@ class MemoryOrchestrator:
                             value=fact.value,
                             confidence=fact.confidence,
                             evidence_ids=evidence,
-                            valid_from=timestamp,
+                            # An interval the extractor read out of the content beats the
+                            # write time. Falling back to `timestamp` keeps the previous
+                            # behaviour for the facts that state no bound.
+                            valid_from=getattr(fact, "valid_from", None) or timestamp,
+                            valid_to=getattr(fact, "valid_to", None),
                         )
                     except Exception:
                         logger.warning(

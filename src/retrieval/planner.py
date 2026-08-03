@@ -284,10 +284,17 @@ class RetrievalPlanner:
                 tz = UTC
         user_now = datetime.now(tz)
 
+        # A question's time reference is about when the *event* happened, not when the
+        # turn describing it was typed — "what did I do last week" should match a turn
+        # from yesterday that recounts last week. The store coalesces to turn time for
+        # the 95.7% of records with no resolved event_date, so this never narrows the
+        # candidate set; it only re-dates the records that know better.
+        basis = {"time_basis": "event"}
+
         ref = (analysis.time_reference or "").lower()
         if "today" in ref:
             start = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
-            return {"since": start.astimezone(UTC).replace(tzinfo=None)}
+            return {"since": start.astimezone(UTC).replace(tzinfo=None), **basis}
         if "yesterday" in ref:
             yesterday = user_now - timedelta(days=1)
             start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -295,13 +302,23 @@ class RetrievalPlanner:
             return {
                 "since": start.astimezone(UTC).replace(tzinfo=None),
                 "until": end.astimezone(UTC).replace(tzinfo=None),
+                **basis,
             }
         if "week" in ref:
-            return {"since": (user_now - timedelta(days=7)).astimezone(UTC).replace(tzinfo=None)}
+            return {
+                "since": (user_now - timedelta(days=7)).astimezone(UTC).replace(tzinfo=None),
+                **basis,
+            }
         if "month" in ref:
-            return {"since": (user_now - timedelta(days=30)).astimezone(UTC).replace(tzinfo=None)}
+            return {
+                "since": (user_now - timedelta(days=30)).astimezone(UTC).replace(tzinfo=None),
+                **basis,
+            }
         if "recent" in ref:
-            return {"since": (user_now - timedelta(days=3)).astimezone(UTC).replace(tzinfo=None)}
+            return {
+                "since": (user_now - timedelta(days=3)).astimezone(UTC).replace(tzinfo=None),
+                **basis,
+            }
         return None
 
     def _apply_retrieval_timeouts(self, steps: list[RetrievalStep]) -> None:

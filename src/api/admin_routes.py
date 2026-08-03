@@ -30,10 +30,25 @@ async def trigger_consolidation(
             "user_id": user_id,
             "episodes_sampled": report.episodes_sampled,
             "clusters_formed": report.clusters_formed,
+            "clusters_skipped_no_recurrence": report.clusters_skipped_no_recurrence,
             "gists_extracted": report.gists_extracted,
+            "details_recovered": report.details_recovered,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Consolidation failed: {e}")
+
+
+@admin_router.get("/consolidation/status")
+async def consolidation_status(
+    auth: AuthContext = Depends(require_admin_permission),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Whether the background consolidation sweep is running, and how often it has fired.
+
+    Trigger counts rather than config: this subsystem shipped with a documented 6-hour
+    interval that had no caller, and reading the diff is what missed that three times.
+    """
+    return orchestrator.consolidation.status
 
 
 @admin_router.post("/forget/{user_id}")

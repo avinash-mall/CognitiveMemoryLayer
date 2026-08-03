@@ -164,6 +164,43 @@ class FeatureFlags(PydanticBaseModel):
         default=4,
         description="Number of prospective implications to generate per memory.",
     )
+    consolidation_scheduler_enabled: bool = Field(
+        default=False,
+        description="Run the background consolidation sweep, which enqueues any tenant "
+        "holding at least the episode quota in un-consolidated records. Without it "
+        "consolidation is manual-only: ConsolidationWorker.start_background_worker had no "
+        "caller anywhere in the repo and the trigger registry it polled was never "
+        "populated, so the documented 6-hour interval and 500-episode quota had never "
+        "fired on any deployment — 307 of 549,580 stored records (0.06%) carry a "
+        "consolidated marker. Off by default because it is unmeasured: it spends LLM "
+        "tokens on the write path, which is already 95.8% LLM-bound, and every other "
+        "behaviour change here was defaulted on only by a measured arm. It also assumes a "
+        "single API worker — lifespan runs per uvicorn process and the queue is in-memory, "
+        "so N workers means N sweeps consolidating the same tenants.",
+    )
+    consolidation_recurrence_min: int = Field(
+        default=1,
+        description="Minimum episodes in a cluster before it is worth an LLM gist call — "
+        "the recurrence gate. RecMem defers LLM consolidation until an interaction shows "
+        "semantic recurrence (~4-5 neighbours at cosine 0.6-0.7) and reports an 87% cut "
+        "in memory-construction tokens for it, which matters here because the write path "
+        "is 95.8% LLM-bound. Default 1 gates nothing, preserving shipped behaviour: at 2 "
+        "a tenant whose episodes never cluster gets no gists at all, and that trade is "
+        "unmeasured. Raise it on the fresh-ingest arm. Skipped clusters cost nothing "
+        "retrievable — raw episodes stay in episodic memory, and removing that layer is "
+        "the single most damaging ablation in the research pass (81.10 -> 51.88).",
+    )
+    consolidation_detail_recovery_enabled: bool = Field(
+        default=False,
+        description="Run a second consolidation pass that uses the extracted gist as a "
+        "reference to find durable facts the gist omitted. Gist abstraction and detail "
+        "recovery are complementary — a summary generalises, which is exactly what drops "
+        "the named entities and quantities a later question asks about — and the reported "
+        "+5.72 on LoCoMo comes from conditioning recovery *on* the summary rather than "
+        "running a second independent extraction. Off by default: it is unmeasured here "
+        "and costs roughly one extra LLM call per cluster. Separate from "
+        "consolidation_scheduler_enabled so the fresh-ingest arm can attribute the two.",
+    )
     graph_results_in_packet: bool = Field(
         default=True,
         description="Let the knowledge-graph prong compete for slots in the memory packet. "

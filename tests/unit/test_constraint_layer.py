@@ -955,12 +955,35 @@ class TestPacketBuilderConstraints:
 
 
 class TestConsolidationSamplerConstraint:
-    """EpisodeSampler includes CONSTRAINT type with longer time window."""
+    """EpisodeSampler samples CONSTRAINT separately, and at any age.
 
-    def test_constraint_time_window_is_90_days(self):
+    ISS-08 gave constraints a 90-day window because a 7-day one aged stable constraints
+    out of consolidation. The window was *absorbing* rather than sliding either way — an
+    episode not sampled inside it was never eligible again — so eligibility is now
+    "un-consolidated", with no age bound at all. This asserts the behaviour the 90-day
+    constant was standing in for.
+    """
+
+    @pytest.mark.asyncio
+    async def test_constraints_are_sampled_with_no_age_bound(self):
         from src.consolidation.sampler import EpisodeSampler
+        from src.core.enums import MemoryType
 
-        assert EpisodeSampler.CONSTRAINT_TIME_WINDOW_DAYS == 90
+        seen: list[dict] = []
+
+        class _Store:
+            async def scan(self, tenant_id, filters=None, order_by=None, limit=100, offset=0):
+                seen.append(filters or {})
+                return []
+
+        await EpisodeSampler(store=_Store()).sample("t")
+
+        constraint_scan = next(f for f in seen if f.get("type") == [MemoryType.CONSTRAINT.value])
+        assert "since" not in constraint_scan
+        assert "until" not in constraint_scan
+        assert constraint_scan["unconsolidated"] is True
+        # and the episode scan is a separate call, so chatter cannot crowd it out
+        assert len(seen) == 2
 
 
 # ═══════════════════════════════════════════════════════════════════

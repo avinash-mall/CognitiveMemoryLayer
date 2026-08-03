@@ -15,6 +15,18 @@ from ...storage.utils import naive_utc
 from .schemas import DEFAULT_FACT_SCHEMAS, FactCategory, FactSchema, SemanticFact
 
 
+def _already_ended(valid_to: datetime | None) -> bool:
+    """Whether a stated validity end has already passed.
+
+    A fact can arrive already over — "I was vegetarian until June 2024" — and then
+    ``is_current`` and the reader's ``valid_to`` filter have to agree: a fact filtered
+    out of reads while still flagged current would block its own successor.
+    """
+    end = naive_utc(valid_to) if valid_to else None
+    now = naive_utc(datetime.now(UTC))
+    return end is not None and now is not None and end <= now
+
+
 class SemanticFactStore:
     """
     Stores and manages semantic facts.
@@ -34,6 +46,7 @@ class SemanticFactStore:
         evidence_ids: list[str] | None = None,
         valid_from: datetime | None = None,
         context_tags: list[str] | None = None,
+        valid_to: datetime | None = None,
     ) -> SemanticFact:
         """Insert or update a semantic fact. Holistic: tenant-only."""
         async with self.session_factory() as session:
@@ -43,7 +56,7 @@ class SemanticFactStore:
 
             if existing:
                 return await self._update_fact(
-                    session, existing, value, confidence, evidence_ids, schema, valid_from
+                    session, existing, value, confidence, evidence_ids, schema, valid_from, valid_to
                 )
             return await self._create_fact(
                 session,
@@ -56,6 +69,7 @@ class SemanticFactStore:
                 evidence_ids,
                 valid_from,
                 context_tags or [],
+                valid_to,
             )
 
     async def get_fact(
@@ -395,6 +409,7 @@ class SemanticFactStore:
         evidence_ids: list[str] | None,
         schema: FactSchema | None,
         valid_from: datetime | None,
+        valid_to: datetime | None = None,
     ) -> SemanticFact:
         """Update existing fact (reinforce or new version).
 
@@ -433,6 +448,13 @@ class SemanticFactStore:
                 "evidence_ids",
                 list(typing_cast("list", model.evidence_ids) or []) + (evidence_ids or []),
             )
+            # A restatement that now carries an end date closes the interval — "I'm
+            # vegetarian" then "I was vegetarian until June" is the same value with new
+            # temporal information, so it must not be treated as pure reinforcement.
+            if valid_to is not None:
+                setattr(model, "valid_to", naive_utc(valid_to))
+                if _already_ended(valid_to):
+                    setattr(model, "is_current", False)
             setattr(model, "updated_at", naive_utc(datetime.now(UTC)))
             await session.commit()
             await session.refresh(model)
@@ -457,6 +479,7 @@ class SemanticFactStore:
                 evidence_count=1,
                 evidence_ids=evidence_ids or [],
                 valid_from=naive_utc(valid_from or datetime.now(UTC)),
+                valid_to=naive_utc(valid_to) if valid_to else None,
                 is_current=True,
                 version=existing.version + 1,
                 supersedes_id=existing.id,
@@ -476,6 +499,7 @@ class SemanticFactStore:
         evidence_ids: list[str] | None,
         valid_from: datetime | None,
         context_tags: list[str],
+        valid_to: datetime | None = None,
     ) -> SemanticFact:
         """Create new fact."""
         value_type = "str" if value is None else type(value).__name__.lower()
@@ -493,7 +517,11 @@ class SemanticFactStore:
             evidence_count=1,
             evidence_ids=evidence_ids or [],
             valid_from=naive_utc(valid_from or datetime.now(UTC)),
-            is_current=True,
+            valid_to=naive_utc(valid_to) if valid_to else None,
+            # A fact stated as already over ("I was vegetarian until 2024") is history
+            # the moment it is written; the reader's valid_to filter would hide it, but
+            # is_current is what supersession and the fact prong key off.
+            is_current=not _already_ended(valid_to),
             version=1,
         )
         await self._insert_fact(session, fact)

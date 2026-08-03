@@ -2,7 +2,7 @@
 
 import math
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from ..core.enums import MemoryStatus, MemoryType
 from ..core.schemas import MemoryRecord
@@ -13,7 +13,6 @@ from ..storage.utils import naive_utc
 @dataclass
 class SamplingConfig:
     max_episodes: int = 200
-    time_window_days: int = 7
     min_importance: float = 0.3
     min_confidence: float = 0.3
 
@@ -33,9 +32,13 @@ class EpisodeSampler:
         self.store = store
         self.config = config or SamplingConfig()
 
-    # Constraint types use a much longer time window to ensure stable
-    # constraints are always consolidated regardless of age (ISS-08).
-    CONSTRAINT_TIME_WINDOW_DAYS = 90
+    #: Types sampled for gist extraction, alongside CONSTRAINT which is sampled
+    #: separately so a quiet tenant's constraints cannot be crowded out by chatter.
+    EPISODE_TYPES = (
+        MemoryType.EPISODIC_EVENT.value,
+        MemoryType.PREFERENCE.value,
+        MemoryType.HYPOTHESIS.value,
+    )
 
     async def sample(
         self,
@@ -43,40 +46,43 @@ class EpisodeSampler:
         max_episodes: int | None = None,
         exclude_consolidated: bool = True,
     ) -> list[MemoryRecord]:
-        """Sample episodes for consolidation."""
+        """Sample episodes for consolidation.
+
+        Eligibility is "not yet consolidated", never age. This used to scan a
+        ``timestamp >= now - 7d`` window (90d for constraints), which was *absorbing*
+        rather than sliding: an episode not sampled within its window was never a
+        candidate again. Combined with a trigger that only fired when someone clicked,
+        most episodes were never consolidation candidates at all. Recency still ranks
+        candidates via ``_score``; it just no longer excludes them.
+        """
         max_eps = max_episodes or self.config.max_episodes
 
-        # Standard episode/preference/hypothesis sampling
-        filters: dict = {
-            "status": MemoryStatus.ACTIVE.value,
-            "type": [
-                MemoryType.EPISODIC_EVENT.value,
-                MemoryType.PREFERENCE.value,
-                MemoryType.HYPOTHESIS.value,
-            ],
-            "since": datetime.now(UTC) - timedelta(days=self.config.time_window_days),
-        }
+        base: dict = {"status": MemoryStatus.ACTIVE.value}
+        if exclude_consolidated:
+            # Pushed into SQL rather than filtered afterwards: post-filtering a
+            # limit-capped scan silently returns nothing once the newest rows are all
+            # consolidated, which is the backlog case this method exists to drain.
+            base["unconsolidated"] = True
 
+        # Newest-first so the candidate set is deterministic under the limit; the
+        # priority score below then reorders within it.
         candidates = await self.store.scan(
             tenant_id,
-            filters=filters,
+            filters={**base, "type": list(self.EPISODE_TYPES)},
+            order_by="-timestamp",
             limit=max_eps * 3,
         )
-
-        # Also sample CONSTRAINT type with a longer time window (ISS-08)
-        constraint_filters: dict = {
-            "status": MemoryStatus.ACTIVE.value,
-            "type": [MemoryType.CONSTRAINT.value],
-            "since": datetime.now(UTC) - timedelta(days=self.CONSTRAINT_TIME_WINDOW_DAYS),
-        }
-        constraint_candidates = await self.store.scan(
-            tenant_id,
-            filters=constraint_filters,
-            limit=max_eps,
+        candidates.extend(
+            await self.store.scan(
+                tenant_id,
+                filters={**base, "type": [MemoryType.CONSTRAINT.value]},
+                order_by="-timestamp",
+                limit=max_eps,
+            )
         )
-        candidates.extend(constraint_candidates)
 
         if exclude_consolidated:
+            # Belt and braces for stores whose scan ignores the filter key.
             candidates = [
                 c for c in candidates if not (c.metadata and c.metadata.get("consolidated"))
             ]

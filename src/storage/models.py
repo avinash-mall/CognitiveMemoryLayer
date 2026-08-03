@@ -45,6 +45,9 @@ class MemoryRecordModel(Base):
 
     timestamp = Column(DateTime, nullable=False, index=True)
     written_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
+    # When the *described event* happened, as opposed to when the turn was written.
+    # Mirrors metadata['event_date'], which is still what the packet renderer reads.
+    event_date = Column(DateTime, nullable=True)
     valid_from = Column(DateTime, nullable=True)
     valid_to = Column(DateTime, nullable=True)
 
@@ -69,6 +72,7 @@ class MemoryRecordModel(Base):
         Index("ix_memory_tenant_status", "tenant_id", "status"),
         Index("ix_memory_tenant_type", "tenant_id", "type"),
         Index("ix_memory_tenant_key", "tenant_id", "key"),
+        Index("ix_memory_tenant_event_date", "tenant_id", "event_date"),
     )
 
 

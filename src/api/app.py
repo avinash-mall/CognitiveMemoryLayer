@@ -55,10 +55,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     from ..memory.orchestrator import MemoryOrchestrator
 
-    app.state.orchestrator = await MemoryOrchestrator.create(db_manager)
+    orchestrator = await MemoryOrchestrator.create(db_manager)
+    app.state.orchestrator = orchestrator
+
+    # Consolidation has no other automatic entry point: start_background_worker had no
+    # caller anywhere in the repo, so the sweep only ever ran when someone POSTed to the
+    # admin route. Off by default — see FeatureFlags.consolidation_scheduler_enabled,
+    # which also documents the single-worker assumption.
+    if get_settings().features.consolidation_scheduler_enabled:
+        await orchestrator.consolidation.start_background_worker()
 
     yield
 
+    await orchestrator.consolidation.stop_background_worker()
     await db_manager.close()
 
 

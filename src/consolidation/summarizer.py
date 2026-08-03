@@ -52,6 +52,34 @@ Rules:
 
 _BATCH_GIST_CLUSTER_SIZE = 8
 
+DETAIL_RECOVERY_PROMPT = """You already summarised these memories. The summary is below.
+
+SUMMARY ALREADY EXTRACTED:
+{gists}
+
+ORIGINAL MEMORIES:
+{memories}
+
+Find durable facts stated in the ORIGINAL MEMORIES that the SUMMARY does NOT capture.
+A summary generalises, so specifics are routinely lost: named people, places and
+organisations, quantities, relationships, commitments, and constraints.
+
+Return JSON:
+{{
+  "gists": [
+    {{"gist": "User's sister Anna lives in Lisbon", "type": "fact", "confidence": 0.9,
+      "subject": "Anna", "predicate": "lives_in", "value": "Lisbon"}}
+  ]
+}}
+
+Rules:
+- Return ONLY information the summary omits. If it omits nothing, return {{"gists": []}}.
+- Do not restate, rephrase or elaborate the summary.
+- Each item must be supported by the original memories — never inferred beyond them.
+- Skip episodic scaffolding (who spoke when, conversational filler).
+- Use the same type vocabulary: fact, preference, pattern, summary, goal, value, state,
+  causal, policy."""
+
 BATCH_GIST_EXTRACTION_PROMPT = """Analyze these memory clusters and extract semantic gists for EACH cluster.
 
 CLUSTERS:
@@ -134,9 +162,18 @@ class GistExtractor:
         except Exception:
             return []
 
-        gists_data = data if isinstance(data, list) else [data]
+        return self._gists_from_objects(data, cluster, source_types)
+
+    @staticmethod
+    def _gists_from_objects(
+        data: Any,
+        cluster: EpisodeCluster,
+        source_types: list[str],
+    ) -> list[ExtractedGist]:
+        """Build gists from parsed LLM output. Shared by extraction and detail recovery,
+        which return the same object shape."""
         gists: list[ExtractedGist] = []
-        for gd in gists_data:
+        for gd in data if isinstance(data, list) else [data]:
             if not isinstance(gd, dict):
                 continue
             gist_text = str(gd.get("gist", "")).strip()
@@ -159,6 +196,86 @@ class GistExtractor:
             )
 
         return gists
+
+    async def recover_details(
+        self,
+        clusters: list[EpisodeCluster],
+        gists: list[ExtractedGist],
+    ) -> list[ExtractedGist]:
+        """Second pass: find durable facts the gist left out, *conditioned on* the gist.
+
+        Gist abstraction and detail recovery are complementary — a summary generalises,
+        and generalising is exactly what drops the named entities and quantities a later
+        question asks about. Running the two independently does not work; the recovery
+        pass has to see the summary to know what is already covered, which is why this
+        takes the extracted gists rather than re-reading the cluster alone.
+
+        Only clusters that produced a gist are revisited: with nothing to condition on
+        this would be a second, worse gist extraction.
+
+        ponytail: one LLM call per cluster, run concurrently — up to ``max_clusters``
+        (20) extra calls per consolidation run, roughly doubling its LLM cost. Batch it
+        the way ``_extract_gist_batch`` batches, if consolidation cost ever becomes the
+        bottleneck rather than the write path.
+        """
+        if self.llm is None or not clusters or not gists:
+            return []
+
+        by_episode: dict[str, EpisodeCluster] = {
+            str(ep.id): cluster for cluster in clusters for ep in cluster.episodes
+        }
+        grouped: dict[int, tuple[EpisodeCluster, list[ExtractedGist]]] = {}
+        for gist in gists:
+            for episode_id in gist.supporting_episode_ids:
+                cluster = by_episode.get(str(episode_id))
+                if cluster is not None:
+                    grouped.setdefault(cluster.cluster_id, (cluster, []))[1].append(gist)
+                    break
+
+        if not grouped:
+            return []
+
+        results = await asyncio.gather(
+            *[
+                self._recover_one(cluster, cluster_gists)
+                for cluster, cluster_gists in grouped.values()
+            ],
+            return_exceptions=True,
+        )
+        recovered: list[ExtractedGist] = []
+        for result in results:
+            if isinstance(result, list):
+                recovered.extend(result)
+        return recovered
+
+    async def _recover_one(
+        self,
+        cluster: EpisodeCluster,
+        gists: list[ExtractedGist],
+    ) -> list[ExtractedGist]:
+        if self.llm is None:
+            return []
+        source_types = self._cluster_source_types(cluster)
+        memories = "\n".join(
+            f"{i}. [{ep.type.value if hasattr(ep.type, 'value') else ep.type}] {ep.text}"
+            for i, ep in enumerate(cluster.episodes[:10], 1)
+        )
+        prompt = DETAIL_RECOVERY_PROMPT.format(
+            gists="\n".join(f"- {g.text}" for g in gists),
+            memories=memories,
+        )
+        try:
+            data = await self.llm.complete_json(prompt, temperature=0.0)
+        except Exception:
+            return []
+
+        items = data.get("gists", []) if isinstance(data, dict) else data
+        recovered = self._gists_from_objects(items, cluster, source_types)
+
+        # A model that ignores "return only what the summary omits" restates it instead,
+        # and a restatement would be migrated as a second fact competing with the first.
+        already = {g.text.strip().lower() for g in gists}
+        return [g for g in recovered if g.text.strip().lower() not in already]
 
     async def extract_from_clusters(self, clusters: list[EpisodeCluster]) -> list[ExtractedGist]:
         """Extract gists from all clusters."""

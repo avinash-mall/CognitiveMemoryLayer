@@ -156,11 +156,13 @@ PPR-ranked entities, collect `relation_properties["evidence_ids"]` across their 
 (keeping the PPR score, already rank-normalised into [0.55, 0.85], as relevance). The
 entity profile becomes a selection key that never reaches the packet.
 
-**Companion fix.** `merge_edges_batch` uses `r += edge.properties` on MATCH
-(`neo4j.py:300`), so `evidence_ids` is **overwritten** — each edge points only at the
-most recent episode that asserted it. Union it instead. This is a write-path change, so
-it needs a fresh-ingest arm; but the frozen corpus already carries one ID per edge, so
-item 1 is fully A/B-able without it. Ship the union with the next write-path arm.
+**Companion fix — shipped 2026-08-03.** `merge_edges_batch` used `r += edge.properties`
+on MATCH, so `evidence_ids` was **overwritten** — each edge pointed only at the most
+recent episode that asserted it. `merge_edge` had the identical bug, which this note
+missed by naming only the batch path. Both now union, dedupe, and keep the 50 most recent
+IDs; an edge that never carries evidence (the fact-sync path, 118,835 edges) still reads
+NULL rather than `[]`. Verified against live Neo4j 5.26. It changes nothing on the frozen
+corpus, which already carries one ID per edge — the gain needs re-ingestion to appear.
 
 **Watch the packet slots when flipping the flag.** The graph floor (0.55) sits *above*
 `episode_relevance_threshold` (0.4) and graph hits become `EPISODIC_EVENT`
@@ -278,7 +280,21 @@ context. Grounded neighbourhood text is doing the work.
 ### 4. Bi-temporal fact validity
 
 *Incremental, not a migration — the columns already exist. Write-path. Fresh-ingest arm
-(~2 h).*
+(~2 h).* **Shipped 2026-08-03, unmeasured.**
+
+> **Shipped.** Facts: the extractor emits `valid_from`/`valid_to`, and a fact that
+> arrives already over is created `is_current=False` so the flag and the `valid_to`
+> reader agree. Episodes: `event_date` is a column with an index
+> (`002_event_date_column.py`), backfilled 23,463/23,463 with zero mismatches.
+>
+> **The coalesce is the load-bearing part.** Only 4.3% of records carry an `event_date`,
+> so the planner's filter resolves against `COALESCE(event_date, timestamp)` under an
+> explicit `time_basis="event"` key. A bare-column compare would have hidden 95.7% of the
+> corpus and looked like a scoring regression. The key is scoped to the planner because
+> temporal contiguity anchors its window on a seed's own turn timestamp — re-dating that
+> window would drop precisely the neighbours whose turn recalls a distant event.
+>
+> No arm has been run. See the sequencing note at the foot of this document.
 
 **Human analogue.** Event time is encoded separately from encoding time; humans date
 events by landmarks and relative order, not by a single stamp.
@@ -353,6 +369,29 @@ concatenating packets (ablating that structure costs 1.7 F1, tier 1).
 ### 6. Make consolidation actually run, then gate it on recurrence
 
 *Incremental. Write-path. Fresh-ingest arm. Primarily a **performance** item.*
+**Shipped 2026-08-03, unmeasured, default off.**
+
+> **Shipped, and the diagnosis below was incomplete.** It is not only that
+> `start_background_worker` had no caller — the registry its loop polls was never
+> populated either, because nothing ever called `register_user`. So wiring the consumer
+> alone would have produced a loop polling an empty queue forever, a fifth instance of
+> the same class. The registry was deleted and replaced with a sweep that enumerates
+> tenants over the quota in one GROUP BY and enqueues them directly, started from
+> `lifespan` behind `FEATURES__CONSOLIDATION_SCHEDULER_ENABLED` (default off).
+>
+> Trigger counts are exposed at `GET /api/v1/admin/consolidation/status`, per this
+> item's own instruction to verify by count rather than by diff.
+>
+> The absorbing 7-day window is gone: eligibility is "un-consolidated", pushed into SQL,
+> with no age bound. The recurrence gate ships as `consolidation_recurrence_min`,
+> **defaulting to 1, which gates nothing** — at 2 it stops a tenant whose episodes never
+> cluster from producing gists at all, which two integration tests caught, and that trade
+> is unmeasured.
+>
+> **Hazard for whoever runs the arm.** 664 tenants in the dev database are over the
+> quota and 859 are the frozen eval corpus. Enabling the sweep against that store would
+> consolidate the corpus every frozen-corpus arm depends on. Use a fresh
+> `--tenant-prefix`.
 
 **Before any of the below: consolidation never fires on its own.** `ConsolidationWorker.
 start_background_worker()` has **no caller anywhere in the repo**, and
@@ -402,6 +441,13 @@ below.
 ### 7. Gist-conditioned detail recovery
 
 *Incremental. Consolidation path. Bundle with item 6's arm.*
+**Shipped 2026-08-03, unmeasured, default off.**
+
+> **Shipped** behind `FEATURES__CONSOLIDATION_DETAIL_RECOVERY_ENABLED` — its own flag
+> rather than the scheduler's, so the arm can attribute the two separately. Output that
+> merely restates the gist is dropped: a restatement would migrate as a second semantic
+> fact competing with the first, and gist-vs-source demotion only knows how to demote
+> *episodes*, so both would sit in the packet.
 
 Tier 3: a second extraction pass that uses the episodic summary as a reference to find
 facts the summary *omitted* beats extracting semantic facts directly from raw dialogue by
@@ -494,6 +540,21 @@ change per arm:
 
 Then one fresh-ingest arm bundling the write-path items (evidence_ids union, item 4
 bi-temporal, items 6-7 consolidation), since they share the ~2 h ingestion cost.
+
+**All four of those are now implemented and tested, and none is measured** (2026-08-03).
+That arm is the outstanding work. Everything they add is default-off or default-no-op
+except the `evidence_ids` union and the `event_date` column, both of which are
+behaviour-preserving on existing data by construction. Flags to move on the arm:
+
+| flag | default | what it turns on |
+| :--- | :--- | :--- |
+| `FEATURES__CONSOLIDATION_SCHEDULER_ENABLED` | off | the sweep that makes consolidation fire at all |
+| `FEATURES__CONSOLIDATION_RECURRENCE_MIN` | 1 (no-op) | skip clusters below k; RecMem reports 87% token saving at 4-5 |
+| `FEATURES__CONSOLIDATION_DETAIL_RECOVERY_ENABLED` | off | item 7's second pass |
+
+Run it against its own `--tenant-prefix`: with the shipped 500-episode quota, 664 tenants
+in the dev store qualify and 859 are the frozen eval corpus, so a sweep there would
+consolidate the corpus the read-path arms depend on.
 
 Two standing rules from this session's measurements, both learned the hard way:
 

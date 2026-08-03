@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from ..memory.neocortical.schemas import FactCategory
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from ..memory.working.models import SemanticChunk
 
 
@@ -26,6 +28,15 @@ class ExtractedFact:
     predicate: str
     value: str
     confidence: float
+
+    # When the fact *held*, as distinct from when we heard it. Both None means "true
+    # from the moment it was stated, with no stated end", which is what every fact got
+    # before: valid_from was stamped with the write time on every create and valid_to
+    # was set only on supersession, so "I was vegetarian until June 2024" stored a fact
+    # valid from the moment we heard it, with an open end. The columns and the reader
+    # (valid_to IS NULL OR valid_to >= now) already existed; only the extractor did not.
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
 
 
 _PREDICATE_KEYWORDS: dict[str, list[str]] = {
