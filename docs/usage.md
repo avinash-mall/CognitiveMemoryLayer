@@ -105,6 +105,7 @@ Important tenancy rule:
 ### Admin endpoints
 
 - `POST /admin/consolidate/{user_id}`
+- `GET /admin/consolidation/status`
 - `POST /admin/forget/{user_id}`
 
 ### Service and observability endpoints
@@ -135,6 +136,16 @@ Security behavior:
 
 - `WriteMemoryRequest.content` max length is `100_000`.
 - `WriteMemoryRequest.timestamp` and `ProcessTurnRequest.timestamp` are optional and propagate through the write path.
+- `MemoryRecordCreate` accepts optional `valid_from` / `valid_to`: when the described
+  state of affairs *held*, as opposed to when the turn was written. Both default to
+  `None`, meaning "no stated bound". `vector_search`'s `exclude_expired` filter reads
+  `valid_to`, so a record whose interval has closed stops being retrieved by that path.
+- `POST /admin/consolidate/{user_id}` returns `episodes_sampled`, `clusters_formed`,
+  `clusters_skipped_no_recurrence`, `gists_extracted` and `details_recovered`.
+- `GET /admin/consolidation/status` reports whether the background sweep is running plus
+  `sweeps_run`, `tasks_enqueued`, `consolidations_run` and `pending_tasks`. Counts rather
+  than config, because the scheduler previously had no caller and reading the
+  configuration would have said it was enabled.
 - `ReadMemoryRequest.max_results` max is `50`.
 - `ReadMemoryRequest.format` supports `packet`, `list`, and `llm_context`.
 - `ReadMemoryResponse` includes optional `retrieval_meta`.
@@ -209,6 +220,20 @@ Source of truth: `src/core/config.py`.
 - `FEATURES__SKIP_IF_FOUND_CROSS_GROUP`
 - `FEATURES__HNSW_EF_SEARCH_TUNING`
 - All fine-grained `FEATURES__USE_LLM_*` flags
+
+Consolidation (all three default to a no-op; consolidation is otherwise manual-only via
+the admin route):
+
+- `FEATURES__CONSOLIDATION_SCHEDULER_ENABLED` (default `false`) — run the background
+  sweep that enqueues any tenant holding at least the episode quota in un-consolidated
+  records. Assumes a single API worker: `lifespan` runs per uvicorn process and the queue
+  is in-memory, so N workers means N sweeps over the same tenants.
+- `FEATURES__CONSOLIDATION_RECURRENCE_MIN` (default `1`) — minimum episodes in a cluster
+  before it is worth an LLM gist call. `1` gates nothing; at `2` a tenant whose episodes
+  never cluster produces no gists at all.
+- `FEATURES__CONSOLIDATION_DETAIL_RECOVERY_ENABLED` (default `false`) — second
+  consolidation pass that uses the extracted gist as a reference to find facts it
+  omitted. Costs roughly one extra LLM call per cluster.
 
 ### Dashboard config editability
 

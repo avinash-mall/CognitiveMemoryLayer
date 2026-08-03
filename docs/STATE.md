@@ -231,6 +231,29 @@ would justify their defaults has not been run — do not read "implemented" as "
   event. Verified on real data: a record whose event is a year before its turn matches on
   the event basis and not the turn basis, while all 375 un-dated records in a tenant
   still come back on the event basis.
+  **But the planner gate that would exercise it almost never opens, and if it did on
+  this corpus it would return nothing.** Two separate facts, both measured, both of which
+  the arm has to account for:
+
+  1. `_build_time_filter` is called from exactly one branch — `QueryIntent.TEMPORAL_QUERY`
+     (`planner.py:116`). Nothing in the classifier ever *assigns* that intent; it is
+     reachable only when the LLM picks the string out of the prompt's menu. The local
+     Qwen classifier picked it **0 times in 6** deliberately temporal probes ("When did I
+     go to the beach?", "What happened yesterday?", "What did I do in the last week?"…),
+     returning `episodic_recall` or `constraint_check` instead. So the store-level reader
+     is live and verified, and the planner rarely reaches it.
+  2. The windows are relative to `datetime.now()`, and the eval corpus is historical.
+     On `full2-199` (369 active records, all 2023) **every** relative window returns
+     **zero** — `recent` (3d), `week`, `month`, and even 1095d, because the corpus is
+     ~1,150 days old. Records only reappear at a ~1,200-day window.
+
+  So do **not** "fix" this by applying the time filter whenever `time_reference` is set.
+  That looks like the obvious follow-up and would zero the results for every query the
+  classifier tags `recent`/`week`/`month` on any historical corpus — a far bigger
+  regression than the one it fixes. Making event-time filtering pay off needs absolute
+  date resolution against the corpus, not a wider gate. Item 4's fact half has a genuinely
+  live reader and is unaffected by any of this.
+
 - **Item 6 — consolidation fires on its own.** `start_background_worker` had no caller,
   **and** the registry its loop polled was never populated — nothing called
   `register_user`, so `check_triggers` could not fire for any user on any deployment.

@@ -294,6 +294,21 @@ context. Grounded neighbourhood text is doing the work.
 > temporal contiguity anchors its window on a seed's own turn timestamp — re-dating that
 > window would drop precisely the neighbours whose turn recalls a distant event.
 >
+> **The planner gate almost never opens, and on this corpus it would return nothing.**
+> Measured, and it bounds what the arm can show. `_build_time_filter` is called from one
+> branch only — `QueryIntent.TEMPORAL_QUERY` — and nothing in the classifier *assigns*
+> that intent; it exists only if the LLM picks the string out of the prompt's menu. The
+> local Qwen classifier picked it **0 times in 6** deliberately temporal probes. Separately,
+> the windows are relative to `now` while the corpus is historical: on `full2-199` every
+> relative window (`recent`, `week`, `month`, even 1095 days) matches **zero** of 369
+> records, which only reappear at ~1,200 days.
+>
+> So the obvious follow-up — apply the filter whenever `time_reference` is set — is a
+> trap: it would zero results for every query tagged `recent`/`week`/`month` on any
+> historical corpus. Event-time filtering needs absolute date resolution against the
+> corpus, which is MemoTime-shaped work and not in this item. The fact half of item 4 has
+> a genuinely live reader and is unaffected.
+>
 > No arm has been run. See the sequencing note at the foot of this document.
 
 **Human analogue.** Event time is encoded separately from encoding time; humans date
