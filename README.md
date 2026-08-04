@@ -11,7 +11,7 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1076-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Tests](https://img.shields.io/badge/Tests-1219-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
 [![Version](https://img.shields.io/badge/version-2.0.0-blue?style=for-the-badge)](#)
 
 <br/>
@@ -100,8 +100,11 @@ The hippocampus captures today's lunch conversation in full context. Over time &
 
 > **Caveat:** this is inspired by replay, not an implementation of it. Episode
 > selection is a single deterministic top-k by weighted score — no repeated sampling,
-> no stochasticity, no iteration. Consolidation is also not scheduled: it runs only
-> when triggered manually via the admin API or dashboard.
+> no stochasticity, no iteration. A background scheduler exists but is **off by
+> default** (`FEATURES__CONSOLIDATION_SCHEDULER_ENABLED`), so in practice consolidation
+> runs only when triggered via the admin API or dashboard. It is off because it is
+> measured: making consolidation actually run costs −1.5 points on LoCoMo-Plus, since
+> the gists it writes compete in the packet with the verbatim episodes they summarise.
 
 > **Reference**: McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C. (1995). ["Why there are complementary learning systems in the hippocampus and neocortex."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
 
@@ -662,62 +665,61 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that
 tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall.
-Latest run: **2026-08-02**, fully reproducible &mdash; artifact committed at
-[`evaluation/results/locomo_plus_2026-08-02_summary.json`](evaluation/results/locomo_plus_2026-08-02_summary.json),
-all 2,387 samples judged with zero errors, everything served locally (QA + judge:
-`Qwen3.6-27B-FP8` via vLLM, zero API dependency).
 
-> **Judge comparability caveat, before the table:** the paper baselines were judged by
-> `gemini-2.5-flash`; our column is judged by a local Qwen model. Cross-column absolute
-> comparisons are indicative only &mdash; the committed artifact exists so that *relative
-> movement across our own runs* is measurable.
->
-> **What changed since the previous run (46.31% &rarr; 48.60%).** That run measured a
-> partly-disabled system: eval-mode ingestion skipped Neo4j graph sync and write-time
-> facts, so multi-hop scored against an empty graph and the fact prong returned nothing,
-> and temporal resolution never ran on any write path at all. All fixed. Two retrieval
-> defaults also changed on measured evidence &mdash; graph entity profiles no longer take
-> packet slots, and the episode relevance threshold moved 0.5 &rarr; 0.4. Five of six
-> categories improved. Adversarial fell 2.9 points, which is the standing trade: that
-> category rewards *refusing* when the answer is absent, so a packet carrying more usable
-> context makes the model refuse less.
+The **CML** column below is the frozen 2026-08-02 corpus re-scored on **2026-08-04** with
+the two *shared* harness components swapped for external models &mdash; answering
+`openai/gpt-5.6-luna-pro`, judging `deepseek/deepseek-v4-flash`. The memory layer is
+byte-identical to the local-model column beside it; only the answerer and judge differ.
+Figures are the **mean of two judge passes over the same predictions**, because a single
+pass is not reproducible (see the caveat below). Artifacts:
+[`locomo_plus_2026-08-04_external-models-luna-deepseek_summary.json`](evaluation/results/locomo_plus_2026-08-04_external-models-luna-deepseek_summary.json)
+and its `_judgepass2_` sibling.
 
-| Category | CML 2026-08-02 (local 27B judge) | prev. 2026-07-31 | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
+| Category | **CML** (external models) | CML (all-local models) | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Adversarial** | **75.34%** | 78.25% | 73.03% | 48.99% | 30.50% | 35.20% |
-| Single-hop | 57.55% | 53.80% | &mdash; | 78.13% | 80.20% | 76.90% |
-| Temporal | 35.51% | 31.31% | 73.83% | 45.79% | 39.40% | 49.30% |
-| Multi-hop | 34.57% | 33.87% | &mdash; | &mdash; | &mdash; | &mdash; |
-| Common-sense | 27.60% | 23.96% | &mdash; | &mdash; | &mdash; | &mdash; |
-| Cognitive | 25.44% | 21.20% | &mdash; | &mdash; | &mdash; | &mdash; |
-| **Overall** | **48.60%** | 46.31% | 71.78% | 62.99% | 57.24% | 59.64% |
+| Single-hop | 68.77% | 57.55% | 77.83% | 78.13% | **80.20%** | 76.90% |
+| Multi-hop | 44.86% | 34.57% | 52.48% | 52.30% | 48.10% | **55.60%** |
+| Temporal | 48.67% | 35.51% | **73.83%** | 45.79% | 39.40% | 49.30% |
+| Common-sense | 51.30% | 27.60% | 63.54% | **69.79%** | 66.20% | 68.10% |
+| Adversarial | 40.02% | 75.34% | **73.03%** | 48.99% | 30.50% | 35.20% |
+| **LoCoMo avg** | **54.83%** | 53.27% | **71.78%** | 62.99% | 57.24% | 59.64% |
+| **Cognitive** | **38.16%** | 25.44% | **45.72%** | 41.94% | 41.44% | 42.44% |
 
-> **The shipped defaults now measure 50.46% on this same corpus.** Two retrieval changes
-> landed after the run above and are on by default: the knowledge-graph prong resolves
-> entities to the episodic text they index and ranks it by query similarity (+1.2 points,
-> measured in isolation), and each top vector hit is expanded into the turns encoded
-> around it (+0.7). Biggest movers against the table: Cognitive 25.44% &rarr; 29.43%,
-> single-hop 57.55% &rarr; 61.36%.
+Baselines are Table 1 of the LoCoMo-Plus paper (judge: `gemini-2.5-flash`). "LoCoMo avg"
+is the five factual categories weighted by sample count; Cognitive is reported separately,
+as the paper does.
+
+> **Three caveats, and they matter more than the ranking.**
 >
-> That number is a **retrieval-only re-score of the identical corpus with the identical
-> judge**, not a fresh end-to-end run, so it is quoted here rather than replacing the
-> column. Per-arm evidence is in `evaluation/results/locomo_plus_2026-08-02_arm-*.json`.
+> **1. This is not strict parity.** The paper's systems answer with GPT-4o and are judged
+> by `gemini-2.5-flash`. Ours answers with a 2026 frontier reasoning model and is judged
+> by DeepSeek. If anything these numbers *flatter* CML, so the single-hop and common-sense
+> deficits are likely wider under true parity, not narrower.
+>
+> **2. Per-category figures are noisy; quote the aggregate.** Re-judging the *identical*
+> predictions at temperature 0 moved the aggregate by only 0.17 points but individual
+> categories by up to **4.9** (temporal 46.24 &harr; 51.10, multi-hop 46.28 &harr; 43.44).
+> Single-pass per-category claims are not supportable at these sample sizes.
+>
+> **3. The all-local column is not a weaker version of the same behaviour &mdash; it is a
+> different behaviour.** See below.
 
-**Where the system is strong.** Adversarial questions &mdash; ones with no valid answer in
-the conversation &mdash; score **78.25%**, the highest column in the table including the
-full-context frontier models. The architecture prefers declining to invent an answer over
-hallucinating one, which is the property that matters most when an agent's memory is
-trusted downstream. That strength is consistent across both CML runs ever measured
-(64.80% in April on a different judge), so it is structural, not judge luck.
+**The adversarial number was an artifact, and we corrected it.** Earlier revisions of this
+README claimed adversarial ~78% as CML's standout strength, "structural, not judge luck".
+That was wrong. Handing the *same memory packets* to a competent answering model drops
+adversarial from 75.34% to ~40% while every other category gains 10&ndash;22 points. The
+high score was the local Qwen answerer **over-refusing**, not the memory layer resisting
+false premises. Note the aggregate barely moved (53.27% &rarr; 54.83%) because the average
+traded adversarial away against everything else &mdash; one pooled number concealed two
+completely different profiles. At ~40% CML is still ahead of Mem0 (30.50%) and A-Mem
+(35.20%) here, which is a real if much smaller advantage.
 
-**Where it is weak, plainly.** Factual recall averages 51.38% while cognitive questions
-score 21.20% &mdash; a 30-point gap: the system retrieves *what was said* far better than
-it reasons over *what it implies*. Multi-hop (33.87%) and temporal (31.31%) are the weakest
-factual categories, and that matches a known architectural gap: "multi-hop" retrieval
-currently has no iterative depth (it is one Personalized-PageRank pass &mdash; see
-`docs/STATE.md`), and the IRCoT-style reason/retrieve loop that would add it is designed
-but unshipped. Single-hop (53.80%) trails GPT-4o-backed memory systems (~77&ndash;80%),
-the expected cost of answering with a local model instead of a ~200B API model.
+**Where it is weak, plainly.** **Common-sense is the clearest gap** &mdash; 51.30% against
+66&ndash;68% for Mem0 and A-Mem, a deficit large enough to survive the judge noise.
+Single-hop trails by ~8&ndash;11 points. Cognitive (38.16%) sits just below Mem0 (41.44%)
+and A-Mem (42.44%) on the category this benchmark was built for. Overall CML lands a
+couple of points behind Mem0 and ~5 behind A-Mem on the aggregate &mdash; the same league,
+not the same rank.
 
 Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
 
@@ -726,10 +728,10 @@ Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evalua
 ## Testing
 
 ```bash
-# 739 hermetic unit tests — no DB, no LLM, mock embeddings
+# 878 hermetic unit tests — no DB, no LLM, mock embeddings
 pytest tests/unit -q
 
-# 337 tests against a live server on :8000
+# 341 tests against a live server on :8000
 pytest tests/integration tests/e2e packages/py-cml/tests -q
 ```
 
