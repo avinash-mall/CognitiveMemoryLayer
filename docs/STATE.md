@@ -242,6 +242,24 @@ Judge reliability: 3 of 2,387 came back `_parse_failed` with empty content (0.13
 documented reasoning-model trap, since `phase_c_judge` hardcodes `max_tokens=512` and
 DeepSeek spends ~75 of those on reasoning. It fits, but with under 3× headroom.
 
+**The judge is nondeterministic, and per-category it is noisy.** A stray process re-ran
+Phase C over the *identical* 2,387 predictions (the predictions file was untouched — only
+`judged`/`summary` were rewritten), giving a free replication of the judge at
+temperature 0:
+
+| | LoCoMo-avg | Cognitive | single-hop | multi-hop | temporal | common-sense | adversarial |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| judge pass 1 | 54.74 | 39.15 | 69.11 | 46.28 | 46.24 | 50.00 | 40.13 |
+| judge pass 2 | 54.91 | 37.16 | 68.43 | 43.44 | 51.10 | 52.60 | 39.91 |
+| spread | **+0.17** | −1.99 | −0.68 | −2.84 | **+4.86** | +2.60 | −0.22 |
+
+Same answers, same model, same temperature. **The aggregate is stable (±0.2) but single
+categories move by up to ±4.9.** So per-category cross-system claims from a single judge
+pass are not supportable at these sample sizes — "we beat Mem0 on temporal" is 46.24 on
+one pass and 51.10 on the next. Quote the aggregate, or run the judge two or three times
+and report a mean. The headline finding here survives either pass unchanged: adversarial
+lands at ~40 against the local answerer's 75.34.
+
 **Not parity, deliberately.** The paper's Mem0/A-Mem numbers use GPT-4o as answerer and
 Gemini-2.5-Flash as judge. Ours uses a 2026 frontier reasoning model and DeepSeek, so if
 anything these numbers *flatter* us and the true gap to Mem0/A-Mem is wider. A strict
