@@ -203,6 +203,50 @@ Two hazards this created or exposed, both worth reading before touching the stac
   entry points. Third instance of the class that produced two wrong conclusions already
   (`encode_chunk`, eval-mode graph blindness).
 
+### Our adversarial score was an artifact of a weak answerer (2026-08-04)
+
+Re-scored the **frozen full2 corpus** with the two *shared* harness components swapped for
+external models — answering `openai/gpt-5.6-luna-pro`, judge `deepseek/deepseek-v4-flash`,
+both via OpenRouter. No re-ingestion; the memory layer is byte-identical. Arm
+`evaluation/outputs/l2-luna`. 2,384/2,387 valid, **$3.50**.
+
+| category | local Qwen judge+answerer | external | delta |
+| :--- | ---: | ---: | ---: |
+| single-hop | 57.55 | 69.11 | **+11.56** |
+| multi-hop | 34.57 | 46.28 | **+11.71** |
+| temporal | 35.51 | 46.24 | **+10.73** |
+| common-sense | 27.60 | 50.00 | **+22.40** |
+| Cognitive | 25.44 | 39.15 | **+13.71** |
+| **adversarial** | **75.34** | **40.13** | **−35.21** |
+| LoCoMo-avg (5 factual) | 53.27 | 54.74 | +1.47 |
+
+**Read this before trusting any adversarial number in this file.** Our standout
+adversarial score was the local Qwen answerer *over-refusing*, not the memory layer
+resisting false premises. Give the same packets to a competent answerer and adversarial
+collapses 35 points while every other category gains 10–22. The memory layer did not
+change at all between these two columns.
+
+Consequences, which reach backwards through this document:
+
+- **The "adversarial is our strongest category, and every packet-enriching change costs
+  us there" framing is largely an artifact.** That trade shows up because a weak answerer
+  given more context refuses less. It is a property of the answering model, not evidence
+  about retrieval quality.
+- **Item 2 (the sufficiency gate) was motivated partly by protecting adversarial 0.753.**
+  That motivation is much weaker than it looked; the category was never really ours.
+- **LoCoMo-avg barely moved (+1.47)** because the average traded adversarial away against
+  everything else. A single pooled number hid two completely different behavioural
+  profiles — worth remembering before quoting one.
+
+Judge reliability: 3 of 2,387 came back `_parse_failed` with empty content (0.13%) — the
+documented reasoning-model trap, since `phase_c_judge` hardcodes `max_tokens=512` and
+DeepSeek spends ~75 of those on reasoning. It fits, but with under 3× headroom.
+
+**Not parity, deliberately.** The paper's Mem0/A-Mem numbers use GPT-4o as answerer and
+Gemini-2.5-Flash as judge. Ours uses a 2026 frontier reasoning model and DeepSeek, so if
+anything these numbers *flatter* us and the true gap to Mem0/A-Mem is wider. A strict
+`openai/gpt-4o` answering pass is ~$4 and one hour, and remains unrun.
+
 ### Write-path bundle MEASURED (2026-08-03) — it is a regression, −0.018
 
 Paired fresh-ingest subset arms, 43 conversations / 16,484 turns / 677 samples, same
