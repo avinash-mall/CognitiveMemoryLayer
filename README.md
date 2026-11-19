@@ -1,3 +1,5 @@
+
+
 <div align="center">
 
 # Cognitive Memory Layer
@@ -464,7 +466,7 @@ This section covers the **full setup from scratch** — cloning the code from Gi
 
 | Requirement | Minimum version | Notes |
 | :--- | :--- | :--- |
-| Python | 3.11+ | 3.14 recommended |
+| Python | 3.11+ | 3.13 recommended |
 | Docker + Compose | 24+ | For Postgres, Neo4j, Redis |
 | `uv` or `pip` | any | `uv` strongly recommended for speed |
 | `huggingface-cli` | 0.19+ | `pip install huggingface_hub[cli]` |
