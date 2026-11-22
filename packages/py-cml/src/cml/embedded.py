@@ -234,7 +234,7 @@ class EmbeddedCognitiveMemoryLayer:
             from src.core.config import get_settings
 
             s = get_settings()
-            llm_enabled = bool(getattr(s.features, "use_llm_enabled", False))
+            llm_enabled = bool(getattr(s.features, "use_llm_enabled", True))
             if llm_enabled:
                 li = s.llm_internal
                 if li.base_url:

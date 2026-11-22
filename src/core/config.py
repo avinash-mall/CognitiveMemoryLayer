@@ -144,11 +144,11 @@ class FeatureFlags(PydanticBaseModel):
     constraint_extraction_enabled: bool = Field(
         default=True, description="Cognitive: extract and store latent constraints at write time"
     )
-    # Master LLM switch (default false): when false, internal LLM calls are disabled
-    # and the runtime degrades to heuristics (regex PII, Jaccard novelty, no extraction).
+    # Master LLM switch (default true): when true, the internal LLM drives unified
+    # extraction, classification, and enrichment; set false for heuristic-only offline mode.
     use_llm_enabled: bool = Field(
-        default=False,
-        description="Master switch: when true, the internal LLM drives extraction, "
+        default=True,
+        description="Master switch: when true (default), the internal LLM drives extraction, "
         "classification, and enrichment; when false, heuristic-only mode.",
     )
     # --- Improvement Report features (LoCoMo-Plus / Kumiho-inspired) ---

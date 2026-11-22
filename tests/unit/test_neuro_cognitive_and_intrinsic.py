@@ -530,3 +530,43 @@ class TestBjorkDualStrengthEcphory:
         assert dormant_model.status == MemoryStatus.ACTIVE.value
         assert "ecphory_reactivated_at" in dormant_model.meta
         mock_session.commit.assert_awaited_once()
+
+
+def test_feature_flags_use_llm_enabled_by_default(monkeypatch):
+    monkeypatch.delenv("FEATURES__USE_LLM_ENABLED", raising=False)
+    from src.core.config import FeatureFlags
+
+    flags = FeatureFlags()
+    assert flags.use_llm_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_create_graceful_fallback_without_cloud_api_key(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    import src.memory.orchestrator as orch_mod
+    from src.core.config import FeatureFlags, LLMInternalSettings, get_settings
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    real_settings = get_settings()
+    patched = real_settings.model_copy(
+        update={
+            "features": FeatureFlags(use_llm_enabled=True, cached_embeddings_enabled=False),
+            "llm_internal": LLMInternalSettings(
+                provider="openai",
+                model="gpt-4o-mini",
+                api_key=None,
+                base_url=None,
+                extra_body=None,
+            ),
+        }
+    )
+    monkeypatch.setattr("src.core.config.get_settings", lambda: patched)
+    monkeypatch.setattr(orch_mod, "get_embedding_client", lambda: MagicMock())
+    monkeypatch.setattr("src.storage.neo4j.initialize_graph_schema", AsyncMock())
+
+    db_manager = SimpleNamespace(pg_session=MagicMock(), neo4j_driver=MagicMock(), redis=None)
+    orch = await orch_mod.MemoryOrchestrator.create(db_manager)
+    assert orch.reconsolidation.fact_extractor is None
+    assert orch.hippocampal.unified_extractor is None

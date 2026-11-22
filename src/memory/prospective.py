@@ -83,7 +83,7 @@ class ProspectiveMemoryEngine:
     @classmethod
     def induce_triggers(cls, text: str, max_count: int = 4) -> list[ProspectiveTrigger]:
         """Fast System-1 deterministic induction of prospective triggers from text."""
-        if not text or len(text.strip()) < 10:
+        if not isinstance(text, str) or len(text.strip()) < 10:
             return []
 
         triggers: list[ProspectiveTrigger] = []

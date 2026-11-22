@@ -63,7 +63,7 @@ Implemented the full neuro-inspired subsystem suite + ActiveCML intrinsic memory
 
 ### Human-memory research pass (2026-08-02)
 
-Plan and evidence: [memory-redesign-plan.md](memory-redesign-plan.md). Three retrieval
+Plan and evidence: completed 2026-08-02 human-memory research pass (summarized below). Three retrieval
 items implemented; one was killed by its own measurement.
 
 - **Item 1 — graph prong is an index, not content** (`412a3e3`). Resolves ranked entities

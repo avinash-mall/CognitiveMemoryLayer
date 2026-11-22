@@ -82,16 +82,17 @@ All neuro-inspired and intrinsic-memory subsystems are independently toggleable 
 | `FEATURES__LAYA_SYSTEM1_ENABLED` | `false` | Enables Convai **Laya** (`convaiinnovations/laya`, ~20ms GPU) for calibrated System 1 query routing and CA1 grounding verification (`src/core/laya_system1.py`). Requires `pip install laya` with `transformers==5.12.1` when paired with `nomic-embed-text-v2-moe`. |
 | `FEATURES__THALAMIC_TRIAGE_ENABLED` | `false` | Surprise-gated System 1/System 2 write triage (`FEATURES__THALAMIC_SURPRISE_THRESHOLD=0.45`) |
 
-## OpenRouter Batch Evaluation
+## OpenRouter Evaluation (Sync or Batch)
 
-For large LoCoMo-Plus runs using OpenRouter `:batch` models (50% cheaper than sync endpoints, e.g. `z-ai/glm-5.3-flash:batch`):
+Build the full 2,387-sample dataset (`cd evaluation/locomo_plus/data && python unified_input.py`) and run against either standard OpenRouter models (e.g. `openai/gpt-4o-mini`) or `:batch` models (e.g. `z-ai/glm-5.3-flash:batch`):
 
 ```bash
 OPENROUTER_API_KEY=... python evaluation/scripts/run_locomo_openrouter_batch.py \
-  --unified-file evaluation/locomo_plus/data/unified_input_subset_v2.json \
-  --out-dir evaluation/outputs/glm53_batch_run \
+  --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
+  --out-dir evaluation/outputs/gpt4omini_full_2387 \
   --cml-url http://localhost:8000 \
-  --model z-ai/glm-5.3-flash:batch
+  --model openai/gpt-4o-mini \
+  --judge-model openai/gpt-4o-mini
 ```
 
 ## API Base And Auth

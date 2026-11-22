@@ -107,7 +107,20 @@ class MemoryOrchestrator:
         from ..core.config import get_settings
 
         settings = get_settings()
-        internal_llm = get_internal_llm_client() if settings.features.use_llm_enabled else None
+        internal_llm = None
+        if settings.features.use_llm_enabled:
+            import os
+
+            cfg_llm = settings.llm_internal
+            provider = (cfg_llm.provider or "").lower()
+            has_key = bool(cfg_llm.api_key or os.environ.get("OPENAI_API_KEY", ""))
+            if provider in ("openai", "gemini", "claude", "anthropic") and not has_key:
+                logger.warning(
+                    "internal_llm_missing_api_key_fallback",
+                    extra={"provider": provider, "model": cfg_llm.model},
+                )
+            else:
+                internal_llm = get_internal_llm_client()
         embedding_client: EmbeddingClient = get_embedding_client()
 
         # Phase 2.3: wrap with Redis cache when available and enabled

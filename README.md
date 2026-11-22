@@ -359,11 +359,11 @@ Types are defined in `src/core/enums.py` as `MemoryType`. **Decay**: Fast/Very F
 
 ### Extraction & Enrichment
 
-`FEATURES__USE_LLM_ENABLED` selects between two write paths. There is one intelligence
-path (the LLM) and one deterministic fallback; there is no third model tier.
+`FEATURES__USE_LLM_ENABLED` (default: **`true`**) selects between two write paths. There is one intelligence
+path (the LLM) and one deterministic fallback (`FEATURES__USE_LLM_ENABLED=false`); there is no third model tier. If a cloud provider (`openai`, `gemini`, `claude`) is configured without an API key, CML logs a warning and falls back gracefully to deterministic heuristics.
 
 <details>
-<summary><strong>LLM enabled</strong> &mdash; the unified write-path extractor (recommended)</summary>
+<summary><strong>LLM enabled (default)</strong> &mdash; the unified write-path extractor</summary>
 
 A single call to `LLM_INTERNAL` per chunk returns everything the write path needs:
 entities, relations, constraints, write-time facts, PII spans, memory type, importance,
