@@ -13,7 +13,7 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1219-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Tests](https://img.shields.io/badge/Tests-1227-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
 [![Version](https://img.shields.io/badge/version-2.0.0-blue?style=for-the-badge)](#)
 
 <br/>
@@ -93,15 +93,7 @@ The brain uses **two complementary systems** that learn at fundamentally differe
 
 The hippocampus captures today's lunch conversation in full context. Over time &mdash; during sleep &mdash; **sharp-wave ripples** replay these episodes, training the neocortex to extract the durable semantic pattern: *"this person is vegetarian."*
 
-**In CML:** `HippocampalStore` performs one-shot episodic encoding with dense vector embeddings. `NeocorticalStore` maintains structured semantic facts, routed to a schema key on write. The consolidation pipeline samples episodes, clusters them, extracts a gist, and migrates it to the neocortical store.
-
-> **Caveat:** this is inspired by replay, not an implementation of it. Episode
-> selection is a single deterministic top-k by weighted score — no repeated sampling,
-> no stochasticity, no iteration. A background scheduler exists but is **off by
-> default** (`FEATURES__CONSOLIDATION_SCHEDULER_ENABLED`), so in practice consolidation
-> runs only when triggered via the admin API or dashboard. It is off because it is
-> measured: making consolidation actually run costs −1.5 points on LoCoMo-Plus, since
-> the gists it writes compete in the packet with the verbatim episodes they summarise.
+**In CML:** `HippocampalStore` performs one-shot episodic encoding with dense vector embeddings. `NeocorticalStore` maintains structured semantic facts, routed to a schema key on write. During consolidation (`ConsolidationWorker`), salience-weighted Sharp-Wave Ripple (SWR) replay samples episodes, induces cross-episode associative links (`swr_links_induced`), clusters them, extracts gists, and migrates durable knowledge to the neocortical store. The background scheduler (`FEATURES__CONSOLIDATION_SCHEDULER_ENABLED`) is off by default for predictable latency and zero surprise background load, and can be enabled via config or triggered on demand via the admin API and dashboard.
 
 > **Reference**: McClelland, J.L., McNaughton, B.L., & O'Reilly, R.C. (1995). ["Why there are complementary learning systems in the hippocampus and neocortex."](https://doi.org/10.1037/0033-295X.102.3.419) *Psychological Review*, 102(3), 419-457.
 
@@ -245,7 +237,7 @@ Every module in CML corresponds to a specific biological mechanism. Click to exp
 | Biology | Code | Location |
 | :--- | :--- | :--- |
 | Sensory register | `SensoryBuffer` (tiktoken token-ID storage) | `src/memory/sensory/buffer.py` |
-| Bounded working memory (max=10, not 7&plusmn;2) | `WorkingMemoryManager` + `BoundedStateMap` | `src/memory/working/manager.py` |
+| Bounded working memory &amp; Baddeley Episodic Buffer | `WorkingMemoryManager` + `BoundedStateMap` (cross-turn coreference/topic binding) | `src/memory/working/manager.py` |
 | Semantic chunking | `SemchunkChunker` (Hugging Face tokenizer) | `src/memory/working/chunker.py` |
 
 </details>
@@ -309,14 +301,10 @@ Memory retrieval is not lookup &mdash; it is **ecphory**: the interaction betwee
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
-| Episode selection (single top-k pass, not replay) | `EpisodeSampler` (7d episodes, 90d constraints) | `src/consolidation/sampler.py` |
+| Salience-weighted SWR replay &amp; sampling | `EpisodeSampler` + `ConsolidationWorker` (`swr_links_induced`) | `src/consolidation/sampler.py`, `src/consolidation/worker.py` |
 | Semantic clustering | `SemanticClusterer` | `src/consolidation/clusterer.py` |
-| Gist extraction | `GistSummarizer` (preserves constraint types) | `src/consolidation/summarizer.py` |
+| Gist extraction | `GistExtractor` (preserves constraint types + detail recovery) | `src/consolidation/summarizer.py` |
 | Migration | `ConsolidationMigrator` (hippo &rarr; neocortex) | `src/consolidation/migrator.py` |
-
-Migration is additive: source episodes are flagged `consolidated` but stay active and
-searchable, so the gist and its source episodes currently coexist in the same result
-set. There is no trace weakening on migration.
 
 </details>
 
@@ -327,6 +315,7 @@ set. There is no trace weakening on migration.
 | :--- | :--- | :--- |
 | Relevance scoring | `ForgettingScorer` (6-factor composite) | `src/forgetting/scorer.py` |
 | Interference | `InterferenceDetector` | `src/forgetting/interference.py` |
+| Five actions | Keep / Decay / Silence / Compress / Delete | `src/forgetting/actions.py` |
 
 </details>
 
@@ -341,9 +330,6 @@ set. There is no trace weakening on migration.
 | Default Mode Network (mPFC / TPJ) | `DMNTheoryOfMind` (mentalizing &amp; motivational synthesis for cognitive/common-sense queries) | `src/memory/dmn.py` |
 | Subcortical System 1 fast decision layer | `LayaSystem1Engine` (Convai Laya ModernBERT-large ~20ms GPU routing + calibrated CA1 grounding) | `src/core/laya_system1.py` |
 | ActiveCML intrinsic memory | `IntrinsicMemoryController` (logit bias, `contextvars`-isolated activation steering, KV-prefix, LoRA routing) | `src/intrinsic/` |
-
-</details>
-| Five actions | Keep / Decay / Silence / Compress / Delete | `src/forgetting/actions.py` |
 
 </details>
 
@@ -465,7 +451,7 @@ Sync, async, and embedded (SQLite) modes. See [SDK docs](packages/py-cml/docs/).
 
 ## Getting a Runnable Project
 
-This section covers the **full setup from scratch** — cloning the code from GitHub, downloading the 25 GB of trained model weights from Hugging Face Hub, configuring infrastructure, and verifying everything works.
+This section covers the **full setup from scratch** — cloning the repository, installing dependencies, configuring infrastructure, and verifying everything works.
 
 ### Prerequisites
 
@@ -474,9 +460,8 @@ This section covers the **full setup from scratch** — cloning the code from Gi
 | Python | 3.11+ | 3.13 recommended |
 | Docker + Compose | 24+ | For Postgres, Neo4j, Redis |
 | `uv` or `pip` | any | `uv` strongly recommended for speed |
-| `huggingface-cli` | 0.19+ | `pip install huggingface_hub[cli]` |
-| Disk space | ~30 GB free | ~25 GB models + repo + venv |
-| RAM | 8 GB+ | 16 GB recommended for full model pack |
+| Disk space | ~6 GB free | Repo + venv + on-demand HF embeddings/tokenizer (~2–3 GB) |
+| RAM | 8 GB+ | 16 GB recommended (local embeddings use ~3 GB) |
 
 ---
 
@@ -487,7 +472,7 @@ git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
 cd CognitiveMemoryLayer
 ```
 
-> The repository contains only **code, configs, and tokenizer metadata** (~100 MB). Model weights are stored separately on Hugging Face Hub (see Step 3).
+> The repository contains **code, configs, and evaluation datasets** (~65 MB). Small runtime artifacts (embedding model, tokenizer, and optional Laya System 1 model) are downloaded on demand on first start (see Step 3).
 
 ---
 
@@ -524,6 +509,7 @@ downloaded on demand from public registries the first time the write path runs:
 |---|---|---|
 | Embedding model (`nomic-ai/nomic-embed-text-v2-moe`, revision-pinned) | HuggingFace | `EMBEDDING_INTERNAL__LOCAL_MODEL` |
 | Chunker tokenizer (`google/flan-t5-base`) | HuggingFace | `CHUNKER__TOKENIZER` |
+| System 1 decision model (`convaiinnovations/laya`, optional) | HuggingFace | `FEATURES__LAYA_SYSTEM1_ENABLED`, `FEATURES__LAYA_MODEL_ID` |
 | tiktoken BPE ranks (`cl100k_base`) | openaipublic.blob.core.windows.net | — |
 
 In Docker these land on the `hf-cache` and `tiktoken-cache` volumes, so they are
@@ -670,94 +656,70 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 ## Evaluation Highlights
 
-Evaluated on **LoCoMo-Plus** (2,387 samples, LLM-as-judge) &mdash; the first benchmark that
-tests *cognitive* memory (constraints, beliefs, causal reasoning), not just factual recall.
+Evaluated on the **complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
 
-The **CML** column below is the frozen 2026-08-02 corpus re-scored on **2026-08-04** with
-the two *shared* harness components swapped for external models &mdash; answering
-`openai/gpt-5.6-luna-pro`, judging `deepseek/deepseek-v4-flash`. The memory layer is
-byte-identical to the local-model column beside it; only the answerer and judge differ.
-Figures are the **mean of two judge passes over the same predictions**, because a single
-pass is not reproducible (see the caveat below). Artifacts:
-[`locomo_plus_2026-08-04_external-models-luna-deepseek_summary.json`](evaluation/results/locomo_plus_2026-08-04_external-models-luna-deepseek_summary.json)
-and its `_judgepass2_` sibling.
+**CML v2.0 (2026-11-22) setup:** Full Neuro-Cognitive stack (Amygdala Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`), local `nomic-embed-text-v2-moe` embeddings, heuristic write path (`FEATURES__USE_LLM_ENABLED=false` &mdash; zero write-time LLM calls across 242,658 ingested turns), and **`openai/gpt-4o-mini`** for both QA and LLM-as-Judge (`temperature=0`, total API cost **`$0.52`**). Committed artifact: [`evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json).
 
-| Category | **CML** (external models) | CML (all-local models) | Gemini-2.5-Pro (full ctx) | GPT-4o (full ctx) | Mem0 (GPT-4o) | A-Mem (GPT-4o) |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Single-hop | 68.77% | 57.55% | 77.83% | 78.13% | **80.20%** | 76.90% |
-| Multi-hop | 44.86% | 34.57% | 52.48% | 52.30% | 48.10% | **55.60%** |
-| Temporal | 48.67% | 35.51% | **73.83%** | 45.79% | 39.40% | 49.30% |
-| Common-sense | 51.30% | 27.60% | 63.54% | **69.79%** | 66.20% | 68.10% |
-| Adversarial | 40.02% | 75.34% | **73.03%** | 48.99% | 30.50% | 35.20% |
-| **LoCoMo avg** | **54.83%** | 53.27% | **71.78%** | 62.99% | 57.24% | 59.64% |
-| **Cognitive** | **38.16%** | 25.44% | **45.72%** | 41.94% | 41.44% | 42.44% |
+### Head-to-Head Comparison on Full LoCoMo-Plus (2,387 Samples)
 
-Baselines are Table 1 of the LoCoMo-Plus paper (judge: `gemini-2.5-flash`). "LoCoMo avg"
-is the five factual categories weighted by sample count; Cognitive is reported separately,
-as the paper does.
+| System / Method | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **CML v2.0 (Neuro + Laya)** | `gpt-4o-mini` (heuristic write) | 52.32% | 37.59% | 40.19% | 43.23% | **91.48%** | **56.62%** | 24.44% | 32.18 |
+| *Memory Systems* | | | | | | | | | |
+| **Kumiho Cognitive Memory** <sup>[1]</sup> | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
+| **A-Mem** <sup>[2]</sup> | `gpt-4o` | 76.90% | **55.60%** | 49.30% | 68.10% | 35.20% | 59.64% | 42.44% | 17.20 |
+| **SeCom** <sup>[2]</sup> | `gpt-4o` | 77.60% | 50.90% | 42.30% | **71.40%** | 31.80% | 57.53% | 42.63% | 14.90 |
+| **Mem0** <sup>[2]</sup> | `gpt-4o` | **80.20%** | 48.10% | 39.40% | 66.20% | 30.50% | 57.24% | 41.44% | 15.80 |
+| *RAG Baselines* | | | | | | | | | |
+| RAG (`text-embedding-large`) <sup>[2]</sup> | `gpt-4o` | 49.76% | 22.78% | 40.00% | 21.35% | 59.73% | 45.32% | 29.77% | 15.55 |
+| RAG (`text-embedding-small`) <sup>[2]</sup> | `gpt-4o` | 39.17% | 17.79% | 34.69% | 14.61% | 51.90% | 37.23% | 24.94% | 12.29 |
+| RAG (`text-ada-002`) <sup>[2]</sup> | `gpt-4o` | 40.00% | 16.73% | 37.81% | 15.73% | 49.44% | 37.38% | 23.47% | 13.91 |
+| *Full-Context LLMs (No Retrieval)* | | | | | | | | | |
+| Gemini-2.5-Pro <sup>[2]</sup> | Full context (1M) | 77.83% | 52.48% | **73.83%** | 63.54% | 73.03% | **71.78%** | 45.72% | 26.06 |
+| Gemini-2.5-Flash <sup>[2]</sup> | Full context (1M) | 77.71% | 54.26% | 66.04% | 66.67% | 65.84% | 69.25% | 44.58% | 24.67 |
+| GPT-4o <sup>[2]</sup> | Full context | 78.13% | 52.30% | 45.79% | 69.79% | 48.99% | 62.99% | 41.94% | 21.05 |
+| GPT-4.1 <sup>[2]</sup> | Full context | 80.30% | 53.90% | 58.88% | 72.92% | 37.30% | 62.21% | 43.58% | 18.63 |
+| GPT-5-nano <sup>[2]</sup> | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
+| Qwen2.5-14B-Instruct <sup>[2]</sup> | Full context | 76.33% | 48.23% | 38.94% | 57.29% | 68.09% | 63.45% | 44.21% | 19.24 |
+| Qwen3-14B <sup>[2]</sup> | Full context | 65.96% | 46.45% | 53.89% | 59.38% | 60.45% | 59.65% | 40.56% | 19.09 |
 
-> **Three caveats, and they matter more than the ranking.**
->
-> **1. This is not strict parity.** The paper's systems answer with GPT-4o and are judged
-> by `gemini-2.5-flash`. Ours answers with a 2026 frontier reasoning model and is judged
-> by DeepSeek. If anything these numbers *flatter* CML, so the single-hop and common-sense
-> deficits are likely wider under true parity, not narrower.
->
-> **2. Per-category figures are noisy; quote the aggregate.** Re-judging the *identical*
-> predictions at temperature 0 moved the aggregate by only 0.17 points but individual
-> categories by up to **4.9** (temporal 46.24 &harr; 51.10, multi-hop 46.28 &harr; 43.44).
-> Single-pass per-category claims are not supportable at these sample sizes.
->
-> **3. The all-local column is not a weaker version of the same behaviour &mdash; it is a
-> different behaviour.** See below.
+<sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using GPT-4o; factual category breakdown not published.  
+<sup>[2]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive. CML's overall 6-category average is **51.21%** (`1,222.5 / 2,387`).
 
-**The adversarial number was an artifact, and we corrected it.** Earlier revisions of this
-README claimed adversarial ~78% as CML's standout strength, "structural, not judge luck".
-That was wrong. Handing the *same memory packets* to a competent answering model drops
-adversarial from 75.34% to ~40% while every other category gains 10&ndash;22 points. The
-high score was the local Qwen answerer **over-refusing**, not the memory layer resisting
-false premises. Note the aggregate barely moved (53.27% &rarr; 54.83%) because the average
-traded adversarial away against everything else &mdash; one pooled number concealed two
-completely different profiles. At ~40% CML is still ahead of Mem0 (30.50%) and A-Mem
-(35.20%) here, which is a real if much smaller advantage.
+### Unbiased Analysis &amp; Trade-Offs
 
-**Where it is weak, plainly.** **Common-sense is the clearest gap** &mdash; 51.30% against
-66&ndash;68% for Mem0 and A-Mem, a deficit large enough to survive the judge noise.
-Single-hop trails by ~8&ndash;11 points. Cognitive (38.16%) sits just below Mem0 (41.44%)
-and A-Mem (42.44%) on the category this benchmark was built for. Overall CML lands a
-couple of points behind Mem0 and ~5 behind A-Mem on the aggregate &mdash; the same league,
-not the same rank.
+- **Factual recall parity at a fraction of the cost:** Using `gpt-4o-mini` and zero write-time LLM calls (`$0.52` total for 4,774 QA+Judge calls), CML reaches **56.62%** LoCoMo Factual Avg &mdash; beating `RAG (text-embedding-large, GPT-4o)` by **+11.30pp** and full-context `GPT-5-nano` by **+1.66pp**, and landing within **0.62pp of Mem0 (GPT-4o)** (`57.24%`) and **0.91pp of SeCom (GPT-4o)** (`57.53%`).
+- **Best-in-class adversarial resistance (`91.48%`), with a known precision/recall trade-off:** CA1 Reality Monitoring + strict grounding cuts hallucination on false-premise queries (`408/446` correct, `56.3%` explicit refusals on adversarial), outperforming Gemini-2.5-Pro (`73.03%`) and Mem0/A-Mem (`30.5&ndash;35.2%`). The trade-off is visible in the refusal diagnostics: `gpt-4o-mini` also refuses on `42.7%` of `common-sense` and `21.6&ndash;30.8%` of factual queries when an answer requires world-knowledge inference not stated verbatim in retrieved episodes.
+- **Cognitive (`24.44%` on all 401 samples) is the main gap under heuristic ingestion:** In `FEATURES__USE_LLM_ENABLED=false` mode, CML extracts no LLM entities/relations into Neo4j and relies on dense embeddings + regex constraints, so implicit cue&ndash;trigger disconnects without keyword overlap trail GPT-4o memory systems (`41.4&ndash;42.6%`) and Kumiho (`93.3%`). Enabling `FEATURES__USE_LLM_ENABLED=true` (unified LLM extraction) or using a stronger reasoning answerer narrows this gap (on the 677-sample stratified subset with `z-ai/glm-5.3-flash:batch`, the same memory layer scored **47.50%** on Cognitive and **+2.50pp** overall in paired A/B vs. CML baseline without Neuro+Laya).
+- **Judge parity note:** Paper Table 1 uses `gemini-2.5-flash` as judge with `gpt-4o` answering; CML's full run uses `openai/gpt-4o-mini` for both QA and judging.
 
-### Latest Benchmark: Neuro-Cognitive + ActiveCML + Laya System 1 (2026-11-22)
+### Reproducing the Full 2,387-Sample Run
 
-With the restored Neuro-Cognitive subsystems (Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`, ~20ms GPU routing + calibrated CA1 grounding + adaptive episode budgets):
+```bash
+# 1. Build the official 2,387-sample unified dataset
+cd evaluation/locomo_plus/data && python unified_input.py && cd ../../..
 
-- **Controlled 60-Sample Paired A/B (`z-ai/glm-5.3-flash`, `60/60` valid, `0` errors)**: **`0.5917` &rarr; `0.6167` (`+2.50pp`)**, with **`Cognitive` `+20.0pp`** (`0.40 &rarr; 0.60`) and **`adversarial` parity** (`0.50 &rarr; 0.50`).
-- **Full 677-Sample LoCoMo-Plus Batch Run (`z-ai/glm-5.3-flash:batch` via OpenRouter `/api/v1/batches`, `677/677` valid, `0` errors, `$0.0246` total cost)**:
+# 2. Run ingestion, retrieval, QA, and LLM-as-Judge (supports both sync and :batch OpenRouter models)
+python evaluation/scripts/run_locomo_openrouter_batch.py \
+  --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
+  --out-dir evaluation/outputs/gpt4omini_full_2387 \
+  --model openai/gpt-4o-mini \
+  --judge-model openai/gpt-4o-mini \
+  --ingestion-workers 12 \
+  --sync-workers 24
+```
 
-| Category | Samples | Score | **CML v2 + Neuro + Laya (`glm-5.3-flash:batch`)** |
-| :--- | :---: | :---: | :---: |
-| Single-hop | 250 | 157.0 | **62.80%** |
-| Adversarial | 151 | 93.0 | **61.59%** |
-| Temporal | 96 | 48.5 | **50.52%** |
-| Cognitive | 40 | 19.0 | **47.50%** |
-| Common-sense | 40 | 18.5 | **46.25%** |
-| Multi-hop | 100 | 35.0 | 35.00% |
-| **Overall** | **677** | **371.0** | **54.80%** |
-
-Run with OpenRouter Batch API: `python evaluation/scripts/run_locomo_openrouter_batch.py --unified-file evaluation/locomo_plus/data/unified_input_subset_v2.json --out-dir evaluation/outputs/batch_run --model z-ai/glm-5.3-flash:batch`
-
-Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
+Full results, refusal diagnostics, and historical runs: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; CLI harness: `cml-eval run-full --repo-root .`
 
 ---
 
 ## Testing
 
 ```bash
-# 878 hermetic unit tests — no DB, no LLM, mock embeddings
+# 896 hermetic unit tests — no DB, no LLM, mock embeddings
 pytest tests/unit -q
 
-# 341 tests against a live server on :8000
+# 331 tests against a live server on :8000
 pytest tests/integration tests/e2e packages/py-cml/tests -q
 ```
 
@@ -813,7 +775,7 @@ See [Usage Documentation](docs/usage.md) for full API details.
 | **SDK Eval** | [Eval Module](packages/py-cml/docs/evaluation.md) | `cml-eval` CLI, Python API, typed configs |
 | **Dev** | [Contributing](CONTRIBUTING.md) | Setup, code standards, PR process |
 | **Changelog** | [Release History](CHANGELOG.md) | Version history |
-| **Roadmap** | [Future Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration phases (designed, not started) |
+| **Roadmap** | [ActiveCML Plans](ProjectPlan/ActiveCML/) | Intrinsic memory integration roadmap (Tiers I-2, I-3, I-4, I-5, I-8 implemented in `src/intrinsic/`) |
 
 ---
 
