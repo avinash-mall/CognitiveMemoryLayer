@@ -656,15 +656,15 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 ## Evaluation Highlights
 
-Evaluated on the **complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
+Evaluated on the **complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** under **strict Paper Table 1 parity** (`openai/gpt-4o` QA + `google/gemini-2.5-flash` LLM-as-Judge, `temperature=0`) &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
 
-**CML v2.0 setup:** Full Neuro-Cognitive stack (Amygdala Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`), local `nomic-embed-text-v2-moe` embeddings, heuristic write path (`FEATURES__USE_LLM_ENABLED=false` &mdash; zero write-time LLM calls across 242,658 ingested turns), and **`openai/gpt-4o-mini`** for both QA and LLM-as-Judge (`temperature=0`, total API cost **`$0.52`**). Artifact: [`evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json).
+**CML v2.0 setup:** Full Neuro-Cognitive stack (Amygdala Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`), local `nomic-embed-text-v2-moe` embeddings, heuristic write path (`FEATURES__USE_LLM_ENABLED=false` &mdash; zero write-time LLM calls across 242,658 ingested turns), **`openai/gpt-4o`** QA, and **`google/gemini-2.5-flash`** Judge (total API cost **`$7.72`**). Artifact: [`evaluation/results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json).
 
 ### Full LoCoMo-Plus Comparison (2,387 Samples)
 
 | System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v2.0 (Neuro + Laya)** | Memory System | `gpt-4o-mini` (heuristic write) | 52.32% | 37.59% | 40.19% | 43.23% | **91.48%** | **56.62%** | 24.44% | 32.18 |
+| **CML v2.0 (Neuro + Laya)** | Memory System | `gpt-4o` (heuristic write) | 43.58% | 26.24% | 38.47% | 22.92% | **91.48%** | **50.05%** | 19.70% | 30.35 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 66.60% | &mdash; |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.90% | &mdash; |
@@ -685,14 +685,13 @@ Evaluated on the **complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &m
 
 <sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using `gpt-4o`; factual category breakdown not published.  
 <sup>[2]</sup> Reported in the *Madeleine* paper (arXiv 2026) under the official LoCoMo-Plus protocol on the 401-sample Cognitive split; factual category breakdown not published.  
-<sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive. CML's overall 6-category average is **51.21%** (`1,222.5 / 2,387`).
+<sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive. CML's overall 6-category average is **44.95%** (`1,073.0 / 2,387`).
 
 ### Unbiased Analysis &amp; Trade-Offs
 
-- **Factual recall at low cost:** Using `gpt-4o-mini` and zero write-time LLM calls (`$0.52` total for 4,774 QA+Judge calls), CML reaches **56.62%** LoCoMo Factual Avg &mdash; beating `RAG (text-embedding-large, GPT-4o)` by **+11.30pp** and full-context `GPT-5-nano` by **+1.66pp**, and landing within **0.62pp of Mem0 (GPT-4o)** (`57.24%`) and **0.91pp of SeCom (GPT-4o)** (`57.53%`).
-- **Adversarial resistance (`91.48%`) vs. refusal trade-off:** CA1 Reality Monitoring + strict grounding cuts false-premise hallucinations (`408/446` correct, `56.3%` explicit refusals on adversarial), ahead of Gemini-2.5-Pro (`73.03%`) and Mem0/A-Mem (`30.5&ndash;35.2%`). The trade-off is visible in refusal rates: `gpt-4o-mini` also refuses on `42.7%` of `common-sense` and `21.6&ndash;30.8%` of factual queries when answers require world-knowledge inference not stated verbatim in retrieved episodes.
-- **Cognitive (`24.44%` on all 401 samples) under heuristic ingestion:** With `FEATURES__USE_LLM_ENABLED=false`, CML performs no write-time LLM entity/relation extraction into Neo4j and relies on dense embeddings + regex constraints, trailing GPT-4o memory systems (`41.4&ndash;42.6%`), Madeleine/HyperMem (`52.4&ndash;66.6%`), and Kumiho (`93.3%`). Enabling `FEATURES__USE_LLM_ENABLED=true` or pairing CML with a stronger reasoning answerer directly addresses this gap.
-- **Judge parity note:** Paper Table 1 uses `gemini-2.5-flash` as judge with `gpt-4o` answering; CML's full run uses `openai/gpt-4o-mini` for both QA and judging.
+- **Beats all RAG baselines under strict parity (`+4.73pp` over `text-embedding-large`):** With identical `gpt-4o` QA and `gemini-2.5-flash` Judge and zero write-time LLM calls, CML reaches **50.05%** LoCoMo Factual Avg vs. `45.32%` for `RAG (text-embedding-large, GPT-4o)` and `37.23%` for `RAG (text-embedding-small, GPT-4o)`.
+- **#1 Adversarial resistance (`91.48%`), with a steep over-refusal trade-off:** `gpt-4o` follows CA1 Reality Monitoring grounding directives very strictly &mdash; refusing **`89.7%`** of adversarial questions (`408/446` correct, far ahead of Gemini-2.5-Pro `73.03%` and Mem0/A-Mem `30.5&ndash;35.2%`), **but also refusing `61.5%` of `common-sense`, `44.0%` of `multi-hop`, `42.7%` of `temporal`, and `36.5%` of `single-hop` queries** whenever answers require inference beyond verbatim retrieved text. Relaxing CA1 refusal triggers for non-adversarial intents is the single highest-leverage improvement for factual recall.
+- **Why factual recall and Cognitive (`19.70%`) trail LLM-extracted systems:** Mem0, SeCom, A-Mem, and Kumiho all run **LLM extraction on every ingested turn** (`gpt-4o` / `gpt-4o-mini`). This benchmark corpus was ingested with `FEATURES__USE_LLM_ENABLED=false` (zero write-time LLM calls, empty Neo4j entity/relation graph), which is why `FEATURES__USE_LLM_ENABLED=true` is now enabled **by default** for production deployments.
 
 ### Reproducing the Full 2,387-Sample Run
 
@@ -700,14 +699,14 @@ Evaluated on the **complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &m
 # 1. Build the official 2,387-sample unified dataset
 cd evaluation/locomo_plus/data && python unified_input.py && cd ../../..
 
-# 2. Run ingestion, retrieval, QA, and LLM-as-Judge (supports both sync and :batch OpenRouter models)
+# 2. Run ingestion, retrieval, QA, and LLM-as-Judge (Paper Table 1 parity)
 python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/gpt4omini_full_2387 \
-  --model openai/gpt-4o-mini \
-  --judge-model openai/gpt-4o-mini \
+  --out-dir evaluation/outputs/gpt4o_gemini25flash_full_2387 \
+  --model openai/gpt-4o \
+  --judge-model google/gemini-2.5-flash \
   --ingestion-workers 12 \
-  --sync-workers 24
+  --sync-workers 8
 ```
 
 Full diagnostics &amp; methodology: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; CLI harness: `cml-eval run-full --repo-root .`

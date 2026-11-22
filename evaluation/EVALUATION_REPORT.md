@@ -2,8 +2,9 @@
 
 **Date:** 2026-11-22  
 **CML Version:** 2.0.0 (Neuro-Cognitive Suite + ActiveCML + Laya System 1)  
-**QA & Judge Model:** `openai/gpt-4o-mini` via OpenRouter (`temperature=0`, `0` errors)  
-**Committed Artifact:** [`evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json`](results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json)  
+**QA Model:** `openai/gpt-4o` via OpenRouter (`temperature=0`, `0` errors)  
+**Judge Model:** `google/gemini-2.5-flash` via OpenRouter (`temperature=0`, `reasoning.enabled=false`, `0` errors) — **exact Paper Table 1 parity**  
+**Committed Artifact:** [`evaluation/results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json`](results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json)  
 **References:**
 - LoCoMo-Plus paper: [arXiv:2602.10715](https://arxiv.org/abs/2602.10715) — *Locomo-Plus: Beyond-Factual Cognitive Memory Evaluation Framework for LLM Agents* (Li et al., 2026)
 - Official LoCoMo-Plus repo: [github.com/xjtuleeyf/Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
@@ -21,7 +22,7 @@
 
 ---
 
-## 2. CML v2.0 Full 2,387-Sample Results (`openai/gpt-4o-mini`)
+## 2. CML v2.0 Full 2,387-Sample Results (`openai/gpt-4o` + `google/gemini-2.5-flash`)
 
 ### Runtime Configuration
 
@@ -31,24 +32,25 @@
 | Write Path | `FEATURES__USE_LLM_ENABLED=false` (deterministic heuristics + Neuro-Cognitive tagging, **0 write-time LLM calls**) |
 | Embeddings | Local GPU `nomic-ai/nomic-embed-text-v2-moe` (768-dim, `batch_size=64`) |
 | Neuro-Cognitive Flags | Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind, Ecphory Reactivation, ActiveCML, Adaptive Episode Budget, **Laya System 1** (`convaiinnovations/laya`) — all `true` |
-| QA & Judge Model | `openai/gpt-4o-mini` (OpenRouter, `temperature=0`, 24 concurrent workers) |
-| Token Usage & Cost | QA: `2,451,927` in / `51,030` out · Judge: `601,712` in / `69,969` out · **Total API cost: `$0.5248`** |
+| QA Model | `openai/gpt-4o` (OpenRouter, `temperature=0`) |
+| Judge Model | `google/gemini-2.5-flash` (OpenRouter, `temperature=0`, `reasoning.enabled=false`) |
+| Token Usage & Cost | QA: `~2.46M` in / `~42.5K` out · Judge: `624,267` in / `106,226` out · **Total API cost: `$7.7182`** |
 | Valid / Errors | **2,387 / 2,387 valid (`0` errors)** |
 
 ### Per-Category Scores & Diagnostics
 
 | Category | Samples | Correct | Partial | Wrong | Score | **Average** | Refusal Rate | Empty Ctx | Median Ctx (chars) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| `single-hop` | 841 | 296 | 288 | 257 | 440.0 | **52.32%** | 21.6% | 0 | 2,986 |
-| `multi-hop` | 282 | 35 | 142 | 105 | 106.0 | **37.59%** | 24.5% | 0 | 2,920 |
-| `temporal` | 321 | 104 | 50 | 167 | 129.0 | **40.19%** | 30.8% | 0 | 3,379 |
-| `common-sense` | 96 | 30 | 23 | 43 | 41.5 | **43.23%** | 42.7% | 0 | 3,005 |
-| `adversarial` | 446 | 408 | 0 | 38 | 408.0 | **91.48%** | 56.3% | 0 | 3,093 |
-| **LoCoMo Factual Avg** | **1,986** | — | — | — | **1,124.5** | **56.62%** | — | **0** | — |
-| **`Cognitive` (LoCoMo-Plus)** | **401** | 98 | 0 | 303 | 98.0 | **24.44%** | 1.5% | 0 | 2,565 |
-| **Overall (All 6 Categories)** | **2,387** | 971 | 503 | 913 | **1,222.5** | **51.21%** | — | **0** | — |
+| `single-hop` | 841 | 331 | 71 | 439 | 366.5 | **43.58%** | 36.5% | 0 | 2,991 |
+| `multi-hop` | 282 | 35 | 78 | 169 | 74.0 | **26.24%** | 44.0% | 0 | 2,927 |
+| `temporal` | 321 | 121 | 5 | 195 | 123.5 | **38.47%** | 42.7% | 0 | 3,395 |
+| `common-sense` | 96 | 19 | 6 | 71 | 22.0 | **22.92%** | 61.5% | 0 | 2,984 |
+| `adversarial` | 446 | 408 | 0 | 38 | 408.0 | **91.48%** | 89.7% | 0 | 3,107 |
+| **LoCoMo Factual Avg** | **1,986** | — | — | — | **994.0** | **50.05%** | — | **0** | — |
+| **`Cognitive` (LoCoMo-Plus)** | **401** | 79 | 0 | 322 | 79.0 | **19.70%** | 1.2% | 0 | 2,565 |
+| **Overall (All 6 Categories)** | **2,387** | 993 | 160 | 1,234 | **1,073.0** | **44.95%** | — | **0** | — |
 
-- **Gap (LoCoMo Factual Avg − Cognitive):** `56.62% − 24.44% = 32.18pp`
+- **Gap (LoCoMo Factual Avg − Cognitive):** `50.05% − 19.70% = 30.35pp`
 
 ---
 
@@ -56,7 +58,7 @@
 
 | System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v2.0 (Neuro + Laya)** | Memory System | `gpt-4o-mini` (heuristic write) | 52.32% | 37.59% | 40.19% | 43.23% | **91.48%** | **56.62%** | 24.44% | 32.18 |
+| **CML v2.0 (Neuro + Laya)** | Memory System | `gpt-4o` (heuristic write) | 43.58% | 26.24% | 38.47% | 22.92% | **91.48%** | **50.05%** | 19.70% | 30.35 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | — | — | — | — | — | — | **93.30%** | — |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | — | — | — | — | — | — | 66.60% | — |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | — | — | — | — | — | — | 52.90% | — |
@@ -88,13 +90,13 @@
 ## 4. Unbiased Analysis
 
 ### Where CML Excels
-1. **Competitive Factual Recall at Ultra-Low Cost:** CML with `gpt-4o-mini` and zero write-time LLM calls (`$0.52` total) achieves **56.62%** LoCoMo Factual Avg — outperforming `RAG (text-embedding-large, GPT-4o)` by **+11.30pp** (`45.32%`) and full-context `GPT-5-nano` by **+1.66pp** (`54.96%`), and landing within **0.62pp of Mem0 (GPT-4o)** (`57.24%`).
-2. **Adversarial False-Premise Resistance (`91.48%`):** CA1 Reality Monitoring + strict grounding instructions cut hallucinations dramatically (`408/446`), ahead of Gemini-2.5-Pro (`73.03%`), GPT-4o (`48.99%`), A-Mem (`35.20%`), and Mem0 (`30.50%`).
-3. **Zero Empty Retrievals & Zero Errors:** `0/2,387` empty contexts (median 2,565–3,379 chars) and `0/2,387` pipeline errors across 242,658 ingested turns.
+1. **Outperforms All RAG Baselines Under Strict Parity:** Using identical `gpt-4o` QA and `gemini-2.5-flash` Judge with zero write-time LLM calls, CML reaches **50.05%** LoCoMo Factual Avg — beating `RAG (text-embedding-large, GPT-4o)` (`45.32%`) by **+4.73pp** and `RAG (text-embedding-small, GPT-4o)` (`37.23%`) by **+12.82pp**.
+2. **#1 Adversarial False-Premise Resistance (`91.48%`):** `gpt-4o` + CA1 Reality Monitoring achieves `408/446` on adversarial questions, beating Gemini-2.5-Pro (`73.03%`), GPT-4o full-context (`48.99%`), A-Mem (`35.20%`), SeCom (`31.80%`), and Mem0 (`30.50%`).
+3. **Zero Empty Retrievals & Zero Errors:** `0/2,387` empty contexts (median 2,565–3,395 chars) and `0/2,387` pipeline errors across 242,658 ingested turns.
 
 ### Where CML Has Clear Gaps
-1. **Over-Cautious Refusal Trade-Off on Factual & Common-Sense Queries:** Refusal diagnostics show `gpt-4o-mini` refused `56.3%` of adversarial questions (helpful), but also refused `42.7%` of `common-sense`, `30.8%` of `temporal`, `24.5%` of `multi-hop`, and `21.6%` of `single-hop` questions when answers required inference beyond verbatim text.
-2. **Cognitive (`24.44%` on all 401 samples) under Heuristic Write Path:** Because `FEATURES__USE_LLM_ENABLED=false` performs zero write-time LLM extraction, the Neo4j entity-relation graph is not populated and implicit constraints without explicit lexical markers rely solely on dense vector similarity. That puts Cognitive in line with `RAG (text-embedding-small)` (`24.94%`) and behind GPT-4o memory systems (`41.4–42.6%`), Madeleine/HyperMem (`52.4–66.6%`), and Kumiho (`93.3%`).
+1. **Over-Refusal on Non-Adversarial Queries:** Diagnostic refusal analysis reveals why `single-hop` (`43.58%`), `multi-hop` (`26.24%`), `temporal` (`38.47%`), and `common-sense` (`22.92%`) dropped sharply under `gpt-4o`: `gpt-4o` followed CA1 refusal directives aggressively, refusing **`61.5%` of `common-sense`**, **`44.0%` of `multi-hop`**, **`42.7%` of `temporal`**, and **`36.5%` of `single-hop`** queries whenever answers required inference beyond verbatim text. Narrowing CA1 refusal triggers to clear false-premise/speaker-mismatch cases is the highest-impact retrieval fix.
+2. **Heuristic Write Path (`USE_LLM_ENABLED=false`) vs. LLM-Extracted Systems:** Mem0, SeCom, A-Mem, and Kumiho run write-time LLM extraction (`gpt-4o` / `gpt-4o-mini`) on every ingested turn to populate structured facts and knowledge graphs. Because this benchmark corpus was ingested with `FEATURES__USE_LLM_ENABLED=false`, the Neo4j entity/relation graph was empty and implicit cue–trigger disconnects relied solely on dense embeddings (`Cognitive: 19.70%`). `FEATURES__USE_LLM_ENABLED=true` is now enabled by default in CML v2.0.
 
 ---
 
@@ -104,7 +106,7 @@
 
 | Mode | Mean | p50 | p95 | Sequential Throughput |
 | :--- | :---: | :---: | :---: | :---: |
-| `FEATURES__USE_LLM_ENABLED=true` (unified LLM extractor) | 3.027 s | 2.723 s | 4.427 s | **0.33 turns/s** |
+| `FEATURES__USE_LLM_ENABLED=true` (unified LLM extractor — default) | 3.027 s | 2.723 s | 4.427 s | **0.33 turns/s** |
 | `FEATURES__USE_LLM_ENABLED=false` (regex/Jaccard + Neuro tagging) | 0.058 s | 0.024 s | 0.038 s | **17.31 turns/s** (~200–350 turns/s batched w/ 3 workers) |
 
 ### Memory Quality Retrieval Suite (`scripts/test_memory_quality.py`)

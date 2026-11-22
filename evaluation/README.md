@@ -202,7 +202,7 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 
 See the full, unified 2,387-sample LoCoMo-Plus comparison table, refusal diagnostics, and methodology in [EVALUATION_REPORT.md](EVALUATION_REPORT.md).
 
-Committed summary artifact: [`results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json`](results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json).
+Committed summary artifact: [`results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json`](results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json).
 
 ---
 

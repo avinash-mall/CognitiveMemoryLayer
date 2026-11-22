@@ -89,10 +89,10 @@ Build the full 2,387-sample dataset (`cd evaluation/locomo_plus/data && python u
 ```bash
 OPENROUTER_API_KEY=... python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/gpt4omini_full_2387 \
+  --out-dir evaluation/outputs/gpt4o_gemini25flash_full_2387 \
   --cml-url http://localhost:8000 \
-  --model openai/gpt-4o-mini \
-  --judge-model openai/gpt-4o-mini
+  --model openai/gpt-4o \
+  --judge-model google/gemini-2.5-flash
 ```
 
 ## API Base And Auth

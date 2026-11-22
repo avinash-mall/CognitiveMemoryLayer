@@ -144,9 +144,13 @@ def _run_openrouter_batch(
     return all_outputs
 
 
-def _needs_reasoning_param(model: str) -> bool:
+def _reasoning_param_for_model(model: str) -> dict | None:
     m = model.lower()
-    return "glm-5" in m or "gpt-5" in m
+    if "glm-5" in m or "gpt-5" in m:
+        return {"effort": "low"}
+    if "gemini-2.5" in m:
+        return {"enabled": False}
+    return None
 
 
 def _run_openrouter_sync(
@@ -206,8 +210,10 @@ def _run_openrouter_sync(
             except urllib.error.HTTPError as exc:
                 err_body = exc.read().decode("utf-8", errors="replace")
                 last_err = RuntimeError(f"HTTP {exc.code}: {err_body[:300]}")
-                if exc.code in (429, 500, 502, 503, 504):
-                    time.sleep(min(30, 1.5 * (2**attempt)))
+                if exc.code in (429, 500, 502, 503, 504) or (
+                    exc.code == 402 and "in_flight_budget_exhausted" in err_body
+                ):
+                    time.sleep(min(30, 2.0 * (2**attempt)))
                     continue
                 raise last_err from exc
             except Exception as exc:
@@ -360,8 +366,9 @@ def main() -> None:
                 "max_tokens": 512,
                 "temperature": 0,
             }
-            if _needs_reasoning_param(args.model):
-                qa_body["reasoning"] = {"effort": "low"}
+            qa_reasoning = _reasoning_param_for_model(args.model)
+            if qa_reasoning is not None:
+                qa_body["reasoning"] = qa_reasoning
             qa_requests.append(
                 {
                     "custom_id": f"qa-{i}",
@@ -421,8 +428,9 @@ def main() -> None:
             "max_tokens": 384,
             "temperature": 0,
         }
-        if _needs_reasoning_param(judge_model):
-            judge_body["reasoning"] = {"effort": "low"}
+        judge_reasoning = _reasoning_param_for_model(judge_model)
+        if judge_reasoning is not None:
+            judge_body["reasoning"] = judge_reasoning
         judge_requests.append(
             {
                 "custom_id": f"judge-{i}",
