@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 
 from ...utils.bounded_state import BoundedStateMap
+from ...utils.similarity import jaccard, word_set
 from .chunker import SemchunkChunker
 from .models import SemanticChunk, WorkingMemoryState
 
@@ -123,6 +124,51 @@ class WorkingMemoryManager:
             "max_chunks": state.max_chunks,
             "turn_count": state.turn_count,
             "current_topic": state.current_topic,
+            "active_entities": list(state.active_entities),
             "last_updated": state.last_updated.isoformat(),
             "avg_salience": avg_salience,
         }
+
+    def search_active_chunks(
+        self,
+        tenant_id: str,
+        query: str,
+        *,
+        scope_id: str | None = None,
+        top_k: int = 5,
+    ) -> list[tuple[SemanticChunk, float]]:
+        """Zero-latency search over active working memory slots for a tenant."""
+        if not query or not query.strip():
+            return []
+        states = (
+            [s for s in [self._states.get(self._get_key(tenant_id, scope_id))] if s is not None]
+            if scope_id
+            else self._states.values_by_prefix(f"{tenant_id}:")
+        )
+        if not states:
+            return []
+
+        q_words = word_set(query)
+        if not q_words:
+            return []
+
+        scored: list[tuple[SemanticChunk, float]] = []
+        seen_texts: set[str] = set()
+        for state in states:
+            for chunk in state.chunks:
+                if not chunk.text or chunk.text in seen_texts:
+                    continue
+                seen_texts.add(chunk.text)
+                c_words = word_set(chunk.text)
+                focus_words = word_set(" ".join(chunk.entities))
+                all_c_words = c_words | focus_words
+                if not all_c_words:
+                    continue
+                overlap = len(q_words & all_c_words) / max(1, len(q_words))
+                jacc = jaccard(q_words, all_c_words)
+                rel = min(0.92, 0.55 * overlap + 0.45 * jacc + 0.10 * chunk.salience)
+                if overlap > 0 and rel >= 0.25:
+                    scored.append((chunk, round(rel, 4)))
+
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return scored[:top_k]

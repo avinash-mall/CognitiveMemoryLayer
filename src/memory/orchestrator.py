@@ -148,6 +148,7 @@ class MemoryOrchestrator:
             hippocampal=hippocampal,
             neocortical=neocortical,
             llm_client=internal_llm,
+            short_term=short_term,
         )
 
         reconsolidation = ReconsolidationService(
@@ -220,6 +221,7 @@ class MemoryOrchestrator:
             hippocampal=hippocampal,
             neocortical=neocortical,
             llm_client=runtime_llm,
+            short_term=short_term,
         )
 
         reconsolidation = ReconsolidationService(
@@ -487,10 +489,38 @@ class MemoryOrchestrator:
         return stm_result.get("chunks_for_encoding", [])
 
     async def _phase_unified_extraction(self, chunks: list, wpc: WritePathConfig) -> list | None:
-        """Run unified extractor when LLM path enabled (single LLM call for all chunks)."""
-        if wpc.use_unified and self.hippocampal.unified_extractor:
-            return await self.hippocampal.unified_extractor.extract_batch(chunks)
-        return None
+        """Run unified extractor when LLM path enabled (with optional Thalamic Surprise Triage)."""
+        if not (wpc.use_unified and self.hippocampal.unified_extractor):
+            return None
+
+        from ..core.config import get_settings as _get_settings
+
+        features = _get_settings().features
+        if getattr(features, "thalamic_triage_enabled", False):
+            threshold = float(getattr(features, "thalamic_surprise_threshold", 0.45) or 0.45)
+            wg = getattr(self.hippocampal, "write_gate", None)
+            high_surprise_indices: list[int] = []
+            high_surprise_chunks: list[Any] = []
+            for idx, chunk in enumerate(chunks):
+                surprise = wg.compute_surprise_index(chunk) if wg is not None else chunk.salience
+                chunk.metadata["surprise_index"] = surprise
+                if surprise >= threshold:
+                    high_surprise_indices.append(idx)
+                    high_surprise_chunks.append(chunk)
+                else:
+                    chunk.metadata["thalamic_triaged_system1"] = True
+
+            results: list[Any] = [None] * len(chunks)
+            if high_surprise_chunks:
+                extracted = await self.hippocampal.unified_extractor.extract_batch(
+                    high_surprise_chunks
+                )
+                for pos, orig_idx in enumerate(high_surprise_indices):
+                    if pos < len(extracted):
+                        results[orig_idx] = extracted[pos]
+            return results
+
+        return await self.hippocampal.unified_extractor.extract_batch(chunks)
 
     async def _phase_deactivate_constraints(
         self,

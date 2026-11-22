@@ -48,6 +48,8 @@ class ConsolidationReport:
     clusters_skipped_no_recurrence: int = 0
     #: Gists the detail-recovery pass added on top of the first-pass summaries.
     details_recovered: int = 0
+    #: Cross-episode associative links induced during Sharp-Wave Ripple (SWR) replay.
+    swr_links_induced: int = 0
 
     @property
     def success(self) -> bool:
@@ -247,6 +249,7 @@ class ConsolidationWorker:
             mark_episodes_consolidated=True,
             compress_episodes=False,
         )
+        swr_links = await self._induce_swr_cross_episode_links(tenant_id, recurrent)
 
         completed = datetime.now(UTC)
         return ConsolidationReport(
@@ -259,9 +262,66 @@ class ConsolidationWorker:
             clusters_skipped_no_recurrence=skipped,
             gists_extracted=len(gists),
             details_recovered=len(recovered),
+            swr_links_induced=swr_links,
             migration=migration,
             elapsed_seconds=(completed - started).total_seconds(),
         )
+
+    async def _induce_swr_cross_episode_links(
+        self,
+        tenant_id: str,
+        clusters: list[EpisodeCluster],
+    ) -> int:
+        """Sharp-Wave Ripple (SWR) Sleep Replay: induce cross-episode associative graph links.
+
+        When distinct episodes in a semantic cluster mention different entities, sleep replay
+        forms associative links between co-clustered entities backed by the union of their
+        supporting episode IDs.
+        """
+        import inspect as _inspect
+
+        from ..core.schemas import Relation
+
+        store_batch = getattr(self.migrator.semantic, "store_relations_batch", None)
+        if not callable(store_batch):
+            return 0
+
+        induced_count = 0
+        for cluster in clusters:
+            if len(cluster.episodes) < 2:
+                continue
+            entity_list: list[str] = []
+            seen_ents: set[str] = set()
+            evidence_ids = [str(ep.id) for ep in cluster.episodes]
+            for ep in cluster.episodes:
+                for ent in getattr(ep, "entities", None) or []:
+                    name = (
+                        getattr(ent, "normalized", None) or getattr(ent, "text", None) or str(ent)
+                    )
+                    norm = name.strip()
+                    if norm and norm.lower() not in seen_ents:
+                        seen_ents.add(norm.lower())
+                        entity_list.append(norm)
+            if len(entity_list) < 2:
+                continue
+            anchor = entity_list[0]
+            rels = [
+                Relation(
+                    subject=anchor,
+                    predicate="CO_CONSOLIDATED_WITH",
+                    object=other,
+                    confidence=0.72,
+                )
+                for other in entity_list[1:5]
+            ]
+            try:
+                maybe_coro = store_batch(tenant_id, rels, evidence_ids=evidence_ids)
+                if _inspect.isawaitable(maybe_coro):
+                    await maybe_coro
+                induced_count += len(rels)
+            except Exception as exc:
+                logger.debug("swr_link_induction_failed", extra={"error": str(exc)})
+        return induced_count
 
     async def start_background_worker(self):
         """Start the consolidation consumer and the sweep that feeds it.

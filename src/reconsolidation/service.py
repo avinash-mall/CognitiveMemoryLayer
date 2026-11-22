@@ -153,11 +153,14 @@ class ReconsolidationService:
                 relevance_scores=[m.metadata.get("_similarity", 0.5) for m in retrieved_memories],
                 confidences=[m.confidence for m in retrieved_memories],
             )
+            await self._set_db_labile([m.id for m in retrieved_memories], True)
 
         new_facts = await self._extract_new_facts(user_message, assistant_response)
 
         if not new_facts:
             await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
+            if retrieved_memories:
+                await self._set_db_labile([m.id for m in retrieved_memories], False)
             elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
             return ReconsolidationResult(
                 turn_id=turn_id,
@@ -201,6 +204,20 @@ class ReconsolidationService:
                 plan_old_id: str | None = None
                 plan_new_id: str | None = None
                 for op in plan.operations:
+                    if (
+                        conflict.conflict_type.value != "none"
+                        and op.op_type == OperationType.ADD
+                        and op.new_record is not None
+                    ):
+                        meta = dict(op.new_record.metadata or {})
+                        meta["belief_evolution"] = {
+                            "previous_memory_id": str(memory.id),
+                            "previous_belief": memory.text,
+                            "updated_belief": op.new_record.text,
+                            "conflict_type": conflict.conflict_type.value,
+                            "revised_at": datetime.now(UTC).isoformat(),
+                        }
+                        op.new_record.metadata = meta
                     success, new_id = await self._apply_operation(op)
                     entry: dict[str, Any] = {
                         "operation": op.op_type.value,
@@ -219,6 +236,8 @@ class ReconsolidationService:
                     await self._backpatch_lineage_id(plan_old_id, plan_new_id)
 
         await self.labile_tracker.release_labile(tenant_id, scope_id, turn_id)
+        if retrieved_memories:
+            await self._set_db_labile([m.id for m in retrieved_memories], False)
         elapsed = (datetime.now(UTC) - start).total_seconds() * 1000
 
         return ReconsolidationResult(
@@ -366,3 +385,14 @@ class ReconsolidationService:
                 "backpatch_lineage_failed",
                 extra={"old_id": old_id, "new_id": new_id},
             )
+
+    async def _set_db_labile(self, memory_ids: list[Any], labile: bool) -> None:
+        """Best-effort persistence of labile flag in the backing episodic store."""
+        update_fn = getattr(self.store, "update", None)
+        if not callable(update_fn):
+            return
+        for mid in memory_ids:
+            try:
+                await update_fn(mid, {"labile": labile}, increment_version=False)
+            except Exception:
+                logger.debug("set_db_labile_failed", extra={"memory_id": str(mid)})

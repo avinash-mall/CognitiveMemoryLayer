@@ -110,16 +110,21 @@ def _load_project_dotenv():
 def _get_openai_client():
     """Lazy init OpenAI client from OPENAI_API_KEY + OPENAI_BASE_URL, or from .env LLM_EVAL__* / LLM_INTERNAL__* (e.g. Ollama)."""
     _load_project_dotenv()
-    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
-    base_url = (os.environ.get("OPENAI_BASE_URL") or "").strip()
+    api_key = (
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("LLM_EVAL__API_KEY")
+        or os.environ.get("LLM_INTERNAL__API_KEY")
+        or ""
+    ).strip()
+    base_url = (
+        os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("LLM_EVAL__BASE_URL")
+        or os.environ.get("LLM_INTERNAL__BASE_URL")
+        or ""
+    ).strip()
     # If no OpenAI key but .env has LLM_EVAL__* or LLM_INTERNAL__* (e.g. Ollama), use that for judge
-    if not api_key:
-        llm_base = (
-            os.environ.get("LLM_EVAL__BASE_URL") or os.environ.get("LLM_INTERNAL__BASE_URL") or ""
-        ).strip()
-        if llm_base:
-            api_key = "ollama"
-            base_url = llm_base
+    if not api_key and base_url:
+        api_key = "ollama"
     if not api_key:
         raise ValueError(
             "OPENAI_API_KEY is not set and LLM_EVAL__BASE_URL/LLM_INTERNAL__BASE_URL is not set. "

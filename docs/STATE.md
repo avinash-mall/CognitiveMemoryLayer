@@ -41,6 +41,25 @@ link them below. Delete notes when they stop being true.
 
 ## Active work
 
+### Neuro-Cognitive Restoration, ActiveCML & Laya System 1 (2026-11-22)
+
+Implemented the full neuro-inspired subsystem suite + ActiveCML intrinsic memory + Convai **Laya** System 1 fast-decision layer (`convaiinnovations/laya`, ModernBERT-large, ~20ms/call on GPU), all behind feature flags in `src/core/config.py`:
+
+- **New modules**:
+  - `src/memory/somatic.py`: Amygdala Somatic Markers (valence, arousal, flashbulb decay modulation, state-congruent resonance).
+  - `src/memory/prospective.py`: BA10 Prospective Memory causal intention triggers + read-time parent-episode ecphory.
+  - `src/memory/dmn.py`: Default Mode Network (mPFC/TPJ) Theory-of-Mind mentalizing synthesis.
+  - `src/retrieval/reality_monitor.py`: CA1 Comparator & Orbitofrontal Reality Monitoring (presupposition verification, speaker-attribution binding, concise refusal directives, plus Laya System 1 Stage 3 calibrated grounding).
+  - `src/core/laya_system1.py`: Lazy thread-safe wrapper around `convaiinnovations/laya` for System 1 query intent routing (`adaptive_episode_budget_enabled`, `6` vs `12` episodes + verbatim somatic protection on `Cognitive` cues) and calibrated CA1 grounding verification.
+  - `src/intrinsic/`: Tiered ActiveCML subsystem (`schemas.py`, `logit_interface.py`, `activation_hooks.py`, `prefix_synaptic.py`, `lora_router.py`, `controller.py`).
+  - `evaluation/scripts/run_locomo_openrouter_batch.py`: End-to-end LoCoMo-Plus evaluator for OpenRouter `/api/v1/batches` (`:batch` models like `z-ai/glm-5.3-flash:batch`).
+  - `tests/unit/test_neuro_cognitive_and_intrinsic.py`: 17 new hermetic unit tests.
+- **Dependency note**: `laya-0.5.2` pulls `transformers>=5.24`, which removes `get_extended_attention_mask` required by `nomic-embed-text-v2-moe`. Pinning `transformers==5.12.1` keeps both Nomic embeddings and Laya working together on CUDA.
+- **Measured benchmarks**:
+  - **180-sample paired A/B (`nvidia/nemotron-3.5-lightning:free`, pre-Laya)**: Baseline `0.4833` → Neuro+ActiveCML `0.4944` (`+1.11pp`; `common-sense +10.0pp`, `temporal +10.0pp`, `single-hop +3.3pp`, `Cognitive -6.7pp`, `adversarial -10.0pp`).
+  - **60-sample paired A/B (`z-ai/glm-5.3-flash`, with Laya System 1 + 3 targeted fixes)**: Baseline `0.5917` → Neuro+ActiveCML+Laya **`0.6167` (`+2.50pp`)**; `Cognitive` jumped **`+20.0pp`** (`0.40 → 0.60`) and `adversarial` recovered to parity (`0.50 → 0.50`).
+  - **Full 677-sample LoCoMo-Plus batch run (`z-ai/glm-5.3-flash:batch`, `677/677` valid, `0` errors, `$0.0246` total cost)**: **`0.5480` overall (`371.0 / 677`)** — `single-hop 0.6280`, `adversarial 0.6159`, `temporal 0.5052`, `Cognitive 0.4750`, `common-sense 0.4625`, `multi-hop 0.3500`.
+
 ### Human-memory research pass (2026-08-02)
 
 Plan and evidence: [memory-redesign-plan.md](memory-redesign-plan.md). Three retrieval

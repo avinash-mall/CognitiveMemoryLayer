@@ -256,6 +256,67 @@ class FeatureFlags(PydanticBaseModel):
         description="Master switch for PII redaction (regex + model). "
         "Set to false for benchmark evaluation where entity names are critical for scoring.",
     )
+    # --- Neuro-Cognitive & ActiveCML Subsystems ---
+    somatic_markers_enabled: bool = Field(
+        default=True,
+        description="Amygdala Somatic Markers: tag memories with affective valence/arousal "
+        "and modulate flashbulb retention and state-congruent retrieval.",
+    )
+    working_memory_context_binding_enabled: bool = Field(
+        default=True,
+        description="Baddeley Episodic Buffer: bind cross-turn coreference/topic anchors "
+        "in Working Memory and expose zero-latency working memory overlay on reads.",
+    )
+    thalamic_triage_enabled: bool = Field(
+        default=False,
+        description="Thalamic/Amygdala Dual-Process Triage: when true, fast-paths low-surprise "
+        "routine turns through System-1 encoding (<50ms) and reserves synchronous System-2 LLM "
+        "extraction for high-surprise/prediction-error turns.",
+    )
+    thalamic_surprise_threshold: float = Field(
+        default=0.45,
+        description="Minimum surprise/prediction-error index [0, 1] required to trigger "
+        "synchronous System-2 LLM extraction when thalamic_triage_enabled is true.",
+    )
+    ecphory_reactivation_enabled: bool = Field(
+        default=True,
+        description="Bjork Dual-Strength Ecphory: allow dormant (SILENT) episodic memories "
+        "to be reactivated when a high-specificity retrieval cue (cosine >= 0.75) arrives.",
+    )
+    reality_monitoring_enabled: bool = Field(
+        default=True,
+        description="CA1 Comparator & Orbitofrontal Reality Monitoring: detect unverified "
+        "query presuppositions and false premises to prevent adversarial hallucination.",
+    )
+    dmn_theory_of_mind_enabled: bool = Field(
+        default=True,
+        description="Default Mode Network (mPFC/TPJ) Theory-of-Mind: synthesize psychological "
+        "and motivational mentalizing context for cognitive and common-sense queries.",
+    )
+    multi_hop_recollection_enabled: bool = Field(
+        default=True,
+        description="Feeling-of-Knowing gated 2nd-hop cortical recollection: expand newly "
+        "discovered bridge entities when 1st-pass retrieval leaves multi-hop gaps.",
+    )
+    intrinsic_memory_enabled: bool = Field(
+        default=True,
+        description="ActiveCML Intrinsic Memory Controller: synthesize logit_bias, residual-stream "
+        "activation steering vectors, canonical KV-prefix blocks, and dynamic LoRA routing.",
+    )
+    laya_system1_enabled: bool = Field(
+        default=False,
+        description="Enable Convai Laya non-autoregressive System 1 decision model (~20ms GPU) "
+        "for calibrated query routing and CA1 reality-monitoring verification.",
+    )
+    laya_model_id: str = Field(
+        default="convaiinnovations/laya",
+        description="HuggingFace model ID for the Laya System 1 decision model.",
+    )
+    adaptive_episode_budget_enabled: bool = Field(
+        default=True,
+        description="Adapt episode retrieval budget by query intent (wider for temporal/multi-hop/"
+        "common-sense, tighter for focused single-hop/adversarial/cognitive queries).",
+    )
 
 
 class RerankerSettings(PydanticBaseModel):
@@ -280,10 +341,10 @@ class RetrievalSettings(PydanticBaseModel):
         "everything, so it is not a filter at all.",
     )
     max_episodes_when_constraints: int = Field(
-        default=5,
+        default=10,
         description="Max episodes to show when constraints exist (reduces dilution)",
     )
-    max_episodes_default: int = Field(default=8, description="Max episodes when no constraints")
+    max_episodes_default: int = Field(default=12, description="Max episodes when no constraints")
     max_constraint_tokens: int = Field(
         default=400,
         description="Token budget reserved for Active Constraints (ensures constraints are not truncated)",

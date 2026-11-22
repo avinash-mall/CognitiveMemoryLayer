@@ -78,12 +78,7 @@ Human memory is not a single store &mdash; it is a **pipeline**. Information flo
        └─── Decay                         └─── Displacement            └─── Interference
 ```
 
-**In CML:** Raw input enters the `SensoryBuffer` (token-level encoding via tiktoken, with time- and capacity-based decay). A `WorkingMemoryManager` enforces a bounded capacity — 10 chunks, not Miller's 7, with a displacement policy that protects the most recent items and evicts the rest by salience. `SemchunkChunker` handles semantic segmentation before long-term encoding.
-
-> **Caveat:** the buffer and the working-memory store are currently write-only. The
-> encoding path uses each turn's fresh chunks directly, so the retained set that
-> survives displacement is never read back. The capacity limit is enforced but does
-> not yet influence what gets encoded.
+**In CML:** Raw input enters the `SensoryBuffer` (token-level encoding via tiktoken, with time- and capacity-based decay). A `WorkingMemoryManager` enforces a bounded capacity (10 chunks, protecting recent items and evicting by salience) and operates as a **Baddeley Episodic Buffer** (`FEATURES__WORKING_MEMORY_CONTEXT_BINDING_ENABLED=true`), binding cross-turn coreference/topic anchors and exposing a zero-latency working-memory overlay on reads. `SemchunkChunker` handles semantic segmentation before long-term encoding.
 
 > **Reference**: Miller, G.A. (1956). ["The magical number seven, plus or minus two."](https://doi.org/10.1037/h0043158) *Psychological Review*, 63(2), 81-97.
 
@@ -114,13 +109,7 @@ The hippocampus captures today's lunch conversation in full context. Over time &
 
 A discovery that upended memory science: retrieved memories become **temporarily unstable** ("labile") and can be modified before restabilizing. Memory is not read-only &mdash; every retrieval is a potential rewrite.
 
-**In CML:** The `LabileStateTracker` marks memories labile while a conversational turn is being processed. The `ConflictDetector` identifies contradictions, refinements, and supersessions. The `BeliefRevisionEngine` then applies a revision strategy — `REINFORCE`, `TIME_SLICE`, `MERGE`, or `ADD_HYPOTHESIS` — before restabilizing.
-
-> **Caveat:** the labile window is bookkeeping, not a delay. It is opened and closed
-> within a single turn, so the configured 5-minute duration never elapses, and no
-> read or write path consults labile state before acting. Reconsolidation requires
-> the full `/turn` endpoint; a plain read never marks anything labile. Three further
-> strategies (`OVERWRITE`, `INVALIDATE`, `NOOP`) are declared but unreachable.
+**In CML:** The `LabileStateTracker` and `ReconsolidationService` mark retrieved memories labile in both Redis and PostgreSQL (`labile_state`), detect conflicts via `ConflictDetector`, and apply `BeliefRevisionEngine` updates (`REINFORCE`, `TIME_SLICE`, `MERGE`, `ADD_HYPOTHESIS`) while recording belief-evolution lineage before restabilizing.
 
 > **Reference**: Nader, K., Schafe, G.E., & Le Doux, J.E. (2000). ["Fear memories require protein synthesis in the amygdala for reconsolidation after retrieval."](https://doi.org/10.1038/35021052) *Nature*, 406(6797), 722-726.
 
@@ -338,6 +327,22 @@ set. There is no trace weakening on migration.
 | :--- | :--- | :--- |
 | Relevance scoring | `ForgettingScorer` (6-factor composite) | `src/forgetting/scorer.py` |
 | Interference | `InterferenceDetector` | `src/forgetting/interference.py` |
+
+</details>
+
+<details>
+<summary><strong>Neuro-Cognitive Subsystems &amp; Laya System 1</strong> &mdash; Amygdala, BA10, CA1, DMN, Subcortical Fast-Path</summary>
+
+| Biology | Code | Location |
+| :--- | :--- | :--- |
+| Amygdala somatic markers | `SomaticMarkerTagger` (valence/arousal, flashbulb decay modulation, state-congruent resonance) | `src/memory/somatic.py` |
+| Rostral PFC (BA10) prospective memory | `ProspectiveMemoryEngine` (causal intention triggers + read-time parent ecphory) | `src/memory/prospective.py` |
+| CA1 comparator &amp; OFC reality monitoring | `CA1RealityMonitor` (presupposition checks, speaker-attribution binding, concise refusal alerts) | `src/retrieval/reality_monitor.py` |
+| Default Mode Network (mPFC / TPJ) | `DMNTheoryOfMind` (mentalizing &amp; motivational synthesis for cognitive/common-sense queries) | `src/memory/dmn.py` |
+| Subcortical System 1 fast decision layer | `LayaSystem1Engine` (Convai Laya ModernBERT-large ~20ms GPU routing + calibrated CA1 grounding) | `src/core/laya_system1.py` |
+| ActiveCML intrinsic memory | `IntrinsicMemoryController` (logit bias, `contextvars`-isolated activation steering, KV-prefix, LoRA routing) | `src/intrinsic/` |
+
+</details>
 | Five actions | Keep / Decay / Silence / Compress / Delete | `src/forgetting/actions.py` |
 
 </details>
@@ -723,6 +728,25 @@ and A-Mem (42.44%) on the category this benchmark was built for. Overall CML lan
 couple of points behind Mem0 and ~5 behind A-Mem on the aggregate &mdash; the same league,
 not the same rank.
 
+### Latest Benchmark: Neuro-Cognitive + ActiveCML + Laya System 1 (2026-11-22)
+
+With the restored Neuro-Cognitive subsystems (Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`, ~20ms GPU routing + calibrated CA1 grounding + adaptive episode budgets):
+
+- **Controlled 60-Sample Paired A/B (`z-ai/glm-5.3-flash`, `60/60` valid, `0` errors)**: **`0.5917` &rarr; `0.6167` (`+2.50pp`)**, with **`Cognitive` `+20.0pp`** (`0.40 &rarr; 0.60`) and **`adversarial` parity** (`0.50 &rarr; 0.50`).
+- **Full 677-Sample LoCoMo-Plus Batch Run (`z-ai/glm-5.3-flash:batch` via OpenRouter `/api/v1/batches`, `677/677` valid, `0` errors, `$0.0246` total cost)**:
+
+| Category | Samples | Score | **CML v2 + Neuro + Laya (`glm-5.3-flash:batch`)** |
+| :--- | :---: | :---: | :---: |
+| Single-hop | 250 | 157.0 | **62.80%** |
+| Adversarial | 151 | 93.0 | **61.59%** |
+| Temporal | 96 | 48.5 | **50.52%** |
+| Cognitive | 40 | 19.0 | **47.50%** |
+| Common-sense | 40 | 18.5 | **46.25%** |
+| Multi-hop | 100 | 35.0 | 35.00% |
+| **Overall** | **677** | **371.0** | **54.80%** |
+
+Run with OpenRouter Batch API: `python evaluation/scripts/run_locomo_openrouter_batch.py --unified-file evaluation/locomo_plus/data/unified_input_subset_v2.json --out-dir evaluation/outputs/batch_run --model z-ai/glm-5.3-flash:batch`
+
 Full results &amp; competitor analysis: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; Run: `cml-eval run-full --repo-root .` (or legacy: `python evaluation/scripts/run_full_eval.py`)
 
 ---
@@ -793,11 +817,16 @@ See [Usage Documentation](docs/usage.md) for full API details.
 
 ---
 
-## Future Roadmap
+## ActiveCML Intrinsic Memory
 
-The next frontier: **intrinsic memory** &mdash; injecting memories directly into the LLM's computational graph (steering vectors, KV-cache manipulation, logit biases) instead of context-window stuffing.
+CML now includes the tiered **ActiveCML** intrinsic memory subsystem (`src/intrinsic/`, enabled via `FEATURES__INTRINSIC_MEMORY_ENABLED=true`), moving beyond context-window stuffing with four depth tiers:
 
-See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the 10-phase roadmap index. None of it is implemented — the detailed specs were compressed into that index and remain in git history.
+- **I-2 Logit Bias (`src/intrinsic/logit_interface.py`)**: Synthesizes token-level logit bias maps from high-priority constraints and entities.
+- **I-3 Activation Steering (`src/intrinsic/activation_hooks.py`)**: `contextvars`-isolated residual-stream steering hooks safe under concurrent requests.
+- **I-4 Synaptic KV-Prefix (`src/intrinsic/prefix_synaptic.py`)**: Canonical prefix block synthesis and tiered KV-prefix caching.
+- **I-5 / I-8 Controller &amp; Dynamic LoRA Router (`src/intrinsic/controller.py`, `src/intrinsic/lora_router.py`)**: Unified intrinsic payload synthesis and tenant/domain LoRA adapter routing.
+
+See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the broader 10-phase roadmap index.
 
 ---
 

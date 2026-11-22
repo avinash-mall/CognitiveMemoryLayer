@@ -133,7 +133,27 @@ class RetrievalPlanner:
                     constraint_categories=analysis.constraint_dimensions,
                 )
             )
-            parallel_groups = [[0, 1]]
+            # Include an unfiltered FACTS step and (when time_filter is relative) a landmark
+            # fallback VECTOR step so historical corpora predating wall-clock now() never zero out.
+            steps.append(
+                RetrievalStep(
+                    source=RetrievalSource.FACTS,
+                    query=analysis.original_query,
+                    top_k=5,
+                    priority=1,
+                )
+            )
+            if time_filter is not None:
+                steps.append(
+                    RetrievalStep(
+                        source=RetrievalSource.VECTOR,
+                        query=analysis.original_query,
+                        time_filter=None,
+                        top_k=10,
+                        priority=1,
+                    )
+                )
+            parallel_groups = [list(range(len(steps)))]
 
         elif (
             analysis.intent == QueryIntent.CONSTRAINT_CHECK
@@ -275,14 +295,26 @@ class RetrievalPlanner:
         from datetime import tzinfo
 
         tz: tzinfo = UTC
-        if analysis.user_timezone:
+        if getattr(analysis, "user_timezone", None):
             try:
                 from zoneinfo import ZoneInfo
 
                 tz = ZoneInfo(analysis.user_timezone)
             except Exception:
                 tz = UTC
-        user_now = datetime.now(tz)
+
+        meta = getattr(analysis, "metadata", None) or {}
+        ref_now = meta.get("reference_now")
+        if isinstance(ref_now, datetime):
+            user_now = ref_now.astimezone(tz) if ref_now.tzinfo else ref_now.replace(tzinfo=tz)
+        elif isinstance(ref_now, str):
+            try:
+                parsed = datetime.fromisoformat(ref_now)
+                user_now = parsed.astimezone(tz) if parsed.tzinfo else parsed.replace(tzinfo=tz)
+            except ValueError:
+                user_now = datetime.now(tz)
+        else:
+            user_now = datetime.now(tz)
 
         # A question's time reference is about when the *event* happened, not when the
         # turn describing it was typed — "what did I do last week" should match a turn
@@ -292,6 +324,16 @@ class RetrievalPlanner:
         basis = {"time_basis": "event"}
 
         ref = (analysis.time_reference or "").lower()
+        import re as _re
+
+        year_match = _re.search(r"\b(19\d{2}|20\d{2})\b", ref)
+        if year_match:
+            yr = int(year_match.group(1))
+            return {
+                "since": datetime(yr, 1, 1, 0, 0, 0),
+                "until": datetime(yr, 12, 31, 23, 59, 59, 999999),
+                **basis,
+            }
         if "today" in ref:
             start = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
             return {"since": start.astimezone(UTC).replace(tzinfo=None), **basis}

@@ -88,8 +88,14 @@ def llm_chat(user_content: str, max_tokens: int = 512) -> str:
     # Set LLM_EVAL__ENABLE_THINKING=1 to re-enable (needs larger max_tokens).
     enable_thinking = os.environ.get("LLM_EVAL__ENABLE_THINKING", "").strip() in ("1", "true")
     extra_body = None
-    if "qwen" in model.lower() and not enable_thinking:
-        extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+    if (
+        any(k in model.lower() for k in ("qwen", "nemotron", "deepseek", "r1"))
+        or "openrouter.ai" in base_url.lower()
+    ) and not enable_thinking:
+        extra_body = {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "reasoning": {"enabled": False},
+        }
 
     client = OpenAI(base_url=base_url, api_key=api_key)
     try:

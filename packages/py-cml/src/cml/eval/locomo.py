@@ -686,13 +686,21 @@ def _llm_chat(user_content: str, max_tokens: int = 512, backend: str = "openai_c
     # in truncated reasoning with no answer.  The softened prompts already guide the
     # model to reason about dates/timestamps inline.
     # Set LLM_EVAL__ENABLE_THINKING=1 to opt back in (requires larger max_tokens).
-    _is_thinking_model = "qwen" in model.lower()
+    _is_mandatory_reasoning = "glm-5" in model.lower()
+    _is_thinking_model = any(
+        k in model.lower() for k in ("qwen", "nemotron", "deepseek", "r1")
+    ) or ("openrouter.ai" in base_url.lower() and not _is_mandatory_reasoning)
     _enable_thinking = os.environ.get("LLM_EVAL__ENABLE_THINKING", "").strip() in ("1", "true")
-    _extra_body = (
-        {"chat_template_kwargs": {"enable_thinking": False}}
-        if _is_thinking_model and not _enable_thinking
-        else None
-    )
+    if _is_mandatory_reasoning:
+        _extra_body = {"reasoning": {"effort": "low"}}
+        max_tokens = max(max_tokens, 1024)
+    elif _is_thinking_model and not _enable_thinking:
+        _extra_body = {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "reasoning": {"enabled": False},
+        }
+    else:
+        _extra_body = None
 
     import random as _rand
 

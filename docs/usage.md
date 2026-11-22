@@ -64,6 +64,36 @@ client is constructed. This is the mode the hermetic unit suite runs in.
 Consolidation produces no gists in this mode (`GistExtractor.extract_gist` returns `[]`
 without an LLM); forgetting compression falls back to deterministic truncation.
 
+## Neuro-Cognitive, Laya System 1 & ActiveCML Feature Flags
+
+All neuro-inspired and intrinsic-memory subsystems are independently toggleable via `FEATURES__*` environment variables (see `src/core/config.py`):
+
+| Env Var | Default | Subsystem |
+| :--- | :---: | :--- |
+| `FEATURES__SOMATIC_MARKERS_ENABLED` | `true` | Amygdala valence/arousal tagging, flashbulb decay modulation, state-congruent resonance (`src/memory/somatic.py`) |
+| `FEATURES__WORKING_MEMORY_CONTEXT_BINDING_ENABLED` | `true` | Baddeley Episodic Buffer cross-turn coreference binding & zero-latency read overlay |
+| `FEATURES__PROSPECTIVE_INDEXING_ENABLED` | `true` | BA10 causal intention triggers + read-time parent-episode ecphory (`src/memory/prospective.py`) |
+| `FEATURES__ECPHORY_REACTIVATION_ENABLED` | `true` | Bjork dual-strength reactivation of dormant (`SILENT`) episodes on high-specificity cues |
+| `FEATURES__REALITY_MONITORING_ENABLED` | `true` | CA1 comparator & OFC presupposition / speaker-attribution verification (`src/retrieval/reality_monitor.py`) |
+| `FEATURES__DMN_THEORY_OF_MIND_ENABLED` | `true` | Default Mode Network (mPFC/TPJ) mentalizing synthesis (`src/memory/dmn.py`) |
+| `FEATURES__MULTI_HOP_RECOLLECTION_ENABLED` | `true` | Feeling-of-Knowing gated 2nd-hop bridge entity recollection |
+| `FEATURES__INTRINSIC_MEMORY_ENABLED` | `true` | ActiveCML tiered intrinsic memory (`src/intrinsic/`: logit bias, steering hooks, KV-prefix, LoRA routing) |
+| `FEATURES__ADAPTIVE_EPISODE_BUDGET_ENABLED` | `true` | Adapts episode cap by query intent (`12` for temporal/multi-hop/common-sense, `6` for focused/cognitive) + protects verbatim somatic episodes on Cognitive cues |
+| `FEATURES__LAYA_SYSTEM1_ENABLED` | `false` | Enables Convai **Laya** (`convaiinnovations/laya`, ~20ms GPU) for calibrated System 1 query routing and CA1 grounding verification (`src/core/laya_system1.py`). Requires `pip install laya` with `transformers==5.12.1` when paired with `nomic-embed-text-v2-moe`. |
+| `FEATURES__THALAMIC_TRIAGE_ENABLED` | `false` | Surprise-gated System 1/System 2 write triage (`FEATURES__THALAMIC_SURPRISE_THRESHOLD=0.45`) |
+
+## OpenRouter Batch Evaluation
+
+For large LoCoMo-Plus runs using OpenRouter `:batch` models (50% cheaper than sync endpoints, e.g. `z-ai/glm-5.3-flash:batch`):
+
+```bash
+OPENROUTER_API_KEY=... python evaluation/scripts/run_locomo_openrouter_batch.py \
+  --unified-file evaluation/locomo_plus/data/unified_input_subset_v2.json \
+  --out-dir evaluation/outputs/glm53_batch_run \
+  --cml-url http://localhost:8000 \
+  --model z-ai/glm-5.3-flash:batch
+```
+
 ## API Base And Auth
 
 Base path: `/api/v1`

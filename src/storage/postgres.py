@@ -235,6 +235,11 @@ class PostgresMemoryStore(MemoryStoreBase):
                 "confidence",
                 "importance",
                 "status",
+                "labile",
+                "decay_rate",
+                "supersedes_id",
+                "valid_from",
+                "event_date",
                 "meta",
                 "text",
                 "embedding",
@@ -268,10 +273,14 @@ class PostgresMemoryStore(MemoryStoreBase):
     ) -> list[MemoryRecord]:
         async with self.session_factory() as session:
             # Phase 6.1: Set HNSW ef_search for this query transaction
+            ecphory_enabled = True
             try:
                 from ..core.config import get_settings
 
                 settings = get_settings()
+                ecphory_enabled = bool(
+                    getattr(settings.features, "ecphory_reactivation_enabled", True)
+                )
                 if settings.features.hnsw_ef_search_tuning:
                     ef_search = max(settings.retrieval.hnsw_ef_search, top_k)
                     await session.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
@@ -284,13 +293,24 @@ class PostgresMemoryStore(MemoryStoreBase):
             )
             if context_filter:
                 base = and_(base, MemoryRecordModel.context_tags.overlap(context_filter))
+
+            explicit_status = (filters or {}).get("status")
+            if explicit_status:
+                status_clause = MemoryRecordModel.status == explicit_status
+            elif ecphory_enabled:
+                status_clause = MemoryRecordModel.status.in_(
+                    [MemoryStatus.ACTIVE.value, MemoryStatus.SILENT.value]
+                )
+            else:
+                status_clause = MemoryRecordModel.status == MemoryStatus.ACTIVE.value
+
             q = select(
                 MemoryRecordModel,
                 (1 - MemoryRecordModel.embedding.cosine_distance(embedding)).label("similarity"),
             ).where(
                 and_(
                     base,
-                    MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                    status_clause,
                 )
             )
             if filters:
@@ -325,11 +345,34 @@ class PostgresMemoryStore(MemoryStoreBase):
                             MemoryRecordModel.valid_to >= now,
                         )
                     )
-            q = q.order_by(MemoryRecordModel.embedding.cosine_distance(embedding)).limit(top_k)
+            fetch_k = top_k + 4 if (ecphory_enabled and not explicit_status) else top_k
+            q = q.order_by(MemoryRecordModel.embedding.cosine_distance(embedding)).limit(fetch_k)
             result = await session.execute(q)
             records = []
+            reactivated_any = False
             for row in result:
+                if len(records) >= top_k:
+                    break
                 model, similarity = row[0], row[1]
+                # Bjork Dual-Strength Ecphory: a dormant (SILENT) memory has low retrieval
+                # strength and stays hidden from broad/noisy queries, but reactivates when
+                # a highly specific cue (similarity >= 0.75) arrives (unless it was
+                # permanently closed by a valid_to supersession timestamp).
+                if getattr(model, "status", "active") == MemoryStatus.SILENT.value:
+                    meta_dict = getattr(model, "meta", None) or {}
+                    if (
+                        not ecphory_enabled
+                        or getattr(model, "valid_to", None) is not None
+                        or "silenced_at" not in meta_dict
+                        or similarity < 0.75
+                    ):
+                        continue
+                    model.status = MemoryStatus.ACTIVE.value
+                    new_meta = dict(meta_dict)
+                    new_meta["ecphory_reactivated_at"] = datetime.now(UTC).isoformat()
+                    model.meta = new_meta
+                    reactivated_any = True
+
                 # Cosine similarity is valid on [-1, 1], so the "no threshold" default
                 # must be -1.0. It used to be 0.0, which silently dropped every
                 # negatively-correlated row: invisible with embedding models whose vectors
@@ -340,6 +383,8 @@ class PostgresMemoryStore(MemoryStoreBase):
                     if rec is not None:
                         rec.metadata["_similarity"] = similarity
                         records.append(rec)
+            if reactivated_any:
+                await session.commit()
             return records
 
     async def scan(

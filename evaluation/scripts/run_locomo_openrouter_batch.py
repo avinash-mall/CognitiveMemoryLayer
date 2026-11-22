@@ -1,0 +1,327 @@
+"""Run full LoCoMo-Plus evaluation against CML using OpenRouter's Batch API.
+
+Supports ``:batch`` models such as ``z-ai/glm-5.3-flash:batch`` (50% cheaper than
+sync endpoints, inline JSON submission via ``POST /api/v1/batches``).
+
+Pipeline:
+1. Phase A: Ingest deduplicated conversations into the running CML server.
+2. Phase B: Retrieve CML memory contexts locally, then submit QA prompts to
+   OpenRouter ``/api/v1/batches`` and poll until completed.
+3. Phase C: Submit LLM-as-Judge prompts to OpenRouter ``/api/v1/batches``, poll
+   until completed, and write standard predictions / judged / summary JSONs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+# Ensure repo & evaluation paths are importable
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "packages" / "py-cml" / "src"))
+sys.path.insert(0, str(REPO_ROOT / "evaluation" / "locomo_plus"))
+
+from task_eval.llm_as_judge import (
+    _compute_summary,
+    _parse_judge_response,
+    get_judge_prompt,
+    label_to_score,
+)
+
+from cml.eval.locomo import (
+    COGNITIVE_PROMPT,
+    QA_PROMPT,
+    _build_conversation_groups,
+    _cml_read,
+    _extract_answer,
+    phase_a_ingestion,
+)
+
+
+def _or_request(method: str, path: str, api_key: str, body: dict | None = None) -> dict:
+    url = f"https://openrouter.ai/api/v1{path}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _run_openrouter_batch(
+    api_key: str,
+    model: str,
+    requests_list: list[dict],
+    *,
+    poll_interval: int = 20,
+    chunk_size: int = 350,
+    label: str = "batch",
+) -> dict[str, str]:
+    """Submit requests to OpenRouter /api/v1/batches (chunked to stay within pre-auth budget).
+
+    Returns a mapping of ``custom_id -> assistant_content``.
+    """
+    all_outputs: dict[str, str] = {}
+    total = len(requests_list)
+    idx = 0
+    cur_chunk_size = chunk_size
+
+    while idx < total:
+        chunk = requests_list[idx : idx + cur_chunk_size]
+        payload = {
+            "endpoint": "/v1/chat/completions",
+            "model": model,
+            "requests": chunk,
+        }
+        try:
+            created = _or_request("POST", "/batches", api_key, payload)
+        except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 402 and cur_chunk_size > 100:
+                cur_chunk_size = max(100, cur_chunk_size // 2)
+                print(
+                    f"[{label}] 402 pre-auth budget limit; reducing chunk_size to {cur_chunk_size}",
+                    flush=True,
+                )
+                continue
+            raise RuntimeError(f"Batch create HTTP {exc.code}: {err_body}") from exc
+
+        batch_id = created["id"]
+        print(
+            f"[{label}] Submitted batch {batch_id} ({len(chunk)} reqs, {idx+len(chunk)}/{total})",
+            flush=True,
+        )
+
+        # Poll until terminal status
+        while True:
+            time.sleep(poll_interval)
+            st = _or_request("GET", f"/batches/{batch_id}", api_key)
+            status = st.get("status")
+            counts = st.get("request_counts", {})
+            print(
+                f"[{label}] {batch_id}: status={status} counts={counts}",
+                flush=True,
+            )
+            if status in ("completed", "failed", "expired", "cancelled"):
+                break
+
+        if st.get("status") != "completed":
+            raise RuntimeError(f"Batch {batch_id} ended with status={st.get('status')}: {st.get('error')}")
+
+        usage = st.get("usage") or {}
+        print(
+            f"[{label}] {batch_id} completed! cost=${usage.get('cost', 0):.6f} "
+            f"tokens={usage.get('total_tokens', 0)}",
+            flush=True,
+        )
+
+        for item in st.get("results") or []:
+            cid = item.get("custom_id") or item.get("id")
+            resp_body = (item.get("response") or {}).get("body") or {}
+            choices = resp_body.get("choices") or []
+            if choices:
+                msg = choices[0].get("message") or {}
+                content = msg.get("content") or ""
+            else:
+                content = ""
+            if cid is not None:
+                all_outputs[str(cid)] = str(content)
+
+        idx += len(chunk)
+
+    return all_outputs
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="LoCoMo-Plus OpenRouter Batch Evaluator")
+    parser.add_argument("--unified-file", required=True)
+    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--cml-url", default="http://localhost:8000")
+    parser.add_argument("--cml-api-key", default=os.getenv("AUTH__API_KEY", "test-key"))
+    parser.add_argument("--model", default="z-ai/glm-5.3-flash:batch")
+    parser.add_argument("--tenant-prefix", default="glm53-batch-full")
+    parser.add_argument("--ingestion-workers", type=int, default=4)
+    parser.add_argument("--max-results", type=int, default=25)
+    parser.add_argument("--limit-samples", type=int, default=0)
+    parser.add_argument("--skip-ingestion", action="store_true")
+    parser.add_argument("--chunk-size", type=int, default=350)
+    parser.add_argument("--poll-interval", type=int, default=20)
+    args = parser.parse_args()
+
+    api_key = (
+        os.getenv("OPENROUTER_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or os.getenv("LLM_EVAL__API_KEY")
+        or ""
+    )
+    if not api_key:
+        raise RuntimeError("Missing OPENROUTER_API_KEY / OPENAI_API_KEY")
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(args.unified_file, encoding="utf-8") as f:
+        samples = json.load(f)
+    if args.limit_samples > 0:
+        samples = samples[: args.limit_samples]
+
+    print(f"Loaded {len(samples)} samples from {args.unified_file}", flush=True)
+
+    # Phase A: Ingest unique conversations into CML
+    sample_to_conv, unique_convs = _build_conversation_groups(samples)
+    print(
+        f"[Phase A] Dedup: {len(samples)} samples -> {len(unique_convs)} unique conversations",
+        flush=True,
+    )
+    if not args.skip_ingestion:
+        phase_a_ingestion(
+            samples=samples,
+            cml_url=args.cml_url,
+            cml_api_key=args.cml_api_key,
+            limit=None,
+            ingestion_workers=args.ingestion_workers,
+            checkpoint_file=out_dir / "locomo_ingestion_checkpoint.json",
+            tenant_prefix=args.tenant_prefix,
+        )
+
+    # Phase B: Fetch CML contexts locally & submit QA batch
+    pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
+    if pred_file.exists():
+        records = json.loads(pred_file.read_text(encoding="utf-8"))
+        print(f"[Phase B] Loaded {len(records)} existing predictions from {pred_file}", flush=True)
+    else:
+        print(f"[Phase B] Reading CML contexts for {len(samples)} samples...", flush=True)
+        qa_requests: list[dict] = []
+        meta_rows: list[dict] = []
+        for i, sample in enumerate(samples):
+            tenant_id = f"{args.tenant_prefix}-{sample_to_conv.get(i, i)}"
+            trigger = (sample.get("trigger") or "").strip()
+            category = sample.get("category", "")
+            llm_context = _cml_read(
+                args.cml_url, args.cml_api_key, tenant_id, trigger, args.max_results
+            )
+            effective_context = (
+                llm_context
+                if len(llm_context or "") > 30
+                else "(No relevant memories found for this query.)"
+            )
+            if category == "Cognitive":
+                prompt = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+            else:
+                prompt = effective_context + "\n\n" + QA_PROMPT.format(trigger)
+            qa_requests.append(
+                {
+                    "custom_id": f"qa-{i}",
+                    "body": {
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 512,
+                        "temperature": 0,
+                        "reasoning": {"effort": "low"},
+                    },
+                }
+            )
+            meta_rows.append(
+                {
+                    "question_input": trigger,
+                    "evidence": sample.get("cue_dialogue", sample.get("evidence", "")),
+                    "category": category,
+                    "ground_truth": sample.get("answer", sample.get("ground_truth", "")),
+                    "context_length": len(llm_context or ""),
+                }
+            )
+            if (i + 1) % 100 == 0 or (i + 1) == len(samples):
+                print(f"  CML read progress: {i+1}/{len(samples)}", flush=True)
+
+        qa_outputs = _run_openrouter_batch(
+            api_key,
+            args.model,
+            qa_requests,
+            poll_interval=args.poll_interval,
+            chunk_size=args.chunk_size,
+            label="Phase B QA",
+        )
+
+        records = []
+        for i, meta in enumerate(meta_rows):
+            raw_pred = qa_outputs.get(f"qa-{i}", "")
+            clean_pred = _extract_answer(raw_pred) if raw_pred else "[Error: empty batch response]"
+            rec = dict(meta)
+            rec["prediction"] = clean_pred
+            rec["model"] = f"{args.model}_cml"
+            records.append(rec)
+
+        pred_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[Phase B] Saved {len(records)} predictions to {pred_file}", flush=True)
+
+    # Phase C: Submit LLM-as-Judge batch
+    judge_requests: list[dict] = []
+    valid_indices: list[int] = []
+    for i, rec in enumerate(records):
+        pred = rec.get("prediction", "")
+        if pred.startswith("[Error:") or pred.startswith("[API Error:"):
+            continue
+        prompt = get_judge_prompt(
+            rec.get("category") or "default",
+            rec.get("evidence", ""),
+            pred,
+            rec.get("ground_truth") or "",
+        )
+        judge_requests.append(
+            {
+                "custom_id": f"judge-{i}",
+                "body": {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 384,
+                    "temperature": 0,
+                    "reasoning": {"effort": "low"},
+                },
+            }
+        )
+        valid_indices.append(i)
+
+    judge_outputs = _run_openrouter_batch(
+        api_key,
+        args.model,
+        judge_requests,
+        poll_interval=args.poll_interval,
+        chunk_size=args.chunk_size,
+        label="Phase C Judge",
+    )
+
+    judged: list[dict] = []
+    for i, rec in enumerate(records):
+        r = dict(rec)
+        raw = judge_outputs.get(f"judge-{i}")
+        if raw is None:
+            r["judge_label"] = "_parse_failed"
+            r["judge_reason"] = "Skipped or missing batch response"
+            r["judge_score"] = None
+        else:
+            label, reason = _parse_judge_response(raw)
+            r["judge_label"] = label
+            r["judge_reason"] = reason
+            r["judge_score"] = label_to_score(label)
+        judged.append(r)
+
+    judged_file = out_dir / "locomo_plus_qa_cml_judged.json"
+    summary_file = out_dir / "locomo_plus_qa_cml_judge_summary.json"
+    judged_file.write_text(json.dumps(judged, ensure_ascii=False, indent=2), encoding="utf-8")
+    summary = _compute_summary(judged)
+    summary_file.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print("\n" + "=" * 60, flush=True)
+    print(f"FULL BATCH EVAL SUMMARY ({args.model})", flush=True)
+    print("=" * 60, flush=True)
+    print(json.dumps(summary, indent=2), flush=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -91,6 +91,20 @@ class BoundedStateMap(Generic[T]):
             del self._data[k]
         return len(to_remove)
 
+    def values_by_prefix(self, prefix: str) -> list[T]:
+        """Return all non-expired values whose key starts with *prefix*."""
+        now = time.time()
+        results: list[T] = []
+        expired: list[str] = []
+        for k, (val, ts) in self._data.items():
+            if now - ts > self._ttl:
+                expired.append(k)
+            elif k.startswith(prefix):
+                results.append(val)
+        for k in expired:
+            del self._data[k]
+        return results
+
     @property
     def size(self) -> int:
         return len(self._data)

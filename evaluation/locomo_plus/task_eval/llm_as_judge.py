@@ -268,8 +268,14 @@ def run_judge(args):
     # Auto-detect thinking models and suppress CoT for judge calls
     if not hasattr(args, "extra_body") or args.extra_body is None:
         model_lower = (args.model or "").lower()
-        if "qwen" in model_lower:
-            args.extra_body = {"chat_template_kwargs": {"enable_thinking": False}}
+        if "glm-5" in model_lower:
+            args.extra_body = {"reasoning": {"effort": "low"}}
+            args.max_tokens = max(int(getattr(args, "max_tokens", 512)), 1024)
+        elif any(k in model_lower for k in ("qwen", "nemotron", "deepseek", "r1")):
+            args.extra_body = {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "reasoning": {"enabled": False},
+            }
 
     results, start_index = _load_partial_results(out_path, len(records))
 

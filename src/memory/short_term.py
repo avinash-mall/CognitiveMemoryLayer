@@ -76,3 +76,33 @@ class ShortTermMemory:
         """Clear short-term memory for scope."""
         await self.sensory.clear_user(tenant_id, scope_id)
         await self.working.clear_user(tenant_id, scope_id)
+
+    async def get_immediate_context(
+        self,
+        tenant_id: str,
+        scope_id: str,
+        max_chunks: int = 5,
+    ) -> str:
+        """Return active working memory context string for a tenant/scope."""
+        return await self.working.get_current_context(tenant_id, scope_id, max_chunks=max_chunks)
+
+    async def get_encodable_chunks(
+        self,
+        tenant_id: str,
+        scope_id: str,
+    ) -> list[Any]:
+        """Return chunks in working memory that exceed the encoding salience threshold."""
+        return await self.working.get_chunks_for_encoding(
+            tenant_id, scope_id, min_salience=self.config.min_salience_for_encoding
+        )
+
+    def search_working_memory(
+        self,
+        tenant_id: str,
+        query: str,
+        *,
+        scope_id: str | None = None,
+        top_k: int = 5,
+    ) -> list[tuple[Any, float]]:
+        """Zero-latency search over active working memory chunks."""
+        return self.working.search_active_chunks(tenant_id, query, scope_id=scope_id, top_k=top_k)

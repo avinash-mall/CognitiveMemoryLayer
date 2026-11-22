@@ -231,10 +231,21 @@ class HippocampalStore:
 
         if (
             all(r is None for r in surviving_unified)
+            and not all(
+                bool((chunk.metadata or {}).get("thalamic_triaged_system1"))
+                for _idx, chunk, _gr, _txt in surviving
+            )
             and self._use_unified_write_path()
             and self.unified_extractor
         ):
-            tasks = [self.unified_extractor.extract(chunk) for _idx, chunk, _gr, _txt in surviving]
+            tasks = [
+                (
+                    asyncio.sleep(0, result=None)
+                    if (chunk.metadata or {}).get("thalamic_triaged_system1")
+                    else self.unified_extractor.extract(chunk)
+                )
+                for _idx, chunk, _gr, _txt in surviving
+            ]
             raw_results = await asyncio.gather(*tasks, return_exceptions=True)
             for i, res in enumerate(raw_results):
                 if i < len(surviving_unified):
@@ -379,7 +390,11 @@ class HippocampalStore:
                 key = self._generate_key(chunk, memory_type) or ""
 
             importance = gate_result.importance
-            if unified_res and settings.use_llm_enabled:
+            if (
+                unified_res
+                and settings.use_llm_enabled
+                and getattr(unified_res, "importance", None) is not None
+            ):
                 importance = unified_res.importance
 
             system_metadata: dict[str, Any] = {
@@ -387,8 +402,26 @@ class HippocampalStore:
                 "source_turn_id": chunk.source_turn_id,
                 "source_role": chunk.source_role,
             }
+            if (chunk.metadata or {}).get("working_memory_focus"):
+                system_metadata["working_memory_focus"] = list(
+                    chunk.metadata["working_memory_focus"]
+                )
             if constraint_dicts:
                 system_metadata["constraints"] = constraint_dicts
+
+            # Amygdala Somatic Markers (Damasio): tag affective valence & arousal and
+            # modulate flashbulb retention when not explicitly overridden by LLM.
+            somatic_mod = 1.0
+            if getattr(settings, "somatic_markers_enabled", True):
+                from ..somatic import SomaticMarkerAnalyzer
+
+                somatic = SomaticMarkerAnalyzer.analyze(text)
+                if somatic.arousal > 0.0 or somatic.valence != 0.0:
+                    system_metadata["somatic_marker"] = somatic.to_dict()
+                    somatic_mod = somatic.retention_modifier
+                    if not (unified_res and settings.use_llm_enabled):
+                        importance = min(1.0, round(importance + somatic.importance_boost, 4))
+
             # Precedence, deliberately three-tiered: the regex date goes in before the
             # merge so an explicit caller-supplied event_date wins over it, and the LLM's
             # speaker/event_date go in after so the model wins over both.
@@ -416,13 +449,19 @@ class HippocampalStore:
                 effective_ct = unified_res.context_tags
 
             conf = chunk.confidence
-            if unified_res and settings.use_llm_enabled and hasattr(unified_res, "confidence"):
+            if (
+                unified_res
+                and settings.use_llm_enabled
+                and getattr(unified_res, "confidence", None) is not None
+            ):
                 conf = unified_res.confidence
 
             decay_rate_val = None
             dr2 = getattr(unified_res, "decay_rate", None) if unified_res else None
             if unified_res and settings.use_llm_enabled and dr2 is not None and 0.01 <= dr2 <= 0.5:
                 decay_rate_val = dr2
+            elif somatic_mod < 1.0:
+                decay_rate_val = round(max(0.002, 0.01 * somatic_mod), 5)
 
             record_create = MemoryRecordCreate(
                 tenant_id=tenant_id,
@@ -599,7 +638,13 @@ class HippocampalStore:
         pairs: list[tuple[MemoryRecord, str]] = []
         for record, unified in zip(records, unified_results, strict=False):
             implications = getattr(unified, "prospective_implications", None) if unified else None
-            for text in (implications or [])[: features.prospective_index_count]:
+            if not implications:
+                from ..prospective import ProspectiveMemoryEngine
+
+                implications = ProspectiveMemoryEngine.induce_implication_strings(
+                    record.text, max_count=getattr(features, "prospective_index_count", 4)
+                )
+            for text in (implications or [])[: getattr(features, "prospective_index_count", 4)]:
                 pairs.append((record, text))
         if not pairs:
             return
@@ -640,6 +685,7 @@ class HippocampalStore:
             relations=[],
             metadata={
                 "prospective_source_id": str(source.id),
+                "parent_id": str(source.id),
                 "prospective_source_text": source.text[:500],
                 "is_prospective_index": True,
             },

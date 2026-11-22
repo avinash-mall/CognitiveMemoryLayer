@@ -87,6 +87,7 @@ class MemoryRetriever:
         hippocampal: HippocampalStore,
         neocortical: NeocorticalStore,
         llm_client: LLMClient | None = None,
+        short_term: Any | None = None,
     ):
         self.classifier = QueryClassifier(llm_client)
         self.planner = RetrievalPlanner()
@@ -94,6 +95,7 @@ class MemoryRetriever:
         self.reranker = MemoryReranker(config=_reranker_config_from_settings())
         self.packet_builder = MemoryPacketBuilder()
         self.llm_client = llm_client
+        self.short_term = short_term
 
         # --- Improvement Report: HyDE ---
         self._hyde_generator = None
@@ -271,6 +273,13 @@ class MemoryRetriever:
             raw_results, enabled=not settings.features.graph_results_in_packet
         )
 
+        if self.short_term is not None and getattr(
+            settings.features, "working_memory_context_binding_enabled", True
+        ):
+            raw_results = self._overlay_working_memory(
+                tenant_id, query, raw_results, source_session_id=source_session_id
+            )
+
         reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
         retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
         # Assessed on the reranked set, not the raw one: raw carries every prong's flat
@@ -281,12 +290,103 @@ class MemoryRetriever:
             packet = self.packet_builder.build(reranked, query)
             packet.retrieval_meta = retrieval_meta
             packet.sufficiency = sufficiency
+            if packet.all_memories and getattr(settings.features, "intrinsic_memory_enabled", True):
+                spec = self.compute_intrinsic_spec(
+                    packet, tenant_id=tenant_id, intent=plan.analysis.intent.value
+                )
+                meta_copy = (
+                    dict(packet.retrieval_meta) if isinstance(packet.retrieval_meta, dict) else {}
+                )
+                meta_copy["intrinsic_injection"] = spec.to_dict()
+                packet.retrieval_meta = meta_copy
             return packet
         return MemoryPacket(
             query=query,
             recent_episodes=reranked,
             retrieval_meta=retrieval_meta,
             sufficiency=sufficiency,
+        )
+
+    def _overlay_working_memory(
+        self,
+        tenant_id: str,
+        query: str,
+        raw_results: list[RetrievedMemory],
+        *,
+        source_session_id: str | None = None,
+    ) -> list[RetrievedMemory]:
+        """Overlay active Baddeley Working Memory slots with zero DB latency."""
+        if self.short_term is None or not hasattr(self.short_term, "search_working_memory"):
+            return raw_results
+        try:
+            from uuid import uuid4
+
+            from ..core.enums import MemorySource, MemoryType
+            from ..core.schemas import MemoryRecord, Provenance
+
+            wm_hits = self.short_term.search_working_memory(
+                tenant_id, query, scope_id=source_session_id, top_k=3
+            )
+            if not wm_hits:
+                return raw_results
+
+            by_text = {r.record.text: r for r in raw_results}
+            merged = list(raw_results)
+            for chunk, rel in wm_hits:
+                if chunk.text in by_text:
+                    existing = by_text[chunk.text]
+                    existing.relevance_score = max(existing.relevance_score, rel)
+                    meta = existing.record.metadata
+                    if isinstance(meta, dict):
+                        srcs = set(meta.get("_converging_sources", [existing.retrieval_source]))
+                        srcs.add("working_memory")
+                        meta["_converging_sources"] = sorted(srcs)
+                        meta["_coactivation_count"] = len(srcs)
+                else:
+                    rec = MemoryRecord(
+                        id=uuid4(),
+                        tenant_id=tenant_id,
+                        context_tags=[],
+                        source_session_id=source_session_id,
+                        type=MemoryType.EPISODIC_EVENT,
+                        text=chunk.text,
+                        confidence=chunk.confidence,
+                        importance=chunk.salience,
+                        timestamp=chunk.timestamp,
+                        provenance=Provenance(source=MemorySource.USER_EXPLICIT),
+                        metadata={
+                            **dict(chunk.metadata or {}),
+                            "working_memory_overlay": True,
+                        },
+                    )
+                    rm = RetrievedMemory(
+                        record=rec,
+                        relevance_score=rel,
+                        retrieval_source="working_memory",
+                    )
+                    merged.append(rm)
+                    by_text[chunk.text] = rm
+            return merged
+        except Exception as exc:
+            _logger.debug("working_memory_overlay_failed", error=str(exc))
+            return raw_results
+
+    def compute_intrinsic_spec(
+        self,
+        packet: MemoryPacket,
+        *,
+        tenant_id: str | None = None,
+        intent: str | None = None,
+        target_hidden_dim: int | None = None,
+    ) -> Any:
+        """Synthesize ActiveCML IntrinsicInjectionSpec for the given MemoryPacket."""
+        from ..intrinsic.controller import get_intrinsic_controller
+
+        return get_intrinsic_controller().compute_spec(
+            packet,
+            tenant_id=tenant_id,
+            intent=intent,
+            target_hidden_dim=target_hidden_dim,
         )
 
     async def explain(

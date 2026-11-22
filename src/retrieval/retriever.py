@@ -317,6 +317,10 @@ class HybridRetriever:
                     )
 
         await self._expand_temporal_contiguity(tenant_id, all_results)
+        await self._resolve_prospective_parents(tenant_id, all_results, query_embedding)
+        await self._expand_second_hop_recollection(
+            tenant_id, plan, all_results, query_embedding, plan_start, plan_budget, timeouts_enabled
+        )
 
         elapsed_ms = (time.perf_counter() - plan_start) * 1000
         plan.analysis.metadata["retrieval_meta"] = {
@@ -507,17 +511,47 @@ class HybridRetriever:
                     }
                 )
         if step.query:
+            import re as _re
+
             facts = await self.neocortical.text_search(tenant_id, step.query, limit=step.top_k)
+            q_tokens = [
+                t
+                for t in _re.findall(r"[a-z0-9]{3,}", (step.query or "").lower())
+                if t
+                not in {
+                    "the",
+                    "and",
+                    "for",
+                    "that",
+                    "this",
+                    "with",
+                    "what",
+                    "when",
+                    "where",
+                    "who",
+                    "why",
+                    "how",
+                }
+            ]
             for f in facts:
+                f_text = f"{f.get('key', '')}: {f.get('value', '')}"
+                f_conf = float(f.get("confidence", 0.5) or 0.5)
+                if q_tokens:
+                    blob = f_text.lower()
+                    hits = sum(1 for t in q_tokens if t in blob)
+                    cov = hits / len(q_tokens)
+                    rel = round(min(0.92, max(0.50, 0.50 + 0.32 * cov + 0.10 * f_conf)), 4)
+                else:
+                    rel = 0.8
                 results.append(
                     {
                         "type": MemoryType.SEMANTIC_FACT.value,
                         "source": "facts",
                         "key": f.get("key"),
-                        "text": f"{f.get('key', '')}: {f.get('value', '')}",
+                        "text": f_text,
                         "value": f.get("value"),
-                        "confidence": f.get("confidence", 0.5),
-                        "relevance": 0.8,
+                        "confidence": f_conf,
+                        "relevance": rel,
                         "context_tags": f.get("context_tags", []),
                         "timestamp": f.get("valid_from") or f.get("updated_at"),
                         "record": f,
@@ -705,6 +739,151 @@ class HybridRetriever:
                         "record": row,
                     }
                 )
+
+    async def _resolve_prospective_parents(
+        self,
+        tenant_id: str,
+        all_results: list[dict[str, Any]],
+        query_embedding: list[float] | None = None,
+    ) -> None:
+        """BA10 Prospective Ecphory: resolve prospective implication hits to their parent episode."""
+        parent_scores: dict[str, float] = {}
+        for item in all_results:
+            rec = item.get("record")
+            meta = getattr(rec, "metadata", None) if rec is not None else None
+            if not isinstance(meta, dict) or not meta.get("is_prospective_index"):
+                continue
+            pid = meta.get("parent_id") or meta.get("prospective_source_id")
+            if pid:
+                rel = float(item.get("relevance", 0.5) or 0.5)
+                parent_scores[str(pid)] = max(parent_scores.get(str(pid), 0.0), rel)
+
+        if not parent_scores:
+            return
+
+        existing_ids = {
+            str(getattr(x.get("record"), "id", "")) for x in all_results if x.get("record")
+        }
+        to_fetch: list[UUID] = []
+        for pid_str in parent_scores:
+            if pid_str in existing_ids:
+                continue
+            try:
+                to_fetch.append(UUID(pid_str))
+            except (ValueError, TypeError, AttributeError):
+                continue
+
+        if not to_fetch:
+            return
+
+        get_batch = getattr(getattr(self.hippocampal, "store", None), "get_by_ids_batch", None)
+        if not callable(get_batch):
+            return
+        try:
+            maybe_coro = get_batch(to_fetch[:10])
+            if not inspect.isawaitable(maybe_coro):
+                return
+            parents = await maybe_coro
+            for parent in parents or []:
+                if getattr(parent, "tenant_id", None) != tenant_id:
+                    continue
+                pid_str = str(parent.id)
+                if pid_str in existing_ids:
+                    continue
+                existing_ids.add(pid_str)
+                cue_rel = parent_scores.get(pid_str, 0.6)
+                direct_rel = self._graph_relevance(parent, cue_rel, query_embedding)
+                all_results.append(
+                    {
+                        "type": parent.type.value,
+                        "source": "prospective_parent",
+                        "text": parent.text,
+                        "confidence": getattr(parent, "confidence", 0.8),
+                        "relevance": max(direct_rel, cue_rel * 0.92),
+                        "timestamp": parent.timestamp,
+                        "record": parent,
+                    }
+                )
+        except Exception as exc:
+            logger.debug("prospective_parent_resolution_failed", extra={"error": str(exc)})
+
+    async def _expand_second_hop_recollection(
+        self,
+        tenant_id: str,
+        plan: RetrievalPlan,
+        all_results: list[dict[str, Any]],
+        query_embedding: list[float] | None,
+        plan_start: float,
+        plan_budget: float,
+        timeouts_enabled: bool,
+    ) -> None:
+        """Feeling-of-Knowing Gated 2nd-Hop Cortical Recollection.
+
+        When first-pass results uncover bridge entities (either explicit EntityMentions
+        or Baddeley working_memory_focus entities) that were not in the initial graph
+        seeds, perform a bounded 2nd-hop graph lookup to bridge multi-hop chains.
+        """
+        from ..core.config import get_settings
+
+        settings = get_settings()
+        if not getattr(settings.features, "multi_hop_recollection_enabled", True):
+            return
+        if not all_results:
+            return
+        if timeouts_enabled and (plan_budget - (time.perf_counter() - plan_start)) < 0.15:
+            return
+
+        # Only run if a graph step was already part of the plan ( otherwise AUD-07 above
+        # already ran derived_seeds expansion).
+        initial_graph_steps = [s for s in plan.steps if s.source == RetrievalSource.GRAPH]
+        if not initial_graph_steps:
+            return
+
+        queried_seeds = {
+            s.strip().lower()
+            for step in initial_graph_steps
+            for s in (step.seeds or [])
+            if s and s.strip()
+        }
+        top_first_pass = sorted(
+            all_results, key=lambda r: float(r.get("relevance", 0.0) or 0.0), reverse=True
+        )[:4]
+
+        bridge_seeds: list[str] = []
+        for item in top_first_pass:
+            rec = item.get("record")
+            if rec is None:
+                continue
+            for ent in getattr(rec, "entities", None) or []:
+                name = getattr(ent, "normalized", None) or getattr(ent, "text", None) or str(ent)
+                norm = name.strip().lower()
+                if norm and len(norm) > 1 and norm not in queried_seeds:
+                    queried_seeds.add(norm)
+                    bridge_seeds.append(name.strip())
+            meta = getattr(rec, "metadata", None)
+            if isinstance(meta, dict):
+                for focus_ent in meta.get("working_memory_focus") or []:
+                    norm = str(focus_ent).strip().lower()
+                    if norm and len(norm) > 1 and norm not in queried_seeds:
+                        queried_seeds.add(norm)
+                        bridge_seeds.append(str(focus_ent).strip())
+
+        if not bridge_seeds:
+            return
+
+        hop2_step = RetrievalStep(
+            source=RetrievalSource.GRAPH,
+            seeds=bridge_seeds[:6],
+            top_k=6,
+            priority=1,
+            timeout_ms=200,
+        )
+        try:
+            hop2_items = await self._retrieve_graph(tenant_id, hop2_step, query_embedding)
+            if hop2_items:
+                all_results.extend(hop2_items)
+        except Exception as exc:
+            logger.debug("second_hop_recollection_failed", extra={"error": str(exc)})
 
     async def _retrieve_graph(
         self,
@@ -949,14 +1128,23 @@ class HybridRetriever:
         items: list[dict[str, Any]],
         analysis: QueryAnalysis,
     ) -> list[RetrievedMemory]:
-        """Convert raw items to RetrievedMemory objects."""
-        seen_texts: set = set()
-        retrieved: list[RetrievedMemory] = []
+        """Convert raw items to RetrievedMemory objects with Synaptic Co-Activation tracking."""
+        by_text: dict[str, RetrievedMemory] = {}
+        sources_by_text: dict[str, set[str]] = {}
         for item in items:
             text = item.get("text", "")
-            if text in seen_texts:
+            src = str(item.get("source", "unknown") or "unknown")
+            rel = float(item.get("relevance", 0.5) or 0.5)
+            if text in by_text:
+                existing = by_text[text]
+                sources_by_text[text].add(src)
+                if rel > existing.relevance_score:
+                    existing.relevance_score = rel
+                if isinstance(existing.record.metadata, dict):
+                    existing.record.metadata["_converging_sources"] = sorted(sources_by_text[text])
+                    existing.record.metadata["_coactivation_count"] = len(sources_by_text[text])
                 continue
-            seen_texts.add(text)
+
             record = item.get("record")
             if isinstance(record, MemoryRecord):
                 mem_record = record
@@ -964,13 +1152,13 @@ class HybridRetriever:
                 mem_record = self._fact_to_record(record, item)
             else:
                 mem_record = self._dict_to_record(item)
-            retrieved.append(
-                RetrievedMemory(
-                    record=mem_record,
-                    relevance_score=item.get("relevance", 0.5),
-                    retrieval_source=item.get("source", "unknown"),
-                )
+            sources_by_text[text] = {src}
+            by_text[text] = RetrievedMemory(
+                record=mem_record,
+                relevance_score=rel,
+                retrieval_source=src,
             )
+        retrieved = list(by_text.values())
         retrieved.sort(key=lambda x: x.relevance_score, reverse=True)
         return retrieved
 

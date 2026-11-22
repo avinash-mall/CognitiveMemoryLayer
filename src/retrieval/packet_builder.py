@@ -10,8 +10,8 @@ from ..core.schemas import MemoryPacket, RetrievedMemory, source_label
 # Keep EPISODE_RELEVANCE_THRESHOLD in step with RetrievalSettings.episode_relevance_
 # threshold — two defaults for one knob that disagree is worse than either value.
 EPISODE_RELEVANCE_THRESHOLD = 0.4
-MAX_EPISODES_WHEN_CONSTRAINTS = 5
-MAX_EPISODES_DEFAULT = 8
+MAX_EPISODES_WHEN_CONSTRAINTS = 10
+MAX_EPISODES_DEFAULT = 12
 MAX_CONSTRAINT_TOKENS = 400
 
 
@@ -46,6 +46,22 @@ class MemoryPacketBuilder:
             packet.warnings.extend(conflicts)
         if constraint_warnings:
             packet.warnings.extend(constraint_warnings)
+
+        # CA1 Comparator & Orbitofrontal Reality Monitoring: detect unverified
+        # query presuppositions / false premises when memories are present.
+        try:
+            from ..core.config import get_settings
+
+            if getattr(get_settings().features, "reality_monitoring_enabled", True) and memories:
+                from .reality_monitor import CA1RealityMonitor
+
+                verdict = CA1RealityMonitor.inspect(query, memories)
+                for w in verdict.warnings:
+                    if w not in packet.warnings:
+                        packet.warnings.append(w)
+        except Exception:
+            pass
+
         for mem in memories:
             if mem.record.confidence < 0.5:
                 packet.open_questions.append(
@@ -241,6 +257,16 @@ class MemoryPacketBuilder:
 
         remaining = sections_budget - used
 
+        # 1.5. Warnings & CA1 Reality Monitoring (high-priority, never truncated by episodes)
+        if packet.warnings and remaining > 80:
+            header = "## Warnings\n"
+            warn_lines = [f"- {w}\n" for w in packet.warnings]
+            s = header + "".join(warn_lines) + "\n"
+            if len(s) <= remaining:
+                sections.append(s)
+                used += len(s)
+                remaining -= len(s)
+
         # 2. Facts
         if packet.facts and remaining > 100:
             header = "## Known Facts\n"
@@ -278,10 +304,48 @@ class MemoryPacketBuilder:
         relevant_episodes = [
             e for e in packet.recent_episodes if getattr(e, "relevance_score", 1.0) > threshold
         ]
+        # Adaptive episode budget & Cognitive cue protection via System 1 routing
+        effective_episode_limit = episode_limit
+        try:
+            from ..core.config import get_settings as _get_route_settings
+
+            _route_features = _get_route_settings().features
+            if getattr(_route_features, "adaptive_episode_budget_enabled", True) and packet.query:
+                from ..core.laya_system1 import LayaSystem1Engine
+
+                routing = LayaSystem1Engine.classify_query_routing(
+                    packet.query,
+                    default_wide=episode_limit,
+                    default_focused=min(6, episode_limit),
+                )
+                effective_episode_limit = min(episode_limit, routing.recommended_max_episodes)
+
+                # On Cognitive empathy cues, protect verbatim personal/somatic episodes
+                # from being crowded out by synthetic prospective implications.
+                if routing.is_cognitive_cue and relevant_episodes:
+                    verbatim = [
+                        e
+                        for e in relevant_episodes
+                        if not (e.record.metadata or {}).get("prospective_implication")
+                        and not str(e.record.text or "").startswith("[Prospective")
+                    ]
+                    if verbatim:
+                        # Prefer somatic-marked verbatim episodes while preserving relevance order
+                        verbatim.sort(
+                            key=lambda e: (
+                                1 if (e.record.metadata or {}).get("somatic_marker") else 0,
+                                getattr(e, "relevance_score", 0.0),
+                            ),
+                            reverse=True,
+                        )
+                        relevant_episodes = verbatim
+        except Exception:
+            pass
+
         if relevant_episodes and remaining > 100:
             header = "## Recent Events\n"
             ep_lines: list[str] = []
-            for e in relevant_episodes[:episode_limit]:
+            for e in relevant_episodes[:effective_episode_limit]:
                 # Include temporal metadata when available for temporal reasoning
                 meta = e.record.metadata or {}
                 # The turn date is always shown, and an event date is *added* rather
@@ -319,13 +383,26 @@ class MemoryPacketBuilder:
                 used += len(s)
                 remaining -= len(s)
 
-        # 5. Warnings
-        if packet.warnings and remaining > 50:
-            header = "## Warnings\n"
-            warn_lines = [f"- {w}\n" for w in packet.warnings]
-            s = header + "".join(warn_lines) + "\n"
-            if len(s) <= remaining:
-                sections.append(s)
+        # 4.5. Default Mode Network (DMN / mPFC) Theory-of-Mind & Mentalizing Context
+        try:
+            from ..core.config import get_settings as _get_dmn_settings
+
+            dmn_on = getattr(_get_dmn_settings().features, "dmn_theory_of_mind_enabled", True)
+        except Exception:
+            dmn_on = True
+        if dmn_on and remaining > 120:
+            from ..memory.dmn import DefaultModeNetwork
+
+            if DefaultModeNetwork.is_mentalizing_query(packet.query):
+                dmn_lines = DefaultModeNetwork.synthesize_mental_model(packet)
+                if dmn_lines:
+                    header = "## Theory-of-Mind & Psychological Context\n"
+                    formatted_dmn = [f"- {line}\n" for line in dmn_lines]
+                    s = header + "".join(formatted_dmn) + "\n"
+                    if len(s) <= remaining:
+                        sections.append(s)
+                        used += len(s)
+                        remaining -= len(s)
 
         result = main_header + "".join(sections)
         if len(result) > max_chars:

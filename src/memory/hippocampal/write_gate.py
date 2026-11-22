@@ -254,6 +254,67 @@ class WriteGate:
     def add_known_fact(self, fact_key: str) -> None:
         self._known_facts.add(fact_key)
 
+    def compute_surprise_index(
+        self,
+        chunk: SemanticChunk,
+        existing_memories: list[dict[str, Any]] | None = None,
+    ) -> float:
+        """Compute Thalamic/Amygdala surprise & prediction-error index in [0.0, 1.0].
+
+        High surprise (emotional arousal, causal/prospective triggers, constraint shifts,
+        dense proper entities, or high novelty) recruits synchronous System-2 cortical
+        LLM extraction; low surprise fast-paths through System-1 (<50ms) and queues for
+        background Sharp-Wave Ripple (SWR) sleep replay.
+        """
+        from ..prospective import ProspectiveMemoryEngine
+        from ..somatic import SomaticMarkerAnalyzer
+
+        text = (chunk.text or "").strip()
+        if not text:
+            return 0.0
+
+        novelty = self._compute_novelty(chunk, existing_memories)
+        if novelty <= 0.1:
+            return 0.05
+
+        somatic = SomaticMarkerAnalyzer.analyze(text)
+        triggers = ProspectiveMemoryEngine.induce_triggers(text, max_count=2)
+
+        # Count proper-noun / numeric anchors
+        proper_anchors = len(re.findall(r"\b[A-Z][a-zA-Z0-9]{2,}\b|\b\d{4}\b", text))
+        entity_density = min(1.0, proper_anchors / 4.0)
+
+        # Check for belief-update / contradiction / constraint cues
+        lower = text.lower()
+        has_shift_cue = any(
+            cue in lower
+            for cue in (
+                "actually",
+                "anymore",
+                "no longer",
+                "instead",
+                "changed my",
+                "used to",
+                "moved to",
+                "switched to",
+                "must",
+                "never",
+                "always",
+                "allergic",
+                "prefer",
+                "goal",
+            )
+        )
+
+        score = (
+            0.25 * novelty
+            + 0.20 * max(0.0, min(1.0, chunk.salience))
+            + 0.25 * somatic.arousal
+            + 0.15 * entity_density
+            + (0.15 if triggers or has_shift_cue else 0.0)
+        )
+        return round(max(0.0, min(1.0, score)), 4)
+
 
 _MEMORY_TYPE_TO_CHUNK_TYPE: dict[str, ChunkType] = {
     "preference": ChunkType.PREFERENCE,

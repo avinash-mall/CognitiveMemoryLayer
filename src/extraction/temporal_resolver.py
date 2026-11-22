@@ -67,6 +67,38 @@ _VAGUE_PATTERNS: list[tuple[str, timedelta]] = [
 ]
 
 
+_WEEKDAYS: dict[str, int] = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+_WORD_NUMBERS: dict[str, int] = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+
+_WEEKDAY_RE = re.compile(
+    r"\blast\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", re.IGNORECASE
+)
+_WORD_NUM_RE = re.compile(
+    r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(days?|weeks?|months?|years?)\s+ago\b",
+    re.IGNORECASE,
+)
+
+
 def resolve_temporal_references(
     text: str,
     session_date: datetime,
@@ -81,6 +113,22 @@ def resolve_temporal_references(
     results: list[dict[str, Any]] = []
     text_lower = text.lower()
 
+    # Exact weekday patterns ("last Saturday", "last Tuesday")
+    for match in _WEEKDAY_RE.finditer(text_lower):
+        target_wd = _WEEKDAYS[match.group(1)]
+        days_back = (session_date.weekday() - target_wd) % 7
+        if days_back == 0:
+            days_back = 7
+        results.append(
+            {
+                "original": match.group(0),
+                "resolved_date": session_date - timedelta(days=days_back),
+                "approximate": False,
+                "start": match.start(),
+                "end": match.end(),
+            }
+        )
+
     # Exact relative patterns
     for pattern, delta in _RELATIVE_PATTERNS:
         for match in re.finditer(pattern, text_lower):
@@ -93,6 +141,28 @@ def resolve_temporal_references(
                     "end": match.end(),
                 }
             )
+
+    # Spelled-out numeric patterns ("three years ago", "two weeks ago")
+    for match in _WORD_NUM_RE.finditer(text_lower):
+        count = _WORD_NUMBERS[match.group(1)]
+        unit = match.group(2).rstrip("s")
+        if unit == "day":
+            delta = timedelta(days=-count)
+        elif unit == "week":
+            delta = timedelta(weeks=-count)
+        elif unit == "month":
+            delta = timedelta(days=-count * 30)
+        else:
+            delta = timedelta(days=-count * 365)
+        results.append(
+            {
+                "original": match.group(0),
+                "resolved_date": session_date + delta,
+                "approximate": unit in ("month", "year"),
+                "start": match.start(),
+                "end": match.end(),
+            }
+        )
 
     # Numeric relative patterns
     for pattern, unit in _NUMERIC_PATTERNS:

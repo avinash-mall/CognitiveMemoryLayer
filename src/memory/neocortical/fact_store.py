@@ -180,7 +180,69 @@ class SemanticFactStore:
         query: str,
         limit: int = 20,
     ) -> list[SemanticFact]:
-        """Search facts by text (key, subject, value). Holistic: tenant-only."""
+        """Search facts by tokenized keywords + phrase match across key, subject, predicate, value."""
+        import re as _re
+
+        _stop = {
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "from",
+            "what",
+            "when",
+            "where",
+            "which",
+            "who",
+            "whom",
+            "whose",
+            "why",
+            "how",
+            "did",
+            "does",
+            "are",
+            "was",
+            "were",
+            "have",
+            "has",
+            "had",
+            "will",
+            "would",
+            "could",
+            "should",
+            "can",
+            "about",
+            "into",
+            "your",
+            "their",
+            "his",
+            "her",
+            "user",
+        }
+        tokens = [
+            tok
+            for tok in _re.findall(r"[a-zA-Z0-9_]{3,}", (query or "").lower())
+            if tok not in _stop
+        ][:8]
+
+        clauses = [
+            SemanticFactModel.key.ilike(f"%{query}%"),
+            SemanticFactModel.subject.ilike(f"%{query}%"),
+            cast(SemanticFactModel.value, String).ilike(f"%{query}%"),
+        ]
+        for tok in tokens:
+            clauses.extend(
+                [
+                    SemanticFactModel.key.ilike(f"%{tok}%"),
+                    SemanticFactModel.subject.ilike(f"%{tok}%"),
+                    SemanticFactModel.predicate.ilike(f"%{tok}%"),
+                    cast(SemanticFactModel.value, String).ilike(f"%{tok}%"),
+                ]
+            )
+
+        fetch_limit = max(limit, min(limit * 3, 60)) if tokens else limit
         async with self.session_factory() as session:
             q = (
                 select(SemanticFactModel)
@@ -188,19 +250,29 @@ class SemanticFactStore:
                     and_(
                         SemanticFactModel.tenant_id == tenant_id,
                         SemanticFactModel.is_current.is_(True),
-                        (
-                            SemanticFactModel.key.ilike(f"%{query}%")
-                            | SemanticFactModel.subject.ilike(f"%{query}%")
-                            | cast(SemanticFactModel.value, String).ilike(f"%{query}%")
-                        ),
+                        or_(*clauses),
                     )
                 )
                 .order_by(SemanticFactModel.confidence.desc(), SemanticFactModel.updated_at.desc())
-                .limit(limit)
+                .limit(fetch_limit)
             )
             result = await session.execute(q)
             rows = result.scalars().all()
-            return [self._model_to_fact(r) for r in rows]
+            facts = [self._model_to_fact(r) for r in rows]
+
+        if len(facts) > 1 and tokens:
+            q_low = (query or "").lower().strip()
+
+            def _fact_match_score(f: SemanticFact) -> tuple[float, float]:
+                blob = f"{f.key} {f.subject} {f.predicate} {f.value}".lower()
+                exact = 1.0 if q_low and q_low in blob else 0.0
+                hits = sum(1 for t in tokens if t in blob)
+                coverage = hits / len(tokens)
+                return (exact + coverage, float(f.confidence or 0.5))
+
+            facts.sort(key=_fact_match_score, reverse=True)
+
+        return facts[:limit]
 
     async def search_facts_batch(
         self,

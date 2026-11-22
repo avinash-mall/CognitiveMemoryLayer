@@ -557,8 +557,11 @@ def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> s
         # Measured on Qwen3.6-27B: 300 tokens thinking-on -> empty content;
         # 900 -> truncated mid-JSON; 300 thinking-off -> valid JSON in 49 tokens.
         if disable_thinking:
-            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
-        if allow_reasoning_effort:
+            kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "reasoning": {"enabled": False},
+            }
+        elif allow_reasoning_effort:
             kwargs["reasoning_effort"] = "low"
         resp = client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
@@ -578,21 +581,35 @@ def _llm_call(prompt: str, max_tokens: int = 512, temperature: float = 0.0) -> s
             raw, finish_reason = _request(token_budget, allow_reasoning_effort, disable_thinking)
         except Exception as e:
             msg = str(e)
-            # Retry without whichever knob the endpoint rejected.
-            if disable_thinking and "chat_template_kwargs" in msg:
+            # Retry without whichever knob the endpoint rejected, or backoff on 429 rate limit.
+            if "429" in msg or "rate" in msg.lower():
+                for _wait in (4.0, 8.0, 15.0):
+                    time.sleep(_wait)
+                    try:
+                        raw, finish_reason = _request(
+                            token_budget, allow_reasoning_effort, disable_thinking
+                        )
+                        break
+                    except Exception:
+                        continue
+                else:
+                    print(f"  [LLM rate limit error] {e}")
+                    return ""
+            elif disable_thinking and ("chat_template_kwargs" in msg or "reasoning" in msg):
                 disable_thinking = False
             elif allow_reasoning_effort and "reasoning_effort" in msg:
                 allow_reasoning_effort = False
             else:
                 print(f"  [LLM error] {e}")
                 return ""
-            try:
-                raw, finish_reason = _request(
-                    token_budget, allow_reasoning_effort, disable_thinking
-                )
-            except Exception as retry_error:
-                print(f"  [LLM error] {retry_error}")
-                return ""
+            if not ("429" in msg or "rate" in msg.lower()):
+                try:
+                    raw, finish_reason = _request(
+                        token_budget, allow_reasoning_effort, disable_thinking
+                    )
+                except Exception as retry_error:
+                    print(f"  [LLM error] {retry_error}")
+                    return ""
 
         if not raw and finish_reason == "length":
             print(

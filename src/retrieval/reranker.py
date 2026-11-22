@@ -78,14 +78,27 @@ class MemoryReranker:
         # halves and the packet carries the same content twice. Demote the source when
         # its gist is present in this same result set. Demote, not drop — detail that
         # survives only in the episode would otherwise become unreachable.
-        gist_keys = {
-            mem.record.key for mem in memories if mem.retrieval_source == "facts" and mem.record.key
-        }
-        if gist_keys:
+        gist_words_by_key: dict[str, frozenset[str]] = {}
+        for i_g, mem in enumerate(memories):
+            if mem.retrieval_source in ("facts", "constraints") and mem.record.key:
+                gist_words_by_key[mem.record.key] = word_sets.get(i_g, frozenset())
+
+        if gist_words_by_key:
+            q_ws = word_set(query) if query else frozenset()
             for idx, mem in enumerate(memories):
                 fact_key = (mem.record.metadata or {}).get("consolidated_into_fact_key")
-                if fact_key and fact_key in gist_keys:
-                    penalty = base_scores[idx] * self.config.consolidated_penalty
+                if fact_key and fact_key in gist_words_by_key:
+                    ep_ws = word_sets.get(idx, frozenset())
+                    gist_ws = gist_words_by_key[fact_key]
+                    # Multiple-Trace Complementary Shield: if the query asks for specific
+                    # tokens present in the source episode that the gist generalized away,
+                    # soften the demotion so multi-hop/temporal details remain accessible.
+                    unique_detail_hits = q_ws & (ep_ws - gist_ws)
+                    if unique_detail_hits:
+                        penalty = base_scores[idx] * (self.config.consolidated_penalty * 0.25)
+                        breakdowns[idx]["notes"].append("multiple_trace_detail_preserved")
+                    else:
+                        penalty = base_scores[idx] * self.config.consolidated_penalty
                     base_scores[idx] -= penalty
                     breakdowns[idx]["notes"].append("demoted_superseded_by_gist")
 
@@ -222,6 +235,25 @@ class MemoryReranker:
         )
         if recency_weight > 0:
             score += recency_weight * recency
+
+        # Synaptic Co-Activation Resonance: memories reached by >1 independent retrieval
+        # pathway (e.g., vector + graph index or vector + contiguity) get a convergence bonus.
+        meta = getattr(memory.record, "metadata", None) or {}
+        coact_count = int(meta.get("_coactivation_count", 1) or 1)
+        if coact_count > 1:
+            coact_boost = min(0.18, 0.07 * (coact_count - 1))
+            score += coact_boost
+            notes.append(f"coactivation_resonance_x{coact_count}")
+
+        # Amygdala State-Congruent Somatic Resonance
+        if query and isinstance(meta, dict) and "somatic_marker" in meta:
+            from ..memory.somatic import SomaticMarkerAnalyzer
+
+            somatic_boost = SomaticMarkerAnalyzer.query_affective_resonance(query, meta)
+            if somatic_boost > 0:
+                score += somatic_boost
+                notes.append("somatic_affective_resonance")
+
         return {
             "relevance": relevance,
             "recency": recency,
