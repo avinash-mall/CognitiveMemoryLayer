@@ -455,7 +455,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         ``notlike`` would therefore drop nearly every row and blind the gate entirely.
         """
         async with self.session_factory() as session:
-            q = (
+            q: Any = (
                 select(MemoryRecordModel.text)
                 .where(
                     MemoryRecordModel.tenant_id == tenant_id,
@@ -522,7 +522,7 @@ class PostgresMemoryStore(MemoryStoreBase):
         tenant count for a question a single aggregate answers.
         """
         async with self.session_factory() as session:
-            q = (
+            q: Any = (
                 select(MemoryRecordModel.tenant_id, func.count(MemoryRecordModel.id).label("n"))
                 .where(
                     and_(
