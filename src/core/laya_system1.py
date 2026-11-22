@@ -339,9 +339,7 @@ class LayaSystem1Engine:
             # - Strong unsupported premise (sup_p < 0.10) OR
             # - Unsupported premise + strong speaker-swap/ungrounded signal
             if sup_p < 0.10 or (sup_p < 0.22 and swap_p >= 0.55):
-                reason = (
-                    f"premise_supported={sup_p:.2f}, speaker_swap_or_ungrounded={swap_p:.2f}"
-                )
+                reason = f"premise_supported={sup_p:.2f}, speaker_swap_or_ungrounded={swap_p:.2f}"
                 return LayaGroundingVerdict(
                     is_ungrounded=True,
                     premise_supported_prob=sup_p,

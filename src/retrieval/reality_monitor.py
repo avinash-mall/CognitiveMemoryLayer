@@ -260,14 +260,10 @@ class CA1RealityMonitor:
                     )
 
             if topic_hits_target == 0 and sum(topic_hits_other_speakers.values()) >= 2:
-                other_spk = max(
-                    topic_hits_other_speakers.items(), key=lambda kv: kv[1]
-                )[0]
+                other_spk = max(topic_hits_other_speakers.items(), key=lambda kv: kv[1])[0]
                 topics_str = ", ".join(f"'{t}'" for t in sorted(matched_topics)[:3])
                 verdict.has_mismatch = True
-                verdict.contradictions.append(
-                    f"speaker_swap:{target_person}->{other_spk}"
-                )
+                verdict.contradictions.append(f"speaker_swap:{target_person}->{other_spk}")
                 verdict.warnings.append(
                     f"Reality Monitoring (CA1 Speaker-Attribution Alert): Retrieved memories "
                     f"about {topics_str} are attributed to {other_spk}, NOT {target_person}. "

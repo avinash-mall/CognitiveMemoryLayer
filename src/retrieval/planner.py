@@ -295,11 +295,12 @@ class RetrievalPlanner:
         from datetime import tzinfo
 
         tz: tzinfo = UTC
-        if getattr(analysis, "user_timezone", None):
+        user_tz = getattr(analysis, "user_timezone", None)
+        if user_tz:
             try:
                 from zoneinfo import ZoneInfo
 
-                tz = ZoneInfo(analysis.user_timezone)
+                tz = ZoneInfo(user_tz)
             except Exception:
                 tz = UTC
 

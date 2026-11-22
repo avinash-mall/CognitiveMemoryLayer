@@ -348,7 +348,7 @@ class PostgresMemoryStore(MemoryStoreBase):
             fetch_k = top_k + 4 if (ecphory_enabled and not explicit_status) else top_k
             q = q.order_by(MemoryRecordModel.embedding.cosine_distance(embedding)).limit(fetch_k)
             result = await session.execute(q)
-            records = []
+            records: list[MemoryRecord] = []
             reactivated_any = False
             for row in result:
                 if len(records) >= top_k:
