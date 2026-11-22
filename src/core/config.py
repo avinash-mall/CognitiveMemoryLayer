@@ -341,10 +341,10 @@ class RetrievalSettings(PydanticBaseModel):
         "everything, so it is not a filter at all.",
     )
     max_episodes_when_constraints: int = Field(
-        default=10,
-        description="Max episodes to show when constraints exist (reduces dilution)",
+        default=18,
+        description="Max episodes to show when constraints exist (reduces dilution while preserving recall)",
     )
-    max_episodes_default: int = Field(default=12, description="Max episodes when no constraints")
+    max_episodes_default: int = Field(default=22, description="Max episodes when no constraints")
     max_constraint_tokens: int = Field(
         default=400,
         description="Token budget reserved for Active Constraints (ensures constraints are not truncated)",

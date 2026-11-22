@@ -196,25 +196,51 @@ class MemoryRetriever:
         query: str,
         plan: Any,
         context_filter: list[str] | None,
-    ) -> list[Any]:
-        """Run HyDE: generate a hypothetical memory and retrieve with it.
+    ) -> list[list[Any]]:
+        """Run HyDE: generate hypothetical memory cues and retrieve with them.
 
-        Returns additional results that should be RRF-merged with the main results.
+        On Cognitive dialogue cues (zero-keyword-overlap triggers), generates 3
+        diverse hypothetical past-experience/constraint cues and runs parallel
+        vector retrievals for RRF fusion. Returns a list of result lists.
         """
         if not self._hyde_generator:
             return []
         try:
-            hypo = await self._hyde_generator.generate_hypothetical_memory(query)
-            if not hypo:
+            is_cognitive = False
+            try:
+                from ..core.laya_system1 import LayaSystem1Engine
+
+                is_cognitive = LayaSystem1Engine.classify_query_routing(query).is_cognitive_cue
+            except Exception:
+                is_cognitive = False
+
+            if is_cognitive and hasattr(self._hyde_generator, "generate_cognitive_cues"):
+                hypos = await self._hyde_generator.generate_cognitive_cues(query)
+            else:
+                hypo = await self._hyde_generator.generate_hypothetical_memory(query)
+                hypos = [hypo] if hypo else []
+
+            if not hypos:
                 return []
-            emb_result = await self.retriever.hippocampal.embeddings.embed(hypo)
-            hyde_results = await self.retriever.retrieve(
-                tenant_id,
-                plan,
-                context_filter=context_filter,
-                query_embedding=emb_result.embedding,
-            )
-            return hyde_results
+
+            emb_client = self.retriever.hippocampal.embeddings
+            if len(hypos) > 1 and hasattr(emb_client, "embed_batch"):
+                batch_res = await emb_client.embed_batch(hypos)
+                embeddings: list[list[float]] = [r.embedding for r in batch_res]
+            else:
+                embeddings = [(await emb_client.embed(h)).embedding for h in hypos]
+
+            result_lists: list[list[Any]] = []
+            for emb in embeddings:
+                res = await self.retriever.retrieve(
+                    tenant_id,
+                    plan,
+                    context_filter=context_filter,
+                    query_embedding=emb,
+                )
+                if res:
+                    result_lists.append(res)
+            return result_lists
         except Exception as exc:
             _logger.debug("hyde_augment_failed", error=str(exc))
             return []
@@ -254,12 +280,14 @@ class MemoryRetriever:
         # --- Improvement Report: HyDE augmentation ---
         settings = get_settings()
         if settings.features.hyde_retrieval_enabled and self._hyde_generator:
-            hyde_results = await self._hyde_augment(tenant_id, query, plan, context_filter)
-            if hyde_results:
+            hyde_result_lists = await self._hyde_augment(tenant_id, query, plan, context_filter)
+            if hyde_result_lists:
                 # RRF merge: convert RetrievedMemory lists to dicts for merging
                 main_dicts = [{"id": str(r.record.id), "mem": r} for r in raw_results]
-                hyde_dicts = [{"id": str(r.record.id), "mem": r} for r in hyde_results]
-                merged = rrf_merge([main_dicts, hyde_dicts], k=60)
+                all_lists = [main_dicts] + [
+                    [{"id": str(r.record.id), "mem": r} for r in rl] for rl in hyde_result_lists
+                ]
+                merged = rrf_merge(all_lists, k=60)
                 seen_ids: set[str] = set()
                 deduped_results = []
                 for item in merged:

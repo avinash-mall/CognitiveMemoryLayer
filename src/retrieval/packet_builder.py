@@ -10,8 +10,8 @@ from ..core.schemas import MemoryPacket, RetrievedMemory, source_label
 # Keep EPISODE_RELEVANCE_THRESHOLD in step with RetrievalSettings.episode_relevance_
 # threshold — two defaults for one knob that disagree is worse than either value.
 EPISODE_RELEVANCE_THRESHOLD = 0.4
-MAX_EPISODES_WHEN_CONSTRAINTS = 10
-MAX_EPISODES_DEFAULT = 12
+MAX_EPISODES_WHEN_CONSTRAINTS = 18
+MAX_EPISODES_DEFAULT = 22
 MAX_CONSTRAINT_TOKENS = 400
 
 
@@ -301,11 +301,10 @@ class MemoryPacketBuilder:
                 remaining -= len(s)
 
         # 4. Recent episodes (with chronological timestamps for temporal reasoning)
-        relevant_episodes = [
-            e for e in packet.recent_episodes if getattr(e, "relevance_score", 1.0) > threshold
-        ]
         # Adaptive episode budget & Cognitive cue protection via System 1 routing
         effective_episode_limit = episode_limit
+        effective_threshold = threshold
+        is_cognitive_cue = False
         try:
             from ..core.config import get_settings as _get_route_settings
 
@@ -316,31 +315,39 @@ class MemoryPacketBuilder:
                 routing = LayaSystem1Engine.classify_query_routing(
                     packet.query,
                     default_wide=episode_limit,
-                    default_focused=min(6, episode_limit),
+                    default_focused=min(16, episode_limit),
                 )
                 effective_episode_limit = min(episode_limit, routing.recommended_max_episodes)
-
-                # On Cognitive empathy cues, protect verbatim personal/somatic episodes
-                # from being crowded out by synthetic prospective implications.
-                if routing.is_cognitive_cue and relevant_episodes:
-                    verbatim = [
-                        e
-                        for e in relevant_episodes
-                        if not (e.record.metadata or {}).get("prospective_implication")
-                        and not str(e.record.text or "").startswith("[Prospective")
-                    ]
-                    if verbatim:
-                        # Prefer somatic-marked verbatim episodes while preserving relevance order
-                        verbatim.sort(
-                            key=lambda e: (
-                                1 if (e.record.metadata or {}).get("somatic_marker") else 0,
-                                getattr(e, "relevance_score", 0.0),
-                            ),
-                            reverse=True,
-                        )
-                        relevant_episodes = verbatim
+                is_cognitive_cue = routing.is_cognitive_cue
+                if is_cognitive_cue:
+                    # Semantically disconnected Cognitive cues often score 0.22-0.39 raw cosine
+                    effective_threshold = min(threshold, 0.20)
         except Exception:
             pass
+
+        relevant_episodes = [
+            e
+            for e in packet.recent_episodes
+            if getattr(e, "relevance_score", 1.0) > effective_threshold
+        ]
+        # On Cognitive empathy cues, protect verbatim personal/somatic episodes
+        # from being crowded out by synthetic prospective implications.
+        if is_cognitive_cue and relevant_episodes:
+            verbatim = [
+                e
+                for e in relevant_episodes
+                if not (e.record.metadata or {}).get("prospective_implication")
+                and not str(e.record.text or "").startswith("[Prospective")
+            ]
+            if verbatim:
+                verbatim.sort(
+                    key=lambda e: (
+                        1 if (e.record.metadata or {}).get("somatic_marker") else 0,
+                        getattr(e, "relevance_score", 0.0),
+                    ),
+                    reverse=True,
+                )
+                relevant_episodes = verbatim
 
         if relevant_episodes and remaining > 100:
             header = "## Recent Events\n"

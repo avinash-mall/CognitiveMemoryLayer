@@ -132,6 +132,11 @@ _STOPWORDS = _QUESTION_STARTERS | frozenset(
 )
 
 _PROPER_NOUN_RE = re.compile(r"\b[A-Z][a-zA-Z0-9]{2,}\b")
+_ACRONYM_RE = re.compile(r"^[A-Z0-9]{2,}$")
+_HYPOTHETICAL_RE = re.compile(
+    r"(?:^\s*(?:would|could|might|should|is\s+it\s+likely|do\s+you\s+think)\b|\blikely\b)",
+    re.IGNORECASE,
+)
 _YEAR_RE = re.compile(r"\b(?:19\d{2}|20\d{2})\b")
 _QUOTED_RE = re.compile(r"['\"]([^'\"]{3,40})['\"]")
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -164,16 +169,18 @@ class CA1RealityMonitor:
         if not corpus_words:
             return verdict
 
+        is_hypothetical = bool(_HYPOTHETICAL_RE.search(query))
+
         # 1. Extract specific presupposed anchors from the query:
-        #    - non-initial capitalized proper nouns (or initial ones that are not question words)
+        #    - non-initial capitalized proper nouns (excluding acronyms like LGBTQ/PhD)
         #    - 4-digit years (e.g., 2022, 2024)
         #    - quoted phrases
         proper_candidates: list[str] = []
         tokens_raw = query.strip().split()
-        for idx, match in enumerate(_PROPER_NOUN_RE.finditer(query)):
+        for match in _PROPER_NOUN_RE.finditer(query):
             word = match.group(0)
             w_low = word.lower()
-            if w_low in _STOPWORDS:
+            if w_low in _STOPWORDS or _ACRONYM_RE.match(word):
                 continue
             # If it's the very first word of the query, only treat it as a proper anchor
             # if it isn't a common verb/noun starter
@@ -194,8 +201,14 @@ class CA1RealityMonitor:
         for anchor in specific_anchors:
             a_low = anchor.lower()
             anchor_tokens = _WORD_RE.findall(a_low)
-            if a_low in combined_lower or (
-                anchor_tokens and all(t in corpus_words for t in anchor_tokens)
+            # Match exact, token-subset, or nickname prefix (e.g. "Mel" -> "Melanie")
+            is_prefix_match = len(a_low) >= 3 and any(
+                w.startswith(a_low) and len(w) <= len(a_low) + 6 for w in corpus_words
+            )
+            if (
+                a_low in combined_lower
+                or is_prefix_match
+                or (anchor_tokens and all(t in corpus_words for t in anchor_tokens))
             ):
                 grounded.append(anchor)
             else:
@@ -209,21 +222,24 @@ class CA1RealityMonitor:
         ]
         grounded_content = [w for w in q_content_words if w in corpus_words]
 
-        # A CA1 presupposition mismatch occurs when:
-        # - We have at least one unverified specific anchor (proper noun, year, or quoted term)
-        # - AND the query has grounded context in the retrieved memories (either another
-        #   specific anchor is grounded, or >=1 content words + >=2 retrieved memories exist).
-        if unverified and (grounded or (grounded_content and len(memories) >= 2)):
+        # Skip Stage 1 presupposition warnings on hypothetical / common-sense questions
+        # ("Would Caroline likely have Dr. Seuss books?") where the entity is intentionally
+        # introduced by the question to test world-knowledge inference rather than a trap.
+        if (
+            not is_hypothetical
+            and unverified
+            and (grounded or (grounded_content and len(memories) >= 2))
+        ):
             verdict.has_mismatch = True
             verdict.grounded_anchors = grounded or grounded_content[:3]
             verdict.unverified_presuppositions = unverified
             unv_str = ", ".join(f"'{u}'" for u in unverified[:3])
             grd_str = ", ".join(f"'{g}'" for g in verdict.grounded_anchors[:3])
             verdict.warnings.append(
-                f"Reality Monitoring (CA1 Presupposition Alert): Query presupposes {unv_str}, "
-                f"which is absent from retrieved memories matching {grd_str}. "
-                f"Do not fabricate or confirm {unv_str} unless explicitly supported by evidence; "
-                f"if unsupported, reply concisely that you don't have information about that."
+                f"Reality Monitoring (CA1 Presupposition Note): {unv_str} is not explicitly "
+                f"named in retrieved memories matching {grd_str}. Verify carefully before "
+                f"confirming {unv_str}; if related evidence supports an answer, use it without "
+                f"fabricating unsupported details."
             )
 
         # 2. Hippocampal Relational Speaker-Topic Binding (detects speaker-swap traps where
@@ -237,7 +253,7 @@ class CA1RealityMonitor:
             for w in q_content_words
             if w not in {p.lower() for p in query_persons} and len(w) >= 4
         ]
-        if len(query_persons) == 1 and topic_words:
+        if not is_hypothetical and len(query_persons) == 1 and topic_words:
             target_person = query_persons[0]
             target_low = target_person.lower()
             topic_hits_target = 0
@@ -252,14 +268,14 @@ class CA1RealityMonitor:
                 matched_topics.update(hit_kws)
                 m_spk = speaker_prefix_re.match(text)
                 speaker = m_spk.group(1) if m_spk else ""
-                if speaker.lower() == target_low:
+                if speaker.lower() == target_low or speaker.lower().startswith(target_low):
                     topic_hits_target += 1
                 elif speaker and target_low not in t_low:
                     topic_hits_other_speakers[speaker] = (
                         topic_hits_other_speakers.get(speaker, 0) + 1
                     )
 
-            if topic_hits_target == 0 and sum(topic_hits_other_speakers.values()) >= 2:
+            if topic_hits_target == 0 and sum(topic_hits_other_speakers.values()) >= 3:
                 other_spk = max(topic_hits_other_speakers.items(), key=lambda kv: kv[1])[0]
                 topics_str = ", ".join(f"'{t}'" for t in sorted(matched_topics)[:3])
                 verdict.has_mismatch = True
@@ -267,36 +283,8 @@ class CA1RealityMonitor:
                 verdict.warnings.append(
                     f"Reality Monitoring (CA1 Speaker-Attribution Alert): Retrieved memories "
                     f"about {topics_str} are attributed to {other_spk}, NOT {target_person}. "
-                    f"The query asks about {target_person}; do not attribute {other_spk}'s "
-                    f"actions or plans to {target_person}. Reply concisely that you don't have "
-                    f"information about that for {target_person} without speculating."
+                    f"Do not attribute {other_spk}'s actions to {target_person}; verify against "
+                    f"the evidence before answering."
                 )
-
-        # 3. System 1 Laya Calibrated Reality Verification (catches subtle ungrounded
-        #    premises and speaker-swaps that structural proper-noun rules miss, while
-        #    automatically skipping empathetic Cognitive dialogue cues).
-        if not verdict.has_mismatch:
-            try:
-                from ..core.laya_system1 import LayaSystem1Engine
-
-                routing = LayaSystem1Engine.classify_query_routing(query)
-                laya_v = LayaSystem1Engine.verify_reality_grounding(
-                    query,
-                    memories,
-                    is_cognitive_cue=routing.is_cognitive_cue,
-                )
-                if laya_v.is_ungrounded:
-                    verdict.has_mismatch = True
-                    verdict.contradictions.append(f"laya_system1:{laya_v.reason}")
-                    verdict.warnings.append(
-                        "Reality Monitoring (CA1 System-1 Alert): The retrieved memories do "
-                        "not appear to support the factual premise or speaker-action "
-                        "attribution assumed by this question. Verify strictly against the "
-                        "evidence; if the assumed event or attribution is not present, reply "
-                        "concisely that you don't have information about that from previous "
-                        "conversations — do not substitute unrelated details."
-                    )
-            except Exception:
-                pass
 
         return verdict

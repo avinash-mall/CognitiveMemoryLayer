@@ -38,11 +38,44 @@ Return exactly 3 reformulations, one per line. No numbering or bullets.
 Just the reformulated queries, nothing else."""
 
 
+_COGNITIVE_CUE_PROMPT = """A person just made this remark in a conversation:
+"{query}"
+
+This remark may be implicitly connected to a past personal experience, habit,
+hard-learned lesson, boundary, fear, allergy, goal, or value they mentioned weeks ago
+using completely different words.
+
+Write 3 distinct, concrete 1-sentence past statements the speaker might have said
+earlier that explain their current remark (focus on causal events, personal rules,
+past scares, or boundaries — avoid repeating the exact words of the remark).
+Return exactly 3 lines, no numbering or bullets."""
+
+
 class HyDEGenerator:
     """Generates hypothetical documents and query expansions for retrieval."""
 
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm = llm_client
+
+    async def generate_cognitive_cues(self, query: str) -> list[str]:
+        """Generate 3 hypothetical past cue statements to bridge semantic disconnect."""
+        if not query or not query.strip():
+            return []
+        try:
+            response = await self._llm.complete(
+                _COGNITIVE_CUE_PROMPT.format(query=query.strip()),
+                temperature=0.6,
+                max_tokens=240,
+            )
+            lines = [
+                line.strip().lstrip("0123456789.-•* )")
+                for line in response.strip().split("\n")
+                if line.strip() and len(line.strip()) > 12
+            ]
+            return lines[:3]
+        except Exception as exc:
+            logger.warning("cognitive_hyde_generation_failed", error=str(exc))
+            return []
 
     async def generate_hypothetical_memory(self, query: str) -> str | None:
         """Generate a hypothetical memory that would answer the query.

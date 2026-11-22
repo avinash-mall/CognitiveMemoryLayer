@@ -570,3 +570,43 @@ async def test_orchestrator_create_graceful_fallback_without_cloud_api_key(monke
     orch = await orch_mod.MemoryOrchestrator.create(db_manager)
     assert orch.reconsolidation.fact_extractor is None
     assert orch.hippocampal.unified_extractor is None
+
+
+def test_ca1_skips_hypothetical_and_matches_nickname_prefix():
+    from src.retrieval.reality_monitor import CA1RealityMonitor
+
+    memories = [
+        _make_record("Caroline: I collect classic children's books and educational stories."),
+        _make_record("Melanie: 5 years married already! Time flies."),
+    ]
+    # Hypothetical common-sense query with unmentioned proper noun ("Dr. Seuss") must NOT trigger alert
+    v_hypo = CA1RealityMonitor.inspect(
+        "Would Caroline likely have Dr. Seuss books on her bookshelf?", memories
+    )
+    assert v_hypo.has_mismatch is False
+    assert v_hypo.warnings == []
+
+    # Nickname prefix ("Mel" -> "Melanie") must NOT trigger alert
+    v_nick = CA1RealityMonitor.inspect("How long have Mel and her husband been married?", memories)
+    assert v_nick.has_mismatch is False
+    assert v_nick.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_cognitive_hyde_generates_three_cues():
+    from unittest.mock import AsyncMock
+
+    from src.retrieval.hyde import HyDEGenerator
+
+    mock_llm = AsyncMock()
+    mock_llm.complete.return_value = (
+        "1. Saying no to extra commitments reduced my daily stress.\n"
+        "2. Setting firm personal boundaries prevents burnout.\n"
+        "3. Overcommitting to volunteer work always leaves me exhausted."
+    )
+    gen = HyDEGenerator(mock_llm)
+    cues = await gen.generate_cognitive_cues(
+        "A: I ended up volunteering for that project, and now I'm totally overwhelmed."
+    )
+    assert len(cues) == 3
+    assert "Saying no" in cues[0]

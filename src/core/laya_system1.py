@@ -173,8 +173,8 @@ class LayaSystem1Engine:
     def classify_query_routing(
         cls,
         query: str,
-        default_wide: int = 12,
-        default_focused: int = 6,
+        default_wide: int = 22,
+        default_focused: int = 16,
     ) -> QueryRoutingDecision:
         """Classify query intent and recommend adaptive episode budget.
 
