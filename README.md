@@ -415,7 +415,7 @@ curl http://localhost:8000/api/v1/health
 `./docker/up.sh` wraps `docker compose` and automatically applies the GPU override when `nvidia-smi` is available. The `api` service starts Postgres, Neo4j, Redis, runs migrations, and serves the API — all in one command. Models are downloaded from HuggingFace Hub automatically on first start.
 
 <details>
-<summary><strong>Python SDK (no Docker)</strong></summary>
+<summary><strong>Local Server (run API outside Docker)</strong></summary>
 
 ```bash
 pip install -e ".[server,dev]"
@@ -658,39 +658,40 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 Evaluated on the **complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
 
-**CML v2.0 (2026-11-22) setup:** Full Neuro-Cognitive stack (Amygdala Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`), local `nomic-embed-text-v2-moe` embeddings, heuristic write path (`FEATURES__USE_LLM_ENABLED=false` &mdash; zero write-time LLM calls across 242,658 ingested turns), and **`openai/gpt-4o-mini`** for both QA and LLM-as-Judge (`temperature=0`, total API cost **`$0.52`**). Committed artifact: [`evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json).
+**CML v2.0 setup:** Full Neuro-Cognitive stack (Amygdala Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML intrinsic memory, and **Laya System 1** (`convaiinnovations/laya`), local `nomic-embed-text-v2-moe` embeddings, heuristic write path (`FEATURES__USE_LLM_ENABLED=false` &mdash; zero write-time LLM calls across 242,658 ingested turns), and **`openai/gpt-4o-mini`** for both QA and LLM-as-Judge (`temperature=0`, total API cost **`$0.52`**). Artifact: [`evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4omini_full_2387_summary.json).
 
-### Head-to-Head Comparison on Full LoCoMo-Plus (2,387 Samples)
+### Full LoCoMo-Plus Comparison (2,387 Samples)
 
-| System / Method | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v2.0 (Neuro + Laya)** | `gpt-4o-mini` (heuristic write) | 52.32% | 37.59% | 40.19% | 43.23% | **91.48%** | **56.62%** | 24.44% | 32.18 |
-| *Memory Systems* | | | | | | | | | |
-| **Kumiho Cognitive Memory** <sup>[1]</sup> | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
-| **A-Mem** <sup>[2]</sup> | `gpt-4o` | 76.90% | **55.60%** | 49.30% | 68.10% | 35.20% | 59.64% | 42.44% | 17.20 |
-| **SeCom** <sup>[2]</sup> | `gpt-4o` | 77.60% | 50.90% | 42.30% | **71.40%** | 31.80% | 57.53% | 42.63% | 14.90 |
-| **Mem0** <sup>[2]</sup> | `gpt-4o` | **80.20%** | 48.10% | 39.40% | 66.20% | 30.50% | 57.24% | 41.44% | 15.80 |
-| *RAG Baselines* | | | | | | | | | |
-| RAG (`text-embedding-large`) <sup>[2]</sup> | `gpt-4o` | 49.76% | 22.78% | 40.00% | 21.35% | 59.73% | 45.32% | 29.77% | 15.55 |
-| RAG (`text-embedding-small`) <sup>[2]</sup> | `gpt-4o` | 39.17% | 17.79% | 34.69% | 14.61% | 51.90% | 37.23% | 24.94% | 12.29 |
-| RAG (`text-ada-002`) <sup>[2]</sup> | `gpt-4o` | 40.00% | 16.73% | 37.81% | 15.73% | 49.44% | 37.38% | 23.47% | 13.91 |
-| *Full-Context LLMs (No Retrieval)* | | | | | | | | | |
-| Gemini-2.5-Pro <sup>[2]</sup> | Full context (1M) | 77.83% | 52.48% | **73.83%** | 63.54% | 73.03% | **71.78%** | 45.72% | 26.06 |
-| Gemini-2.5-Flash <sup>[2]</sup> | Full context (1M) | 77.71% | 54.26% | 66.04% | 66.67% | 65.84% | 69.25% | 44.58% | 24.67 |
-| GPT-4o <sup>[2]</sup> | Full context | 78.13% | 52.30% | 45.79% | 69.79% | 48.99% | 62.99% | 41.94% | 21.05 |
-| GPT-4.1 <sup>[2]</sup> | Full context | 80.30% | 53.90% | 58.88% | 72.92% | 37.30% | 62.21% | 43.58% | 18.63 |
-| GPT-5-nano <sup>[2]</sup> | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
-| Qwen2.5-14B-Instruct <sup>[2]</sup> | Full context | 76.33% | 48.23% | 38.94% | 57.29% | 68.09% | 63.45% | 44.21% | 19.24 |
-| Qwen3-14B <sup>[2]</sup> | Full context | 65.96% | 46.45% | 53.89% | 59.38% | 60.45% | 59.65% | 40.56% | 19.09 |
+| System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **CML v2.0 (Neuro + Laya)** | Memory System | `gpt-4o-mini` (heuristic write) | 52.32% | 37.59% | 40.19% | 43.23% | **91.48%** | **56.62%** | 24.44% | 32.18 |
+| **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
+| **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 66.60% | &mdash; |
+| **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.90% | &mdash; |
+| **Madeleine (standalone)** <sup>[2]</sup> | Memory System | Zero online LLM calls | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.40% | &mdash; |
+| **A-Mem** <sup>[3]</sup> | Memory System | `gpt-4o` | 76.90% | **55.60%** | 49.30% | 68.10% | 35.20% | 59.64% | 42.44% | 17.20 |
+| **SeCom** <sup>[3]</sup> | Memory System | `gpt-4o` | 77.60% | 50.90% | 42.30% | **71.40%** | 31.80% | 57.53% | 42.63% | 14.90 |
+| **Mem0** <sup>[3]</sup> | Memory System | `gpt-4o` | **80.20%** | 48.10% | 39.40% | 66.20% | 30.50% | 57.24% | 41.44% | 15.80 |
+| RAG (`text-embedding-large`) <sup>[3]</sup> | RAG Baseline | `gpt-4o` | 49.76% | 22.78% | 40.00% | 21.35% | 59.73% | 45.32% | 29.77% | 15.55 |
+| RAG (`text-embedding-small`) <sup>[3]</sup> | RAG Baseline | `gpt-4o` | 39.17% | 17.79% | 34.69% | 14.61% | 51.90% | 37.23% | 24.94% | 12.29 |
+| RAG (`text-ada-002`) <sup>[3]</sup> | RAG Baseline | `gpt-4o` | 40.00% | 16.73% | 37.81% | 15.73% | 49.44% | 37.38% | 23.47% | 13.91 |
+| Gemini-2.5-Pro <sup>[3]</sup> | Full Context | Full context (1M) | 77.83% | 52.48% | **73.83%** | 63.54% | 73.03% | **71.78%** | 45.72% | 26.06 |
+| Gemini-2.5-Flash <sup>[3]</sup> | Full Context | Full context (1M) | 77.71% | 54.26% | 66.04% | 66.67% | 65.84% | 69.25% | 44.58% | 24.67 |
+| Qwen2.5-14B-Instruct <sup>[3]</sup> | Full Context | Full context | 76.33% | 48.23% | 38.94% | 57.29% | 68.09% | 63.45% | 44.21% | 19.24 |
+| GPT-4o <sup>[3]</sup> | Full Context | Full context | 78.13% | 52.30% | 45.79% | 69.79% | 48.99% | 62.99% | 41.94% | 21.05 |
+| GPT-4.1 <sup>[3]</sup> | Full Context | Full context | 80.30% | 53.90% | 58.88% | 72.92% | 37.30% | 62.21% | 43.58% | 18.63 |
+| Qwen3-14B <sup>[3]</sup> | Full Context | Full context | 65.96% | 46.45% | 53.89% | 59.38% | 60.45% | 59.65% | 40.56% | 19.09 |
+| GPT-5-nano <sup>[3]</sup> | Full Context | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
 
-<sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using GPT-4o; factual category breakdown not published.  
-<sup>[2]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive. CML's overall 6-category average is **51.21%** (`1,222.5 / 2,387`).
+<sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using `gpt-4o`; factual category breakdown not published.  
+<sup>[2]</sup> Reported in the *Madeleine* paper (arXiv 2026) under the official LoCoMo-Plus protocol on the 401-sample Cognitive split; factual category breakdown not published.  
+<sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive. CML's overall 6-category average is **51.21%** (`1,222.5 / 2,387`).
 
 ### Unbiased Analysis &amp; Trade-Offs
 
-- **Factual recall parity at a fraction of the cost:** Using `gpt-4o-mini` and zero write-time LLM calls (`$0.52` total for 4,774 QA+Judge calls), CML reaches **56.62%** LoCoMo Factual Avg &mdash; beating `RAG (text-embedding-large, GPT-4o)` by **+11.30pp** and full-context `GPT-5-nano` by **+1.66pp**, and landing within **0.62pp of Mem0 (GPT-4o)** (`57.24%`) and **0.91pp of SeCom (GPT-4o)** (`57.53%`).
-- **Best-in-class adversarial resistance (`91.48%`), with a known precision/recall trade-off:** CA1 Reality Monitoring + strict grounding cuts hallucination on false-premise queries (`408/446` correct, `56.3%` explicit refusals on adversarial), outperforming Gemini-2.5-Pro (`73.03%`) and Mem0/A-Mem (`30.5&ndash;35.2%`). The trade-off is visible in the refusal diagnostics: `gpt-4o-mini` also refuses on `42.7%` of `common-sense` and `21.6&ndash;30.8%` of factual queries when an answer requires world-knowledge inference not stated verbatim in retrieved episodes.
-- **Cognitive (`24.44%` on all 401 samples) is the main gap under heuristic ingestion:** In `FEATURES__USE_LLM_ENABLED=false` mode, CML extracts no LLM entities/relations into Neo4j and relies on dense embeddings + regex constraints, so implicit cue&ndash;trigger disconnects without keyword overlap trail GPT-4o memory systems (`41.4&ndash;42.6%`) and Kumiho (`93.3%`). Enabling `FEATURES__USE_LLM_ENABLED=true` (unified LLM extraction) or using a stronger reasoning answerer narrows this gap (on the 677-sample stratified subset with `z-ai/glm-5.3-flash:batch`, the same memory layer scored **47.50%** on Cognitive and **+2.50pp** overall in paired A/B vs. CML baseline without Neuro+Laya).
+- **Factual recall at low cost:** Using `gpt-4o-mini` and zero write-time LLM calls (`$0.52` total for 4,774 QA+Judge calls), CML reaches **56.62%** LoCoMo Factual Avg &mdash; beating `RAG (text-embedding-large, GPT-4o)` by **+11.30pp** and full-context `GPT-5-nano` by **+1.66pp**, and landing within **0.62pp of Mem0 (GPT-4o)** (`57.24%`) and **0.91pp of SeCom (GPT-4o)** (`57.53%`).
+- **Adversarial resistance (`91.48%`) vs. refusal trade-off:** CA1 Reality Monitoring + strict grounding cuts false-premise hallucinations (`408/446` correct, `56.3%` explicit refusals on adversarial), ahead of Gemini-2.5-Pro (`73.03%`) and Mem0/A-Mem (`30.5&ndash;35.2%`). The trade-off is visible in refusal rates: `gpt-4o-mini` also refuses on `42.7%` of `common-sense` and `21.6&ndash;30.8%` of factual queries when answers require world-knowledge inference not stated verbatim in retrieved episodes.
+- **Cognitive (`24.44%` on all 401 samples) under heuristic ingestion:** With `FEATURES__USE_LLM_ENABLED=false`, CML performs no write-time LLM entity/relation extraction into Neo4j and relies on dense embeddings + regex constraints, trailing GPT-4o memory systems (`41.4&ndash;42.6%`), Madeleine/HyperMem (`52.4&ndash;66.6%`), and Kumiho (`93.3%`). Enabling `FEATURES__USE_LLM_ENABLED=true` or pairing CML with a stronger reasoning answerer directly addresses this gap.
 - **Judge parity note:** Paper Table 1 uses `gemini-2.5-flash` as judge with `gpt-4o` answering; CML's full run uses `openai/gpt-4o-mini` for both QA and judging.
 
 ### Reproducing the Full 2,387-Sample Run
@@ -709,7 +710,7 @@ python evaluation/scripts/run_locomo_openrouter_batch.py \
   --sync-workers 24
 ```
 
-Full results, refusal diagnostics, and historical runs: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; CLI harness: `cml-eval run-full --repo-root .`
+Full diagnostics &amp; methodology: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; CLI harness: `cml-eval run-full --repo-root .`
 
 ---
 
