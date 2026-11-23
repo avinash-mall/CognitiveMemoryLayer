@@ -56,9 +56,10 @@
 
 ## 3. Unified Head-to-Head Comparison on Full LoCoMo-Plus (2,387 Samples)
 
-| System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
+| System / Method | Category | Backbone / QA Model | Single-hop | Multi-hop | Temporal | Common-sense | Adversarial | **LoCoMo Factual Avg** | **Cognitive** | **Gap** |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v2.0 (Neuro + Laya)** | Memory System | `gpt-4o` (heuristic write) | 43.58% | 26.24% | 38.47% | 22.92% | **91.48%** | **50.05%** | 19.70% | 30.35 |
+| **CML v2.0 (post-fix `d0b6132`, 120-stratified)** <sup>[0]</sup> | Memory System | `gpt-4o` (heuristic write + HyDE) | 72.50% | 25.00% | 35.00% | 40.00% | **90.00%** | **52.50%** | 35.00% | 17.50 |
+| **CML v2.0 (pre-fix `a055f3f`, full 2,387)** | Memory System | `gpt-4o` (heuristic write) | 43.58% | 26.24% | 38.47% | 22.92% | **91.48%** | 50.05% | 19.70% | 30.35 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | — | — | — | — | — | — | **93.30%** | — |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | — | — | — | — | — | — | 66.60% | — |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | — | — | — | — | — | — | 52.90% | — |
@@ -81,6 +82,7 @@
 | Qwen2.5-7B-Instruct <sup>[3]</sup> | Full Context | Full context | 70.72% | 39.54% | 21.81% | 37.50% | 20.22% | 45.31% | 35.74% | 9.57 |
 | Qwen2.5-3B-Instruct <sup>[3]</sup> | Full Context | Full context | 68.25% | 38.65% | 18.38% | 48.44% | 11.69% | 42.20% | 31.38% | 10.82 |
 
+<sup>[0]</sup> Measured on a 120-sample stratified paired split (20 samples/category, `0` errors; artifact [`locomo_plus_2026-11-22_gpt4o_gemini25flash_fixes_120_summary.json`](results/locomo_plus_2026-11-22_gpt4o_gemini25flash_fixes_120_summary.json)) after eliminating CA1 false-positive refusal alerts, widening episode caps (`6/12 -> 16/22`), and adding read-time 3-cue Cognitive HyDE (`+9.00pp` Factual / `+6.67pp` overall vs. pre-fix `42.92%` on the exact same 120 samples).  
 <sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using `gpt-4o`; per-category factual scores are not published.  
 <sup>[2]</sup> Reported in the *Madeleine* paper (arXiv 2026) under the official LoCoMo-Plus protocol on the 401-sample Cognitive split; per-category factual scores are not published.  
 <sup>[3]</sup> Table 1 of [arXiv:2602.10715](https://arxiv.org/abs/2602.10715) (judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted average of the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg − Cognitive.
