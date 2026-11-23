@@ -681,3 +681,19 @@ async def test_bridge_query_and_temporal_chronological_ordering():
     md = builder.to_llm_context(pkt)
     assert "Chronological Order" in md
     assert md.index("Earlier event") < md.index("Later event")
+
+
+@pytest.mark.asyncio
+async def test_cognitive_cue_selector_returns_valid_indices():
+    from unittest.mock import AsyncMock
+
+    from src.retrieval.hyde import HyDEGenerator
+
+    mock_llm = AsyncMock()
+    mock_llm.complete.return_value = "3, 1"
+    gen = HyDEGenerator(mock_llm)
+    chosen = await gen.select_cognitive_cues(
+        "A: I booked a hotel right next to the conference.",
+        ["Random chat", "Weather talk", "Running out of gas made me never go below 1/4 tank."],
+    )
+    assert chosen == [2, 0]

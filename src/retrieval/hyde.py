@@ -56,10 +56,19 @@ _BRIDGE_QUERY_PROMPT = """Question: "{query}"
 Retrieved memories so far:
 {snippets}
 
-If these memories already contain the direct answer, reply ONLY with: NONE
-If they mention an unresolved bridge clue (e.g., "my home country", "a friend", "that event", "the project") and we need a second search to find the missing fact, write ONE short search query (4 to 12 words) targeting that missing fact. No explanation.
+If these memories already contain the complete, specific answer (including exact entity names, counts, or items), reply ONLY with: NONE
+If they mention an unresolved reference (e.g., "my home country", "a friend", "that event", "the painting") OR only partially answer a multi-part/count question ("how many times", "what types"), write ONE short search query (4 to 12 words) to retrieve the missing fact or additional occurrences. No explanation.
 
 Follow-up query or NONE:"""
+
+_COGNITIVE_SELECT_PROMPT = """Current speaker remark:
+"{query}"
+
+Candidate past memories (numbered):
+{candidates}
+
+Which 1 to 3 numbered memories above have the strongest hidden causal, habit, boundary, fear, allergy, goal, or past-experience connection to the speaker's current remark (even if they use completely different words)?
+Reply ONLY with comma-separated numbers in order of best match (e.g. `14, 3`), or `NONE` if none are relevant."""
 
 
 class HyDEGenerator:
@@ -68,11 +77,39 @@ class HyDEGenerator:
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm = llm_client
 
+    async def select_cognitive_cues(self, query: str, candidates: list[str]) -> list[int]:
+        """Select top 1-3 0-based candidate indices with hidden cognitive connection to query."""
+        import re
+
+        if not query or not candidates:
+            return []
+        numbered = "\n".join(f"{i + 1}. {c[:180]}" for i, c in enumerate(candidates[:22]))
+        try:
+            response = await self._llm.complete(
+                _COGNITIVE_SELECT_PROMPT.format(query=query.strip(), candidates=numbered),
+                temperature=0.0,
+                max_tokens=32,
+            )
+            txt = response.strip()
+            if not txt or txt.upper().startswith("NONE"):
+                return []
+            nums = [int(n) - 1 for n in re.findall(r"\b(\d{1,2})\b", txt)]
+            seen: set[int] = set()
+            valid: list[int] = []
+            for idx in nums:
+                if 0 <= idx < len(candidates) and idx not in seen:
+                    seen.add(idx)
+                    valid.append(idx)
+            return valid[:3]
+        except Exception as exc:
+            logger.warning("cognitive_cue_select_failed", error=str(exc))
+            return []
+
     async def generate_bridge_query(self, query: str, snippets: list[str]) -> str | None:
         """Generate a targeted 2nd-hop bridge search query when 1st-pass snippets leave a gap."""
         if not query or not snippets:
             return None
-        joined = "\n".join(f"- {s[:220]}" for s in snippets[:6])
+        joined = "\n".join(f"- {s[:160]}" for s in snippets[:12])
         try:
             response = await self._llm.complete(
                 _BRIDGE_QUERY_PROMPT.format(query=query.strip(), snippets=joined),

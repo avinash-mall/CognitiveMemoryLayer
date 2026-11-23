@@ -123,17 +123,23 @@ QA_PROMPT = """Based on the above context from past conversations, answer the qu
 
 IMPORTANT RULES:
 1. Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the question.
-2. If the context contains timestamps or dates, reason about time carefully.
-   Calculate durations by counting between dates. "Yesterday" means the day before the date shown.
+2. If the context contains timestamps or dates, reason about time carefully and ALWAYS
+   convert relative times ("yesterday", "last week", "next month", "last year") into
+   explicit calendar dates, months, or years using the [YYYY-MM-DD] timestamp shown.
+   Calculate durations by counting between dates.
 3. Answer with a short phrase or 1-2 sentences. Use exact words from the context when possible.
 4. ALWAYS attempt to answer from the context. Even if the context is incomplete, extract
    whatever relevant information is available and provide your best answer.
-5. For common-sense questions, combine the context with general world knowledge to reason
-   about the answer. Think about what would logically follow from what was said.
+5. For common-sense or hypothetical questions ("Would...", "Likely..."), ALWAYS reason from
+   the context plus world knowledge — do NOT refuse just because the exact conclusion isn't
+   stated verbatim.
 6. For multi-hop questions, connect information across multiple parts of the context.
    Look for indirect references and combine facts to derive the answer.
-7. Only say "I don't have information about that from our previous conversations" if the
-   context is completely empty OR contains absolutely nothing related to the question.
+7. Check speaker attribution (treating nicknames like Mel=Melanie as the same person): ONLY
+   if the question asks about a concrete event/item/plan of Person A, and the context clearly
+   shows only a DIFFERENT person (Person B) did it with no evidence for Person A, reply ONLY:
+   "I don't have information about that from our previous conversations." Do NOT substitute
+   Person B's details as Person A's answer.
 
 Question: {}
 
@@ -141,7 +147,9 @@ Short answer:"""
 
 COGNITIVE_PROMPT = """Based on the above context from past conversations, continue the
 conversation naturally. Respond to the following as you would in a real dialogue.
-If the context contains relevant constraints, preferences, or past decisions, incorporate them.
+IMPORTANT: Check the "Relevant Past Experiences & Implicit Constraints" section closely — if a
+past event, scare, habit, allergy, boundary, or decision explains the speaker's remark,
+explicitly weave that concrete past detail into your response while matching the speaker's exact name.
 Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the conversation.
 
 {}

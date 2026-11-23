@@ -315,7 +315,7 @@ class MemoryRetriever:
         try:
             snippets = [
                 str(getattr(r.record, "text", "") or "").strip()
-                for r in first_pass[:6]
+                for r in first_pass[:12]
                 if getattr(r.record, "text", None)
             ]
             if not snippets:
@@ -450,6 +450,36 @@ class MemoryRetriever:
             )
 
         reranked = await self.reranker.rerank(raw_results, query, max_results=max_results)
+
+        # Round 2 Cognitive Cue Selection: when LLM_INTERNAL is available, explicitly identify
+        # which 1-3 retrieved episodes have the hidden causal/habit/boundary link to the trigger
+        # and promote them to the very top so they are never buried at lines 18-22 of the packet.
+        if (
+            is_cognitive_cue
+            and self._hyde_generator is not None
+            and hasattr(self._hyde_generator, "select_cognitive_cues")
+            and len(reranked) > 3
+        ):
+            try:
+                cand_texts = [
+                    f"({(m.record.metadata or {}).get('speaker', '')}) {m.record.text}".strip()
+                    for m in reranked[:22]
+                ]
+                chosen = await self._hyde_generator.select_cognitive_cues(query, cand_texts)
+                if chosen:
+                    promoted = []
+                    chosen_set = set(chosen)
+                    for rank_i, idx in enumerate(chosen):
+                        m = reranked[idx]
+                        m.relevance_score = max(m.relevance_score, 0.99 - 0.01 * rank_i)
+                        meta = dict(m.record.metadata or {})
+                        meta["_hyde_promoted"] = True
+                        m.record.metadata = meta
+                        promoted.append(m)
+                    rest = [m for i, m in enumerate(reranked) if i not in chosen_set]
+                    reranked = promoted + rest
+            except Exception as exc:
+                _logger.debug("cognitive_cue_selection_failed", error=str(exc))
         retrieval_meta = plan.analysis.metadata.get("retrieval_meta")
         # Assessed on the reranked set, not the raw one: raw carries every prong's flat
         # per-source constant (facts 0.8, constraints 0.75) which would report confident

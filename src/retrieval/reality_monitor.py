@@ -263,9 +263,11 @@ class CA1RealityMonitor:
             target_low = target_person.lower()
             topic_hits_target = 0
             topic_hits_other_speakers: dict[str, int] = {}
+            top_hit_other_speakers: dict[str, int] = {}
+            top_hit_target = 0
             matched_topics: set[str] = set()
 
-            for mem in memories:
+            for mem_idx, mem in enumerate(memories):
                 rec = getattr(mem, "record", mem)
                 text = str(getattr(rec, "text", "") or "")
                 meta = getattr(rec, "metadata", None) or {}
@@ -304,22 +306,31 @@ class CA1RealityMonitor:
                 mentions_target_substantively = target_low in body_clean
                 if is_target_speaker:
                     topic_hits_target += 1
+                    if mem_idx < 6:
+                        top_hit_target += 1
                 elif speaker and not mentions_target_substantively:
                     topic_hits_other_speakers[speaker] = (
                         topic_hits_other_speakers.get(speaker, 0) + 1
                     )
+                    if mem_idx < 6:
+                        top_hit_other_speakers[speaker] = top_hit_other_speakers.get(speaker, 0) + 1
 
-            if topic_hits_target == 0 and sum(topic_hits_other_speakers.values()) >= 2:
-                other_spk = max(topic_hits_other_speakers.items(), key=lambda kv: kv[1])[0]
+            total_other = sum(topic_hits_other_speakers.values())
+            top_other = sum(top_hit_other_speakers.values())
+            if (topic_hits_target == 0 and total_other >= 2) or (
+                top_hit_target == 0 and top_other >= 2
+            ):
+                src_map = top_hit_other_speakers if top_other >= 2 else topic_hits_other_speakers
+                other_spk = max(src_map.items(), key=lambda kv: kv[1])[0]
                 topics_str = ", ".join(f"'{t}'" for t in sorted(matched_topics)[:3])
                 verdict.has_mismatch = True
                 verdict.contradictions.append(f"speaker_swap:{target_person}->{other_spk}")
                 verdict.warnings.append(
-                    f"Reality Monitoring (CA1 Speaker-Attribution Alert): Every retrieved memory "
-                    f"about {topics_str} is by {other_spk}, NOT {target_person}. "
-                    f"Do NOT answer using {other_spk}'s actions or plans as if they were "
-                    f"{target_person}'s; if there is no evidence for {target_person} doing this, "
-                    f"simply state that you don't have information about that for {target_person}."
+                    f"Reality Monitoring (CA1 Speaker-Attribution Alert): Top retrieved memories "
+                    f"about {topics_str} are by {other_spk}, NOT {target_person}. "
+                    f"Do NOT answer using {other_spk}'s actions, items, or plans as if they were "
+                    f"{target_person}'s; if there is no record of {target_person} doing this, "
+                    f'reply ONLY: "I don\'t have information about that from our previous conversations."'
                 )
 
         return verdict
