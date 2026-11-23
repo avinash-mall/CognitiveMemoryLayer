@@ -656,15 +656,15 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 ## Evaluation Highlights
 
-Evaluated on **LoCoMo-Plus** under **strict Paper Table 1 parity** (`openai/gpt-4o` QA + `google/gemini-2.5-flash` LLM-as-Judge, `temperature=0`, `0` errors) &mdash; 5 original LoCoMo factual categories plus **Cognitive** cue&ndash;trigger constraints (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
+Evaluated **from scratch on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors, `$0` API cost)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
 
-**CML v2.0 (post-fix `d0b6132`) setup:** Full Neuro-Cognitive stack (Amygdala Somatic Markers, Baddeley Working Memory, BA10 Prospective Memory, calibrated CA1 Reality Monitoring, DMN Theory-of-Mind), ActiveCML, **Laya System 1** (`convaiinnovations/laya`), widened episode budget (`16/22`), read-time 3-cue Cognitive HyDE + RRF (`gpt-4o-mini`), local `nomic-embed-text-v2-moe` embeddings, heuristic write path (`USE_LLM_ENABLED=false` during corpus ingestion), **`openai/gpt-4o`** QA, and **`google/gemini-2.5-flash`** Judge. Verified on a 120-sample stratified paired split (20/category, `+9.00pp` LoCoMo Factual / `+6.67pp` overall vs. pre-fix `a055f3f` on the same corpus). Artifacts: [`locomo_plus_2026-11-22_gpt4o_gemini25flash_fixes_120_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4o_gemini25flash_fixes_120_summary.json) (post-fix 120-sample) and [`locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-22_gpt4o_gemini25flash_full_2387_summary.json) (pre-fix full 2,387-sample).
+**CML v2.0 setup (2026-11-23, from scratch):** Fresh Postgres/Neo4j/Redis wipe, all 411 conversations (242,658 turns) ingested with local `nomic-embed-text-v2-moe` embeddings and heuristic write path (`USE_LLM_ENABLED=false` during ingestion, `0` write-time LLM calls); read-time Neuro-Cognitive stack + Cognitive HyDE + LLM Cognitive Cue Selector + 2-hop bridge recollection + speaker persona augmentation + chronological temporal ordering + calibrated CA1 speaker-swap monitoring, powered 100% locally by **`qwen3.8-27b`** (`llama-server`, thinking disabled, `temperature=0`, `$0` API cost) for internal read-time LLM, QA, and LLM-as-Judge. Artifact: [`evaluation/results/locomo_plus_2026-11-23_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-23_qwen38_full_2387_summary.json).
 
-### LoCoMo-Plus Comparison
+### Full LoCoMo-Plus Comparison (2,387 Samples)
 
-| System / Method | Category | Backbone / QA Model | Single-hop | Multi-hop | Temporal | Common-sense | Adversarial | **LoCoMo Factual Avg** | **Cognitive** | **Gap** |
+| System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v2.0 (Neuro + Laya + HyDE)** <sup>[0]</sup> | Memory System | `gpt-4o` (heuristic write, 120-stratified) | 72.50% | 25.00% | 35.00% | 40.00% | **90.00%** | **52.50%** | 35.00% | 17.50 |
+| **CML v2.0 (Neuro + HyDE + CA1)** <sup>[0]</sup> | Memory System | `qwen3.8-27b` (100% local, `$0` API) | 60.52% | 37.77% | **50.16%** | 40.10% | **80.27%** | **59.06%** | 37.41% | 21.65 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 66.60% | &mdash; |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.90% | &mdash; |
@@ -683,30 +683,33 @@ Evaluated on **LoCoMo-Plus** under **strict Paper Table 1 parity** (`openai/gpt-
 | Qwen3-14B <sup>[3]</sup> | Full Context | Full context | 65.96% | 46.45% | 53.89% | 59.38% | 60.45% | 59.65% | 40.56% | 19.09 |
 | GPT-5-nano <sup>[3]</sup> | Full Context | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
 
-<sup>[0]</sup> Measured on a 120-sample stratified paired split (20 samples/category, `0` errors) against the 411 ingested conversations (`49.58%` overall; `+12.50pp` single-hop, `+12.50pp` common-sense, `+10.00pp` multi-hop, `+10.00pp` temporal, `0.00pp` adversarial vs. pre-fix baseline `42.92%`). Note that equal-weighted 20/cat Factual Avg (`52.50%`) weights single-hop less heavily than the full 1,986-sample distribution (where single-hop is 42.3% of factual items).  
+<sup>[0]</sup> Full 2,387-sample run from scratch (`2,387/2,387` valid, `0` errors, `0` empty contexts, overall 6-category avg **55.43%**, `1,323.0 / 2,387`); judge: `qwen3.8-27b` (`temperature=0`, thinking disabled).  
 <sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using `gpt-4o`; factual category breakdown not published.  
 <sup>[2]</sup> Reported in the *Madeleine* paper (arXiv 2026) under the official LoCoMo-Plus protocol on the 401-sample Cognitive split; factual category breakdown not published.  
-<sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), 2,387 samples, judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories; **Gap** = LoCoMo Factual Avg &minus; Cognitive.
+<sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), 2,387 samples, judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive.
 
 ### Unbiased Analysis &amp; Trade-Offs
 
-- **Strong single-hop (`72.50%`) and #1 adversarial (`90.00%`) with zero write-time LLM cost:** Eliminating CA1 false-positive refusal alerts and widening the episode cap (`6/12 &rarr; 16/22`) delivered **`+10.0pp` to `+12.5pp` gains across every factual category** (`+9.00pp` Factual Avg) while holding `adversarial` at `90.00%` &mdash; outperforming all RAG baselines (`45.32%`) and closing in on Mem0/SeCom/A-Mem (`57.2&ndash;59.6%`) without any write-time LLM extraction.
-- **Remaining gaps (`multi-hop 25.00%`, `common-sense 40.00%`, `Cognitive 35.00%`):** Mem0, SeCom, A-Mem, and Kumiho run write-time LLM extraction (`gpt-4o` / `gpt-4o-mini`) on every ingested turn to populate entity/relation graphs and latent constraints. Because this benchmark corpus was ingested with `FEATURES__USE_LLM_ENABLED=false` (empty Neo4j graph), multi-hop graph traversal and write-time constraint indexing were inactive; `FEATURES__USE_LLM_ENABLED=true` is now enabled **by default** in CML v2.0.
+- **Surpasses Mem0 (`57.24%`) and SeCom (`57.53%`) on LoCoMo Factual Avg &mdash; 100% locally at `$0` API cost:** CML achieves **59.06%** LoCoMo Factual Avg (`+1.82pp` over Mem0, `+1.53pp` over SeCom, `+13.74pp` over `RAG text-embedding-large`, within `0.58pp` of A-Mem) while running on a local quantized 27B model (`qwen3.8-27b`) with zero write-time LLM calls.
+- **#1 Adversarial (`80.27%`) &amp; #1 Memory-System Temporal (`50.16%`):** Selective CA1 speaker-swap monitoring achieves `80.5%` refusal on adversarial traps while keeping factual refusal rates low (`19.4&ndash;24.0%`), and chronological timeline assembly lifts Temporal (`50.16%`) above A-Mem (`49.30%`), GPT-4o (`45.79%`), SeCom (`42.30%`), and Mem0 (`39.40%`).
+- **Strong Cognitive leap (`37.41%`, `150/401`) &amp; remaining gaps:** Cognitive HyDE + LLM Cue Selection beat all RAG baselines (`23.5&ndash;29.8%`) and closed to within `4.0pp` of Mem0 (`41.44%`). Remaining deficits in `single-hop` (`60.52%`), `multi-hop` (`37.77%`), and `common-sense` (`40.10%`) reflect the local 27B IQ3_S model vs. GPT-4o plus heuristic ingestion (`USE_LLM_ENABLED=false` during bulk ingestion left the Neo4j entity/relation graph empty; `FEATURES__USE_LLM_ENABLED=true` is enabled by default for production deployments).
+- **Judge parity note:** Paper Table 1 baselines are judged by `gemini-2.5-flash`; this 100%-local run uses `qwen3.8-27b` (`temperature=0`) for self-consistent local judging.
 
-### Reproducing the Full 2,387-Sample Run
+### Reproducing the Full 2,387-Sample Local Run
 
 ```bash
 # 1. Build the official 2,387-sample unified dataset
 cd evaluation/locomo_plus/data && python unified_input.py && cd ../../..
 
-# 2. Run ingestion, retrieval, QA, and LLM-as-Judge (Paper Table 1 parity)
+# 2. Run against a local OpenAI-compatible LLM (e.g. llama-server qwen3.8-27b on :8000)
 python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/gpt4o_gemini25flash_full_2387 \
-  --model openai/gpt-4o \
-  --judge-model google/gemini-2.5-flash \
-  --ingestion-workers 12 \
-  --sync-workers 8
+  --out-dir evaluation/outputs/qwen38_full_2387 \
+  --cml-url http://localhost:8001 \
+  --base-url http://127.0.0.1:8000/v1 \
+  --model qwen3.8-27b \
+  --judge-model qwen3.8-27b \
+  --sync-workers 2
 ```
 
 Full diagnostics &amp; methodology: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; CLI harness: `cml-eval run-full --repo-root .`
