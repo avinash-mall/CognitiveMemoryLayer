@@ -141,7 +141,14 @@ class TestEncodingOrder:
 
         await r._expand_temporal_contiguity(TENANT, results)
 
-        assert sorted(x["text"] for x in results[1:]) == ["turn2", "turn3", "turn5", "turn6"]
+        assert sorted(x["text"] for x in results[1:]) == [
+            "turn1",
+            "turn2",
+            "turn3",
+            "turn5",
+            "turn6",
+            "turn7",
+        ]
 
     @pytest.mark.asyncio
     async def test_the_seed_is_excluded_from_its_own_neighbourhood(self):
@@ -161,7 +168,7 @@ class TestEncodingOrder:
 
         await r._expand_temporal_contiguity(TENANT, results)
 
-        assert sorted(x["text"] for x in results[1:]) == ["turn1", "turn2"]
+        assert sorted(x["text"] for x in results[1:]) == ["turn1", "turn2", "turn3"]
 
     @pytest.mark.asyncio
     async def test_timestamps_are_the_fallback_when_no_turn_index_exists(self):
