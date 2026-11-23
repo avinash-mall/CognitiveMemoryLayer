@@ -46,15 +46,21 @@ from cml.eval.locomo import (
 )
 
 
-def _or_request(method: str, path: str, api_key: str, body: dict | None = None) -> dict:
-    url = f"https://openrouter.ai/api/v1{path}"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+def _or_request(
+    method: str,
+    path: str,
+    api_key: str,
+    body: dict | None = None,
+    *,
+    base_url: str = "https://openrouter.ai/api/v1",
+) -> dict:
+    url = f"{base_url.rstrip('/')}{path}"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=180) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -144,13 +150,15 @@ def _run_openrouter_batch(
     return all_outputs
 
 
-def _reasoning_param_for_model(model: str) -> dict | None:
+def _extra_body_for_model(model: str) -> dict:
     m = model.lower()
     if "glm-5" in m or "gpt-5" in m:
-        return {"effort": "low"}
+        return {"reasoning": {"effort": "low"}}
     if "gemini-2.5" in m:
-        return {"enabled": False}
-    return None
+        return {"reasoning": {"enabled": False}}
+    if "qwen3" in m:
+        return {"chat_template_kwargs": {"enable_thinking": False}}
+    return {}
 
 
 def _run_openrouter_sync(
@@ -161,6 +169,7 @@ def _run_openrouter_sync(
     workers: int = 24,
     checkpoint_file: Path | None = None,
     label: str = "sync",
+    base_url: str = "https://openrouter.ai/api/v1",
 ) -> dict[str, str]:
     """Run chat completions concurrently against OpenRouter /v1/chat/completions."""
     all_outputs: dict[str, str] = {}
@@ -194,7 +203,7 @@ def _run_openrouter_sync(
         last_err: Exception | None = None
         for attempt in range(8):
             try:
-                resp = _or_request("POST", "/chat/completions", api_key, body)
+                resp = _or_request("POST", "/chat/completions", api_key, body, base_url=base_url)
                 choices = resp.get("choices") or []
                 content = ""
                 if choices:
@@ -261,6 +270,7 @@ def _run_requests(
     sync_workers: int,
     checkpoint_file: Path | None,
     label: str,
+    base_url: str = "https://openrouter.ai/api/v1",
 ) -> dict[str, str]:
     if model.endswith(":batch"):
         return _run_openrouter_batch(
@@ -278,15 +288,19 @@ def _run_requests(
         workers=sync_workers,
         checkpoint_file=checkpoint_file,
         label=label,
+        base_url=base_url,
     )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LoCoMo-Plus OpenRouter Evaluator (Batch or Sync)")
+    parser = argparse.ArgumentParser(
+        description="LoCoMo-Plus Evaluator (OpenRouter Batch/Sync or Local OpenAI-Compatible)"
+    )
     parser.add_argument("--unified-file", required=True)
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--cml-url", default="http://localhost:8000")
     parser.add_argument("--cml-api-key", default=os.getenv("AUTH__API_KEY", "test-key"))
+    parser.add_argument("--base-url", default="https://openrouter.ai/api/v1")
     parser.add_argument("--model", default="z-ai/glm-5.3-flash:batch")
     parser.add_argument("--judge-model", default="")
     parser.add_argument("--tenant-prefix", default="glm53-batch-full")
@@ -294,6 +308,12 @@ def main() -> None:
     parser.add_argument("--sync-workers", type=int, default=24)
     parser.add_argument("--max-results", type=int, default=25)
     parser.add_argument("--limit-samples", type=int, default=0)
+    parser.add_argument(
+        "--stratified-per-cat",
+        type=int,
+        default=0,
+        help="Take first N samples per category (preserves original conversation tenant mapping)",
+    )
     parser.add_argument("--skip-ingestion", action="store_true")
     parser.add_argument("--chunk-size", type=int, default=350)
     parser.add_argument("--poll-interval", type=int, default=20)
@@ -306,28 +326,43 @@ def main() -> None:
         or os.getenv("LLM_EVAL__API_KEY")
         or ""
     )
-    if not api_key:
+    if not api_key and "openrouter.ai" in args.base_url:
         raise RuntimeError("Missing OPENROUTER_API_KEY / OPENAI_API_KEY")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with open(args.unified_file, encoding="utf-8") as f:
-        samples = json.load(f)
+        all_samples = json.load(f)
     if args.limit_samples > 0:
-        samples = samples[: args.limit_samples]
+        all_samples = all_samples[: args.limit_samples]
 
-    print(f"Loaded {len(samples)} samples from {args.unified_file}", flush=True)
+    sample_to_conv, unique_convs = _build_conversation_groups(all_samples)
+    if args.stratified_per_cat > 0:
+        cat_counts: dict[str, int] = {}
+        selected_pairs: list[tuple[int, dict]] = []
+        for idx, s in enumerate(all_samples):
+            c = s.get("category", "")
+            if cat_counts.get(c, 0) < args.stratified_per_cat:
+                cat_counts[c] = cat_counts.get(c, 0) + 1
+                selected_pairs.append((idx, s))
+    else:
+        selected_pairs = list(enumerate(all_samples))
+
+    samples = [s for _, s in selected_pairs]
+    print(
+        f"Loaded {len(samples)} samples (from {len(all_samples)} total) in {args.unified_file}",
+        flush=True,
+    )
 
     # Phase A: Ingest unique conversations into CML
-    sample_to_conv, unique_convs = _build_conversation_groups(samples)
     print(
-        f"[Phase A] Dedup: {len(samples)} samples -> {len(unique_convs)} unique conversations",
+        f"[Phase A] Dedup: {len(all_samples)} samples -> {len(unique_convs)} unique conversations",
         flush=True,
     )
     if not args.skip_ingestion:
         phase_a_ingestion(
-            samples=samples,
+            samples=all_samples,
             cml_url=args.cml_url,
             cml_api_key=args.cml_api_key,
             limit=None,
@@ -336,7 +371,7 @@ def main() -> None:
             tenant_prefix=args.tenant_prefix,
         )
 
-    # Phase B: Fetch CML contexts locally & submit QA batch
+    # Phase B: Fetch CML contexts locally & submit QA
     pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
     if pred_file.exists():
         records = json.loads(pred_file.read_text(encoding="utf-8"))
@@ -345,8 +380,8 @@ def main() -> None:
         print(f"[Phase B] Reading CML contexts for {len(samples)} samples...", flush=True)
         qa_requests: list[dict] = []
         meta_rows: list[dict] = []
-        for i, sample in enumerate(samples):
-            tenant_id = f"{args.tenant_prefix}-{sample_to_conv.get(i, i)}"
+        for i, (orig_idx, sample) in enumerate(selected_pairs):
+            tenant_id = f"{args.tenant_prefix}-{sample_to_conv.get(orig_idx, orig_idx)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
             llm_context = _cml_read(
@@ -366,9 +401,7 @@ def main() -> None:
                 "max_tokens": 512,
                 "temperature": 0,
             }
-            qa_reasoning = _reasoning_param_for_model(args.model)
-            if qa_reasoning is not None:
-                qa_body["reasoning"] = qa_reasoning
+            qa_body.update(_extra_body_for_model(args.model))
             qa_requests.append(
                 {
                     "custom_id": f"qa-{i}",
@@ -377,14 +410,16 @@ def main() -> None:
             )
             meta_rows.append(
                 {
+                    "orig_index": orig_idx,
                     "question_input": trigger,
                     "evidence": sample.get("cue_dialogue", sample.get("evidence", "")),
                     "category": category,
                     "ground_truth": sample.get("answer", sample.get("ground_truth", "")),
                     "context_length": len(llm_context or ""),
+                    "retrieved_context": llm_context or "",
                 }
             )
-            if (i + 1) % 100 == 0 or (i + 1) == len(samples):
+            if (i + 1) % 60 == 0 or (i + 1) == len(samples):
                 print(f"  CML read progress: {i + 1}/{len(samples)}", flush=True)
 
         qa_outputs = _run_requests(
@@ -396,6 +431,7 @@ def main() -> None:
             sync_workers=args.sync_workers,
             checkpoint_file=out_dir / "qa_sync_checkpoint.json",
             label="Phase B QA",
+            base_url=args.base_url,
         )
 
         records = []
@@ -428,9 +464,7 @@ def main() -> None:
             "max_tokens": 384,
             "temperature": 0,
         }
-        judge_reasoning = _reasoning_param_for_model(judge_model)
-        if judge_reasoning is not None:
-            judge_body["reasoning"] = judge_reasoning
+        judge_body.update(_extra_body_for_model(judge_model))
         judge_requests.append(
             {
                 "custom_id": f"judge-{i}",
@@ -448,6 +482,7 @@ def main() -> None:
         sync_workers=args.sync_workers,
         checkpoint_file=out_dir / "judge_sync_checkpoint.json",
         label="Phase C Judge",
+        base_url=args.base_url,
     )
 
     judged: list[dict] = []

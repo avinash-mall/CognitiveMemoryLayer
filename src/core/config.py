@@ -238,7 +238,7 @@ class FeatureFlags(PydanticBaseModel):
         "often next to the turn that matches the query rather than the match itself.",
     )
     temporal_contiguity_neighbours: int = Field(
-        default=2,
+        default=3,
         ge=1,
         le=10,
         description="Turns to pull either side of a vector hit when temporal contiguity is on.",

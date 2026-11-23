@@ -51,11 +51,41 @@ past scares, or boundaries — avoid repeating the exact words of the remark).
 Return exactly 3 lines, no numbering or bullets."""
 
 
+_BRIDGE_QUERY_PROMPT = """Question: "{query}"
+
+Retrieved memories so far:
+{snippets}
+
+If these memories already contain the direct answer, reply ONLY with: NONE
+If they mention an unresolved bridge clue (e.g., "my home country", "a friend", "that event", "the project") and we need a second search to find the missing fact, write ONE short search query (4 to 12 words) targeting that missing fact. No explanation.
+
+Follow-up query or NONE:"""
+
+
 class HyDEGenerator:
     """Generates hypothetical documents and query expansions for retrieval."""
 
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm = llm_client
+
+    async def generate_bridge_query(self, query: str, snippets: list[str]) -> str | None:
+        """Generate a targeted 2nd-hop bridge search query when 1st-pass snippets leave a gap."""
+        if not query or not snippets:
+            return None
+        joined = "\n".join(f"- {s[:220]}" for s in snippets[:6])
+        try:
+            response = await self._llm.complete(
+                _BRIDGE_QUERY_PROMPT.format(query=query.strip(), snippets=joined),
+                temperature=0.0,
+                max_tokens=48,
+            )
+            cleaned = response.strip().splitlines()[0].strip().strip('"').strip("'")
+            if not cleaned or cleaned.upper().startswith("NONE") or len(cleaned) < 6:
+                return None
+            return cleaned
+        except Exception as exc:
+            logger.warning("bridge_query_generation_failed", error=str(exc))
+            return None
 
     async def generate_cognitive_cues(self, query: str) -> list[str]:
         """Generate 3 hypothetical past cue statements to bridge semantic disconnect."""

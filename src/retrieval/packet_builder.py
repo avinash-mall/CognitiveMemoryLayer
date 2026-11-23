@@ -305,6 +305,7 @@ class MemoryPacketBuilder:
         effective_episode_limit = episode_limit
         effective_threshold = threshold
         is_cognitive_cue = False
+        routing_intent = "single_hop"
         try:
             from ..core.config import get_settings as _get_route_settings
 
@@ -319,6 +320,7 @@ class MemoryPacketBuilder:
                 )
                 effective_episode_limit = min(episode_limit, routing.recommended_max_episodes)
                 is_cognitive_cue = routing.is_cognitive_cue
+                routing_intent = routing.intent
                 if is_cognitive_cue:
                     # Semantically disconnected Cognitive cues often score 0.22-0.39 raw cosine
                     effective_threshold = min(threshold, 0.20)
@@ -330,8 +332,9 @@ class MemoryPacketBuilder:
             for e in packet.recent_episodes
             if getattr(e, "relevance_score", 1.0) > effective_threshold
         ]
-        # On Cognitive empathy cues, protect verbatim personal/somatic episodes
-        # from being crowded out by synthetic prospective implications.
+        # On Cognitive empathy cues, protect verbatim episodes from synthetic prospective
+        # crowding and preserve HyDE-promoted cues first (never letting unrelated somatic
+        # distractors push HyDE-discovered cues out of the top slots).
         if is_cognitive_cue and relevant_episodes:
             verbatim = [
                 e
@@ -342,17 +345,48 @@ class MemoryPacketBuilder:
             if verbatim:
                 verbatim.sort(
                     key=lambda e: (
-                        1 if (e.record.metadata or {}).get("somatic_marker") else 0,
+                        1 if (e.record.metadata or {}).get("_hyde_promoted") else 0,
                         getattr(e, "relevance_score", 0.0),
                     ),
                     reverse=True,
                 )
                 relevant_episodes = verbatim
 
+        # Promote top 3 verbatim cues into a high-visibility section on Cognitive triggers
+        # so the answering model explicitly sees and applies latent personal lessons/boundaries.
+        promoted_count = 0
+        if is_cognitive_cue and relevant_episodes and remaining > 120:
+            cog_header = "## Relevant Past Experiences & Implicit Constraints\n"
+            cog_lines: list[str] = []
+            for e in relevant_episodes[:3]:
+                meta = e.record.metadata or {}
+                speaker = meta.get("speaker", "")
+                speaker_prefix = f"({speaker}) " if speaker else ""
+                line = f"- {speaker_prefix}{e.record.text}\n"
+                if len(cog_header) + sum(len(x) for x in cog_lines) + len(line) <= remaining:
+                    cog_lines.append(line)
+            if cog_lines:
+                s = cog_header + "".join(cog_lines) + "\n"
+                sections.append(s)
+                used += len(s)
+                remaining -= len(s)
+                promoted_count = len(cog_lines)
+
         if relevant_episodes and remaining > 100:
-            header = "## Recent Events\n"
+            selected_episodes = list(relevant_episodes[promoted_count:effective_episode_limit])
+            if routing_intent == "temporal":
+                header = "## Recent Events (Chronological Order)\n"
+                selected_episodes.sort(
+                    key=lambda e: (
+                        e.record.timestamp.timestamp()
+                        if hasattr(e.record.timestamp, "timestamp")
+                        else float("inf")
+                    )
+                )
+            else:
+                header = "## Recent Events\n"
             ep_lines: list[str] = []
-            for e in relevant_episodes[:effective_episode_limit]:
+            for e in selected_episodes:
                 # Include temporal metadata when available for temporal reasoning
                 meta = e.record.metadata or {}
                 # The turn date is always shown, and an event date is *added* rather

@@ -137,6 +137,8 @@ _HYPOTHETICAL_RE = re.compile(
     r"(?:^\s*(?:would|could|might|should|is\s+it\s+likely|do\s+you\s+think)\b|\blikely\b)",
     re.IGNORECASE,
 )
+_COGNITIVE_CUE_RE = re.compile(r"^\s*(?:[AB]|Speaker\s*[AB]|User|Assistant)\s*:", re.IGNORECASE)
+_SPEAKER_TEXT_RE = re.compile(r"^\s*([A-Z][a-zA-Z0-9]{1,20})\s*(?::|said\b)")
 _YEAR_RE = re.compile(r"\b(?:19\d{2}|20\d{2})\b")
 _QUOTED_RE = re.compile(r"['\"]([^'\"]{3,40})['\"]")
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -161,6 +163,10 @@ class CA1RealityMonitor:
         """Compare query presuppositions against retrieved memories."""
         verdict = RealityMonitorVerdict()
         if not query or not memories or len(query.strip()) < 12:
+            return verdict
+
+        # Never emit false-premise warnings on open-ended Cognitive dialogue cues
+        if _COGNITIVE_CUE_RE.match(query) and not query.strip().endswith("?"):
             return verdict
 
         corpus_texts = [str(getattr(getattr(m, "record", m), "text", "") or "") for m in memories]
@@ -246,7 +252,6 @@ class CA1RealityMonitor:
         #    both Person A and Person B appear in the conversation, the query asks about
         #    Person A doing Topic X, but every retrieved memory about Topic X is spoken by
         #    or attributed to Person B rather than Person A).
-        speaker_prefix_re = re.compile(r"^\s*([A-Z][a-zA-Z0-9]{1,20})\s*:")
         query_persons = [p for p in proper_candidates if len(p) >= 3]
         topic_words = [
             w
@@ -260,31 +265,61 @@ class CA1RealityMonitor:
             topic_hits_other_speakers: dict[str, int] = {}
             matched_topics: set[str] = set()
 
-            for text in corpus_texts:
+            for mem in memories:
+                rec = getattr(mem, "record", mem)
+                text = str(getattr(rec, "text", "") or "")
+                meta = getattr(rec, "metadata", None) or {}
                 t_low = text.lower()
                 hit_kws = [w for w in topic_words if w in t_low]
                 if not hit_kws:
                     continue
                 matched_topics.update(hit_kws)
-                m_spk = speaker_prefix_re.match(text)
-                speaker = m_spk.group(1) if m_spk else ""
-                if speaker.lower() == target_low or speaker.lower().startswith(target_low):
+                # Extract speaker from metadata first (Postgres records store speaker in metadata
+                # and/or prefix text with "Melanie said, ..."), then fall back to text prefix.
+                speaker = str(meta.get("speaker") or "").strip()
+                if not speaker:
+                    m_spk = _SPEAKER_TEXT_RE.match(text)
+                    speaker = m_spk.group(1) if m_spk else ""
+                spk_low = speaker.lower()
+                # Check if target person is the speaker (including nickname prefix Mel -> Melanie)
+                is_target_speaker = bool(
+                    spk_low
+                    and (
+                        spk_low == target_low
+                        or (len(target_low) >= 3 and spk_low.startswith(target_low))
+                        or (len(spk_low) >= 3 and target_low.startswith(spk_low))
+                    )
+                )
+                # Also check if text talks ABOUT target_person (ignoring salutation "Thanks, Caroline!"
+                # or "Hey Caroline," at the start/end of another speaker's turn)
+                body_no_salutation = re.sub(
+                    r"\b(?:hey|hi|thanks|thank you|wow|yep|yeah|haha|oh)\s*,?\s*"
+                    + re.escape(target_low)
+                    + r"\b",
+                    "",
+                    t_low,
+                )
+                # Strip leading "Speaker said," before checking body mentions
+                body_clean = re.sub(r"^\s*[a-z]+\s+said\s*,\s*", "", body_no_salutation)
+                mentions_target_substantively = target_low in body_clean
+                if is_target_speaker:
                     topic_hits_target += 1
-                elif speaker and target_low not in t_low:
+                elif speaker and not mentions_target_substantively:
                     topic_hits_other_speakers[speaker] = (
                         topic_hits_other_speakers.get(speaker, 0) + 1
                     )
 
-            if topic_hits_target == 0 and sum(topic_hits_other_speakers.values()) >= 3:
+            if topic_hits_target == 0 and sum(topic_hits_other_speakers.values()) >= 2:
                 other_spk = max(topic_hits_other_speakers.items(), key=lambda kv: kv[1])[0]
                 topics_str = ", ".join(f"'{t}'" for t in sorted(matched_topics)[:3])
                 verdict.has_mismatch = True
                 verdict.contradictions.append(f"speaker_swap:{target_person}->{other_spk}")
                 verdict.warnings.append(
-                    f"Reality Monitoring (CA1 Speaker-Attribution Alert): Retrieved memories "
-                    f"about {topics_str} are attributed to {other_spk}, NOT {target_person}. "
-                    f"Do not attribute {other_spk}'s actions to {target_person}; verify against "
-                    f"the evidence before answering."
+                    f"Reality Monitoring (CA1 Speaker-Attribution Alert): Every retrieved memory "
+                    f"about {topics_str} is by {other_spk}, NOT {target_person}. "
+                    f"Do NOT answer using {other_spk}'s actions or plans as if they were "
+                    f"{target_person}'s; if there is no evidence for {target_person} doing this, "
+                    f"simply state that you don't have information about that for {target_person}."
                 )
 
         return verdict

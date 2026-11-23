@@ -610,3 +610,74 @@ async def test_cognitive_hyde_generates_three_cues():
     )
     assert len(cues) == 3
     assert "Saying no" in cues[0]
+
+
+def test_ca1_detects_speaker_swap_from_metadata_and_skips_cognitive_cues():
+    from src.retrieval.reality_monitor import CA1RealityMonitor
+
+    # Real Postgres records store speaker in metadata and/or "Speaker said, ..."
+    memories = [
+        _make_record(
+            'Melanie said, "I ran a charity race for mental health last weekend!"',
+            metadata={"speaker": "Melanie"},
+        ),
+        _make_record(
+            'Melanie said, "That charity race taught me self-care is really important."',
+            metadata={"speaker": "Melanie"},
+        ),
+    ]
+    v_swap = CA1RealityMonitor.inspect(
+        "What did Caroline realize after her charity race?", memories
+    )
+    assert v_swap.has_mismatch is True
+    assert any("speaker_swap:Caroline->Melanie" in c for c in v_swap.contradictions)
+
+    # Cognitive cue dialogue statements must never trigger CA1 warnings
+    v_cog = CA1RealityMonitor.inspect(
+        "A: I ended up volunteering for that project, and now I'm totally overwhelmed.",
+        memories,
+    )
+    assert v_cog.has_mismatch is False
+    assert v_cog.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_bridge_query_and_temporal_chronological_ordering():
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock
+
+    from src.retrieval.hyde import HyDEGenerator
+    from src.retrieval.packet_builder import MemoryPacketBuilder
+
+    mock_llm = AsyncMock()
+    mock_llm.complete.return_value = "Caroline home country Sweden"
+    gen = HyDEGenerator(mock_llm)
+    bq = await gen.generate_bridge_query(
+        "Where did Caroline move from 4 years ago?",
+        ["Caroline: I moved from my home country 4 years ago."],
+    )
+    assert bq == "Caroline home country Sweden"
+
+    mock_llm.complete.return_value = "NONE"
+    assert await gen.generate_bridge_query("What color?", ["It is blue."]) is None
+
+    # Chronological sorting on temporal queries
+    late_rec = _make_record("Later event")
+    late_rec.timestamp = datetime(2023, 6, 15, tzinfo=UTC)
+    early_rec = _make_record("Earlier event")
+    early_rec.timestamp = datetime(2023, 5, 1, tzinfo=UTC)
+    late = RetrievedMemory(
+        record=late_rec,
+        relevance_score=0.95,
+        retrieval_source="vector",
+    )
+    early = RetrievedMemory(
+        record=early_rec,
+        relevance_score=0.80,
+        retrieval_source="vector",
+    )
+    builder = MemoryPacketBuilder()
+    pkt = builder.build([late, early], "When did the events happen?")
+    md = builder.to_llm_context(pkt)
+    assert "Chronological Order" in md
+    assert md.index("Earlier event") < md.index("Later event")

@@ -245,6 +245,95 @@ class MemoryRetriever:
             _logger.debug("hyde_augment_failed", error=str(exc))
             return []
 
+    async def _persona_profile_augment(
+        self,
+        tenant_id: str,
+        query: str,
+        plan: Any,
+        context_filter: list[str] | None,
+    ) -> list[RetrievedMemory]:
+        """Augment common-sense/hypothetical queries with speaker persona & trait turns."""
+        import re
+
+        stopwords = {
+            "would",
+            "could",
+            "should",
+            "might",
+            "likely",
+            "what",
+            "when",
+            "where",
+            "who",
+            "which",
+            "why",
+            "how",
+            "does",
+            "did",
+            "will",
+            "can",
+            "has",
+            "have",
+            "the",
+            "this",
+            "that",
+            "still",
+            "want",
+        }
+        names = [
+            m.group(0)
+            for m in re.finditer(r"\b[A-Z][a-z]{2,15}\b", query)
+            if m.group(0).lower() not in stopwords
+        ]
+        if not names:
+            return []
+        person = names[0]
+        persona_q = f"{person} career job hobbies interests personality values background likes goals family"
+        try:
+            emb = await self.retriever.hippocampal.embeddings.embed(persona_q)
+            return await self.retriever.retrieve(
+                tenant_id,
+                plan,
+                context_filter=context_filter,
+                query_embedding=emb.embedding,
+            )
+        except Exception as exc:
+            _logger.debug("persona_profile_augment_failed", error=str(exc))
+            return []
+
+    async def _bridge_hop_augment(
+        self,
+        tenant_id: str,
+        query: str,
+        first_pass: list[RetrievedMemory],
+        plan: Any,
+        context_filter: list[str] | None,
+    ) -> list[RetrievedMemory]:
+        """Iterative 2-hop recollection: ask LLM_INTERNAL for missing bridge fact and retrieve."""
+        if not self._hyde_generator or not hasattr(self._hyde_generator, "generate_bridge_query"):
+            return []
+        try:
+            snippets = [
+                str(getattr(r.record, "text", "") or "").strip()
+                for r in first_pass[:6]
+                if getattr(r.record, "text", None)
+            ]
+            if not snippets:
+                return []
+            bridge_q = await self._hyde_generator.generate_bridge_query(query, snippets)
+            if not bridge_q:
+                return []
+            emb = await self.retriever.hippocampal.embeddings.embed(bridge_q)
+            return await self.retriever.retrieve(
+                tenant_id,
+                plan,
+                context_filter=context_filter,
+                query_embedding=emb.embedding,
+            )
+        except Exception as exc:
+            _logger.debug("bridge_hop_augment_failed", error=str(exc))
+            return []
+
     async def retrieve(
         self,
         tenant_id: str,
@@ -277,25 +366,77 @@ class MemoryRetriever:
             query_embedding=query_embedding,
         )
 
-        # --- Improvement Report: HyDE augmentation ---
+        # --- Improvement Report: HyDE, Persona-Profile & Iterative 2-Hop Augmentation ---
         settings = get_settings()
+        routing_intent = "single_hop"
+        is_cognitive_cue = False
+        try:
+            from ..core.laya_system1 import LayaSystem1Engine
+
+            routing = LayaSystem1Engine.classify_query_routing(query)
+            routing_intent = routing.intent
+            is_cognitive_cue = routing.is_cognitive_cue
+        except Exception:
+            pass
+
+        extra_result_lists: list[list[RetrievedMemory]] = []
+        hyde_hit_ids: set[str] = set()
+
         if settings.features.hyde_retrieval_enabled and self._hyde_generator:
             hyde_result_lists = await self._hyde_augment(tenant_id, query, plan, context_filter)
-            if hyde_result_lists:
-                # RRF merge: convert RetrievedMemory lists to dicts for merging
-                main_dicts = [{"id": str(r.record.id), "mem": r} for r in raw_results]
-                all_lists = [main_dicts] + [
-                    [{"id": str(r.record.id), "mem": r} for r in rl] for rl in hyde_result_lists
-                ]
-                merged = rrf_merge(all_lists, k=60)
-                seen_ids: set[str] = set()
-                deduped_results = []
-                for item in merged:
-                    rid = item["id"]
-                    if rid not in seen_ids:
-                        seen_ids.add(rid)
-                        deduped_results.append(item["mem"])
-                raw_results = deduped_results
+            for rl in hyde_result_lists:
+                if rl:
+                    extra_result_lists.append(rl)
+                    for r in rl:
+                        hyde_hit_ids.add(str(r.record.id))
+
+        # Speaker Persona-Profile Augmentation for common-sense / hypothetical queries
+        if routing_intent == "common_sense":
+            persona_hits = await self._persona_profile_augment(
+                tenant_id, query, plan, context_filter
+            )
+            if persona_hits:
+                extra_result_lists.append(persona_hits)
+
+        # Iterative 2-Hop Bridge Recollection for non-cognitive factual/multi-hop queries
+        if (
+            not is_cognitive_cue
+            and getattr(settings.features, "multi_hop_recollection_enabled", True)
+            and self._hyde_generator is not None
+            and raw_results
+        ):
+            bridge_hits = await self._bridge_hop_augment(
+                tenant_id, query, raw_results, plan, context_filter
+            )
+            if bridge_hits:
+                extra_result_lists.append(bridge_hits)
+
+        if extra_result_lists:
+            main_dicts = [{"id": str(r.record.id), "mem": r} for r in raw_results]
+            all_lists = [main_dicts] + [
+                [{"id": str(r.record.id), "mem": r} for r in rl] for rl in extra_result_lists
+            ]
+            merged = rrf_merge(all_lists, k=60)
+            seen_ids: set[str] = set()
+            deduped_results: list[RetrievedMemory] = []
+            for item in merged:
+                rid = item["id"]
+                if rid not in seen_ids:
+                    seen_ids.add(rid)
+                    mem: RetrievedMemory = item["mem"]
+                    rank = len(deduped_results)
+                    # Preserve RRF rank through downstream reranker: semantically distant
+                    # HyDE / 2-hop / persona hits would otherwise be buried by low raw cosine.
+                    if rank < 12 and (is_cognitive_cue or rid in hyde_hit_ids or rank < 8):
+                        rrf_floor = max(0.55, 0.84 - 0.018 * rank)
+                        if mem.relevance_score < rrf_floor:
+                            mem.relevance_score = rrf_floor
+                    if is_cognitive_cue and rid in hyde_hit_ids:
+                        meta = dict(mem.record.metadata or {})
+                        meta["_hyde_promoted"] = True
+                        mem.record.metadata = meta
+                    deduped_results.append(mem)
+            raw_results = deduped_results
 
         raw_results = drop_graph_results(
             raw_results, enabled=not settings.features.graph_results_in_packet
