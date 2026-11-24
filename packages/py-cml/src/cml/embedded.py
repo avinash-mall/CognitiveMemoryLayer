@@ -108,6 +108,15 @@ def _packet_to_read_response(
             )
             llm_context = "\n".join(f"- {m.text}" for m in all_items[:20])
 
+    raw_meta = getattr(packet, "retrieval_meta", None)
+    retrieval_meta = raw_meta if isinstance(raw_meta, dict) else None
+    raw_suff = getattr(packet, "sufficiency", None)
+    sufficiency = raw_suff if isinstance(raw_suff, dict) else None
+    raw_open_questions = getattr(packet, "open_questions", None)
+    open_questions = list(raw_open_questions) if isinstance(raw_open_questions, list) else []
+    raw_warnings = getattr(packet, "warnings", None)
+    warnings = list(raw_warnings) if isinstance(raw_warnings, list) else []
+
     return ReadResponse(
         query=query,
         memories=all_items,
@@ -116,6 +125,10 @@ def _packet_to_read_response(
         episodes=episodes,
         constraints=constraints,
         llm_context=llm_context,
+        retrieval_meta=retrieval_meta,
+        sufficiency=sufficiency,
+        open_questions=open_questions,
+        warnings=warnings,
         total_count=len(getattr(packet, "all_memories", all_items)),
         elapsed_ms=elapsed_ms,
     )
@@ -237,23 +250,41 @@ class EmbeddedCognitiveMemoryLayer:
             llm_enabled = bool(getattr(s.features, "use_llm_enabled", True))
             if llm_enabled:
                 li = s.llm_internal
-                if li.base_url:
+                if not self._config.llm.base_url and getattr(li, "base_url", None):
                     self._config.llm.base_url = li.base_url
-                if li.model:
+                if not self._config.llm.model and getattr(li, "model", None):
                     self._config.llm.model = li.model
-                if li.provider:
+                if (
+                    self._config.llm.provider == "openai"
+                    and getattr(li, "provider", None)
+                    and li.provider != "openai"
+                ):
                     self._config.llm.provider = cast("Any", li.provider)
+                if not self._config.llm.api_key and getattr(li, "api_key", None):
+                    self._config.llm.api_key = li.api_key
+                if self._config.llm.extra_body is None and getattr(li, "extra_body", None):
+                    self._config.llm.extra_body = li.extra_body
         except Exception:
             llm_enabled = False
 
         if llm_enabled:
-            from src.utils.llm import OpenAICompatibleClient
+            provider = str(self._config.llm.provider or "").lower()
+            has_key = bool(self._config.llm.api_key or os.environ.get("OPENAI_API_KEY", ""))
+            if provider in ("openai", "gemini", "claude", "anthropic") and not has_key:
+                logger.warning(
+                    "Embedded mode: use_llm_enabled=True with cloud provider '%s' "
+                    "and no API key; falling back to llm_client=None.",
+                    provider,
+                )
+            else:
+                from src.utils.llm import OpenAICompatibleClient
 
-            llm_client = OpenAICompatibleClient(
-                model=self._config.llm.model,
-                base_url=self._config.llm.base_url,
-                api_key=self._config.llm.api_key or "dummy",
-            )
+                llm_client = OpenAICompatibleClient(
+                    model=self._config.llm.model,
+                    base_url=self._config.llm.base_url,
+                    api_key=self._config.llm.api_key or "dummy",
+                    extra_body=self._config.llm.extra_body,
+                )
 
         from src.memory.orchestrator import MemoryOrchestrator
 

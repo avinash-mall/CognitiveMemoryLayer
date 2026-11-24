@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -53,7 +54,7 @@ class EmbeddedEmbeddingConfig(BaseModel):
         default="",
         description="Set EMBEDDING_INTERNAL__MODEL or EMBEDDING_INTERNAL__LOCAL_MODEL in .env",
     )
-    dimensions: int = Field(default=384, description="Set EMBEDDING_INTERNAL__DIMENSIONS in .env")
+    dimensions: int = Field(default=768, description="Set EMBEDDING_INTERNAL__DIMENSIONS in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
 
@@ -88,6 +89,10 @@ class EmbeddedLLMConfig(BaseModel):
     model: str = Field(default="", description="Set LLM_INTERNAL__MODEL in .env")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
+    extra_body: dict[str, Any] | None = Field(
+        default=None,
+        description="Extra request body kwargs forwarded to the LLM client (JSON via LLM_INTERNAL__EXTRA_BODY)",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -98,8 +103,17 @@ class EmbeddedLLMConfig(BaseModel):
             data = {**data, "model": _env("LLM_INTERNAL__MODEL")}
         if data.get("base_url") is None and _env("LLM_INTERNAL__BASE_URL"):
             data = {**data, "base_url": _env("LLM_INTERNAL__BASE_URL")}
-        if _env("LLM_INTERNAL__PROVIDER"):
+        if not data.get("provider") and _env("LLM_INTERNAL__PROVIDER"):
             data = {**data, "provider": _env("LLM_INTERNAL__PROVIDER")}
+        if data.get("api_key") is None and _env("LLM_INTERNAL__API_KEY"):
+            data = {**data, "api_key": _env("LLM_INTERNAL__API_KEY")}
+        if data.get("extra_body") is None and _env("LLM_INTERNAL__EXTRA_BODY"):
+            try:
+                parsed = json.loads(_env("LLM_INTERNAL__EXTRA_BODY"))
+                if isinstance(parsed, dict):
+                    data = {**data, "extra_body": parsed}
+            except json.JSONDecodeError:
+                pass
         return data
 
 

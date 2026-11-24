@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-11-24
+
+### Added
+
+- **`ReadResponse.intrinsic_injection` convenience property** — returns the ActiveCML `intrinsic_injection` payload (`logit_bias`, `steering_vectors`, `prefix_block`, `lora_adapter`) from `retrieval_meta` when present, on both HTTP and embedded responses.
+- **Embedded `ReadResponse` parity** — `_packet_to_read_response()` now forwards `warnings` (including CA1 Reality Monitoring alerts), `open_questions`, `sufficiency`, and `retrieval_meta` from the engine's `MemoryPacket`, matching `src/api/routes.py`.
+- **`EmbeddedLLMConfig.extra_body` & `LLM_INTERNAL__API_KEY` env loading** — `EmbeddedLLMConfig.from_env()` now reads `LLM_INTERNAL__API_KEY` and JSON-encoded `LLM_INTERNAL__EXTRA_BODY` (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`), forwarding `extra_body` to `OpenAICompatibleClient`.
+- **Optional `[laya]` packaging extra** (`laya>=0.5`) in `pyproject.toml` for Laya System 1 integration.
+
+### Changed
+
+- **Graceful cloud API-key fallback in embedded mode** — now that `FEATURES__USE_LLM_ENABLED=true` is enabled by default, `EmbeddedCognitiveMemoryLayer.initialize()` checks whether a cloud provider (`openai`, `gemini`, `claude`, `anthropic`) has an API key before constructing `OpenAICompatibleClient`, logging a warning and falling back to `llm_client=None` instead of passing `"dummy"`, matching `MemoryOrchestrator.create()`.
+- **Default embedded embedding dimensions** — updated `EmbeddedEmbeddingConfig.dimensions` default from `384` to `768` to match `nomic-ai/nomic-embed-text-v2-moe`.
+- **SDK README refreshed** — replaced stale `1.5.0` badge and removed-modelpack highlights with `2.1.0` capabilities.
+
+### Removed
+
+- Cleaned up stale `__pycache__`-only `packages/py-cml/src/cml/modeling/` directory left over from 2.0.0.
+
 ## [2.0.0] — 2026-07-30
 
 ### Removed — BREAKING

@@ -17,12 +17,16 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Tests](https://img.shields.io/badge/Tests-323-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
-[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
+[![Tests](https://img.shields.io/badge/Tests-251-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
-**What's new (1.5.0):** automatic model download from HuggingFace Hub on first startup, write-gate importance blending with `importance_bin`/`salience_bin` models, `fact_type` model gating for named heuristic families, Docker entrypoint with model bootstrap, circular import fix. See [CHANGELOG](../../CHANGELOG.md).
+**What's new (2.1.0):**
+- **Full Neuro-Cognitive & ActiveCML SDK parity:** `EmbeddedCognitiveMemoryLayer.read()` now forwards `warnings` (including CA1 Reality Monitoring alerts), `open_questions`, `sufficiency`, and `retrieval_meta` (including ActiveCML `intrinsic_injection` payloads), matching the HTTP server response.
+- **`ReadResponse.intrinsic_injection` property:** Direct accessor for ActiveCML payloads (`logit_bias`, `steering_vectors`, `prefix_block`, `lora_adapter`) on both HTTP and embedded responses.
+- **Default LLM mode with graceful fallback & `extra_body`:** `EmbeddedLLMConfig` reads `LLM_INTERNAL__API_KEY` and `LLM_INTERNAL__EXTRA_BODY` (JSON), passes `extra_body` through to local/OpenAI-compatible models (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`), and falls back cleanly to `llm_client=None` when a cloud provider has no API key.
+- **Embedding & optional extras updates:** Default embedded `dimensions` aligned to `768` (`nomic-ai/nomic-embed-text-v2-moe`), plus new optional `[laya]` extra for Laya System 1 integration. See [CHANGELOG](CHANGELOG.md).
 
-**Previous (1.4.x):** session-scoped `write` route support in `SessionScope`/`AsyncSessionScope`, new dashboard/admin helpers (`dashboard_facts`, `dashboard_invalidate_fact`, `dashboard_export_memories`, `graph_overview`, `admin_consolidate`, `admin_forget`), embedded provider parity fixes, and wrapper parity updates for `user_timezone`/`timestamp`.
+**Previous (2.0.0):** Embedded `read(format=...)` server parity, removal of legacy custom-model training pipeline (`cml.modeling`) in favor of LLM-powered extraction/retrieval, and removal of deprecated event-log endpoints.
 
 ---
 
@@ -141,7 +145,7 @@ memory = CognitiveMemoryLayer(
 
 Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(config=config)`.
 
-**Embedded:** Use `EmbeddedConfig` (or constructor args). Options: `storage_mode` (`lite` | `standard` | `full`; only `lite` is implemented), `tenant_id`, `database`, `embedding`, `llm`, `auto_consolidate`, `auto_forget`. Embedding and LLM are read from `.env` when not set: `EMBEDDING_INTERNAL__PROVIDER`, `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS`, `EMBEDDING_INTERNAL__BASE_URL`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`. Lite mode uses SQLite and local embeddings; pass `db_path` for a persistent database. Full details in [Configuration](docs/configuration.md).
+**Embedded:** Use `EmbeddedConfig` (or constructor args). Options: `storage_mode` (`lite` | `standard` | `full`; only `lite` is implemented), `tenant_id`, `database`, `embedding`, `llm`, `auto_consolidate`, `auto_forget`. Embedding and LLM are read from `.env` when not set: `EMBEDDING_INTERNAL__PROVIDER`, `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS` (default `768`), `EMBEDDING_INTERNAL__BASE_URL`, `LLM_INTERNAL__PROVIDER`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`, `LLM_INTERNAL__API_KEY`, `LLM_INTERNAL__EXTRA_BODY`. Lite mode uses SQLite and local embeddings; pass `db_path` for a persistent database. Full details in [Configuration](docs/configuration.md).
 
 ---
 
@@ -154,7 +158,7 @@ Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(
 
 **Memory API:** `write`, `read`, `read_stream`, `read_safe`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`, `remember` (alias for write), `search` (alias for read), `health`. Options: `user_timezone` on `read()`, `get_context()`, `search()`, and `turn()` for timezone-aware "today"/"yesterday"; `timestamp` on `write()`, `turn()`, and `remember()` for event time; `eval_mode` on `write()`/`remember()` for benchmark responses. Write supports `context_tags`, `session_id`, `memory_type`, `namespace`, `metadata`, `agent_id`. Read supports `memory_types`, `since`, `until`, `response_format` (`packet` | `list` | `llm_context`).
 
-**Response shape:** `ReadResponse` has `memories`, `facts`, `preferences`, `episodes`, `constraints` (when the server has constraint extraction), and `context` (formatted string for LLM injection).
+**Response shape:** `ReadResponse` has `memories`, `facts`, `preferences`, `episodes`, `constraints`, `warnings`, `open_questions`, `sufficiency`, `retrieval_meta`, `intrinsic_injection` (convenience property for ActiveCML payloads), and `context` (formatted string for LLM injection).
 
 **Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them. The server can use LLM-based extraction (constraints, facts, salience, importance) when `FEATURES__USE_LLM_*` flags are enabled; see [Usage Documentation](../../docs/usage.md) § Configuration Reference.
 
@@ -202,7 +206,7 @@ response = helper.chat("What should I eat tonight?", session_id="s1")
 
 ## Testing
 
-The SDK has **323 tests** (unit, integration, embedded, e2e). From the **repository root**:
+The SDK has **251 tests** (unit, integration, embedded, e2e). From the **repository root**:
 
 ```bash
 # Run all SDK tests

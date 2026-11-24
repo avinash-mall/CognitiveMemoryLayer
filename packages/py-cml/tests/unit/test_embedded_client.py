@@ -30,6 +30,8 @@ def test_embedded_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
         "LLM_INTERNAL__PROVIDER",
         "LLM_INTERNAL__MODEL",
         "LLM_INTERNAL__BASE_URL",
+        "LLM_INTERNAL__API_KEY",
+        "LLM_INTERNAL__EXTRA_BODY",
     ):
         monkeypatch.delenv(key, raising=False)
     config = EmbeddedConfig()
@@ -37,7 +39,27 @@ def test_embedded_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.tenant_id == "default"
     assert config.database.database_url.startswith("sqlite")
     assert config.embedding.provider == "local"
+    assert config.embedding.dimensions == 768
     assert config.llm.provider == "openai"
+    assert config.llm.extra_body is None
+
+
+def test_embedded_llm_config_reads_api_key_and_extra_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """EmbeddedLLMConfig reads LLM_INTERNAL__API_KEY and JSON LLM_INTERNAL__EXTRA_BODY."""
+    monkeypatch.setenv("LLM_INTERNAL__PROVIDER", "openai_compatible")
+    monkeypatch.setenv("LLM_INTERNAL__MODEL", "qwen3.8-27b")
+    monkeypatch.setenv("LLM_INTERNAL__BASE_URL", "http://127.0.0.1:8000/v1")
+    monkeypatch.setenv("LLM_INTERNAL__API_KEY", "sk-test-local")
+    monkeypatch.setenv(
+        "LLM_INTERNAL__EXTRA_BODY",
+        '{"chat_template_kwargs": {"enable_thinking": false}}',
+    )
+    config = EmbeddedConfig()
+    assert config.llm.provider == "openai_compatible"
+    assert config.llm.model == "qwen3.8-27b"
+    assert config.llm.base_url == "http://127.0.0.1:8000/v1"
+    assert config.llm.api_key == "sk-test-local"
+    assert config.llm.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 @pytest.mark.asyncio
@@ -201,4 +223,170 @@ async def test_embedded_initialize_skips_llm_client_when_master_llm_disabled(
     await client.initialize()
     mock_create_lite.assert_awaited_once()
     assert mock_create_lite.await_args.args[2] is None
+    await client.close()
+
+
+def test_packet_to_read_response_forwards_metadata_warnings_and_intrinsic() -> None:
+    """_packet_to_read_response forwards warnings, open_questions, sufficiency, and retrieval_meta."""
+    from cml.embedded import _packet_to_read_response
+
+    packet = SimpleNamespace(
+        facts=[],
+        preferences=[],
+        recent_episodes=[],
+        procedures=[],
+        constraints=[],
+        all_memories=[],
+        warnings=["CA1_SPEAKER_MISMATCH: Entity 'Alex' has no recorded link to 'surf'"],
+        open_questions=["Did Alex mention surfing in another session?"],
+        sufficiency={"sufficient": False, "top_relevance": 0.21},
+        retrieval_meta={
+            "sources_completed": 3,
+            "intrinsic_injection": {
+                "mode": "prefix_block",
+                "prefix_block": "[ACTIVE_MEMORY] User is vegetarian.",
+            },
+        },
+    )
+
+    result = _packet_to_read_response("Did Alex surf?", packet, elapsed_ms=4.5)
+    assert result.warnings == ["CA1_SPEAKER_MISMATCH: Entity 'Alex' has no recorded link to 'surf'"]
+    assert result.open_questions == ["Did Alex mention surfing in another session?"]
+    assert result.sufficiency == {"sufficient": False, "top_relevance": 0.21}
+    assert result.retrieval_meta is not None
+    assert result.retrieval_meta["sources_completed"] == 3
+    assert result.intrinsic_injection == {
+        "mode": "prefix_block",
+        "prefix_block": "[ACTIVE_MEMORY] User is vegetarian.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_embedded_initialize_falls_back_when_cloud_provider_missing_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """initialize() falls back to llm_client=None when cloud provider has no API key."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__API_KEY", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__MODEL", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__EXTRA_BODY", raising=False)
+
+    config = EmbeddedConfig(tenant_id="test-tenant")
+    client = EmbeddedCognitiveMemoryLayer(config=config)
+
+    fake_store = MagicMock()
+    fake_store.initialize = AsyncMock(return_value=None)
+    fake_store.close = AsyncMock(return_value=None)
+    fake_orchestrator = MagicMock()
+    mock_create_lite = AsyncMock(return_value=fake_orchestrator)
+
+    class _Features:
+        use_llm_enabled = True
+
+    class _LLMInternal:
+        base_url = None
+        model = "gpt-4o-mini"
+        provider = "openai"
+        api_key = None
+        extra_body = None
+
+    class _Settings:
+        features = _Features()
+        llm_internal = _LLMInternal()
+
+    monkeypatch.setattr("cml.embedded._check_embedded_deps", lambda: None)
+    monkeypatch.setattr(
+        "cml.storage.sqlite_store.SQLiteMemoryStore",
+        lambda db_path: fake_store,
+    )
+    monkeypatch.setattr("src.utils.embeddings.get_embedding_client", lambda: MagicMock())
+    monkeypatch.setattr(
+        "src.memory.orchestrator.MemoryOrchestrator.create_lite",
+        mock_create_lite,
+    )
+    monkeypatch.setattr("src.core.config.get_settings", lambda: _Settings())
+    monkeypatch.setattr(
+        "src.utils.llm.OpenAICompatibleClient",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("Cloud provider without API key must not construct LLM client")
+        ),
+    )
+
+    await client.initialize()
+    mock_create_lite.assert_awaited_once()
+    assert mock_create_lite.await_args.args[2] is None
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_embedded_initialize_forwards_extra_body_for_local_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """initialize() passes extra_body through to OpenAICompatibleClient for local providers."""
+    monkeypatch.delenv("LLM_INTERNAL__PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__MODEL", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__API_KEY", raising=False)
+    monkeypatch.delenv("LLM_INTERNAL__EXTRA_BODY", raising=False)
+
+    from cml.embedded_config import EmbeddedLLMConfig
+
+    config = EmbeddedConfig(
+        tenant_id="test-tenant",
+        llm=EmbeddedLLMConfig(
+            provider="openai_compatible",
+            model="qwen3.8-27b",
+            base_url="http://127.0.0.1:8000/v1",
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        ),
+    )
+    client = EmbeddedCognitiveMemoryLayer(config=config)
+
+    fake_store = MagicMock()
+    fake_store.initialize = AsyncMock(return_value=None)
+    fake_store.close = AsyncMock(return_value=None)
+    fake_orchestrator = MagicMock()
+    mock_create_lite = AsyncMock(return_value=fake_orchestrator)
+
+    captured: dict[str, object] = {}
+
+    def _fake_llm_client(**kwargs: object) -> MagicMock:
+        captured.update(kwargs)
+        return MagicMock(name="llm_client")
+
+    class _Features:
+        use_llm_enabled = True
+
+    class _LLMInternal:
+        base_url = None
+        model = "gpt-4o-mini"
+        provider = "openai"
+        api_key = None
+        extra_body = None
+
+    class _Settings:
+        features = _Features()
+        llm_internal = _LLMInternal()
+
+    monkeypatch.setattr("cml.embedded._check_embedded_deps", lambda: None)
+    monkeypatch.setattr(
+        "cml.storage.sqlite_store.SQLiteMemoryStore",
+        lambda db_path: fake_store,
+    )
+    monkeypatch.setattr("src.utils.embeddings.get_embedding_client", lambda: MagicMock())
+    monkeypatch.setattr(
+        "src.memory.orchestrator.MemoryOrchestrator.create_lite",
+        mock_create_lite,
+    )
+    monkeypatch.setattr("src.core.config.get_settings", lambda: _Settings())
+    monkeypatch.setattr("src.utils.llm.OpenAICompatibleClient", _fake_llm_client)
+
+    await client.initialize()
+    mock_create_lite.assert_awaited_once()
+    assert mock_create_lite.await_args.args[2] is not None
+    assert captured["model"] == "qwen3.8-27b"
+    assert captured["base_url"] == "http://127.0.0.1:8000/v1"
+    assert captured["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     await client.close()

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-11-24
+
+### Added
+
+- **Neuro-Cognitive Architecture Suite & ActiveCML** — implemented CA1 Reality Monitoring (`src/retrieval/reality_monitoring.py`), Temporal Contiguity (`temporal_contiguity_neighbours=3`), Cognitive HyDE with LLM Cue Selector (`HyDEGenerator.select_cognitive_cues()`), 2-hop Bridge Recollection, Persona-Profile Augmentation, Prospective Memory trigger induction, ActiveCML `intrinsic_injection` (`src/intrinsic/`), and Laya System 1 integration (`[laya]` optional extra).
+- **SDK `ReadResponse.intrinsic_injection` property & embedded read parity** — `py-cml` embedded mode now forwards `warnings`, `open_questions`, `sufficiency`, and `retrieval_meta` (including ActiveCML `intrinsic_injection`), reads `LLM_INTERNAL__API_KEY` and `LLM_INTERNAL__EXTRA_BODY`, and exposes `ReadResponse.intrinsic_injection`.
+
+### Changed
+
+- **`FEATURES__USE_LLM_ENABLED=true` by default** with graceful missing-API-key fallback in both `MemoryOrchestrator.create()` and `EmbeddedCognitiveMemoryLayer.initialize()`.
+- **Default embedded embedding dimensions** updated from `384` to `768` (`nomic-ai/nomic-embed-text-v2-moe`).
+- **LoCoMo-Plus full 2,387-sample benchmark** verified from scratch on local `qwen3.8-27b` (`59.06%` LoCoMo Factual Avg, `37.41%` Cognitive, `80.27%` Adversarial, `55.43%` overall, `0` errors).
+
 ## [2.0.0] — 2026-07-30
 
 Major release. The breaking half is a deliberate prune of surface that never

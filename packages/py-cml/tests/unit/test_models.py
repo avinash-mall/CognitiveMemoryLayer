@@ -226,6 +226,37 @@ def test_read_response_parses_retrieval_meta() -> None:
     assert r.retrieval_meta is not None
     assert r.retrieval_meta["sources_completed"] == 2
     assert r.retrieval_meta["total_elapsed_ms"] == 8.5
+    assert r.intrinsic_injection is None
+
+
+def test_read_response_intrinsic_injection_property() -> None:
+    """ReadResponse.intrinsic_injection returns ActiveCML payload when present in retrieval_meta."""
+    payload = {
+        "mode": "logit_bias",
+        "logit_bias": {"1234": 2.5},
+        "prefix_block": "[ACTIVE_MEMORY] Prefers dark mode.",
+    }
+    r = ReadResponse.model_validate(
+        {
+            "query": "theme?",
+            "memories": [],
+            "total_count": 0,
+            "elapsed_ms": 5.0,
+            "retrieval_meta": {"intrinsic_injection": payload},
+        }
+    )
+    assert r.intrinsic_injection == payload
+
+
+def test_sdk_version_matches_root_version_file() -> None:
+    """cml.__version__ stays in sync with repository VERSION file."""
+    from pathlib import Path
+
+    import cml
+
+    version_file = Path(__file__).resolve().parents[4] / "VERSION"
+    if version_file.exists():
+        assert cml.__version__ == version_file.read_text(encoding="utf-8").strip()
 
 
 def test_read_request_max_results_validation() -> None:

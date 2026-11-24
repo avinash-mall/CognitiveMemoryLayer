@@ -162,14 +162,22 @@ class ReadResponse(ReadMemoryResponse):
     """Response from read operation.
 
     Field schema is the canonical ``ReadMemoryResponse`` from ``cml_contracts``;
-    this SDK subclass adds the convenience ``context`` property and ``__str__``
-    that SDK callers rely on.
+    this SDK subclass adds the convenience ``context`` and ``intrinsic_injection``
+    properties and ``__str__`` that SDK callers rely on.
     """
 
     @property
     def context(self) -> str:
         """Shortcut to get formatted LLM context string."""
         return self.llm_context or ""
+
+    @property
+    def intrinsic_injection(self) -> dict[str, Any] | None:
+        """Return ActiveCML intrinsic injection payload from retrieval_meta, if present."""
+        if not isinstance(self.retrieval_meta, dict):
+            return None
+        payload = self.retrieval_meta.get("intrinsic_injection")
+        return payload if isinstance(payload, dict) else None
 
     def __str__(self) -> str:
         lines = [f"Query: {self.query} ({self.total_count} results, {self.elapsed_ms:.0f}ms)"]

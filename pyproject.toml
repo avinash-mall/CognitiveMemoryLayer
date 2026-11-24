@@ -73,6 +73,7 @@ embedded = [
 ]
 gemini = ["google-generativeai"]
 claude = ["anthropic"]
+laya = ["laya>=0.5"]
 eval = [
     "requests>=2.32",
     "tqdm>=4.66",
@@ -162,6 +163,7 @@ module = [
     "src.core.*",
     "src.extraction.*",
     "src.forgetting.*",
+    "src.intrinsic.*",
     "src.memory.*",
     "src.reconsolidation.*",
     "src.retrieval.*",
