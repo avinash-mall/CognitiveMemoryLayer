@@ -21,6 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **LC-NE & ACh Neuromodulatory Gain Control & Perirhinal Multimodal Sensory Engrams** (`src/memory/neuromodulation.py`, `src/memory/sensory/perirhinal.py`, `media=` on `write()`).
 - **Full 2,387-Sample LoCoMo-Plus SOTA Verification (`qwen3.8-27b`, 100% local, `$0` API cost, `0` errors)** — lifted LoCoMo Factual Avg from `59.06%` to **`68.40%`** (`+9.34pp` — #1 among all memory systems, surpassing A-Mem `59.64%`, SeCom `57.53%`, Mem0 `57.24%`, and full-context GPT-4o `62.99%` / GPT-4.1 `62.21%`), Temporal from `50.16%` to **`70.25%`** (`+20.09pp`), Single-hop to **`70.21%`** (`+9.69pp`), Multi-hop to **`47.52%`** (`+9.75pp`), Adversarial to **`82.06%`** (#1 overall), Cognitive to **`39.40%`**, and Overall 6-category score from `55.43%` to **`63.53%`** (`1,516.5 / 2,387`).
 
+### Changed
+
+- **Modular Refactoring & SDK Client Deduplication** — extracted `src/memory/_write_pipeline.py`, `src/retrieval/augmenters.py`, `src/retrieval/explain.py`, and `src/retrieval/graph_expansion.py` from monolithic server modules, and centralized `py-cml` request/query-parameter builders in `cml._endpoints` (~1,670 lines of duplicate sync/async client code eliminated).
+- **Fixed Multi-Pathway Filter Forwarding & Fact Lookup Timeout** — forwarded `memory_types`, `since`, and `until` filters into Dentate Gyrus sparse BM25 and Cortical Hypergraph PPR pathways, and ensured `FACTS` lookup steps always apply `settings.retrieval.fact_timeout_ms`.
+
+### Removed
+
+- Removed 8 unwired v1 modules (`scratch_pad.py`, `conversation.py`, `tool_memory.py`, `knowledge_base.py`, `entity_extractor.py`, `relation_extractor.py`, `storage/redis.py`, `api/dependencies.py`), `cml.utils.deprecation`, 6 legacy evaluation wrapper scripts, `ProjectPlan/ActiveCML/`, `requirements-docker.txt`, and `evaluation/requirements.txt`.
+
 ## [2.1.0] — 2026-11-24
 
 ### Added
