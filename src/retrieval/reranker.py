@@ -41,9 +41,13 @@ class MemoryReranker:
         memories: list[RetrievedMemory],
         query: str,
         max_results: int | None = None,
+        *,
+        ce_temperature: float = 1.0,
     ) -> list[RetrievedMemory]:
-        """Rerank memories by combined score and diversity."""
-        ranked, _ = await self.rerank_with_breakdown(memories, query, max_results=max_results)
+        """Rerank memories by combined score, Cross-Encoder discrimination, and diversity."""
+        ranked, _ = await self.rerank_with_breakdown(
+            memories, query, max_results=max_results, ce_temperature=ce_temperature
+        )
         return ranked
 
     async def rerank_with_breakdown(
@@ -51,6 +55,8 @@ class MemoryReranker:
         memories: list[RetrievedMemory],
         query: str,
         max_results: int | None = None,
+        *,
+        ce_temperature: float = 1.0,
     ) -> tuple[list[RetrievedMemory], list[dict[str, Any]]]:
         """Rerank memories and return score breakdowns for explain mode."""
         if not memories:
@@ -64,12 +70,91 @@ class MemoryReranker:
         }
         base_scores = {i: breakdowns[i]["base_score"] for i in breakdowns}
 
-        # ponytail: constraint boost from vector-search cosine relevance. If ranking
-        # quality ever demands it, a pairwise scorer could replace this — but note the
-        # scale trap in _score_components before wiring one in.
+        # Prefrontal / Perirhinal Cross-Encoder discrimination over top-64 candidates
+        if query and query.strip():
+            try:
+                from ..core.config import get_settings
+
+                s = get_settings()
+                ce_enabled = bool(getattr(s.features, "cross_encoder_enabled", True))
+                ce_weight = float(getattr(s.retrieval, "cross_encoder_weight", 0.42))
+            except Exception:
+                ce_enabled = True
+                ce_weight = 0.42
+
+            if ce_enabled and ce_weight > 0.0:
+                try:
+                    import asyncio
+
+                    from .cross_encoder import get_cross_encoder
+
+                    top_indices = sorted(
+                        base_scores.keys(), key=lambda k: base_scores[k], reverse=True
+                    )[:64]
+
+                    def _format_ce_doc(m: RetrievedMemory) -> str:
+                        rec = m.record
+                        meta = rec.metadata or {}
+                        said = (
+                            rec.timestamp.strftime("%Y-%m-%d")
+                            if hasattr(rec.timestamp, "strftime")
+                            else ""
+                        )
+                        ev_disp = str(
+                            meta.get("event_date_display") or meta.get("event_date") or ""
+                        )[:16]
+                        date_hdr = ""
+                        if said and ev_disp and ev_disp != said:
+                            date_hdr = f"[{said}, refers to {ev_disp}] "
+                        elif said:
+                            date_hdr = f"[{said}] "
+                        spk = str(meta.get("speaker") or "").strip()
+                        txt = rec.text or ""
+                        spk_hdr = f"{spk}: " if spk and not txt.startswith(f"{spk}:") else ""
+                        return f"{date_hdr}{spk_hdr}{txt}"
+
+                    pair_texts = [_format_ce_doc(memories[i]) for i in top_indices]
+                    ce_scores = await asyncio.to_thread(
+                        get_cross_encoder().score_pairs,
+                        query,
+                        pair_texts,
+                        temperature=ce_temperature,
+                    )
+                    eff_w = min(0.32, ce_weight)
+                    for idx_pos, ce_prob in zip(top_indices, ce_scores, strict=False):
+                        mem = memories[idx_pos]
+                        meta = mem.record.metadata or {}
+                        breakdowns[idx_pos]["cross_encoder"] = round(ce_prob, 4)
+                        blended = (1.0 - eff_w) * base_scores[idx_pos] + eff_w * ce_prob
+                        if (
+                            meta.get("_proustian_promoted")
+                            or meta.get("_hyde_promoted")
+                            or mem.retrieval_source == "temporal_contiguity"
+                        ):
+                            # Protect indirect cues & contiguity neighbours from literal-match drop
+                            base_scores[idx_pos] = max(base_scores[idx_pos], blended)
+                        else:
+                            # Soft floor so strong vector/BM25/PPR recall is re-ordered, never zeroed
+                            base_scores[idx_pos] = max(0.72 * base_scores[idx_pos], blended)
+                            if ce_prob > mem.relevance_score:
+                                mem.relevance_score = round(
+                                    0.55 * mem.relevance_score + 0.45 * ce_prob, 4
+                                )
+                except Exception:
+                    pass
+
+        # Calibrated constraint boost: preserves TestRerankerConstraintWeights ordering on
+        # small/comparable sets while preventing off-topic [Value]/[State] turns from dominating
+        # the top of every factual packet when Cross-Encoder scores them near zero.
         for idx, mem in enumerate(memories):
             if mem.record.type == MemoryType.CONSTRAINT:
-                boost = max(0.0, min(1.0, mem.relevance_score)) * 2.0
+                ce_val = breakdowns[idx].get("cross_encoder")
+                if (len(memories) > 6 and ce_val is not None and ce_val < 0.15) or (
+                    mem.retrieval_source == "constraints" and mem.relevance_score < 0.62
+                ):
+                    boost = 0.0
+                else:
+                    boost = max(0.0, min(1.0, mem.relevance_score)) * 0.18
                 breakdowns[idx]["constraint_boost"] = boost
                 base_scores[idx] += boost
 

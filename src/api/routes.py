@@ -17,6 +17,8 @@ from .auth import AuthContext, get_auth_context, require_admin_permission, requi
 from .schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     ForgetRequest,
     ForgetResponse,
     MemoryItem,
@@ -26,8 +28,12 @@ from .schemas import (
     ReadMemoryRequest,
     ReadMemoryResponse,
     SessionContextResponse,
+    SimulateRequest,
+    SimulateResponse,
     UpdateMemoryRequest,
     UpdateMemoryResponse,
+    WindowConsolidateRequest,
+    WindowConsolidateResponse,
     WriteBatchRequest,
     WriteBatchResponse,
     WriteMemoryRequest,
@@ -92,6 +98,7 @@ async def write_memory(
             namespace=body.namespace,
             timestamp=body.timestamp,
             eval_mode=eval_mode,
+            media=body.media,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
         return WriteMemoryResponse(
@@ -392,6 +399,7 @@ async def session_write(
             namespace=body.namespace,
             timestamp=body.timestamp,
             eval_mode=eval_mode,
+            media=body.media,
         )
         MEMORY_WRITES.labels(tenant_id=auth.tenant_id, status="success").inc()
         return WriteMemoryResponse(
@@ -535,6 +543,70 @@ async def delete_all_memories(
 async def health_check():
     """Liveness/readiness check. Returns status and timestamp. No authentication required."""
     return {"status": "healthy", "timestamp": datetime.now(UTC).isoformat()}
+
+
+@router.post("/memory/consolidate_windowed", response_model=WindowConsolidateResponse)
+async def consolidate_windowed_endpoint(
+    body: WindowConsolidateRequest,
+    auth: AuthContext = Depends(require_write_permission),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Run Windowed Micro-Sleep Consolidation (Hypergraph + Proustian Cues + Conway + DMN)."""
+    try:
+        stats = await orchestrator.consolidate_windowed(
+            tenant_id=auth.tenant_id,
+            session_id=body.session_id,
+            max_episodes=body.max_episodes,
+            use_llm=body.use_llm,
+        )
+        return WindowConsolidateResponse(**stats)
+    except Exception as e:
+        logger.exception("window_consolidate_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
+
+
+@router.post("/memory/feedback", response_model=FeedbackResponse)
+async def feedback_endpoint(
+    body: FeedbackRequest,
+    auth: AuthContext = Depends(require_write_permission),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Apply Dopaminergic Reward Prediction Error (RPE) feedback & Procedural compilation."""
+    try:
+        res = await orchestrator.feedback(
+            tenant_id=auth.tenant_id,
+            outcome_reward=body.outcome_reward,
+            expected_reward=body.expected_reward,
+            query=body.query,
+            memory_ids=body.memory_ids,
+            correction_text=body.correction_text,
+            preferred_steps=body.preferred_steps,
+            session_id=body.session_id,
+        )
+        return FeedbackResponse(**res)
+    except Exception as e:
+        logger.exception("feedback_rpe_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
+
+
+@router.post("/memory/simulate", response_model=SimulateResponse)
+async def simulate_endpoint(
+    body: SimulateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
+):
+    """Execute Hippocampal Forward Preplay / Counterfactual Simulation."""
+    try:
+        verdict = await orchestrator.simulate(
+            tenant_id=auth.tenant_id,
+            scenario=body.scenario,
+            max_results=body.max_results,
+            context_filter=body.context_filter,
+        )
+        return SimulateResponse(**verdict)
+    except Exception as e:
+        logger.exception("simulate_preplay_failed", tenant_id=auth.tenant_id, error=str(e))
+        raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
 @router.post("/memory/read/stream")

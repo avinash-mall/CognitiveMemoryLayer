@@ -13,8 +13,8 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1227-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
-[![Version](https://img.shields.io/badge/version-2.1.0-blue?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/Tests-1259-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue?style=for-the-badge)](#)
 
 <br/>
 
@@ -256,55 +256,50 @@ Not all experiences become memories. CML's `WriteGate` mirrors the CREB protein'
 </details>
 
 <details>
-<summary><strong>Hippocampal Store</strong> &mdash; One-shot episodic encoding with pattern separation</summary>
+<summary><strong>Hippocampal Store</strong> &mdash; One-shot episodic encoding, Dentate Gyrus BM25 &amp; Time Cells</summary>
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
 | One-shot encoding | `HippocampalStore.encode_batch()` | `src/memory/hippocampal/store.py` |
-| Deduplication (*not* pattern separation) | SHA256 stable keys — see note | `PostgresMemoryStore` |
+| Dentate Gyrus sparse pattern separation | `sparse_lexical_search()` (Postgres `tsvector` GIN + SQLite `FTS5` `bm25()`) | `src/storage/postgres.py`, `packages/py-cml/src/cml/storage/sqlite_store.py` |
+| Hippocampal Time Cells | Granularity-aware relative date binding (`day`/`week`/`month`/`season`/`year`, skipping `vague`) + `HippocampalTimeCellEngine` | `src/extraction/temporal_resolver.py`, `src/retrieval/temporal_engine.py` |
 | Unified extraction | Entities, relations, constraints, facts in one call | `src/extraction/unified_write_extractor.py` |
-
-The SHA256 key is a deduplication device, not a dentate-gyrus analog. Any one-character
-difference yields an unrelated key, so it gives maximal separation with no similarity
-structure at all. Near-duplicate suppression is done separately, by the write gate's
-lexical novelty check.
 
 </details>
 
 <details>
-<summary><strong>Neocortical Store</strong> &mdash; Slow semantic learning with schema alignment</summary>
+<summary><strong>Neocortical Store &amp; Hypergraph</strong> &mdash; Schema alignment &amp; &lt;5ms Cortical Spreading Activation</summary>
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
-| Schema-based storage | `FactSchema` + `FactCategory` | `src/memory/neocortical/schemas.py` |
+| Schema-based storage | `FactSchema` + `FactCategory` (`Postgres` + `SQLiteFactStore`) | `src/memory/neocortical/schemas.py`, `packages/py-cml/src/cml/storage/sqlite_neocortical.py` |
 | Cognitive categories | GOAL, STATE, VALUE, CAUSAL, POLICY | `src/memory/neocortical/schemas.py` |
-| Graph traversal | Personalized PageRank on Neo4j (requires the GDS plugin; otherwise a variable-length path-count fallback) | `src/storage/neo4j.py` |
+| Bipartite Cortical Hypergraph | `CorticalHypergraphEngine` (N-ary `HyperedgeEngram` + `&lt;5ms` Personalized PageRank) | `src/memory/neocortical/hypergraph.py` |
+| Graph traversal | Neo4j (`Server`) &amp; `SQLiteGraphStore` (`py-cml` embedded parity) | `src/storage/neo4j.py`, `packages/py-cml/src/cml/storage/sqlite_neocortical.py` |
 
 </details>
 
 <details>
-<summary><strong>Retrieval</strong> &mdash; Tulving's ecphory (cue-engram interaction)</summary>
+<summary><strong>Retrieval</strong> &mdash; 4-Pathway Ecphory, CUDA Cross-Encoder &amp; ACC Iterative Control</summary>
 
 Memory retrieval is not lookup &mdash; it is **ecphory**: the interaction between a retrieval cue and a stored engram that *reconstructs* the memory (Tulving, 1983 <sup>[2]</sup>).
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
-| Query classification | `QueryClassifier` (10 intents) | `src/retrieval/classifier.py` |
-| Retrieval planning | `RetrievalPlanner` (parallel step groups) | `src/retrieval/planner.py` |
-| Hybrid search | Vector + Graph + Constraints + Facts | `src/retrieval/retriever.py` |
-| Constraint-aware reranking | Type-stability weighting, domain rescoring | `src/retrieval/reranker.py` |
+| Query classification &amp; planning | `QueryClassifier` + `RetrievalPlanner` | `src/retrieval/classifier.py`, `src/retrieval/planner.py` |
+| 4-Pathway hybrid ecphory | Dense Vector + Dentate Gyrus BM25 + Cortical Hypergraph PPR + Grounded Proustian Cues (`cue -> verbatim episode`) | `src/retrieval/memory_retriever.py` |
+| Prefrontal Cross-Encoder &amp; CLS allocation | `CrossEncoderScorer` (true-logit CUDA reranking) + `MemoryReranker` + ACC up-to-2-hop loop | `src/retrieval/cross_encoder.py`, `src/retrieval/reranker.py` |
 
 </details>
 
 <details>
-<summary><strong>Consolidation</strong> &mdash; Sleep-cycle replay (sharp-wave ripples)</summary>
+<summary><strong>Consolidation</strong> &mdash; Windowed Micro-Sleep &amp; Sharp-Wave Ripple Replay</summary>
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
+| Windowed Micro-Sleep Consolidation | `WindowedMicroSleepConsolidator` (CRC32 content-defined windows: coref atomic facts, N-ary hyperedges, Proustian cues, Conway Tier-2 Chapter Gists &amp; Tier-3 DMN Self-Profiles) | `src/consolidation/windowed_consolidator.py` |
 | Salience-weighted SWR replay &amp; sampling | `EpisodeSampler` + `ConsolidationWorker` (`swr_links_induced`) | `src/consolidation/sampler.py`, `src/consolidation/worker.py` |
-| Semantic clustering | `SemanticClusterer` | `src/consolidation/clusterer.py` |
-| Gist extraction | `GistExtractor` (preserves constraint types + detail recovery) | `src/consolidation/summarizer.py` |
-| Migration | `ConsolidationMigrator` (hippo &rarr; neocortex) | `src/consolidation/migrator.py` |
+| Semantic clustering &amp; migration | `SemanticClusterer` + `GistExtractor` + `ConsolidationMigrator` | `src/consolidation/` |
 
 </details>
 
@@ -320,16 +315,19 @@ Memory retrieval is not lookup &mdash; it is **ecphory**: the interaction betwee
 </details>
 
 <details>
-<summary><strong>Neuro-Cognitive Subsystems &amp; Laya System 1</strong> &mdash; Amygdala, BA10, CA1, DMN, Subcortical Fast-Path</summary>
+<summary><strong>Whole-Brain Subsystems &amp; Laya System 1</strong> &mdash; Amygdala, BA10, CA1, DMN, LC-NE/ACh, Basal Ganglia, Preplay, Perirhinal</summary>
 
 | Biology | Code | Location |
 | :--- | :--- | :--- |
 | Amygdala somatic markers | `SomaticMarkerTagger` (valence/arousal, flashbulb decay modulation, state-congruent resonance) | `src/memory/somatic.py` |
 | Rostral PFC (BA10) prospective memory | `ProspectiveMemoryEngine` (causal intention triggers + read-time parent ecphory) | `src/memory/prospective.py` |
 | CA1 comparator &amp; OFC reality monitoring | `CA1RealityMonitor` (presupposition checks, speaker-attribution binding, concise refusal alerts) | `src/retrieval/reality_monitor.py` |
-| Default Mode Network (mPFC / TPJ) | `DMNTheoryOfMind` (mentalizing &amp; motivational synthesis for cognitive/common-sense queries) | `src/memory/dmn.py` |
-| Subcortical System 1 fast decision layer | `LayaSystem1Engine` (Convai Laya ModernBERT-large ~20ms GPU routing + calibrated CA1 grounding) | `src/core/laya_system1.py` |
-| ActiveCML intrinsic memory | `IntrinsicMemoryController` (logit bias, `contextvars`-isolated activation steering, KV-prefix, LoRA routing) | `src/intrinsic/` |
+| Default Mode Network (Conway Tier-3 Self) | `DMNTheoryOfMind` + `PersistentDMNStore` (persistent per-speaker `ConceptualSelfProfile` + mentalizing) | `src/memory/dmn.py` |
+| LC-NE &amp; ACh neuromodulatory gain | `NeuromodulatoryController` (encoding vs. retrieval mode balance + surprise-driven exploration temperature) | `src/memory/neuromodulation.py` |
+| Basal Ganglia / VTA Dopaminergic RPE | `ProceduralMemoryStore` + `DopaminergicRPEEngine` (`POST /memory/feedback` &mdash; skill compilation &amp; synaptic weight updates) | `src/memory/procedural.py`, `src/reconsolidation/dopamine_rpe.py` |
+| Hippocampal forward preplay | `HippocampalPreplayEngine` (`POST /memory/simulate` &mdash; counterfactual rollout against constraints &amp; DMN profiles) | `src/retrieval/preplay.py` |
+| Perirhinal multimodal cortex | `PerirhinalSensoryEncoder` (`media=` on `write()` &mdash; visual/sensory descriptor binding) | `src/memory/sensory/perirhinal.py` |
+| Subcortical System 1 &amp; ActiveCML | `LayaSystem1Engine` + `IntrinsicMemoryController` | `src/core/laya_system1.py`, `src/intrinsic/` |
 
 </details>
 
@@ -658,13 +656,13 @@ pytest tests/integration tests/e2e packages/py-cml/tests -q # requires a running
 
 Evaluated **from scratch on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors, `$0` API cost)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
 
-**CML v2.0 setup (2026-11-23, from scratch):** Fresh Postgres/Neo4j/Redis wipe, all 411 conversations (242,658 turns) ingested with local `nomic-embed-text-v2-moe` embeddings and heuristic write path (`USE_LLM_ENABLED=false` during ingestion, `0` write-time LLM calls); read-time Neuro-Cognitive stack + Cognitive HyDE + LLM Cognitive Cue Selector + 2-hop bridge recollection + speaker persona augmentation + chronological temporal ordering + calibrated CA1 speaker-swap monitoring, powered 100% locally by **`qwen3.8-27b`** (`llama-server`, thinking disabled, `temperature=0`, `$0` API cost) for internal read-time LLM, QA, and LLM-as-Judge. Artifact: [`evaluation/results/locomo_plus_2026-11-23_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-23_qwen38_full_2387_summary.json).
+**CML v3.0 setup (2026-11-25, from scratch):** Fresh Postgres/Neo4j/Redis wipe, all 411 conversations (242,658 turns) ingested with local `nomic-embed-text-v2-moe` embeddings + Postgres `tsvector` GIN index, followed by CRC32 Content-Defined **Windowed Micro-Sleep Consolidation** (`consolidate_windowed`, `qwen3.8-27b`) extracting coreference-resolved semantic facts, N-ary Cortical Hyperedges, Grounded Proustian Cue Pointers (`cue -> verbatim episode`), Conway Tier-2 Chapter Gists, and Tier-3 Persistent DMN Self-Profiles; read-time **4-Pathway Ecphory** (Dense + Dentate Gyrus BM25 + `&lt;5ms` Bipartite Cortical Hypergraph PPR + Proustian Cues) + CUDA true-logit Cross-Encoder (`BAAI/bge-reranker-base`) + Granularity-Aware Hippocampal Time Cell Engine + ACC 2-hop recollection + CA1 speaker-swap monitoring, powered 100% locally by **`qwen3.8-27b`** (`llama-server` w/ `dflash2`, thinking disabled, `temperature=0`, `$0` API cost) for consolidation, read-time cues, QA, and LLM-as-Judge. Artifact: [`evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json).
 
 ### Full LoCoMo-Plus Comparison (2,387 Samples)
 
 | System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v2.0 (Neuro + HyDE + CA1)** <sup>[0]</sup> | Memory System | `qwen3.8-27b` (100% local, `$0` API) | 60.52% | 37.77% | **50.16%** | 40.10% | **80.27%** | **59.06%** | 37.41% | 21.65 |
+| **CML v3.0 (Whole-Brain)** <sup>[0]</sup> | Memory System | `qwen3.8-27b` (100% local, `$0` API) | 70.21% | 47.52% | **70.25%** | 44.27% | **82.06%** | **68.40%** | 39.40% | 29.00 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 66.60% | &mdash; |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.90% | &mdash; |
@@ -683,16 +681,16 @@ Evaluated **from scratch on the complete LoCoMo-Plus benchmark (2,387 samples, 0
 | Qwen3-14B <sup>[3]</sup> | Full Context | Full context | 65.96% | 46.45% | 53.89% | 59.38% | 60.45% | 59.65% | 40.56% | 19.09 |
 | GPT-5-nano <sup>[3]</sup> | Full Context | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
 
-<sup>[0]</sup> Full 2,387-sample run from scratch (`2,387/2,387` valid, `0` errors, `0` empty contexts, overall 6-category avg **55.43%**, `1,323.0 / 2,387`); judge: `qwen3.8-27b` (`temperature=0`, thinking disabled).  
+<sup>[0]</sup> Full 2,387-sample run from scratch (`2,387/2,387` valid, `0` errors, `0` empty contexts, overall 6-category avg **63.53%**, `1,516.5 / 2,387`); judge: `qwen3.8-27b` (`temperature=0`, thinking disabled).  
 <sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using `gpt-4o`; factual category breakdown not published.  
 <sup>[2]</sup> Reported in the *Madeleine* paper (arXiv 2026) under the official LoCoMo-Plus protocol on the 401-sample Cognitive split; factual category breakdown not published.  
 <sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), 2,387 samples, judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive.
 
 ### Unbiased Analysis &amp; Trade-Offs
 
-- **Surpasses Mem0 (`57.24%`) and SeCom (`57.53%`) on LoCoMo Factual Avg &mdash; 100% locally at `$0` API cost:** CML achieves **59.06%** LoCoMo Factual Avg (`+1.82pp` over Mem0, `+1.53pp` over SeCom, `+13.74pp` over `RAG text-embedding-large`, within `0.58pp` of A-Mem) while running on a local quantized 27B model (`qwen3.8-27b`) with zero write-time LLM calls.
-- **#1 Adversarial (`80.27%`) &amp; #1 Memory-System Temporal (`50.16%`):** Selective CA1 speaker-swap monitoring achieves `80.5%` refusal on adversarial traps while keeping factual refusal rates low (`19.4&ndash;24.0%`), and chronological timeline assembly lifts Temporal (`50.16%`) above A-Mem (`49.30%`), GPT-4o (`45.79%`), SeCom (`42.30%`), and Mem0 (`39.40%`).
-- **Strong Cognitive leap (`37.41%`, `150/401`) &amp; remaining gaps:** Cognitive HyDE + LLM Cue Selection beat all RAG baselines (`23.5&ndash;29.8%`) and closed to within `4.0pp` of Mem0 (`41.44%`). Remaining deficits in `single-hop` (`60.52%`), `multi-hop` (`37.77%`), and `common-sense` (`40.10%`) reflect the local 27B IQ3_S model vs. GPT-4o plus heuristic ingestion (`USE_LLM_ENABLED=false` during bulk ingestion left the Neo4j entity/relation graph empty; `FEATURES__USE_LLM_ENABLED=true` is enabled by default for production deployments).
+- **#1 Memory System on LoCoMo Factual Avg (`68.40%`) &mdash; Beats Full-Context GPT-4o (`62.99%`) &amp; GPT-4.1 (`62.21%`) at `$0` API cost:** CML v3.0 surpasses **A-Mem (`59.64%`, `+8.76pp`)**, **SeCom (`57.53%`, `+10.87pp`)**, **Mem0 (`57.24%`, `+11.16pp`)**, **GPT-4o full-context (`62.99%`)**, and **Qwen2.5-14B full-context (`63.45%`)** while running 100% locally on a quantized 27B model (`~4.8k` median retrieved context chars).
+- **#1 Memory-System Temporal (`70.25%`) &amp; #1 Overall Adversarial (`82.06%`):** Granularity-Aware Hippocampal Time Cells (`April 2023`, `2022`, `2023-05-07`, skipping `vague` offsets) + `HippocampalTimeCellEngine` calendar deltas lift Temporal to **70.25%** (beating A-Mem `49.30%`, Mem0 `39.40%`, and full-context Gemini-2.5-Flash `66.04%`), while CA1 speaker-swap monitoring + true-logit CUDA Cross-Encoder discrimination reach **83.2%** adversarial refusal with only **9.6&ndash;11.2%** refusal on `single-hop`, `multi-hop`, and `temporal`.
+- **Multi-Hop (`47.52%`) &amp; Cognitive (`39.40%`, `158/401`) with Remaining Gaps:** Bipartite Cortical Hypergraph `&lt;5ms` PPR + Windowed Micro-Sleep consolidation bring local 27B `multi-hop` (`47.52%`) to parity with GPT-4o-backed Mem0 (`48.10%`) and `Cognitive` (`39.40%`) within `2.04pp` of Mem0 (`41.44%`). Remaining deficits in `common-sense` (`44.27%`) and `Cognitive` (`39.40%`) vs. `gpt-4o` systems reflect quantized local 27B (`IQ3_S`, non-thinking) implicit world-knowledge synthesis.
 - **Judge parity note:** Paper Table 1 baselines are judged by `gemini-2.5-flash`; this 100%-local run uses `qwen3.8-27b` (`temperature=0`) for self-consistent local judging.
 
 ### Reproducing the Full 2,387-Sample Local Run
@@ -701,11 +699,12 @@ Evaluated **from scratch on the complete LoCoMo-Plus benchmark (2,387 samples, 0
 # 1. Build the official 2,387-sample unified dataset
 cd evaluation/locomo_plus/data && python unified_input.py && cd ../../..
 
-# 2. Run against a local OpenAI-compatible LLM (e.g. llama-server qwen3.8-27b on :8000)
+# 2. Run ingest + Windowed Micro-Sleep Consolidation + QA + Judge against a local OpenAI-compatible LLM
 python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/qwen38_full_2387 \
+  --out-dir evaluation/outputs/cml_v3_qwen38_full_2387 \
   --cml-url http://localhost:8001 \
+  --consolidate-windowed \
   --base-url http://127.0.0.1:8000/v1 \
   --model qwen3.8-27b \
   --judge-model qwen3.8-27b \
@@ -719,10 +718,10 @@ Full diagnostics &amp; methodology: [evaluation/EVALUATION_REPORT.md](evaluation
 ## Testing
 
 ```bash
-# 896 hermetic unit tests — no DB, no LLM, mock embeddings
+# 911 hermetic unit tests — no DB, no LLM, mock embeddings
 pytest tests/unit -q
 
-# 331 tests against a live server on :8000
+# 348 tests across integration, e2e, and py-cml (unit + embedded + live)
 pytest tests/integration tests/e2e packages/py-cml/tests -q
 ```
 

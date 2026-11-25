@@ -387,6 +387,125 @@ class PostgresMemoryStore(MemoryStoreBase):
                 await session.commit()
             return records
 
+    async def sparse_lexical_search(
+        self,
+        tenant_id: str,
+        query: str,
+        top_k: int = 15,
+        context_filter: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> list[tuple[MemoryRecord, float]]:
+        """Dentate Gyrus sparse pattern-separated search using Postgres GIN tsvector + ts_rank_cd."""
+        import re
+
+        stopwords = {
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "what",
+            "when",
+            "where",
+            "who",
+            "which",
+            "how",
+            "did",
+            "does",
+            "was",
+            "were",
+            "are",
+            "have",
+            "has",
+            "had",
+            "from",
+            "about",
+            "into",
+            "would",
+            "could",
+            "should",
+            "your",
+            "their",
+            "there",
+        }
+        tokens = [
+            t for t in re.findall(r"[a-zA-Z0-9]{2,}", (query or "").lower()) if t not in stopwords
+        ]
+        if not tokens:
+            return []
+        # Deduplicate preserving order, cap at 16 terms
+        unique_tokens = list(dict.fromkeys(tokens))[:16]
+        tsquery_str = " | ".join(unique_tokens)
+
+        try:
+            from sqlalchemy import func
+
+            async with self.session_factory() as session:
+                ts_vec = func.to_tsvector("english", func.coalesce(MemoryRecordModel.text, ""))
+                ts_q = func.to_tsquery("english", tsquery_str)
+                # Normalization 32 divides rank by (rank + 1) -> bounded in [0, 1)
+                rank_expr = func.ts_rank_cd(ts_vec, ts_q, 32).label("lex_rank")
+
+                base = and_(
+                    MemoryRecordModel.tenant_id == tenant_id,
+                    MemoryRecordModel.status
+                    == (filters or {}).get("status", MemoryStatus.ACTIVE.value),
+                    ts_vec.op("@@")(ts_q),
+                )
+                if context_filter:
+                    base = and_(base, MemoryRecordModel.context_tags.overlap(context_filter))
+
+                q = select(MemoryRecordModel, rank_expr).where(base)
+                if filters:
+                    if "type" in filters:
+                        t = filters["type"]
+                        if isinstance(t, list):
+                            q = q.where(MemoryRecordModel.type.in_(t))
+                        else:
+                            q = q.where(MemoryRecordModel.type == t)
+                    if "source_session_id" in filters:
+                        ssid = filters["source_session_id"]
+                        if isinstance(ssid, list):
+                            q = q.where(MemoryRecordModel.source_session_id.in_(ssid))
+                        else:
+                            q = q.where(MemoryRecordModel.source_session_id == ssid)
+                    time_col = _time_column(filters)
+                    if "since" in filters:
+                        since = _naive_utc(filters["since"])
+                        if since is not None:
+                            q = q.where(time_col >= since)
+                    if "until" in filters:
+                        until = _naive_utc(filters["until"])
+                        if until is not None:
+                            q = q.where(time_col <= until)
+                    if filters.get("exclude_expired"):
+                        now = datetime.now(UTC).replace(tzinfo=None)
+                        q = q.where(
+                            or_(
+                                MemoryRecordModel.valid_to.is_(None),
+                                MemoryRecordModel.valid_to >= now,
+                            )
+                        )
+
+                q = q.order_by(rank_expr.desc()).limit(top_k)
+                res = await session.execute(q)
+                out: list[tuple[MemoryRecord, float]] = []
+                for row in res:
+                    model, raw_rank = row[0], float(row[1] or 0.0)
+                    rec = self._to_schema(model)
+                    if rec is not None:
+                        # Calibrate Postgres ts_rank_cd(32) into [0.48, 0.94] band
+                        calibrated = min(0.94, 0.48 + 0.75 * raw_rank)
+                        rec.metadata["_lexical_score"] = calibrated
+                        out.append((rec, calibrated))
+                return out
+        except Exception as exc:
+            _logger.debug("postgres_sparse_lexical_fallback", error=str(exc))
+            return await super().sparse_lexical_search(
+                tenant_id, query, top_k=top_k, context_filter=context_filter, filters=filters
+            )
+
     async def scan(
         self,
         tenant_id: str,

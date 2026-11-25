@@ -435,6 +435,7 @@ class WriteMemoryRequest(BaseModel):
     turn_id: str | None = None
     agent_id: str | None = None
     timestamp: datetime | None = None  # Optional event timestamp (defaults to now)
+    media: list[dict[str, Any]] | None = None  # Optional Perirhinal multimodal attachments
 
 
 class CreateSessionRequest(BaseModel):
@@ -620,3 +621,70 @@ class FactListResponse(BaseModel):
 
     items: list[FactItem] = Field(default_factory=list)
     total: int = 0
+
+
+# --- CML v3.0 Whole-Brain Contracts ---
+
+
+class WindowConsolidateRequest(BaseModel):
+    """Request to run Windowed Micro-Sleep Consolidation on a tenant/session."""
+
+    session_id: str | None = None
+    max_episodes: int = Field(default=2000, ge=1, le=20_000)
+    use_llm: bool | None = None
+
+
+class WindowConsolidateResponse(BaseModel):
+    """Summary metrics from Windowed Micro-Sleep Consolidation."""
+
+    windows_processed: int = 0
+    episodes_consolidated: int = 0
+    facts_stored: int = 0
+    hyperedges_stored: int = 0
+    proustian_pointers_stored: int = 0
+    chapters_stored: int = 0
+    dmn_profiles_updated: int = 0
+
+
+class FeedbackRequest(BaseModel):
+    """Dopaminergic Reward Prediction Error (RPE) & Procedural feedback payload."""
+
+    outcome_reward: float = Field(..., ge=-1.0, le=1.0)
+    expected_reward: float = Field(default=0.5, ge=-1.0, le=1.0)
+    query: str | None = None
+    memory_ids: list[str] | None = None
+    correction_text: str | None = None
+    preferred_steps: list[str] | None = None
+    session_id: str | None = None
+
+
+class FeedbackResponse(BaseModel):
+    """Result of processing Dopaminergic RPE feedback."""
+
+    rpe_delta: float
+    memories_reinforced: int = 0
+    memories_marked_labile: int = 0
+    hyperedges_modulated: int = 0
+    procedural_skill_key: str | None = None
+    correction_memory_id: str | None = None
+
+
+class SimulateRequest(BaseModel):
+    """Hippocampal Forward Preplay / Counterfactual Simulation payload."""
+
+    scenario: str = Field(..., min_length=1, max_length=10_000)
+    max_results: int = Field(default=12, ge=1, le=50)
+    context_filter: list[str] | None = None
+
+
+class SimulateResponse(BaseModel):
+    """Structured verdict from Hippocampal Forward Preplay."""
+
+    scenario: str
+    compatible: bool = True
+    risk_score: float = 0.0
+    violated_constraints: list[str] = Field(default_factory=list)
+    predicted_reaction: str = ""
+    recommended_adjustment: str = ""
+    alerts: list[str] = Field(default_factory=list)
+    supporting_memory_ids: list[str] = Field(default_factory=list)

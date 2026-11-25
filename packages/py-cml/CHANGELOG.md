@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-11-24
+
+### Added
+
+- **Full SQLite Neocortical & Hypergraph Parity in Embedded Mode** (`cml.storage.sqlite_neocortical`) — added `SQLiteGraphStore`, `SQLiteFactStore`, SQLite `FTS5` Dentate Gyrus sparse BM25 search (`SQLiteMemoryStore.sparse_lexical_search`), and SQLite persistence for N-ary Cortical Hyperedges, Conway Tier-3 DMN Self-Profiles, and Procedural Skills, retiring `NoOpGraphStore` and `NoOpFactStore`.
+- **Whole-Brain Client & Embedded Methods** (`CognitiveMemoryLayer`, `AsyncCognitiveMemoryLayer`, `EmbeddedCognitiveMemoryLayer`, and namespaced proxies):
+  - `consolidate_windowed()` (`WindowConsolidateRequest` / `WindowConsolidateResponse`): runs 18-turn Windowed Micro-Sleep Consolidation.
+  - `feedback()` (`FeedbackRequest` / `FeedbackResponse`): submits Dopaminergic Reward Prediction Error (RPE) feedback to update synaptic weights, mark conflicting memories `labile`, and compile Cerebellar Procedural Skill playbooks.
+  - `simulate()` (`SimulateRequest` / `SimulateResponse`): executes Hippocampal Forward Preplay / Counterfactual Simulation against DMN profiles, constraints, and procedural pitfalls.
+  - `write(..., media=[...])`: Perirhinal multimodal sensory engram attachments (`url` / `path` / `base64` / `caption`).
+
 ## [2.1.0] — 2026-11-24
 
 ### Added

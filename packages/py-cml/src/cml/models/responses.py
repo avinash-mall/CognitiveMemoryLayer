@@ -27,6 +27,7 @@ from cml_contracts.models import (
     DashboardTimelineResponse,
     FactItem,
     FactListResponse,
+    FeedbackResponse,
     ForgetResponse,
     GraphEdgeInfo,
     GraphExploreResponse,
@@ -45,10 +46,12 @@ from cml_contracts.models import (
     RetrievalResultItem,
     SessionContextResponse,
     SessionInfo,
+    SimulateResponse,
     TenantInfo,
     TenantLabileInfo,
     TimelinePoint,
     UpdateMemoryResponse,
+    WindowConsolidateResponse,
     WriteMemoryResponse,
 )
 
@@ -73,6 +76,7 @@ __all__ = [
     "DashboardSessionsResponse",
     "DashboardTenantsResponse",
     "DashboardTimelineResponse",
+    "FeedbackResponse",
     "ForgetResponse",
     "ForgettingResult",
     "GraphEdgeInfo",
@@ -93,12 +97,14 @@ __all__ = [
     "SessionContextResponse",
     "SessionInfo",
     "SessionResponse",
+    "SimulateResponse",
     "StatsResponse",
     "TenantInfo",
     "TenantLabileInfo",
     "TimelinePoint",
     "TurnResponse",
     "UpdateResponse",
+    "WindowConsolidateResponse",
     "WriteResponse",
 ]
 

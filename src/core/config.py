@@ -317,6 +317,62 @@ class FeatureFlags(PydanticBaseModel):
         description="Adapt episode retrieval budget by query intent (wider for temporal/multi-hop/"
         "common-sense, tighter for focused single-hop/adversarial/cognitive queries).",
     )
+    # --- CML v3.0 Whole-Brain Subsystems ---
+    sparse_bm25_enabled: bool = Field(
+        default=True,
+        description="Dentate Gyrus Sparse Pattern Separation: hybrid Postgres tsvector GIN / "
+        "SQLite FTS5 lexical search fused with dense pgvector retrieval.",
+    )
+    hypergraph_ppr_enabled: bool = Field(
+        default=True,
+        description="Bipartite Cortical Hypergraph + Sub-5ms CA3 Personalized PageRank "
+        "spreading activation over N-ary episode engrams.",
+    )
+    conway_hierarchy_enabled: bool = Field(
+        default=True,
+        description="Conway 3-Tier Self-Memory System: Proustian cue pointers, session/chapter "
+        "gists, and persistent evolving DMN conceptual-self profiles.",
+    )
+    cross_encoder_enabled: bool = Field(
+        default=True,
+        description="Prefrontal/Perirhinal Cross-Encoder fine-grained reranking over candidate pool.",
+    )
+    acc_iterative_loop_enabled: bool = Field(
+        default=True,
+        description="Anterior Cingulate Cortex (ACC) Feeling-of-Knowing iterative retrieval loop "
+        "(up to 2 targeted prefrontal sub-query hops when chain uncertainty is high).",
+    )
+    neuromodulation_enabled: bool = Field(
+        default=True,
+        description="Locus Coeruleus (NE) & Acetylcholine (ACh) neuromodulatory gain control "
+        "for encoding/retrieval mode switching and adaptive exploration breadth.",
+    )
+    preplay_simulation_enabled: bool = Field(
+        default=True,
+        description="Hippocampal Forward Preplay / Counterfactual Simulation (simulate() API "
+        "and pre-response cognitive/adversarial constraint verification).",
+    )
+    procedural_rpe_enabled: bool = Field(
+        default=True,
+        description="Basal Ganglia & Cerebellar Procedural Skill Playbooks + Dopaminergic "
+        "Reward Prediction Error (feedback() API) synaptic weight & labile updates.",
+    )
+    perirhinal_multimodal_enabled: bool = Field(
+        default=True,
+        description="Perirhinal Multimodal Sensory Engrams: extract visual/document descriptors "
+        "and bind perceptual features into hippocampal hyperedges.",
+    )
+    windowed_consolidation_enabled: bool = Field(
+        default=True,
+        description="Windowed Micro-Sleep Episodic Consolidation: extract N-ary hyperedges, "
+        "coref-resolved facts, Proustian cues, chapter gists, and DMN profiles across turn windows.",
+    )
+    windowed_consolidation_turn_size: int = Field(
+        default=24,
+        ge=4,
+        le=80,
+        description="Number of conversational turns processed per Windowed Micro-Sleep call.",
+    )
 
 
 class RerankerSettings(PydanticBaseModel):
@@ -354,6 +410,16 @@ class RetrievalSettings(PydanticBaseModel):
     graph_timeout_ms: int = Field(default=2000, description="Graph step timeout (ms)")
     fact_timeout_ms: int = Field(default=1000, description="Fact lookup timeout (ms)")
     hnsw_ef_search: int = Field(default=64, description="pgvector HNSW ef_search override")
+    cross_encoder_model: str = Field(
+        default="BAAI/bge-reranker-v2-m3",
+        description="Cross-Encoder model ID for fine-grained candidate discrimination.",
+    )
+    cross_encoder_weight: float = Field(
+        default=0.42,
+        ge=0.0,
+        le=1.0,
+        description="Blend weight of Cross-Encoder probability in final reranker score.",
+    )
     reranker: RerankerSettings = Field(default_factory=RerankerSettings)
 
 

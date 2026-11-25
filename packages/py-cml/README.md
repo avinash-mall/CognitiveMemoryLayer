@@ -17,16 +17,15 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Tests](https://img.shields.io/badge/Tests-251-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
-[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
+[![Tests](https://img.shields.io/badge/Tests-252-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
-**What's new (2.1.0):**
-- **Full Neuro-Cognitive & ActiveCML SDK parity:** `EmbeddedCognitiveMemoryLayer.read()` now forwards `warnings` (including CA1 Reality Monitoring alerts), `open_questions`, `sufficiency`, and `retrieval_meta` (including ActiveCML `intrinsic_injection` payloads), matching the HTTP server response.
-- **`ReadResponse.intrinsic_injection` property:** Direct accessor for ActiveCML payloads (`logit_bias`, `steering_vectors`, `prefix_block`, `lora_adapter`) on both HTTP and embedded responses.
-- **Default LLM mode with graceful fallback & `extra_body`:** `EmbeddedLLMConfig` reads `LLM_INTERNAL__API_KEY` and `LLM_INTERNAL__EXTRA_BODY` (JSON), passes `extra_body` through to local/OpenAI-compatible models (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`), and falls back cleanly to `llm_client=None` when a cloud provider has no API key.
-- **Embedding & optional extras updates:** Default embedded `dimensions` aligned to `768` (`nomic-ai/nomic-embed-text-v2-moe`), plus new optional `[laya]` extra for Laya System 1 integration. See [CHANGELOG](CHANGELOG.md).
+**What's new (3.0.0 — Whole-Brain Architecture):**
+- **Full Embedded Neocortical & Hypergraph Parity:** `EmbeddedCognitiveMemoryLayer` now includes `SQLiteFactStore`, `SQLiteGraphStore`, SQLite `FTS5` Dentate Gyrus sparse BM25 search, and `<5ms` Bipartite Cortical Hypergraph Personalized PageRank — retiring `NoOpGraphStore` and `NoOpFactStore`.
+- **Windowed Micro-Sleep Consolidation (`consolidate_windowed()`):** Extracts coref-resolved semantic facts, N-ary Hyperedge Engrams, Grounded Proustian Cue Pointers (`cue -> verbatim episode`), Conway Tier-2 Chapter Gists, and Tier-3 Persistent DMN Conceptual-Self Profiles in 18-turn windows.
+- **New Non-Declarative, Counterfactual & Multimodal APIs:** Added `feedback()` (Basal Ganglia Procedural Skill Playbooks + VTA Dopaminergic Reward Prediction Error synaptic updates), `simulate()` (Hippocampal Forward Preplay / Counterfactual Simulation), LC-NE & ACh Neuromodulatory Gain Control, Granularity-Aware Hippocampal Time Cells, GPU Cross-Encoder reranking, and `media=` Perirhinal Multimodal Sensory Engrams on `write()` across sync, async, and embedded clients. See [CHANGELOG](CHANGELOG.md).
 
-**Previous (2.0.0):** Embedded `read(format=...)` server parity, removal of legacy custom-model training pipeline (`cml.modeling`) in favor of LLM-powered extraction/retrieval, and removal of deprecated event-log endpoints.
+**Previous (2.1.0):** Full Neuro-Cognitive & ActiveCML SDK parity (`ReadResponse.intrinsic_injection`, embedded `warnings`/`sufficiency`/`retrieval_meta`), default `768`-dim embeddings, and `[laya]` optional extra.
 
 ---
 
@@ -36,7 +35,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 pip install cognitive-memory-layer
 ```
 
-**Embedded mode** (run the CML engine in-process, no server). In lite mode, only the **episodic** (vector) store is used; the neocortical (graph/semantic) store is disabled, so there is no knowledge graph or semantic consolidation. Best for development, demos, or single-machine apps.
+**Embedded mode** (run the full CML Whole-Brain engine in-process over a single SQLite file + FTS5, no server required — includes episodic vectors, sparse BM25, semantic facts, entity graph, cortical hypergraph PPR, DMN self-profiles, and procedural skills). Best for development, local agents, edge apps, or single-machine deployments.
 
 ```bash
 pip install cognitive-memory-layer[embedded]

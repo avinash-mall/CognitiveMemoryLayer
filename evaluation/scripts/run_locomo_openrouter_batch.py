@@ -315,6 +315,28 @@ def main() -> None:
         help="Take first N samples per category (preserves original conversation tenant mapping)",
     )
     parser.add_argument("--skip-ingestion", action="store_true")
+    parser.add_argument(
+        "--ingest-only",
+        action="store_true",
+        help="Exit after Phase A1 ingestion (and optional Phase A2 consolidation) so server flags can switch for Phase B+C",
+    )
+    parser.add_argument(
+        "--consolidate-windowed",
+        action="store_true",
+        help="Run Phase A2 Windowed Micro-Sleep Consolidation across all ingested conversation tenants",
+    )
+    parser.add_argument(
+        "--consolidation-workers",
+        type=int,
+        default=2,
+        help="Concurrent tenant workers for Phase A2 Windowed Consolidation",
+    )
+    parser.add_argument(
+        "--read-workers",
+        type=int,
+        default=3,
+        help="Concurrent CML /memory/read workers during Phase B",
+    )
     parser.add_argument("--chunk-size", type=int, default=350)
     parser.add_argument("--poll-interval", type=int, default=20)
     args = parser.parse_args()
@@ -371,16 +393,94 @@ def main() -> None:
             tenant_prefix=args.tenant_prefix,
         )
 
+    # Phase A2: Windowed Micro-Sleep Consolidation (Hyperedges + Proustian Cues + Conway + DMN)
+    if args.consolidate_windowed:
+        cons_ckpt = out_dir / "locomo_consolidation_checkpoint.json"
+        done_convs: set[int] = set()
+        if cons_ckpt.exists():
+            try:
+                done_convs = {int(x) for x in json.loads(cons_ckpt.read_text(encoding="utf-8"))}
+            except Exception:
+                done_convs = set()
+
+        # Sort conversations by sample reuse frequency descending so the 10 shared base
+        # conversations warm the deterministic window cache before the 401 single-sample variants.
+        conv_freq: dict[int, int] = {}
+        for c_id in sample_to_conv.values():
+            conv_freq[c_id] = conv_freq.get(c_id, 0) + 1
+        ordered_convs = sorted(unique_convs.keys(), key=lambda cid: -conv_freq.get(cid, 0))
+        pending_convs = [cid for cid in ordered_convs if cid not in done_convs]
+        print(
+            f"[Phase A2] Windowed Micro-Sleep Consolidation: {len(pending_convs)}/{len(ordered_convs)} conversations pending...",
+            flush=True,
+        )
+
+        def _consolidate_one(cid: int) -> tuple[int, dict]:
+            tid = f"{args.tenant_prefix}-{cid}"
+            url = f"{args.cml_url.rstrip('/')}/api/v1/memory/consolidate_windowed"
+            headers = {
+                "Content-Type": "application/json",
+                "X-API-Key": args.cml_api_key,
+                "X-Tenant-ID": tid,
+            }
+            payload = json.dumps({"use_llm": True, "max_episodes": 2500}).encode("utf-8")
+            for attempt in range(5):
+                try:
+                    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+                    with urllib.request.urlopen(req, timeout=1800) as resp:
+                        return cid, json.loads(resp.read().decode("utf-8"))
+                except Exception as exc:
+                    if attempt == 4:
+                        raise RuntimeError(f"Consolidation failed for {tid}: {exc}") from exc
+                    time.sleep(2.0 * (attempt + 1))
+            return cid, {}
+
+        # Run high-frequency base conversations first (warming shared windows), then variants concurrently
+        base_convs = [cid for cid in pending_convs if conv_freq.get(cid, 0) > 1]
+        variant_convs = [cid for cid in pending_convs if conv_freq.get(cid, 0) <= 1]
+        cons_lock = threading.Lock()
+
+        for b_cid in base_convs:
+            _, st = _consolidate_one(b_cid)
+            done_convs.add(b_cid)
+            cons_ckpt.write_text(json.dumps(sorted(done_convs)), encoding="utf-8")
+            print(
+                f"  [Phase A2 base] conv {b_cid} consolidated ({len(done_convs)}/{len(ordered_convs)}): {st}",
+                flush=True,
+            )
+
+        if variant_convs:
+            with ThreadPoolExecutor(max_workers=max(1, args.consolidation_workers)) as ex:
+                futs = [ex.submit(_consolidate_one, cid) for cid in variant_convs]
+                for fut in as_completed(futs):
+                    v_cid, _st = fut.result()
+                    with cons_lock:
+                        done_convs.add(v_cid)
+                        if len(done_convs) % 25 == 0 or len(done_convs) == len(ordered_convs):
+                            cons_ckpt.write_text(json.dumps(sorted(done_convs)), encoding="utf-8")
+                            print(
+                                f"  [Phase A2 progress] {len(done_convs)}/{len(ordered_convs)} consolidated",
+                                flush=True,
+                            )
+            cons_ckpt.write_text(json.dumps(sorted(done_convs)), encoding="utf-8")
+
+    if args.ingest_only:
+        print("[Phase A] --ingest-only complete; exiting cleanly before Phase B.", flush=True)
+        return
+
     # Phase B: Fetch CML contexts locally & submit QA
     pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
     if pred_file.exists():
         records = json.loads(pred_file.read_text(encoding="utf-8"))
         print(f"[Phase B] Loaded {len(records)} existing predictions from {pred_file}", flush=True)
     else:
-        print(f"[Phase B] Reading CML contexts for {len(samples)} samples...", flush=True)
-        qa_requests: list[dict] = []
-        meta_rows: list[dict] = []
-        for i, (orig_idx, sample) in enumerate(selected_pairs):
+        print(
+            f"[Phase B] Reading CML contexts for {len(samples)} samples ({args.read_workers} workers)...",
+            flush=True,
+        )
+
+        def _read_sample(pair_idx_and_item: tuple[int, tuple[int, dict]]) -> tuple[int, dict, dict]:
+            i, (orig_idx, sample) = pair_idx_and_item
             tenant_id = f"{args.tenant_prefix}-{sample_to_conv.get(orig_idx, orig_idx)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
@@ -402,25 +502,33 @@ def main() -> None:
                 "temperature": 0,
             }
             qa_body.update(_extra_body_for_model(args.model))
-            qa_requests.append(
-                {
-                    "custom_id": f"qa-{i}",
-                    "body": qa_body,
-                }
-            )
-            meta_rows.append(
-                {
-                    "orig_index": orig_idx,
-                    "question_input": trigger,
-                    "evidence": sample.get("cue_dialogue", sample.get("evidence", "")),
-                    "category": category,
-                    "ground_truth": sample.get("answer", sample.get("ground_truth", "")),
-                    "context_length": len(llm_context or ""),
-                    "retrieved_context": llm_context or "",
-                }
-            )
-            if (i + 1) % 60 == 0 or (i + 1) == len(samples):
-                print(f"  CML read progress: {i + 1}/{len(samples)}", flush=True)
+            req_obj = {"custom_id": f"qa-{i}", "body": qa_body}
+            meta_obj = {
+                "orig_index": orig_idx,
+                "question_input": trigger,
+                "evidence": sample.get("cue_dialogue", sample.get("evidence", "")),
+                "category": category,
+                "ground_truth": sample.get("answer", sample.get("ground_truth", "")),
+                "context_length": len(llm_context or ""),
+                "retrieved_context": llm_context or "",
+            }
+            return i, req_obj, meta_obj
+
+        indexed_results: dict[int, tuple[dict, dict]] = {}
+        read_done = 0
+        read_lock = threading.Lock()
+        with ThreadPoolExecutor(max_workers=max(1, args.read_workers)) as ex:
+            futs = [ex.submit(_read_sample, item) for item in enumerate(selected_pairs)]
+            for fut in as_completed(futs):
+                idx_i, req_obj, meta_obj = fut.result()
+                with read_lock:
+                    indexed_results[idx_i] = (req_obj, meta_obj)
+                    read_done += 1
+                    if read_done % 60 == 0 or read_done == len(samples):
+                        print(f"  CML read progress: {read_done}/{len(samples)}", flush=True)
+
+        qa_requests = [indexed_results[i][0] for i in range(len(samples))]
+        meta_rows = [indexed_results[i][1] for i in range(len(samples))]
 
         qa_outputs = _run_requests(
             api_key,

@@ -140,3 +140,81 @@ class DashboardJobModel(Base):
     completed_at = Column(DateTime, nullable=True)
 
     __table_args__ = (Index("ix_dashboard_jobs_tenant_type", "tenant_id", "job_type"),)
+
+
+class HyperedgeEngramModel(Base):
+    """N-ary Cortical Hypergraph Engrams binding actors, event, time, place, and cues."""
+
+    __tablename__ = "hyperedge_engrams"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(100), nullable=False, index=True)
+    engram_key = Column(String(200), nullable=False, index=True)
+    actors = Column(JSON, default=list, nullable=False)
+    entities = Column(JSON, default=list, nullable=False)
+    event_summary = Column(Text, nullable=False)
+    temporal_anchor = Column(String(120), nullable=True)
+    location = Column(String(200), nullable=True)
+    causal_state = Column(Text, nullable=True)
+    prospective_cues = Column(JSON, default=list, nullable=False)
+    sensory_descriptors = Column(JSON, default=list, nullable=False)
+    episode_ids = Column(JSON, default=list, nullable=False)
+    confidence = Column(Float, default=0.82)
+    synaptic_weight = Column(Float, default=1.0)
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
+
+    __table_args__ = (Index("ix_hyperedge_tenant_key", "tenant_id", "engram_key"),)
+
+
+class DMNSelfProfileModel(Base):
+    """Conway Tier-3 persistent DMN Conceptual-Self profile per speaker/subject."""
+
+    __tablename__ = "dmn_self_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(100), nullable=False, index=True)
+    subject = Column(String(150), nullable=False, index=True)
+    profile_json = Column(JSON, default=dict, nullable=False)
+    evidence_count = Column(Integer, default=1)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
+
+    __table_args__ = (Index("ix_dmn_self_tenant_subject", "tenant_id", "subject", unique=True),)
+
+
+class ProceduralSkillModel(Base):
+    """Basal Ganglia / Cerebellar Procedural Skill Playbooks reinforced via Dopamine RPE."""
+
+    __tablename__ = "procedural_skills"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(String(100), nullable=False, index=True)
+    skill_key = Column(String(200), nullable=False, index=True)
+    trigger_pattern = Column(Text, nullable=False)
+    steps = Column(JSON, default=list, nullable=False)
+    pitfalls = Column(JSON, default=list, nullable=False)
+    success_count = Column(Integer, default=1)
+    failure_count = Column(Integer, default=0)
+    synaptic_weight = Column(Float, default=1.0)
+    embedding_json = Column(JSON, nullable=True)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
+
+    __table_args__ = (
+        Index("ix_procedural_skills_tenant_key", "tenant_id", "skill_key", unique=True),
+    )

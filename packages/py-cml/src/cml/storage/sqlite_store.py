@@ -90,6 +90,152 @@ class SQLiteMemoryStore(MemoryStoreBase):
         await self._db.execute(
             "CREATE INDEX IF NOT EXISTS idx_memories_tenant_status ON memories(tenant_id, status)"
         )
+        # Dentate Gyrus SQLite FTS5 sparse lexical index + sync triggers
+        self._fts5_enabled = False
+        try:
+            await self._db.execute(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                    id UNINDEXED,
+                    tenant_id UNINDEXED,
+                    text
+                )
+                """
+            )
+            await self._db.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS trg_memories_fts_ai AFTER INSERT ON memories BEGIN
+                    INSERT INTO memories_fts(id, tenant_id, text) VALUES (new.id, new.tenant_id, new.text);
+                END
+                """
+            )
+            await self._db.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS trg_memories_fts_ad AFTER DELETE ON memories BEGIN
+                    DELETE FROM memories_fts WHERE id = old.id;
+                END
+                """
+            )
+            await self._db.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS trg_memories_fts_au AFTER UPDATE ON memories BEGIN
+                    DELETE FROM memories_fts WHERE id = old.id;
+                    INSERT INTO memories_fts(id, tenant_id, text) VALUES (new.id, new.tenant_id, new.text);
+                END
+                """
+            )
+            self._fts5_enabled = True
+        except Exception:
+            self._fts5_enabled = False
+
+        # CML v3.0 Neocortical, Hypergraph, DMN Self-Profile & Procedural tables
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS semantic_facts (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                key TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                value_json TEXT NOT NULL,
+                value_type TEXT NOT NULL,
+                context_tags TEXT,
+                confidence REAL DEFAULT 0.8,
+                evidence_count INTEGER DEFAULT 1,
+                evidence_ids TEXT,
+                valid_from TEXT,
+                valid_to TEXT,
+                is_current INTEGER DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT,
+                version INTEGER DEFAULT 1,
+                supersedes_id TEXT
+            )
+            """
+        )
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sf_tenant_key ON semantic_facts(tenant_id, key, is_current)"
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS graph_nodes (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                entity TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                properties TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS graph_edges (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object TEXT NOT NULL,
+                properties TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_ge_tenant ON graph_edges(tenant_id)")
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS hyperedge_engrams (
+                engram_key TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                id TEXT NOT NULL,
+                actors TEXT NOT NULL,
+                entities TEXT NOT NULL,
+                event_summary TEXT NOT NULL,
+                temporal_anchor TEXT,
+                location TEXT,
+                causal_state TEXT,
+                prospective_cues TEXT NOT NULL,
+                sensory_descriptors TEXT NOT NULL,
+                episode_ids TEXT NOT NULL,
+                confidence REAL DEFAULT 0.85,
+                synaptic_weight REAL DEFAULT 1.0,
+                updated_at TEXT,
+                PRIMARY KEY (tenant_id, engram_key)
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dmn_self_profiles (
+                tenant_id TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                profile_json TEXT NOT NULL,
+                evidence_count INTEGER DEFAULT 1,
+                updated_at TEXT,
+                PRIMARY KEY (tenant_id, subject)
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS procedural_skills (
+                tenant_id TEXT NOT NULL,
+                skill_key TEXT NOT NULL,
+                trigger_pattern TEXT NOT NULL,
+                steps TEXT NOT NULL,
+                pitfalls TEXT NOT NULL,
+                success_count INTEGER DEFAULT 1,
+                failure_count INTEGER DEFAULT 0,
+                synaptic_weight REAL DEFAULT 1.0,
+                embedding_json TEXT,
+                updated_at TEXT,
+                PRIMARY KEY (tenant_id, skill_key)
+            )
+            """
+        )
         await self._db.commit()
 
     async def close(self) -> None:
@@ -365,11 +511,98 @@ class SQLiteMemoryStore(MemoryStoreBase):
         for rec in rows:
             if not rec.embedding:
                 continue
+            if context_filter and not (set(rec.context_tags or []) & set(context_filter)):
+                continue
             sim = _cosine_similarity(embedding, rec.embedding)
             if sim >= min_similarity:
+                rec.metadata["_similarity"] = sim
                 scored.append((sim, rec))
         scored.sort(key=lambda x: -x[0])
         return [rec for _, rec in scored[:top_k]]
+
+    async def sparse_lexical_search(
+        self,
+        tenant_id: str,
+        query: str,
+        top_k: int = 15,
+        context_filter: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> list[tuple[MemoryRecord, float]]:
+        """Dentate Gyrus sparse lexical search via SQLite FTS5 BM25 (with base fallback)."""
+        import re
+
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        if not getattr(self, "_fts5_enabled", False):
+            return await super().sparse_lexical_search(
+                tenant_id, query, top_k=top_k, context_filter=context_filter, filters=filters
+            )
+        stopwords = {
+            "the",
+            "and",
+            "for",
+            "that",
+            "this",
+            "with",
+            "what",
+            "when",
+            "where",
+            "who",
+            "which",
+            "how",
+            "did",
+            "does",
+            "was",
+            "were",
+            "are",
+            "have",
+            "has",
+            "had",
+            "from",
+            "about",
+            "into",
+            "would",
+            "could",
+            "should",
+        }
+        tokens = [
+            t for t in re.findall(r"[a-zA-Z0-9]{2,}", (query or "").lower()) if t not in stopwords
+        ]
+        if not tokens:
+            return []
+        fts_query = " OR ".join(f'"{t}"' for t in list(dict.fromkeys(tokens))[:16])
+        try:
+            self._db.row_factory = aiosqlite.Row
+            status_val = (filters or {}).get("status", MemoryStatus.ACTIVE.value)
+            sql = """
+                SELECT m.*, (-bm25(memories_fts)) AS bm25_score
+                FROM memories_fts
+                JOIN memories m ON m.id = memories_fts.id
+                WHERE memories_fts MATCH ? AND m.tenant_id = ? AND m.status = ?
+                ORDER BY bm25(memories_fts) ASC
+                LIMIT ?
+            """
+            async with self._db.execute(sql, (fts_query, tenant_id, status_val, top_k * 2)) as cur:
+                rows = await cur.fetchall()
+            if not rows:
+                return []
+            max_bm25 = max(max(0.01, float(r["bm25_score"] or 0.0)) for r in rows)
+            out: list[tuple[MemoryRecord, float]] = []
+            for r in rows:
+                rec = self._row_to_record(dict(r))
+                if context_filter and not (set(rec.context_tags or []) & set(context_filter)):
+                    continue
+                norm = min(0.94, 0.48 + 0.46 * (max(0.0, float(r["bm25_score"] or 0.0)) / max_bm25))
+                rec.metadata["_lexical_score"] = norm
+                out.append((rec, norm))
+                if len(out) >= top_k:
+                    break
+            return out
+        except Exception:
+            return await super().sparse_lexical_search(
+                tenant_id, query, top_k=top_k, context_filter=context_filter, filters=filters
+            )
 
     async def scan(
         self,
@@ -487,3 +720,180 @@ class SQLiteMemoryStore(MemoryStoreBase):
             supersedes_id=(UUID(row["supersedes_id"]) if row.get("supersedes_id") else None),
             content_hash=row.get("content_hash"),
         )
+
+    async def save_hyperedges(self, tenant_id: str, engrams: list[Any]) -> None:
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        now = datetime.now(UTC).isoformat()
+        for eng in engrams:
+            await self._db.execute(
+                """
+                INSERT INTO hyperedge_engrams (
+                    engram_key, tenant_id, id, actors, entities, event_summary,
+                    temporal_anchor, location, causal_state, prospective_cues,
+                    sensory_descriptors, episode_ids, confidence, synaptic_weight, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tenant_id, engram_key) DO UPDATE SET
+                    actors = excluded.actors,
+                    entities = excluded.entities,
+                    event_summary = excluded.event_summary,
+                    temporal_anchor = excluded.temporal_anchor,
+                    location = excluded.location,
+                    causal_state = excluded.causal_state,
+                    prospective_cues = excluded.prospective_cues,
+                    sensory_descriptors = excluded.sensory_descriptors,
+                    episode_ids = excluded.episode_ids,
+                    confidence = excluded.confidence,
+                    synaptic_weight = excluded.synaptic_weight,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    eng.engram_key,
+                    tenant_id,
+                    eng.id,
+                    json.dumps(eng.actors),
+                    json.dumps(eng.entities),
+                    eng.event_summary,
+                    eng.temporal_anchor,
+                    eng.location,
+                    eng.causal_state,
+                    json.dumps(eng.prospective_cues),
+                    json.dumps(eng.sensory_descriptors),
+                    json.dumps(eng.episode_ids),
+                    eng.confidence,
+                    eng.synaptic_weight,
+                    now,
+                ),
+            )
+        await self._db.commit()
+
+    async def load_hyperedges(self, tenant_id: str) -> list[Any]:
+        from src.memory.neocortical.hypergraph import HyperedgeEngram
+
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        self._db.row_factory = aiosqlite.Row
+        async with self._db.execute(
+            "SELECT * FROM hyperedge_engrams WHERE tenant_id = ? LIMIT 5000", (tenant_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+        out: list[Any] = []
+        for r in rows:
+            out.append(
+                HyperedgeEngram(
+                    id=str(r["id"]),
+                    engram_key=str(r["engram_key"]),
+                    tenant_id=str(r["tenant_id"]),
+                    event_summary=str(r["event_summary"]),
+                    actors=json.loads(r["actors"] or "[]"),
+                    entities=json.loads(r["entities"] or "[]"),
+                    temporal_anchor=r["temporal_anchor"],
+                    location=r["location"],
+                    causal_state=r["causal_state"],
+                    prospective_cues=json.loads(r["prospective_cues"] or "[]"),
+                    sensory_descriptors=json.loads(r["sensory_descriptors"] or "[]"),
+                    episode_ids=json.loads(r["episode_ids"] or "[]"),
+                    confidence=float(r["confidence"] or 0.85),
+                    synaptic_weight=float(r["synaptic_weight"] or 1.0),
+                )
+            )
+        return out
+
+    async def save_dmn_profile(
+        self, tenant_id: str, subject: str, profile_data: dict[str, Any], evidence_count: int = 1
+    ) -> None:
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        await self._db.execute(
+            """
+            INSERT INTO dmn_self_profiles (tenant_id, subject, profile_json, evidence_count, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id, subject) DO UPDATE SET
+                profile_json = excluded.profile_json,
+                evidence_count = excluded.evidence_count,
+                updated_at = excluded.updated_at
+            """,
+            (
+                tenant_id,
+                subject.strip(),
+                json.dumps(profile_data),
+                evidence_count,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        await self._db.commit()
+
+    async def load_dmn_profiles(self, tenant_id: str) -> dict[str, dict[str, Any]]:
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        self._db.row_factory = aiosqlite.Row
+        async with self._db.execute(
+            "SELECT subject, profile_json FROM dmn_self_profiles WHERE tenant_id = ?", (tenant_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+        return {str(r["subject"]): json.loads(r["profile_json"] or "{}") for r in rows}
+
+    async def save_procedural_skill(self, tenant_id: str, skill: dict[str, Any]) -> None:
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        await self._db.execute(
+            """
+            INSERT INTO procedural_skills (
+                tenant_id, skill_key, trigger_pattern, steps, pitfalls,
+                success_count, failure_count, synaptic_weight, embedding_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tenant_id, skill_key) DO UPDATE SET
+                trigger_pattern = excluded.trigger_pattern,
+                steps = excluded.steps,
+                pitfalls = excluded.pitfalls,
+                success_count = excluded.success_count,
+                failure_count = excluded.failure_count,
+                synaptic_weight = excluded.synaptic_weight,
+                embedding_json = excluded.embedding_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                tenant_id,
+                skill["skill_key"],
+                skill["trigger_pattern"],
+                json.dumps(skill.get("steps") or []),
+                json.dumps(skill.get("pitfalls") or []),
+                int(skill.get("success_count", 1)),
+                int(skill.get("failure_count", 0)),
+                float(skill.get("synaptic_weight", 1.0)),
+                json.dumps(skill["embedding"]) if skill.get("embedding") else None,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        await self._db.commit()
+
+    async def load_procedural_skills(self, tenant_id: str) -> list[dict[str, Any]]:
+        if self._db is None:
+            await self.initialize()
+        assert self._db is not None
+        self._db.row_factory = aiosqlite.Row
+        async with self._db.execute(
+            "SELECT * FROM procedural_skills WHERE tenant_id = ? ORDER BY synaptic_weight DESC LIMIT 500",
+            (tenant_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            out.append(
+                {
+                    "skill_key": r["skill_key"],
+                    "trigger_pattern": r["trigger_pattern"],
+                    "steps": json.loads(r["steps"] or "[]"),
+                    "pitfalls": json.loads(r["pitfalls"] or "[]"),
+                    "success_count": int(r["success_count"] or 1),
+                    "failure_count": int(r["failure_count"] or 0),
+                    "synaptic_weight": float(r["synaptic_weight"] or 1.0),
+                    "embedding": json.loads(r["embedding_json"]) if r["embedding_json"] else None,
+                }
+            )
+        return out

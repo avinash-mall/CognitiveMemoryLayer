@@ -219,7 +219,19 @@ class MemoryPacketBuilder:
         if packet.constraints:
             must_follow = []
             consider = []
-            for c in packet.constraints[:6]:
+            # Keep constraints focused so off-topic [Value] turns don't crowd factual context
+            c_slice_cap = 6
+            try:
+                from ..core.laya_system1 import LayaSystem1Engine
+
+                if (
+                    packet.query
+                    and not LayaSystem1Engine.classify_query_routing(packet.query).is_cognitive_cue
+                ):
+                    c_slice_cap = 3
+            except Exception:
+                pass
+            for c in packet.constraints[:c_slice_cap]:
                 meta = c.record.metadata or {}
                 cmeta = meta.get("constraints", [])
                 ctype = cmeta[0].get("constraint_type", "") if cmeta else ""
@@ -327,9 +339,24 @@ class MemoryPacketBuilder:
         except Exception:
             pass
 
+        # Include any verbatim conversational turns that were typed CONSTRAINT at write time
+        # into relevant_episodes as well so they retain [YYYY-MM-DD] timestamps and Cognitive cue slots.
+        seen_ep_ids = {str(e.record.id) for e in packet.recent_episodes}
+        verbatim_constraint_eps = [
+            c
+            for c in packet.constraints
+            if str(c.record.id) not in seen_ep_ids
+            and c.retrieval_source != "constraints"
+            and not (c.record.metadata or {}).get("proustian_cue_pointer")
+            and (
+                "turn_idx" in (c.record.metadata or {})
+                or str((c.record.metadata or {}).get("source_turn_id") or "").startswith("turn_")
+            )
+        ]
+        candidate_episodes = list(packet.recent_episodes) + verbatim_constraint_eps
         relevant_episodes = [
             e
-            for e in packet.recent_episodes
+            for e in candidate_episodes
             if getattr(e, "relevance_score", 1.0) > effective_threshold
         ]
         # On Cognitive empathy cues, protect verbatim episodes from synthetic prospective
@@ -340,11 +367,13 @@ class MemoryPacketBuilder:
                 e
                 for e in relevant_episodes
                 if not (e.record.metadata or {}).get("prospective_implication")
-                and not str(e.record.text or "").startswith("[Prospective")
+                and not (e.record.metadata or {}).get("proustian_cue_pointer")
+                and not str(e.record.text or "").startswith(("[Prospective", "[Proustian Cue"))
             ]
             if verbatim:
                 verbatim.sort(
                     key=lambda e: (
+                        2 if (e.record.metadata or {}).get("_proustian_promoted") else 0,
                         1 if (e.record.metadata or {}).get("_hyde_promoted") else 0,
                         getattr(e, "relevance_score", 0.0),
                     ),
@@ -401,7 +430,8 @@ class MemoryPacketBuilder:
                     if hasattr(e.record.timestamp, "strftime")
                     else ""
                 )
-                event_date = str(meta.get("event_date") or "")[:10]
+                event_disp = str(meta.get("event_date_display") or "").strip()
+                event_date = event_disp or str(meta.get("event_date") or "")[:10]
                 if said and event_date and event_date != said:
                     date_str = f" [said {said}, refers to {event_date}]"
                 elif said:
@@ -423,6 +453,56 @@ class MemoryPacketBuilder:
                 sections.append(s)
                 used += len(s)
                 remaining -= len(s)
+
+            # 4.2. Hippocampal Time Cell deterministic event timeline on temporal queries
+            if routing_intent == "temporal" and remaining > 160:
+                try:
+                    from .temporal_engine import HippocampalTimeCellEngine
+
+                    tl_block = HippocampalTimeCellEngine.build_timeline_block(selected_episodes)
+                    if tl_block and len(tl_block) <= remaining:
+                        sections.append(tl_block)
+                        used += len(tl_block)
+                        remaining -= len(tl_block)
+                except Exception:
+                    pass
+
+        # 4.3. Conway Tier-3 Persistent DMN Self-Profiles & Procedural Playbooks
+        rmeta = getattr(packet, "retrieval_meta", None) or {}
+        dmn_self_lines = rmeta.get("dmn_self_profiles") or []
+        if (
+            dmn_self_lines
+            and remaining > 120
+            and (is_cognitive_cue or routing_intent in ("common_sense", "cognitive"))
+        ):
+            s_hdr = "## Autobiographical Self-Model (Conway DMN)\n"
+            s_body = "".join(f"- {ln}\n" for ln in dmn_self_lines[:3])
+            s_block = s_hdr + s_body + "\n"
+            if len(s_block) <= remaining:
+                sections.append(s_block)
+                used += len(s_block)
+                remaining -= len(s_block)
+
+        proc_lines = rmeta.get("procedural_skills") or []
+        if (packet.procedures or proc_lines) and remaining > 120:
+            p_hdr = "## Procedural Skill Playbooks\n"
+            p_items = list(proc_lines[:3]) + [p.record.text for p in packet.procedures[:3]]
+            p_body = "".join(f"- {ln}\n" for ln in p_items[:4])
+            p_block = p_hdr + p_body + "\n"
+            if len(p_block) <= remaining:
+                sections.append(p_block)
+                used += len(p_block)
+                remaining -= len(p_block)
+
+        preplay_notes = rmeta.get("preplay_alerts") or []
+        if preplay_notes and remaining > 100:
+            pp_hdr = "## Hippocampal Preplay & Constraint Check\n"
+            pp_body = "".join(f"- {ln}\n" for ln in preplay_notes[:3])
+            pp_block = pp_hdr + pp_body + "\n"
+            if len(pp_block) <= remaining:
+                sections.append(pp_block)
+                used += len(pp_block)
+                remaining -= len(pp_block)
 
         # 4.5. Default Mode Network (DMN / mPFC) Theory-of-Mind & Mentalizing Context
         try:

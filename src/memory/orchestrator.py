@@ -88,6 +88,11 @@ class MemoryOrchestrator:
         conversation: ConversationMemory,
         tool_memory: ToolMemory,
         knowledge_base: KnowledgeBase,
+        dmn_store: Any | None = None,
+        procedural_engine: Any | None = None,
+        windowed_consolidator: Any | None = None,
+        dopamine_rpe: Any | None = None,
+        preplay_simulator: Any | None = None,
     ):
         self.short_term = short_term
         self.hippocampal = hippocampal
@@ -100,6 +105,11 @@ class MemoryOrchestrator:
         self.conversation = conversation
         self.tool_memory = tool_memory
         self.knowledge_base = knowledge_base
+        self.dmn_store = dmn_store
+        self.procedural_engine = procedural_engine
+        self.windowed_consolidator = windowed_consolidator
+        self.dopamine_rpe = dopamine_rpe
+        self.preplay_simulator = preplay_simulator
 
     @classmethod
     async def create(cls, db_manager: DatabaseManager) -> "MemoryOrchestrator":
@@ -155,13 +165,49 @@ class MemoryOrchestrator:
             unified_extractor=unified_extractor,
         )
 
+        from ..consolidation.windowed_consolidator import WindowedMicroSleepConsolidator
+        from ..memory.dmn import PersistentDMNStore
+        from ..memory.procedural import ProceduralMemoryEngine
+        from ..reconsolidation.dopamine_rpe import DopamineRPEEngine
         from ..retrieval.memory_retriever import MemoryRetriever
+        from ..retrieval.preplay import HippocampalPreplaySimulator
+
+        dmn_store = PersistentDMNStore(pg_session_factory=db_manager.pg_session)
+        procedural_engine = ProceduralMemoryEngine(
+            embedding_client=embedding_client,
+            pg_session_factory=db_manager.pg_session,
+        )
 
         retriever = MemoryRetriever(
             hippocampal=hippocampal,
             neocortical=neocortical,
             llm_client=internal_llm,
             short_term=short_term,
+            dmn_store=dmn_store,
+            procedural_engine=procedural_engine,
+        )
+
+        raw_wsize = getattr(settings.features, "windowed_consolidation_turn_size", 18)
+        wsize = raw_wsize if isinstance(raw_wsize, int) else 18
+        windowed_consolidator = WindowedMicroSleepConsolidator(
+            episodic_store=episodic_store,
+            neocortical_store=neocortical,
+            embedding_client=embedding_client,
+            llm_client=internal_llm,
+            dmn_store=dmn_store,
+            window_size=wsize,
+        )
+        dopamine_rpe = DopamineRPEEngine(
+            episodic_store=episodic_store,
+            neocortical_store=neocortical,
+            procedural_engine=procedural_engine,
+            embedding_client=embedding_client,
+        )
+        preplay_simulator = HippocampalPreplaySimulator(
+            retriever=retriever,
+            dmn_store=dmn_store,
+            procedural_engine=procedural_engine,
+            llm_client=internal_llm,
         )
 
         reconsolidation = ReconsolidationService(
@@ -199,6 +245,11 @@ class MemoryOrchestrator:
             conversation=conversation,
             tool_memory=tool_memory,
             knowledge_base=knowledge_base,
+            dmn_store=dmn_store,
+            procedural_engine=procedural_engine,
+            windowed_consolidator=windowed_consolidator,
+            dopamine_rpe=dopamine_rpe,
+            preplay_simulator=preplay_simulator,
         )
 
     @classmethod
@@ -208,9 +259,22 @@ class MemoryOrchestrator:
         embedding_client: EmbeddingClient,
         llm_client: LLMClient | None = None,
     ) -> "MemoryOrchestrator":
-        """Factory for embedded lite mode: no PostgreSQL/Neo4j/Redis; uses provided episodic store and clients."""
-        graph_store = NoOpGraphStore()
-        fact_store = NoOpFactStore()
+        """Factory for embedded lite mode: SQLite-backed Neocortical + Hypergraph + DMN parity."""
+        graph_store: Any
+        fact_store: Any
+        is_sqlite_mem = type(episodic_store).__name__ == "SQLiteMemoryStore"
+        if is_sqlite_mem:
+            try:
+                from cml.storage.sqlite_neocortical import SQLiteFactStore, SQLiteGraphStore
+
+                graph_store = SQLiteGraphStore(episodic_store)
+                fact_store = SQLiteFactStore(episodic_store)
+            except Exception:
+                graph_store = NoOpGraphStore()
+                fact_store = NoOpFactStore()
+        else:
+            graph_store = NoOpGraphStore()
+            fact_store = NoOpFactStore()
         neocortical = NeocorticalStore(graph_store, fact_store)
 
         short_term_config = ShortTermMemoryConfig(min_salience_for_encoding=0.0)
@@ -220,7 +284,13 @@ class MemoryOrchestrator:
         settings = get_settings()
         runtime_llm = llm_client if settings.features.use_llm_enabled else None
 
+        from ..consolidation.windowed_consolidator import WindowedMicroSleepConsolidator
         from ..extraction.unified_write_extractor import UnifiedWritePathExtractor
+        from ..memory.dmn import PersistentDMNStore
+        from ..memory.procedural import ProceduralMemoryEngine
+        from ..reconsolidation.dopamine_rpe import DopamineRPEEngine
+        from ..retrieval.memory_retriever import MemoryRetriever
+        from ..retrieval.preplay import HippocampalPreplaySimulator
 
         hippocampal = HippocampalStore(
             vector_store=episodic_store,
@@ -228,13 +298,43 @@ class MemoryOrchestrator:
             unified_extractor=UnifiedWritePathExtractor(runtime_llm) if runtime_llm else None,
         )
 
-        from ..retrieval.memory_retriever import MemoryRetriever
+        sq_ref = episodic_store if is_sqlite_mem else None
+        dmn_store = PersistentDMNStore(sqlite_store=sq_ref)
+        procedural_engine = ProceduralMemoryEngine(
+            embedding_client=embedding_client,
+            sqlite_store=sq_ref,
+        )
 
         retriever = MemoryRetriever(
             hippocampal=hippocampal,
             neocortical=neocortical,
             llm_client=runtime_llm,
             short_term=short_term,
+            dmn_store=dmn_store,
+            procedural_engine=procedural_engine,
+        )
+
+        raw_wsize = getattr(settings.features, "windowed_consolidation_turn_size", 18)
+        wsize = raw_wsize if isinstance(raw_wsize, int) else 18
+        windowed_consolidator = WindowedMicroSleepConsolidator(
+            episodic_store=episodic_store,
+            neocortical_store=neocortical,
+            embedding_client=embedding_client,
+            llm_client=runtime_llm,
+            dmn_store=dmn_store,
+            window_size=wsize,
+        )
+        dopamine_rpe = DopamineRPEEngine(
+            episodic_store=episodic_store,
+            neocortical_store=neocortical,
+            procedural_engine=procedural_engine,
+            embedding_client=embedding_client,
+        )
+        preplay_simulator = HippocampalPreplaySimulator(
+            retriever=retriever,
+            dmn_store=dmn_store,
+            procedural_engine=procedural_engine,
+            llm_client=runtime_llm,
         )
 
         reconsolidation = ReconsolidationService(
@@ -272,6 +372,11 @@ class MemoryOrchestrator:
             conversation=conversation,
             tool_memory=tool_memory,
             knowledge_base=knowledge_base,
+            dmn_store=dmn_store,
+            procedural_engine=procedural_engine,
+            windowed_consolidator=windowed_consolidator,
+            dopamine_rpe=dopamine_rpe,
+            preplay_simulator=preplay_simulator,
         )
 
     async def write(
@@ -287,11 +392,32 @@ class MemoryOrchestrator:
         namespace: str | None = None,
         timestamp: datetime | None = None,
         eval_mode: bool = False,
+        media: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Write new information to memory. Holistic: tenant-only."""
+        """Write new information (plus optional multimodal media) to memory. Holistic: tenant-only."""
         import time as _time
 
         _t0 = _time.perf_counter()
+
+        raw_media = media or ((metadata or {}).get("media") if isinstance(metadata, dict) else None)
+        if raw_media and isinstance(raw_media, list):
+            try:
+                from ..core.config import get_settings as _get_mm_settings
+
+                if getattr(_get_mm_settings().features, "perirhinal_multimodal_enabled", True):
+                    from ..memory.sensory.perirhinal import PerirhinalSensoryStream
+
+                    descriptors = await PerirhinalSensoryStream.extract_descriptors(
+                        raw_media, llm_client=getattr(self.retriever, "llm_client", None)
+                    )
+                    if descriptors:
+                        content = PerirhinalSensoryStream.enrich_content_with_sensory(
+                            content, descriptors
+                        )
+                        metadata = dict(metadata or {})
+                        metadata["perirhinal_descriptors"] = descriptors
+            except Exception as exc:
+                logger.debug("perirhinal_write_enrich_failed", extra={"error": str(exc)})
 
         chunks_for_encoding = await self._phase_ingest(
             tenant_id, content, session_id, turn_id, timestamp
@@ -1203,3 +1329,111 @@ class MemoryOrchestrator:
             "newest_memory": max(timestamps) if timestamps else None,
             "estimated_size_mb": total * 0.001,
         }
+
+    async def consolidate_windowed(
+        self,
+        tenant_id: str,
+        *,
+        session_id: str | None = None,
+        max_episodes: int = 2000,
+        use_llm: bool | None = None,
+    ) -> dict[str, int]:
+        """Run Windowed Micro-Sleep Consolidation (Hyperedges + Proustian Cues + Conway + DMN)."""
+        from ..consolidation.windowed_consolidator import WindowedMicroSleepConsolidator
+
+        consolidator = self.windowed_consolidator
+        if consolidator is None:
+            consolidator = WindowedMicroSleepConsolidator(
+                episodic_store=self.hippocampal.store,
+                neocortical_store=self.neocortical,
+                embedding_client=self.hippocampal.embeddings,
+                llm_client=getattr(self.retriever, "llm_client", None),
+                dmn_store=self.dmn_store,
+            )
+            self.windowed_consolidator = consolidator
+
+        # Allow explicit on-demand System-2 LLM consolidation even when bulk write ran with use_llm=false
+        prev_llm = consolidator.llm_client
+        if use_llm is True and prev_llm is None:
+            try:
+                consolidator.llm_client = get_internal_llm_client()
+            except Exception:
+                pass
+        elif use_llm is False:
+            consolidator.llm_client = None
+
+        try:
+            return await consolidator.consolidate_tenant(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                max_episodes=max_episodes,
+            )
+        finally:
+            if use_llm is False:
+                consolidator.llm_client = prev_llm
+
+    async def feedback(
+        self,
+        tenant_id: str,
+        *,
+        outcome_reward: float,
+        expected_reward: float = 0.5,
+        query: str | None = None,
+        memory_ids: list[str] | None = None,
+        correction_text: str | None = None,
+        preferred_steps: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Apply Dopaminergic Reward Prediction Error (RPE) feedback & Procedural compilation."""
+        from ..memory.procedural import ProceduralMemoryEngine
+        from ..reconsolidation.dopamine_rpe import DopamineRPEEngine
+
+        if self.dopamine_rpe is None:
+            proc = self.procedural_engine or ProceduralMemoryEngine(
+                embedding_client=self.hippocampal.embeddings
+            )
+            self.procedural_engine = proc
+            self.dopamine_rpe = DopamineRPEEngine(
+                episodic_store=self.hippocampal.store,
+                neocortical_store=self.neocortical,
+                procedural_engine=proc,
+                embedding_client=self.hippocampal.embeddings,
+            )
+
+        res = await self.dopamine_rpe.process_feedback(
+            tenant_id=tenant_id,
+            outcome_reward=outcome_reward,
+            expected_reward=expected_reward,
+            query=query,
+            memory_ids=memory_ids,
+            correction_text=correction_text,
+            preferred_steps=preferred_steps,
+            session_id=session_id,
+        )
+        return res.to_dict()
+
+    async def simulate(
+        self,
+        tenant_id: str,
+        scenario: str,
+        *,
+        max_results: int = 12,
+        context_filter: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Execute Hippocampal Forward Preplay / Counterfactual Simulation."""
+        from ..retrieval.preplay import HippocampalPreplaySimulator
+
+        if self.preplay_simulator is None:
+            self.preplay_simulator = HippocampalPreplaySimulator(
+                retriever=self.retriever,
+                dmn_store=self.dmn_store,
+                procedural_engine=self.procedural_engine,
+                llm_client=getattr(self.retriever, "llm_client", None),
+            )
+        verdict = await self.preplay_simulator.simulate(
+            tenant_id=tenant_id,
+            scenario=scenario,
+            max_results=max_results,
+            context_filter=context_filter,
+        )
+        return verdict.to_dict()

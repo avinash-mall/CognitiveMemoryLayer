@@ -67,6 +67,83 @@ class MemoryStoreBase(ABC):
         """Search by vector similarity. Holistic: tenant-only, optional context_tags filter."""
         ...
 
+    async def sparse_lexical_search(
+        self,
+        tenant_id: str,
+        query: str,
+        top_k: int = 15,
+        context_filter: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> list[tuple[MemoryRecord, float]]:
+        """Dentate Gyrus sparse pattern-separated lexical search (BM25 / tsvector / FTS5).
+
+        Default fallback computes in-memory IDF-weighted token overlap over ``scan()``
+        so custom/mock stores inherit sparse recall without extra boilerplate.
+        """
+        import math
+        import re
+
+        tokens = [
+            t
+            for t in re.findall(r"[a-zA-Z0-9]{2,}", (query or "").lower())
+            if t
+            not in {
+                "the",
+                "and",
+                "for",
+                "that",
+                "this",
+                "with",
+                "what",
+                "when",
+                "where",
+                "who",
+                "which",
+                "how",
+                "did",
+                "does",
+                "was",
+                "were",
+                "are",
+                "have",
+                "has",
+                "had",
+                "from",
+                "about",
+                "into",
+                "would",
+                "could",
+                "should",
+            }
+        ]
+        if not tokens:
+            return []
+        scan_filters = dict(filters or {})
+        scan_filters.setdefault("status", "active")
+        candidates = await self.scan(tenant_id, filters=scan_filters, limit=500)
+        if not candidates:
+            return []
+        n_docs = len(candidates)
+        doc_tokens = [
+            set(re.findall(r"[a-zA-Z0-9]{2,}", (r.text or "").lower())) for r in candidates
+        ]
+        df = {tok: sum(1 for dt in doc_tokens if tok in dt) for tok in set(tokens)}
+        scored: list[tuple[float, MemoryRecord]] = []
+        max_possible = (
+            sum(math.log(1.0 + (n_docs + 1.0) / (df[tok] + 1.0)) for tok in set(tokens)) or 1.0
+        )
+        for rec, dt in zip(candidates, doc_tokens, strict=False):
+            if context_filter and not (set(rec.context_tags or []) & set(context_filter)):
+                continue
+            hit_weight = sum(
+                math.log(1.0 + (n_docs + 1.0) / (df[tok] + 1.0)) for tok in set(tokens) if tok in dt
+            )
+            if hit_weight > 0:
+                norm_score = min(0.95, 0.45 + 0.50 * (hit_weight / max_possible))
+                scored.append((norm_score, rec))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [(rec, sc) for sc, rec in scored[:top_k]]
+
     @abstractmethod
     async def scan(
         self,

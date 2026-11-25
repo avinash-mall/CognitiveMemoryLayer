@@ -26,6 +26,7 @@ def build_write_body(
     turn_id: str | None = None,
     agent_id: str | None = None,
     timestamp: datetime | None = None,
+    media: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return WriteRequest(
         content=content,
@@ -37,6 +38,7 @@ def build_write_body(
         turn_id=turn_id,
         agent_id=agent_id,
         timestamp=timestamp,
+        media=media,
     ).model_dump(exclude_none=True, mode="json")
 
 

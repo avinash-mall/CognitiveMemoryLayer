@@ -32,6 +32,8 @@ from cml.models import (
     DashboardSessionsResponse,
     DashboardTenantsResponse,
     DashboardTimelineResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     ForgetRequest,
     ForgetResponse,
     GraphExploreResponse,
@@ -46,11 +48,15 @@ from cml.models import (
     RequestStatsResponse,
     SessionContextResponse,
     SessionResponse,
+    SimulateRequest,
+    SimulateResponse,
     StatsResponse,
     TurnRequest,
     TurnResponse,
     UpdateRequest,
     UpdateResponse,
+    WindowConsolidateRequest,
+    WindowConsolidateResponse,
     WriteRequest,
     WriteResponse,
 )
@@ -146,6 +152,7 @@ class AsyncCognitiveMemoryLayer:
         agent_id: str | None = None,
         timestamp: datetime | None = None,
         eval_mode: bool = False,
+        media: list[dict[str, Any]] | None = None,
     ) -> WriteResponse:
         """Store a memory.
 
@@ -160,6 +167,7 @@ class AsyncCognitiveMemoryLayer:
             agent_id: Optional agent identifier.
             timestamp: Optional event timestamp (defaults to now).
             eval_mode: If True, send X-Eval-Mode header; server returns eval_outcome and eval_reason (stored/skipped and write-gate reason). Useful for benchmarks.
+            media: Optional list of Perirhinal multimodal attachments (url/path/base64/caption).
 
         Returns:
             WriteResponse with success, memory_id, chunks_created; when eval_mode=True, also eval_outcome and eval_reason.
@@ -175,6 +183,7 @@ class AsyncCognitiveMemoryLayer:
             turn_id=turn_id,
             agent_id=agent_id,
             timestamp=timestamp,
+            media=media,
         )
         data = await self._transport.request(
             "POST", "/memory/write", json=body, extra_headers=eval_mode_headers(eval_mode)
@@ -656,6 +665,75 @@ class AsyncCognitiveMemoryLayer:
             response_format=response_format,
             user_timezone=user_timezone,
         )
+
+    # ---- Whole-Brain v3.0 operations ----
+
+    async def consolidate_windowed(
+        self,
+        *,
+        session_id: str | None = None,
+        max_episodes: int = 2000,
+        use_llm: bool | None = None,
+    ) -> WindowConsolidateResponse:
+        """Run Windowed Micro-Sleep Consolidation (Hyperedges, Proustian Cues, Conway, DMN)."""
+        self._ensure_same_loop()
+        req = WindowConsolidateRequest(
+            session_id=session_id, max_episodes=max_episodes, use_llm=use_llm
+        )
+        data = await self._transport.request(
+            "POST",
+            "/memory/consolidate_windowed",
+            json=req.model_dump(exclude_none=True, mode="json"),
+        )
+        return WindowConsolidateResponse(**data)
+
+    async def feedback(
+        self,
+        outcome_reward: float,
+        *,
+        expected_reward: float = 0.5,
+        query: str | None = None,
+        memory_ids: list[str] | None = None,
+        correction_text: str | None = None,
+        preferred_steps: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> FeedbackResponse:
+        """Submit Dopaminergic Reward Prediction Error (RPE) & Procedural feedback."""
+        self._ensure_same_loop()
+        req = FeedbackRequest(
+            outcome_reward=outcome_reward,
+            expected_reward=expected_reward,
+            query=query,
+            memory_ids=memory_ids,
+            correction_text=correction_text,
+            preferred_steps=preferred_steps,
+            session_id=session_id,
+        )
+        data = await self._transport.request(
+            "POST",
+            "/memory/feedback",
+            json=req.model_dump(exclude_none=True, mode="json"),
+        )
+        return FeedbackResponse(**data)
+
+    async def simulate(
+        self,
+        scenario: str,
+        *,
+        max_results: int = 12,
+        context_filter: list[str] | None = None,
+    ) -> SimulateResponse:
+        """Execute Hippocampal Forward Preplay / Counterfactual Simulation."""
+        self._ensure_same_loop()
+        req = SimulateRequest(
+            scenario=scenario, max_results=max_results, context_filter=context_filter
+        )
+        data = await self._transport.request(
+            "POST",
+            "/memory/simulate",
+            json=req.model_dump(exclude_none=True, mode="json"),
+        )
+        return SimulateResponse(**data)
 
     # ---- Phase 5: Admin operations ----
 
@@ -1560,6 +1638,49 @@ class AsyncNamespacedClient:
             until=until,
             response_format=response_format,
             user_timezone=user_timezone,
+        )
+
+    async def consolidate_windowed(
+        self,
+        *,
+        session_id: str | None = None,
+        max_episodes: int = 2000,
+        use_llm: bool | None = None,
+    ) -> WindowConsolidateResponse:
+        return await self._parent.consolidate_windowed(
+            session_id=session_id, max_episodes=max_episodes, use_llm=use_llm
+        )
+
+    async def feedback(
+        self,
+        outcome_reward: float,
+        *,
+        expected_reward: float = 0.5,
+        query: str | None = None,
+        memory_ids: list[str] | None = None,
+        correction_text: str | None = None,
+        preferred_steps: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> FeedbackResponse:
+        return await self._parent.feedback(
+            outcome_reward,
+            expected_reward=expected_reward,
+            query=query,
+            memory_ids=memory_ids,
+            correction_text=correction_text,
+            preferred_steps=preferred_steps,
+            session_id=session_id,
+        )
+
+    async def simulate(
+        self,
+        scenario: str,
+        *,
+        max_results: int = 12,
+        context_filter: list[str] | None = None,
+    ) -> SimulateResponse:
+        return await self._parent.simulate(
+            scenario, max_results=max_results, context_filter=context_filter
         )
 
     async def consolidate(

@@ -133,12 +133,29 @@ class FactStoreLike(Protocol):
 
 class NeocorticalStore:
     """
-    Semantic memory store combining knowledge graph and structured fact store.
+    Semantic memory store combining knowledge graph, structured fact store, and cortical hypergraph.
     """
 
-    def __init__(self, graph_store: GraphStoreLike, fact_store: FactStoreLike):
+    def __init__(
+        self,
+        graph_store: GraphStoreLike,
+        fact_store: FactStoreLike,
+        hypergraph: Any | None = None,
+    ):
         self.graph = graph_store
         self.facts = fact_store
+        if hypergraph is not None:
+            self.hypergraph = hypergraph
+        else:
+            from .hypergraph import CorticalHypergraphEngine
+
+            pg_sf = getattr(fact_store, "session_factory", None)
+            sq_store = getattr(fact_store, "_mem_store", None)
+            self.hypergraph = CorticalHypergraphEngine(
+                pg_session_factory=pg_sf,
+                sqlite_store=sq_store,
+                neo4j_graph=graph_store,
+            )
 
     async def store_fact(
         self,

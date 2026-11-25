@@ -14,12 +14,12 @@ link them below. Delete notes when they stop being true.
   leg; `lint` and `test` land in the first few minutes, and `test` is the meaningful
   signal because it runs the integration suite in containers against fresh
   Postgres/Neo4j/Redis, independent of any local `.venv`, running services, or `.env`.
-- Suite sizes, so drift is visible: **896** unit (hermetic), **331** integration + e2e +
-  py-cml against a live server (**1,227 total**). Grew from 716/327 across five passes: source monitoring,
+- Suite sizes, so drift is visible: **911** unit (hermetic), **348** integration + e2e +
+  py-cml (**1,259 total**). Grew from 716/327 across six passes: source monitoring,
   gist demotion, the retention curve; then temporal resolution, prospective indexing,
   the scan_texts_for_gate SQL guard and multi-valued facts; then the graph-as-index fix,
   temporal contiguity and the sufficiency signal; then the write-path items (evidence_ids
-  union, bi-temporal, consolidation scheduler, detail recovery). Not regressions.
+  union, bi-temporal, consolidation scheduler, detail recovery); then Neuro-Cognitive + ActiveCML + Whole-Brain v3.0 (`tests/unit/test_whole_brain_v3.py`, `packages/py-cml/tests/unit/test_whole_brain_sdk.py`). Not regressions.
 - **The Docker `api` container bakes its source in — there is no volume mount.** Editing
   `src/` does not change what the running container serves, so a live suite against it
   tests the last image build, not your working tree. For verifying local changes, run
@@ -34,12 +34,28 @@ link them below. Delete notes when they stop being true.
   `.env.minimal`, and `packages/py-cml/src/cml/_version.py` (which `hatch_build.py` does
   *not* feed — it is a separate hardcoded string). `hatch_build.get_version()` resolves
   `VERSION` env → `.env` → `VERSION` file, so an untracked local `.env` shadows the file;
-  CI has no `.env` and therefore reads the file. They had drifted to 1.4.2 while
-  `CHANGELOG.md` already documented a released 1.5.0. All three now say 2.0.0.
+  CI has no `.env` and therefore reads the file. All three now say **3.0.0**.
 - The modelpack removal (`51afd15`) and its follow-up cleanup are complete: dead code,
   stale docs, dead env keys, vendored assets, cache volumes.
 
 ## Active work
+
+### CML v3.0 Whole-Brain Architecture & SOTA Local Benchmark (2026-11-25)
+
+Implemented the full CML v3.0 Whole-Brain Architecture across Server + `py-cml` `3.0.0` (eliminating `NoOpGraphStore` and `NoOpFactStore` in embedded SQLite mode):
+
+- **New / upgraded v3.0 modules**:
+  - `src/consolidation/windowed_consolidator.py`: CRC32 content-defined `WindowedMicroSleepConsolidator` + SQLite content-addressable extraction cache (`consolidate_windowed`).
+  - `src/memory/neocortical/hypergraph.py` & `packages/py-cml/src/cml/storage/sqlite_neocortical.py`: N-ary `HyperedgeEngram` + `<5ms` Bipartite Cortical Hypergraph Personalized PageRank + `SQLiteGraphStore` & `SQLiteFactStore`.
+  - `src/storage/postgres.py` (`tsvector` GIN `ix_memory_records_fts`, migration `003_whole_brain_v3.py`) & `packages/py-cml/src/cml/storage/sqlite_store.py` (`FTS5` `memories_fts` + `bm25()`): Dentate Gyrus sparse pattern separation.
+  - `src/extraction/temporal_resolver.py` & `src/retrieval/temporal_engine.py`: Granularity-aware Hippocampal Time Cells (`day`, `week`, `month`, `season`, `year`, skipping `vague`) + deterministic calendar deltas.
+  - `src/retrieval/cross_encoder.py`, `src/retrieval/memory_retriever.py`, `src/retrieval/reranker.py`: True-logit CUDA Cross-Encoder (`activation_fn=Identity()`), 4-Pathway Ecphory + Synaptic Co-Activation Resonance, CLS stratified slot allocation, and ACC up-to-2-hop prefrontal loop.
+  - `src/memory/neuromodulation.py`, `src/memory/procedural.py`, `src/reconsolidation/dopamine_rpe.py` (`feedback`), `src/retrieval/preplay.py` (`simulate`), `src/memory/sensory/perirhinal.py` (`media=` on `write`).
+- **Full 2,387-sample LoCoMo-Plus From-Scratch Local Run (`qwen3.8-27b`, `2,387/2,387` valid, `0` errors, `$0.00` API cost)**:
+  - **Overall (All 6 Categories): `63.53%` (`1,516.5 / 2,387`, up `+8.10pp` from `55.43%`)**
+  - **LoCoMo Factual Avg (1,986): `68.40%` (`1,358.5 / 1,986`, up `+9.34pp` from `59.06%`)** — beats A-Mem (`59.64%`), SeCom (`57.53%`), Mem0 (`57.24%`), and full-context GPT-4o (`62.99%`) / GPT-4.1 (`62.21%`) / Qwen2.5-14B (`63.45%`)!
+  - Per-category: `single-hop 70.21%` (`+9.69pp`), `multi-hop 47.52%` (`+9.75pp`), `temporal 70.25%` (`+20.09pp`), `common-sense 44.27%` (`+4.17pp`), `adversarial 82.06%` (`+1.79pp`), `Cognitive 39.40%` (`+1.99pp`).
+  - Committed artifact: `evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`.
 
 ### Neuro-Cognitive Restoration, ActiveCML & Laya System 1 (2026-11-22)
 

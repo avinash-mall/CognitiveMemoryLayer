@@ -268,16 +268,22 @@ class HippocampalStore:
         # renders event_date on the Recent Events section, which is what lets the model
         # answer "when did X happen". Kept as one flat loop rather than folded into
         # _process_chunk so the regex passes stay off the concurrent gather.
-        from ...extraction.temporal_resolver import extract_event_date
+        from ...extraction.temporal_resolver import extract_event_info
 
         event_dates: list[str | None] = []
+        event_infos: list[dict[str, Any] | None] = []
         for (_idx, chunk, _gr, _txt), etext in zip(surviving, final_texts, strict=True):
-            resolved = (
-                extract_event_date(etext, chunk.timestamp)
+            info = (
+                extract_event_info(etext, chunk.timestamp)
                 if cfg.temporal_resolution_enabled
                 else None
             )
-            event_dates.append(resolved.isoformat() if resolved else None)
+            event_infos.append(info)
+            event_dates.append(
+                info["resolved_date"].isoformat()
+                if info and info.get("resolved_date") is not None
+                else None
+            )
 
         # ---- Phase 2: Embed ----
         _t_p2 = _phase_time.perf_counter()
@@ -427,6 +433,12 @@ class HippocampalStore:
             # speaker/event_date go in after so the model wins over both.
             if event_dates[idx]:
                 system_metadata["event_date"] = event_dates[idx]
+                ev_info = event_infos[idx] if idx < len(event_infos) else None
+                if ev_info:
+                    if ev_info.get("display"):
+                        system_metadata["event_date_display"] = ev_info["display"]
+                    if ev_info.get("granularity"):
+                        system_metadata["temporal_granularity"] = ev_info["granularity"]
             merged_metadata = {**system_metadata, **(request_metadata or {})}
             if unified_res:
                 if unified_res.speaker:

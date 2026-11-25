@@ -346,6 +346,7 @@ class EmbeddedCognitiveMemoryLayer:
         agent_id: str | None = None,
         timestamp: datetime | None = None,
         eval_mode: bool = False,
+        media: list[dict[str, Any]] | None = None,
     ) -> WriteResponse:
         """Store a memory. When eval_mode=True, response includes eval_outcome and eval_reason from the write gate."""
         self._ensure_initialized()
@@ -361,6 +362,7 @@ class EmbeddedCognitiveMemoryLayer:
             namespace=namespace,
             timestamp=timestamp,
             eval_mode=eval_mode,
+            media=media,
         )
         mid = result.get("memory_id")
         return WriteResponse(
@@ -595,3 +597,68 @@ class EmbeddedCognitiveMemoryLayer:
     async def search(self, query: str, **kwargs: Any) -> ReadResponse:
         """Alias for read()."""
         return await self.read(query, **kwargs)
+
+    async def consolidate_windowed(
+        self,
+        *,
+        session_id: str | None = None,
+        max_episodes: int = 2000,
+        use_llm: bool | None = None,
+    ) -> Any:
+        """Run Windowed Micro-Sleep Consolidation in embedded mode."""
+        from cml.models import WindowConsolidateResponse
+
+        self._ensure_initialized()
+        stats = await self._orchestrator.consolidate_windowed(
+            tenant_id=self._config.tenant_id,
+            session_id=session_id,
+            max_episodes=max_episodes,
+            use_llm=use_llm,
+        )
+        return WindowConsolidateResponse(**stats)
+
+    async def feedback(
+        self,
+        outcome_reward: float,
+        *,
+        expected_reward: float = 0.5,
+        query: str | None = None,
+        memory_ids: list[str] | None = None,
+        correction_text: str | None = None,
+        preferred_steps: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> Any:
+        """Apply Dopaminergic Reward Prediction Error (RPE) feedback in embedded mode."""
+        from cml.models import FeedbackResponse
+
+        self._ensure_initialized()
+        res = await self._orchestrator.feedback(
+            tenant_id=self._config.tenant_id,
+            outcome_reward=outcome_reward,
+            expected_reward=expected_reward,
+            query=query,
+            memory_ids=memory_ids,
+            correction_text=correction_text,
+            preferred_steps=preferred_steps,
+            session_id=session_id,
+        )
+        return FeedbackResponse(**res)
+
+    async def simulate(
+        self,
+        scenario: str,
+        *,
+        max_results: int = 12,
+        context_filter: list[str] | None = None,
+    ) -> Any:
+        """Execute Hippocampal Forward Preplay / Counterfactual Simulation in embedded mode."""
+        from cml.models import SimulateResponse
+
+        self._ensure_initialized()
+        verdict = await self._orchestrator.simulate(
+            tenant_id=self._config.tenant_id,
+            scenario=scenario,
+            max_results=max_results,
+            context_filter=context_filter,
+        )
+        return SimulateResponse(**verdict)

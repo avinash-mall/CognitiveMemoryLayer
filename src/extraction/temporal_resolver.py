@@ -1,13 +1,14 @@
-"""Temporal resolution: convert relative time references to absolute dates.
+"""Hippocampal Time Cells: granularity-aware temporal resolution & calendar intervals.
 
-Temporal reasoning is the category with the highest variance across systems
-(18.4% to 73.8%).  The key insight: every memory must carry absolute timestamps,
-and relative time expressions must be resolved at extraction time using the
-session timestamp as anchor.
+Resolves relative time expressions ("yesterday", "last Tuesday", "last month",
+"three years ago", "last summer") against the utterance's session timestamp while
+preserving true calendar granularity ("2023-05-07" vs "April 2023" vs "2022")
+so downstream prompts never hallucinate fake day-of-month numbers on month/year spans.
 """
 
 from __future__ import annotations
 
+import calendar
 import re
 from datetime import datetime, timedelta
 from typing import Any
@@ -16,40 +17,118 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-# Patterns for relative time references and their approximate offsets
-_RELATIVE_PATTERNS: list[tuple[str, timedelta]] = [
-    (r"\byesterday\b", timedelta(days=-1)),
-    (r"\bthe day before yesterday\b", timedelta(days=-2)),
-    (r"\btomorrow\b", timedelta(days=1)),
-    (r"\btoday\b", timedelta(days=0)),
-    (r"\blast night\b", timedelta(days=-1)),
-    (r"\blast week\b", timedelta(weeks=-1)),
-    (r"\blast month\b", timedelta(days=-30)),
-    (r"\blast year\b", timedelta(days=-365)),
-    (r"\bnext week\b", timedelta(weeks=1)),
-    (r"\bnext month\b", timedelta(days=30)),
-    (r"\bnext year\b", timedelta(days=365)),
-    (r"\bthis morning\b", timedelta(days=0)),
-    (r"\bthis afternoon\b", timedelta(days=0)),
-    (r"\bthis evening\b", timedelta(days=0)),
-    (r"\bthis week\b", timedelta(days=0)),
-    (r"\bthis month\b", timedelta(days=0)),
-    (r"\bthis year\b", timedelta(days=0)),
+_MONTH_NAMES = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 
-# Patterns with numeric extraction
-_NUMERIC_PATTERNS: list[tuple[str, str]] = [
-    (r"\b(\d+)\s+days?\s+ago\b", "days"),
-    (r"\b(\d+)\s+weeks?\s+ago\b", "weeks"),
-    (r"\b(\d+)\s+months?\s+ago\b", "months"),
-    (r"\b(\d+)\s+years?\s+ago\b", "years"),
-    (r"\b(\d+)\s+hours?\s+ago\b", "hours"),
-    (r"\bin\s+(\d+)\s+days?\b", "days_future"),
-    (r"\bin\s+(\d+)\s+weeks?\b", "weeks_future"),
-    (r"\bin\s+(\d+)\s+months?\b", "months_future"),
+_WEEKDAYS: dict[str, int] = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+_WORD_NUMBERS: dict[str, int] = {
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+
+def _shift_months(dt: datetime, delta_months: int) -> tuple[datetime, str]:
+    total_m = (dt.year * 12 + (dt.month - 1)) + delta_months
+    new_year, new_m0 = divmod(total_m, 12)
+    new_month = new_m0 + 1
+    first_of_month = dt.replace(year=new_year, month=new_month, day=1)
+    return first_of_month, f"{_MONTH_NAMES[new_month]} {new_year}"
+
+
+def _shift_years(dt: datetime, delta_years: int) -> tuple[datetime, str]:
+    new_year = dt.year + delta_years
+    first_of_year = dt.replace(year=new_year, month=1, day=1)
+    return first_of_year, str(new_year)
+
+
+# Exact day-level relative patterns
+_DAY_PATTERNS: list[tuple[str, int]] = [
+    (r"\bthe day before yesterday\b", -2),
+    (r"\byesterday\b", -1),
+    (r"\blast night\b", -1),
+    (r"\btomorrow\b", 1),
+    (r"\btoday\b", 0),
+    (r"\bthis morning\b", 0),
+    (r"\bthis afternoon\b", 0),
+    (r"\bthis evening\b", 0),
 ]
 
-# Vague patterns with approximate offsets
+# Week-level relative patterns
+_WEEK_PATTERNS: list[tuple[str, int]] = [
+    (r"\blast week\b", -1),
+    (r"\bnext week\b", 1),
+    (r"\bthis week\b", 0),
+]
+
+# Month/Year relative patterns (calendar-exact, NOT -30/-365 day approximations)
+_MONTH_REL_PATTERNS: list[tuple[str, int]] = [
+    (r"\blast month\b", -1),
+    (r"\bnext month\b", 1),
+    (r"\bthis month\b", 0),
+]
+
+_YEAR_REL_PATTERNS: list[tuple[str, int]] = [
+    (r"\blast year\b", -1),
+    (r"\bnext year\b", 1),
+    (r"\bthis year\b", 0),
+]
+
+_SEASON_RE = re.compile(r"\b(last|this|next)\s+(spring|summer|fall|autumn|winter)\b", re.IGNORECASE)
+_SEASON_MONTH = {"spring": 4, "summer": 7, "fall": 10, "autumn": 10, "winter": 1}
+
+_WEEKDAY_RE = re.compile(
+    r"\b(last|next)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+    re.IGNORECASE,
+)
+
+_COUNT_REL_RE = re.compile(
+    r"\b(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
+    r"(days?|weeks?|months?|years?|hours?)\s+(ago|from now|later)\b",
+    re.IGNORECASE,
+)
+
+_IN_FUTURE_RE = re.compile(
+    r"\bin\s+(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
+    r"(days?|weeks?|months?|years?)\b",
+    re.IGNORECASE,
+)
+
+# Vague patterns: kept in resolve_temporal_references with approximate=True & granularity="vague",
+# but intentionally excluded from stamping exact event_date displays on episodes.
 _VAGUE_PATTERNS: list[tuple[str, timedelta]] = [
     (r"\brecently\b", timedelta(days=-10)),
     (r"\ba while ago\b", timedelta(days=-60)),
@@ -67,148 +146,200 @@ _VAGUE_PATTERNS: list[tuple[str, timedelta]] = [
 ]
 
 
-_WEEKDAYS: dict[str, int] = {
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
-}
-
-_WORD_NUMBERS: dict[str, int] = {
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-}
-
-_WEEKDAY_RE = re.compile(
-    r"\blast\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", re.IGNORECASE
-)
-_WORD_NUM_RE = re.compile(
-    r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(days?|weeks?|months?|years?)\s+ago\b",
-    re.IGNORECASE,
-)
+def _parse_num(tok: str) -> int:
+    tl = tok.lower()
+    if tl.isdigit():
+        return int(tl)
+    return _WORD_NUMBERS.get(tl, 1)
 
 
 def resolve_temporal_references(
     text: str,
     session_date: datetime,
 ) -> list[dict[str, Any]]:
-    """Extract and resolve temporal references in text relative to session_date.
+    """Extract and resolve temporal references relative to ``session_date``.
 
-    Returns a list of dicts with:
-      - "original": the matched text span
-      - "resolved_date": the absolute datetime
-      - "approximate": whether the resolution is approximate (vague references)
+    Returns dicts containing:
+      - ``original``: matched text span
+      - ``resolved_date``: representative ``datetime``
+      - ``approximate``: bool
+      - ``granularity``: ``"day" | "week" | "month" | "season" | "year" | "vague"``
+      - ``display``: human/LLM-accurate calendar string (no fake day on month/year!)
     """
     results: list[dict[str, Any]] = []
     text_lower = text.lower()
 
-    # Exact weekday patterns ("last Saturday", "last Tuesday")
+    # 1. Exact weekday ("last Saturday", "next Tuesday")
     for match in _WEEKDAY_RE.finditer(text_lower):
-        target_wd = _WEEKDAYS[match.group(1)]
-        days_back = (session_date.weekday() - target_wd) % 7
-        if days_back == 0:
-            days_back = 7
+        direction = match.group(1).lower()
+        target_wd = _WEEKDAYS[match.group(2).lower()]
+        if direction == "last":
+            diff = (session_date.weekday() - target_wd) % 7 or 7
+            dt = session_date - timedelta(days=diff)
+        else:
+            diff = (target_wd - session_date.weekday()) % 7 or 7
+            dt = session_date + timedelta(days=diff)
         results.append(
             {
                 "original": match.group(0),
-                "resolved_date": session_date - timedelta(days=days_back),
+                "resolved_date": dt,
                 "approximate": False,
+                "granularity": "day",
+                "display": dt.strftime("%Y-%m-%d"),
                 "start": match.start(),
                 "end": match.end(),
             }
         )
 
-    # Exact relative patterns
-    for pattern, delta in _RELATIVE_PATTERNS:
+    # 2. Exact day offsets ("yesterday", "tomorrow", "today")
+    for pattern, day_off in _DAY_PATTERNS:
         for match in re.finditer(pattern, text_lower):
+            dt = session_date + timedelta(days=day_off)
             results.append(
                 {
                     "original": match.group(0),
-                    "resolved_date": session_date + delta,
+                    "resolved_date": dt,
                     "approximate": False,
+                    "granularity": "day",
+                    "display": dt.strftime("%Y-%m-%d"),
                     "start": match.start(),
                     "end": match.end(),
                 }
             )
 
-    # Spelled-out numeric patterns ("three years ago", "two weeks ago")
-    for match in _WORD_NUM_RE.finditer(text_lower):
-        count = _WORD_NUMBERS[match.group(1)]
-        unit = match.group(2).rstrip("s")
-        if unit == "day":
-            delta = timedelta(days=-count)
-        elif unit == "week":
-            delta = timedelta(weeks=-count)
-        elif unit == "month":
-            delta = timedelta(days=-count * 30)
-        else:
-            delta = timedelta(days=-count * 365)
+    # 3. Week offsets ("last week", "next week")
+    for pattern, wk_off in _WEEK_PATTERNS:
+        for match in re.finditer(pattern, text_lower):
+            dt = session_date + timedelta(weeks=wk_off)
+            disp = (
+                f"week of {dt.strftime('%Y-%m-%d')}"
+                if wk_off != 0
+                else f"week of {session_date.strftime('%Y-%m-%d')}"
+            )
+            results.append(
+                {
+                    "original": match.group(0),
+                    "resolved_date": dt,
+                    "approximate": True,
+                    "granularity": "week",
+                    "display": disp,
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
+
+    # 4. Calendar-exact month offsets ("last month", "next month", "this month")
+    for pattern, m_off in _MONTH_REL_PATTERNS:
+        for match in re.finditer(pattern, text_lower):
+            dt, disp = _shift_months(session_date, m_off)
+            results.append(
+                {
+                    "original": match.group(0),
+                    "resolved_date": dt,
+                    "approximate": False,
+                    "granularity": "month",
+                    "display": disp,
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
+
+    # 5. Calendar-exact year offsets ("last year", "next year", "this year")
+    for pattern, y_off in _YEAR_REL_PATTERNS:
+        for match in re.finditer(pattern, text_lower):
+            dt, disp = _shift_years(session_date, y_off)
+            results.append(
+                {
+                    "original": match.group(0),
+                    "resolved_date": dt,
+                    "approximate": False,
+                    "granularity": "year",
+                    "display": disp,
+                    "start": match.start(),
+                    "end": match.end(),
+                }
+            )
+
+    # 6. Seasons ("last summer", "next spring")
+    for match in _SEASON_RE.finditer(text_lower):
+        rel, season = match.group(1).lower(), match.group(2).lower()
+        yr = session_date.year + (-1 if rel == "last" else (1 if rel == "next" else 0))
+        m_num = _SEASON_MONTH[season]
+        dt = session_date.replace(year=yr, month=m_num, day=1)
         results.append(
             {
                 "original": match.group(0),
-                "resolved_date": session_date + delta,
-                "approximate": unit in ("month", "year"),
+                "resolved_date": dt,
+                "approximate": True,
+                "granularity": "season",
+                "display": f"{season.capitalize()} {yr}",
                 "start": match.start(),
                 "end": match.end(),
             }
         )
 
-    # Numeric relative patterns
-    for pattern, unit in _NUMERIC_PATTERNS:
-        for match in re.finditer(pattern, text_lower):
-            count = int(match.group(1))
-            is_future = unit.endswith("_future")
-            base_unit = unit.replace("_future", "")
-            sign = 1 if is_future else -1
+    # 7. Numeric / word-number expressions ("3 months ago", "two years ago", "5 days ago")
+    for regex, default_dir in ((_COUNT_REL_RE, None), (_IN_FUTURE_RE, "future")):
+        for match in regex.finditer(text_lower):
+            count = _parse_num(match.group(1))
+            unit = match.group(2).lower().rstrip("s")
+            if default_dir == "future":
+                sign = 1
+            else:
+                dir_tok = match.group(3).lower()
+                sign = -1 if dir_tok == "ago" else 1
 
-            if base_unit == "days":
-                delta = timedelta(days=sign * count)
-            elif base_unit == "weeks":
-                delta = timedelta(weeks=sign * count)
-            elif base_unit == "months":
-                delta = timedelta(days=sign * count * 30)
-            elif base_unit == "years":
-                delta = timedelta(days=sign * count * 365)
-            elif base_unit == "hours":
-                delta = timedelta(hours=sign * count)
+            if unit == "hour":
+                dt = session_date + timedelta(hours=sign * count)
+                gran, approx, disp = "day", False, dt.strftime("%Y-%m-%d")
+            elif unit == "day":
+                dt = session_date + timedelta(days=sign * count)
+                gran, approx, disp = "day", False, dt.strftime("%Y-%m-%d")
+            elif unit == "week":
+                dt = session_date + timedelta(weeks=sign * count)
+                gran, approx, disp = (
+                    "week",
+                    True,
+                    f"{_MONTH_NAMES[dt.month]} {dt.year} (~{dt.strftime('%Y-%m-%d')})",
+                )
+            elif unit == "month":
+                dt, disp = _shift_months(session_date, sign * count)
+                gran, approx = "month", True
+            elif unit == "year":
+                dt, disp = _shift_years(session_date, sign * count)
+                gran, approx = "year", True
             else:
                 continue
 
             results.append(
                 {
                     "original": match.group(0),
-                    "resolved_date": session_date + delta,
-                    "approximate": base_unit in ("months", "years"),
+                    "resolved_date": dt,
+                    "approximate": approx,
+                    "granularity": gran,
+                    "display": disp,
                     "start": match.start(),
                     "end": match.end(),
                 }
             )
 
-    # Vague patterns
+    # 8. Vague expressions (never used to stamp exact event_date_display)
     for pattern, delta in _VAGUE_PATTERNS:
         for match in re.finditer(pattern, text_lower):
+            dt = session_date + delta
             results.append(
                 {
                     "original": match.group(0),
-                    "resolved_date": session_date + delta,
+                    "resolved_date": dt,
                     "approximate": True,
+                    "granularity": "vague",
+                    "display": "",
                     "start": match.start(),
                     "end": match.end(),
                 }
             )
 
-    # Deduplicate by span position (keep most specific match)
+    # Deduplicate overlapping spans (keep earliest, longest match)
     results.sort(key=lambda r: (r["start"], -(r["end"] - r["start"])))
     deduped: list[dict[str, Any]] = []
     covered: set[int] = set()
@@ -221,16 +352,29 @@ def resolve_temporal_references(
     return deduped
 
 
+def extract_event_info(
+    text: str,
+    session_date: datetime,
+) -> dict[str, Any] | None:
+    """Return the first non-vague Hippocampal Time Cell resolution (date + granularity + display)."""
+    for ref in resolve_temporal_references(text, session_date):
+        if ref.get("granularity") != "vague":
+            return ref
+    return None
+
+
 def extract_event_date(
     text: str,
     session_date: datetime,
 ) -> datetime | None:
-    """Extract the most likely event date from text.
-
-    Returns the resolved date of the first temporal reference found,
-    or None if no temporal reference is detected.
-    """
-    refs = resolve_temporal_references(text, session_date)
-    if refs:
-        return refs[0]["resolved_date"]
+    """Extract the most likely non-vague event date from text."""
+    info = extract_event_info(text, session_date)
+    if info is not None:
+        return info["resolved_date"]
     return None
+
+
+def month_end_date(dt: datetime) -> datetime:
+    """Return the final calendar day of ``dt``'s month."""
+    _, last_day = calendar.monthrange(dt.year, dt.month)
+    return dt.replace(day=last_day)

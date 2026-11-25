@@ -10,10 +10,13 @@ from cml_contracts.models import (
     DashboardForgetRequest,
     DashboardReconsolidateRequest,
     DashboardRetrievalRequest,
+    FeedbackRequest,
     ForgetRequest,
     ProcessTurnRequest,
     ReadMemoryRequest,
+    SimulateRequest,
     UpdateMemoryRequest,
+    WindowConsolidateRequest,
     WriteMemoryRequest,
 )
 
@@ -25,10 +28,13 @@ __all__ = [
     "DashboardForgetRequest",
     "DashboardReconsolidateRequest",
     "DashboardRetrievalRequest",
+    "FeedbackRequest",
     "ForgetRequest",
     "ReadRequest",
+    "SimulateRequest",
     "TurnRequest",
     "UpdateRequest",
+    "WindowConsolidateRequest",
     "WriteRequest",
 ]
 
