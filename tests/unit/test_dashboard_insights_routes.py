@@ -486,3 +486,117 @@ async def test_dashboard_evaluation_summary_discovers_outputs(
         "extra.txt",
         "locomo_plus_qa_cml_judge_summary.json",
     }
+
+
+@pytest.mark.asyncio
+async def test_dashboard_evaluation_summary_discovers_results_dir_and_eval_report(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    evaluation_dir = tmp_path / "evaluation"
+    results_dir = evaluation_dir / "results"
+    results_dir.mkdir(parents=True)
+
+    v3_summary = {
+        "overall_avg": 0.6353,
+        "total_samples": 2387,
+        "valid_samples": 2387,
+        "error_count": 0,
+        "by_category": {"adversarial": {"avg": 0.8206, "count": 446, "score": 366.0}},
+    }
+    (results_dir / "locomo_plus_cml_v3_summary.json").write_text(
+        json.dumps(v3_summary), encoding="utf-8"
+    )
+    (evaluation_dir / "EVALUATION_REPORT.md").write_text("# v3 Report", encoding="utf-8")
+
+    monkeypatch.setattr(insights_routes, "_project_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        insights_routes,
+        "get_settings",
+        lambda: SimpleNamespace(
+            llm_eval=SimpleNamespace(provider=None, model=None),
+            llm_internal=SimpleNamespace(provider="openai_compatible", model="qwen3-8b"),
+        ),
+    )
+
+    result = await insights_routes.dashboard_evaluation_summary(auth=ADMIN_AUTH)
+
+    assert result.readiness["results_dir_present"] is True
+    assert result.readiness["latest_summary_present"] is True
+    assert result.readiness["eval_report_present"] is True
+    assert result.readiness["llm_eval_provider"] == "openai_compatible"
+    assert result.readiness["llm_eval_model"] == "qwen3-8b"
+    assert result.latest_summary["overall_avg"] == 0.6353
+    assert result.latest_report == "# v3 Report"
+    assert len(result.comparisons) == 1
+    assert result.comparisons[0]["overall_avg"] == 0.6353
+
+
+@pytest.mark.asyncio
+async def test_dashboard_quality_overview_includes_v3_hygiene_metrics() -> None:
+    db, _ = make_db(
+        pg_results=[
+            ResultStub(scalar_rows=[]),  # low_conf_memories
+            ResultStub(scalar=0),  # low_conf_count
+            ResultStub(scalar_rows=[]),  # low_evidence
+            ResultStub(scalar=0),  # low_evidence_count
+            ResultStub(scalar=0),  # orphan_facts
+            ResultStub(scalar=0),  # duplicate_hash_rows
+            ResultStub(scalar=0),  # broken_memory_lineage
+            ResultStub(scalar=0),  # broken_fact_lineage
+            ResultStub(all_rows=[]),  # invalidation_rows
+            # v3 hygiene queries
+            ResultStub(scalar=120),  # he_total
+            ResultStub(scalar=5),  # he_low_conf
+            ResultStub(scalar=1.08),  # he_avg_weight
+            ResultStub(scalar=14),  # dmn_total
+            ResultStub(scalar=3),  # dmn_single
+            ResultStub(scalar=6),  # proc_total
+            ResultStub(scalar=1),  # proc_failing
+            ResultStub(scalar=9),  # silent_memories
+            ResultStub(scalar=2),  # missing_embeddings
+        ],
+    )
+
+    result = await insights_routes.dashboard_quality_overview(
+        tenant_id="tenant-a",
+        auth=ADMIN_AUTH,
+        db=db,
+    )
+
+    assert result.v3_hygiene["hyperedge_engrams_total"] == 120
+    assert result.v3_hygiene["low_confidence_hyperedges"] == 5
+    assert result.v3_hygiene["avg_hyperedge_synaptic_weight"] == 1.08
+    assert result.v3_hygiene["dmn_self_profiles_total"] == 14
+    assert result.v3_hygiene["procedural_skills_total"] == 6
+    assert result.v3_hygiene["failing_procedural_skills"] == 1
+    assert result.v3_hygiene["silent_ecphory_memories"] == 9
+    assert result.v3_hygiene["missing_embeddings"] == 2
+    issues = {i.label: i.count for i in result.issues}
+    assert issues["missing_embeddings"] == 2
+    assert issues["low_confidence_hyperedges"] == 5
+    assert issues["failing_procedural_skills"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dashboard_ops_metrics_computes_step_latency_and_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    samples = [
+        SimpleNamespace(
+            name="cml_retrieval_step_duration_ms_sum", labels={"source": "vector"}, value=150.0
+        ),
+        SimpleNamespace(
+            name="cml_retrieval_step_duration_ms_count", labels={"source": "vector"}, value=3.0
+        ),
+    ]
+    family = SimpleNamespace(name="cml_retrieval_step_duration_ms", samples=samples)
+    monkeypatch.setattr(insights_routes.REGISTRY, "collect", lambda: [family])
+    db, _ = make_db()
+
+    result = await insights_routes.dashboard_ops_metrics(auth=ADMIN_AUTH, db=db)
+
+    assert result.highlights["retrieval_step_avg_ms"] == {"vector": 50.0}
+    assert "uptime_seconds" in result.highlights
+    assert "runtime" in result.highlights
+    assert result.highlights["runtime"]["v3_subsystems_total"] == 10

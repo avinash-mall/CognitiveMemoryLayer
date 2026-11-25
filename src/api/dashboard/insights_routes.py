@@ -21,7 +21,13 @@ from ...extraction.write_time_facts import WriteTimeFactExtractor
 from ...memory.hippocampal.write_gate import WriteDecision
 from ...reconsolidation.labile_tracker import _deserialize_session
 from ...storage.connection import DatabaseManager
-from ...storage.models import MemoryRecordModel, SemanticFactModel
+from ...storage.models import (
+    DMNSelfProfileModel,
+    HyperedgeEngramModel,
+    MemoryRecordModel,
+    ProceduralSkillModel,
+    SemanticFactModel,
+)
 from ..auth import AuthContext, require_admin_permission
 from ._shared import (
     DashboardEvaluationArtifact,
@@ -45,6 +51,21 @@ from ._shared import (
 )
 
 router = APIRouter()
+
+_PROCESS_STARTED_AT = datetime.now(UTC)
+
+_V3_WHOLE_BRAIN_FLAGS: tuple[str, ...] = (
+    "sparse_bm25_enabled",
+    "hypergraph_ppr_enabled",
+    "conway_hierarchy_enabled",
+    "cross_encoder_enabled",
+    "acc_iterative_loop_enabled",
+    "neuromodulation_enabled",
+    "preplay_simulation_enabled",
+    "procedural_rpe_enabled",
+    "perirhinal_multimodal_enabled",
+    "windowed_consolidation_enabled",
+)
 
 
 def _project_root() -> Path:
@@ -550,6 +571,18 @@ async def dashboard_quality_overview(
         issues: list[DashboardQualityIssue] = []
         invalidation_hotspots: list[dict[str, Any]] = []
         graph_hygiene: dict[str, Any] = {}
+        v3_hygiene: dict[str, Any] = {
+            "hyperedge_engrams_total": 0,
+            "low_confidence_hyperedges": 0,
+            "orphan_hyperedges": 0,
+            "avg_hyperedge_synaptic_weight": None,
+            "dmn_self_profiles_total": 0,
+            "single_evidence_dmn_profiles": 0,
+            "procedural_skills_total": 0,
+            "failing_procedural_skills": 0,
+            "silent_ecphory_memories": 0,
+            "missing_embeddings": 0,
+        }
 
         async with db.pg_session() as session:
             mem_filters = []
@@ -708,6 +741,119 @@ async def dashboard_quality_overview(
                 {"key": key, "count": count} for key, count in invalidation_rows if key
             ]
 
+            # CML v3.0 subsystem & embedding hygiene (guarded so minimal stubs degrade cleanly)
+            try:
+                he_filters = []
+                dmn_filters = []
+                proc_filters = []
+                if tenant_id:
+                    he_filters.append(HyperedgeEngramModel.tenant_id == tenant_id)
+                    dmn_filters.append(DMNSelfProfileModel.tenant_id == tenant_id)
+                    proc_filters.append(ProceduralSkillModel.tenant_id == tenant_id)
+
+                he_total = (
+                    await session.execute(
+                        select(func.count()).select_from(HyperedgeEngramModel).where(*he_filters)
+                    )
+                ).scalar() or 0
+                he_low_conf = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(HyperedgeEngramModel)
+                        .where(HyperedgeEngramModel.confidence < 0.5, *he_filters)
+                    )
+                ).scalar() or 0
+                he_avg_weight = (
+                    await session.execute(
+                        select(func.avg(HyperedgeEngramModel.synaptic_weight)).where(*he_filters)
+                    )
+                ).scalar()
+                dmn_total = (
+                    await session.execute(
+                        select(func.count()).select_from(DMNSelfProfileModel).where(*dmn_filters)
+                    )
+                ).scalar() or 0
+                dmn_single = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(DMNSelfProfileModel)
+                        .where(DMNSelfProfileModel.evidence_count <= 1, *dmn_filters)
+                    )
+                ).scalar() or 0
+                proc_total = (
+                    await session.execute(
+                        select(func.count()).select_from(ProceduralSkillModel).where(*proc_filters)
+                    )
+                ).scalar() or 0
+                proc_failing = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(ProceduralSkillModel)
+                        .where(
+                            ProceduralSkillModel.failure_count > ProceduralSkillModel.success_count,
+                            *proc_filters,
+                        )
+                    )
+                ).scalar() or 0
+                silent_memories = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(MemoryRecordModel)
+                        .where(
+                            MemoryRecordModel.status == MemoryStatus.SILENT.value,
+                            *mem_filters,
+                        )
+                    )
+                ).scalar() or 0
+                missing_embeddings = (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(MemoryRecordModel)
+                        .where(
+                            MemoryRecordModel.status == MemoryStatus.ACTIVE.value,
+                            MemoryRecordModel.embedding.is_(None),
+                            *mem_filters,
+                        )
+                    )
+                ).scalar() or 0
+
+                v3_hygiene.update(
+                    {
+                        "hyperedge_engrams_total": int(he_total),
+                        "low_confidence_hyperedges": int(he_low_conf),
+                        "avg_hyperedge_synaptic_weight": (
+                            round(float(he_avg_weight), 3) if he_avg_weight is not None else None
+                        ),
+                        "dmn_self_profiles_total": int(dmn_total),
+                        "single_evidence_dmn_profiles": int(dmn_single),
+                        "procedural_skills_total": int(proc_total),
+                        "failing_procedural_skills": int(proc_failing),
+                        "silent_ecphory_memories": int(silent_memories),
+                        "missing_embeddings": int(missing_embeddings),
+                    }
+                )
+                issues.extend(
+                    [
+                        DashboardQualityIssue(
+                            label="missing_embeddings",
+                            count=int(missing_embeddings),
+                            description="Active memories without a stored dense vector embedding.",
+                        ),
+                        DashboardQualityIssue(
+                            label="low_confidence_hyperedges",
+                            count=int(he_low_conf),
+                            description="N-ary cortical hyperedge engrams with confidence below 0.50.",
+                        ),
+                        DashboardQualityIssue(
+                            label="failing_procedural_skills",
+                            count=int(proc_failing),
+                            description="Procedural skills whose failure count exceeds their success count.",
+                        ),
+                    ]
+                )
+            except Exception as v3_exc:
+                logger.debug("dashboard_quality_v3_hygiene_skipped", error=str(v3_exc))
+
         labile_sessions = len(await _load_labile_sessions(db, tenant_id=tenant_id))
 
         if db.neo4j_driver:
@@ -752,6 +898,7 @@ async def dashboard_quality_overview(
             issues=issues,
             invalidation_hotspots=invalidation_hotspots,
             graph_hygiene=graph_hygiene,
+            v3_hygiene=v3_hygiene,
             labile_sessions=labile_sessions,
         )
     except Exception as exc:
@@ -773,7 +920,10 @@ async def dashboard_ops_metrics(
             "retrieval_step_failures_total": 0.0,
             "memory_reads_total": 0.0,
             "memory_writes_total": 0.0,
+            "uptime_seconds": round((datetime.now(UTC) - _PROCESS_STARTED_AT).total_seconds(), 1),
         }
+        step_dur_sum: dict[str, float] = {}
+        step_dur_cnt: dict[str, float] = {}
 
         for family in REGISTRY.collect():
             if not (
@@ -805,11 +955,40 @@ async def dashboard_ops_metrics(
                         else "fact_hit_no"
                     )
                     highlights[bucket] = highlights.get(bucket, 0.0) + value
+                elif sample.name == "cml_retrieval_step_duration_ms_sum":
+                    src = labels.get("source", "unknown")
+                    step_dur_sum[src] = step_dur_sum.get(src, 0.0) + value
+                elif sample.name == "cml_retrieval_step_duration_ms_count":
+                    src = labels.get("source", "unknown")
+                    step_dur_cnt[src] = step_dur_cnt.get(src, 0.0) + value
+
+        if step_dur_cnt:
+            highlights["retrieval_step_avg_ms"] = {
+                src: round(step_dur_sum.get(src, 0.0) / cnt, 2)
+                for src, cnt in sorted(step_dur_cnt.items())
+                if cnt > 0
+            }
 
         hit_yes = float(highlights.get("fact_hit_yes", 0.0))
         hit_no = float(highlights.get("fact_hit_no", 0.0))
         if hit_yes + hit_no > 0:
             highlights["fact_hit_rate"] = round(hit_yes / (hit_yes + hit_no), 4)
+
+        # Live SQLAlchemy pool stats
+        pg_engine = getattr(db, "pg_engine", None)
+        pool = getattr(pg_engine, "pool", None) if pg_engine is not None else None
+        if pool is not None:
+            try:
+                if hasattr(pool, "size"):
+                    highlights["db_pool_size"] = int(pool.size())
+                if hasattr(pool, "checkedin"):
+                    highlights["db_pool_checked_in"] = int(pool.checkedin())
+                if hasattr(pool, "checkedout"):
+                    highlights["db_pool_checked_out"] = float(pool.checkedout())
+                if hasattr(pool, "overflow"):
+                    highlights["db_pool_overflow"] = int(pool.overflow())
+            except Exception as exc:
+                logger.debug("dashboard_ops_pool_stats_failed", error=str(exc))
 
         if db.redis:
             try:
@@ -819,8 +998,81 @@ async def dashboard_ops_metrics(
                     redis_info.get("used_memory", 0) / (1024 * 1024),
                     2,
                 )
+                try:
+                    redis_stats = await db.redis.info("stats")
+                    hits = int(redis_stats.get("keyspace_hits", 0))
+                    misses = int(redis_stats.get("keyspace_misses", 0))
+                    if hits + misses > 0:
+                        highlights["redis_keyspace_hits"] = hits
+                        highlights["redis_keyspace_misses"] = misses
+                        highlights["redis_hit_rate"] = round(hits / (hits + misses), 4)
+                except Exception:
+                    pass
             except Exception as exc:
                 logger.warning("dashboard_ops_redis_metrics_failed", error=str(exc))
+
+        # Active CML v3.0 runtime mode & corpus snapshot
+        try:
+            settings = get_settings()
+            feat = settings.features
+            v3_enabled = sum(1 for flag in _V3_WHOLE_BRAIN_FLAGS if getattr(feat, flag, False))
+            runtime_info: dict[str, Any] = {
+                "llm_enabled": bool(feat.use_llm_enabled),
+                "llm_provider": settings.llm_internal.provider,
+                "llm_model": settings.llm_internal.model,
+                "embedding_provider": settings.embedding_internal.provider,
+                "embedding_model": settings.embedding_internal.model,
+                "v3_subsystems_enabled": v3_enabled,
+                "v3_subsystems_total": len(_V3_WHOLE_BRAIN_FLAGS),
+            }
+            if hasattr(db, "pg_session") and getattr(db, "pg_engine", None) is not None:
+                try:
+                    async with db.pg_session() as session:
+                        runtime_info["memory_records_total"] = int(
+                            (
+                                await session.execute(
+                                    select(func.count()).select_from(MemoryRecordModel)
+                                )
+                            ).scalar()
+                            or 0
+                        )
+                        runtime_info["semantic_facts_total"] = int(
+                            (
+                                await session.execute(
+                                    select(func.count()).select_from(SemanticFactModel)
+                                )
+                            ).scalar()
+                            or 0
+                        )
+                        runtime_info["hyperedge_engrams_total"] = int(
+                            (
+                                await session.execute(
+                                    select(func.count()).select_from(HyperedgeEngramModel)
+                                )
+                            ).scalar()
+                            or 0
+                        )
+                        runtime_info["dmn_profiles_total"] = int(
+                            (
+                                await session.execute(
+                                    select(func.count()).select_from(DMNSelfProfileModel)
+                                )
+                            ).scalar()
+                            or 0
+                        )
+                        runtime_info["procedural_skills_total"] = int(
+                            (
+                                await session.execute(
+                                    select(func.count()).select_from(ProceduralSkillModel)
+                                )
+                            ).scalar()
+                            or 0
+                        )
+                except Exception as exc:
+                    logger.debug("dashboard_ops_corpus_counts_failed", error=str(exc))
+            highlights["runtime"] = runtime_info
+        except Exception as exc:
+            logger.debug("dashboard_ops_runtime_info_failed", error=str(exc))
 
         metrics.sort(key=lambda item: (item.name, json.dumps(item.labels, sort_keys=True)))
         return DashboardOpsResponse(
@@ -842,12 +1094,19 @@ async def dashboard_evaluation_summary(
     try:
         root = _project_root()
         evaluation_dir = root / "evaluation"
+        results_dir = evaluation_dir / "results"
         outputs_dir = evaluation_dir / "outputs"
         unified_samples = evaluation_dir / "locomo_plus" / "data" / "unified_input_samples_v2.json"
-        summary_path = outputs_dir / "locomo_plus_qa_cml_judge_summary.json"
+        eval_report_path = evaluation_dir / "EVALUATION_REPORT.md"
         comparison_path = evaluation_dir / "COMPARISON.md"
 
-        artifact_paths = sorted(outputs_dir.glob("*")) if outputs_dir.exists() else []
+        # Discover artifacts across both evaluation/results and evaluation/outputs
+        artifact_paths: list[Path] = []
+        for scan_dir in (results_dir, outputs_dir):
+            if scan_dir.is_dir():
+                artifact_paths.extend(p for p in scan_dir.iterdir() if p.is_file())
+        artifact_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
         artifacts = [
             DashboardEvaluationArtifact(
                 name=path.name,
@@ -859,31 +1118,84 @@ async def dashboard_evaluation_summary(
                 ),
             )
             for path in artifact_paths
-            if path.is_file()
         ]
 
-        latest_summary = None
-        if summary_path.is_file():
-            latest_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        # Parse all *_summary.json artifacts into comparisons; newest becomes latest_summary
+        summary_paths = [
+            p
+            for p in artifact_paths
+            if p.name.endswith("_summary.json") or p.name == "summary.json"
+        ]
+        comparisons: list[dict[str, Any]] = []
+        latest_summary: dict[str, Any] | None = None
+        latest_summary_name: str | None = None
+
+        for sp in summary_paths:
+            try:
+                parsed = json.loads(sp.read_text(encoding="utf-8"))
+                if not isinstance(parsed, dict):
+                    continue
+                if latest_summary is None:
+                    latest_summary = parsed
+                    latest_summary_name = sp.name
+                comparisons.append(
+                    {
+                        "name": sp.name,
+                        "path": str(sp),
+                        "overall_avg": parsed.get("overall_avg", parsed.get("score")),
+                        "total_samples": parsed.get("total_samples"),
+                        "valid_samples": parsed.get("valid_samples"),
+                        "error_count": parsed.get("error_count", 0),
+                        "by_category": parsed.get("by_category", {}),
+                        "updated_at": datetime.fromtimestamp(
+                            sp.stat().st_mtime, tz=UTC
+                        ).isoformat(),
+                    }
+                )
+            except Exception as exc:
+                logger.warning("dashboard_eval_summary_parse_failed", path=str(sp), error=str(exc))
 
         latest_report = None
-        if comparison_path.is_file():
+        report_source = None
+        if eval_report_path.is_file():
+            latest_report = eval_report_path.read_text(encoding="utf-8")
+            report_source = eval_report_path.name
+        elif comparison_path.is_file():
             latest_report = comparison_path.read_text(encoding="utf-8")
+            report_source = comparison_path.name
 
         import importlib.util
 
+        settings = get_settings()
+        llm_eval = settings.llm_eval
+        llm_internal = getattr(settings, "llm_internal", None)
+        effective_eval_provider = llm_eval.provider or (
+            getattr(llm_internal, "provider", None) if llm_internal else None
+        )
+        effective_eval_model = llm_eval.model or (
+            getattr(llm_internal, "model", None) if llm_internal else None
+        )
+
         readiness = {
             "evaluation_dir_present": evaluation_dir.is_dir(),
+            "results_dir_present": results_dir.is_dir(),
             "outputs_dir_present": outputs_dir.is_dir(),
             "scripts_present": importlib.util.find_spec("cml.eval") is not None
-            or (evaluation_dir / "scripts" / "run_locomo_openrouter_batch.py").is_file(),
+            or (evaluation_dir / "scripts" / "run_locomo_openrouter_batch.py").is_file()
+            or (evaluation_dir / "locomo_plus" / "scripts" / "run_evaluate.py").is_file(),
             "locomo_data_present": (
                 evaluation_dir / "locomo_plus" / "data" / "locomo10.json"
             ).is_file(),
+            "locomo_plus_data_present": (
+                evaluation_dir / "locomo_plus" / "data" / "locomo_plus.json"
+            ).is_file(),
             "unified_samples_present": unified_samples.is_file(),
-            "latest_summary_present": summary_path.is_file(),
-            "llm_eval_provider": get_settings().llm_eval.provider,
-            "llm_eval_model": get_settings().llm_eval.model,
+            "latest_summary_present": latest_summary is not None,
+            "latest_summary_file": latest_summary_name,
+            "eval_report_present": latest_report is not None,
+            "eval_report_file": report_source,
+            "llm_eval_provider": effective_eval_provider,
+            "llm_eval_model": effective_eval_model,
         }
 
         return DashboardEvaluationSummary(
@@ -892,7 +1204,7 @@ async def dashboard_evaluation_summary(
             latest_summary=latest_summary,
             latest_report=latest_report,
             artifacts=artifacts,
-            comparisons=[],
+            comparisons=comparisons,
         )
     except Exception as exc:
         logger.error("dashboard_evaluation_summary_error", error=str(exc))

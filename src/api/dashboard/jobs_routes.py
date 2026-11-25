@@ -16,6 +16,7 @@ from ...storage.models import DashboardJobModel
 from ..auth import AuthContext, require_admin_permission
 from ._shared import (
     DashboardConsolidateRequest,
+    DashboardFeedbackRequest,
     DashboardForgetRequest,
     DashboardJobItem,
     DashboardJobsResponse,
@@ -23,6 +24,8 @@ from ._shared import (
     DashboardReconsolidateRequest,
     DashboardRetrievalRequest,
     DashboardRetrievalResponse,
+    DashboardSimulateRequest,
+    DashboardWindowConsolidateRequest,
     RetrievalResultItem,
     TenantLabileInfo,
     _get_db,
@@ -526,6 +529,131 @@ async def dashboard_reconsolidate(
             logger.debug("dashboard_job_tracking_failed", error=str(exc))
         logger.error("dashboard_reconsolidate_error", error=str(e))
         raise HTTPException(status_code=500, detail=f"Reconsolidation failed: {e}")
+
+
+@router.post("/consolidate_windowed")
+async def dashboard_consolidate_windowed(
+    body: DashboardWindowConsolidateRequest,
+    request: Request,
+    auth: AuthContext = Depends(require_admin_permission),
+):
+    """Trigger CML v3.0 Windowed Micro-Sleep Consolidation for a tenant. Tracked job. Admin-only."""
+    _ = auth
+    db: DatabaseManager = request.app.state.db
+    job_id = uuid_mod.uuid4()
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    try:
+        async with db.pg_session() as session:
+            session.add(
+                DashboardJobModel(
+                    id=job_id,
+                    job_type="consolidate_windowed",
+                    tenant_id=body.tenant_id,
+                    user_id=body.session_id or body.tenant_id,
+                    dry_run=False,
+                    status="running",
+                    started_at=now,
+                )
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.debug("dashboard_job_tracking_failed", error=str(exc))
+
+    try:
+        orchestrator = request.app.state.orchestrator
+        stats = await orchestrator.consolidate_windowed(
+            tenant_id=body.tenant_id,
+            session_id=body.session_id,
+            max_episodes=body.max_episodes,
+            use_llm=body.use_llm,
+        )
+        result_data = {
+            "status": "completed",
+            "tenant_id": body.tenant_id,
+            "session_id": body.session_id,
+            **stats,
+        }
+        try:
+            async with db.pg_session() as session:
+                await session.execute(
+                    update(DashboardJobModel)
+                    .where(DashboardJobModel.id == job_id)
+                    .values(
+                        status="completed",
+                        result=result_data,
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
+        return result_data
+    except Exception as e:
+        try:
+            async with db.pg_session() as session:
+                await session.execute(
+                    update(DashboardJobModel)
+                    .where(DashboardJobModel.id == job_id)
+                    .values(
+                        status="failed",
+                        error=str(e),
+                        completed_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+        except Exception as exc:
+            logger.debug("dashboard_job_tracking_failed", error=str(exc))
+        logger.error("dashboard_consolidate_windowed_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Windowed consolidation failed: {e}")
+
+
+@router.post("/simulate")
+async def dashboard_simulate(
+    body: DashboardSimulateRequest,
+    request: Request,
+    auth: AuthContext = Depends(require_admin_permission),
+):
+    """Run Hippocampal Forward Preplay / Counterfactual Simulation for a tenant. Admin-only."""
+    _ = auth
+    try:
+        orchestrator = request.app.state.orchestrator
+        verdict = await orchestrator.simulate(
+            tenant_id=body.tenant_id,
+            scenario=body.scenario,
+            max_results=body.max_results,
+            context_filter=body.context_filter,
+        )
+        return {"tenant_id": body.tenant_id, **verdict}
+    except Exception as e:
+        logger.error("dashboard_simulate_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Simulation failed: {e}")
+
+
+@router.post("/feedback")
+async def dashboard_feedback(
+    body: DashboardFeedbackRequest,
+    request: Request,
+    auth: AuthContext = Depends(require_admin_permission),
+):
+    """Apply Dopaminergic RPE feedback & Procedural skill reinforcement for a tenant. Admin-only."""
+    _ = auth
+    try:
+        orchestrator = request.app.state.orchestrator
+        res = await orchestrator.feedback(
+            tenant_id=body.tenant_id,
+            outcome_reward=body.outcome_reward,
+            expected_reward=body.expected_reward,
+            query=body.query,
+            memory_ids=body.memory_ids,
+            correction_text=body.correction_text,
+            preferred_steps=body.preferred_steps,
+            session_id=body.session_id,
+        )
+        return {"tenant_id": body.tenant_id, **res}
+    except Exception as e:
+        logger.error("dashboard_feedback_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Feedback failed: {e}")
 
 
 @router.post("/database/reset")

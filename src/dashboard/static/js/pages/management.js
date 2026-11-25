@@ -10,10 +10,13 @@ import {
     getTenants,
     previewForgetting,
     resetDatabase,
+    runPreplaySimulation,
     simulateWrite,
+    submitFeedback,
     triggerConsolidate,
     triggerForget,
     triggerReconsolidate,
+    triggerWindowedConsolidate,
 } from '../api.js';
 import { navigateTo, showToast } from '../app.js';
 import { escapeHtml, formatDate, formatFloat, formatNumber, prettyJson } from '../utils/formatters.js';
@@ -21,15 +24,17 @@ import { escapeHtml, formatDate, formatFloat, formatNumber, prettyJson } from '.
 const container = () => document.getElementById('page-management');
 
 let tenants = [];
+let activeTenantId = null;
 
 export async function renderManagement({ tenantId } = {}) {
     const el = container();
+    activeTenantId = tenantId || null;
     el.innerHTML = `<div class="loading-overlay"><div class="spinner"></div> Loading workbench...</div>`;
 
     try {
         const [tenantsData, jobsData, labileData, sessionsData] = await Promise.all([
             getTenants(),
-            getJobs(null, null, 25).catch(() => ({ items: [], total: 0 })),
+            getJobs(tenantId, null, 25).catch(() => ({ items: [], total: 0 })),
             getLabile(tenantId).catch(() => ({ tenants: [], total_redis_scopes: 0, total_redis_sessions: 0, total_redis_memories: 0 })),
             getReconsolidationSessions(tenantId).catch(() => ({ items: [], total: 0 })),
         ]);
@@ -39,6 +44,17 @@ export async function renderManagement({ tenantId } = {}) {
     } catch (err) {
         tenants = [];
         el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#9888;</div><p>Failed to load management workbench: ${escapeHtml(err.message)}</p></div>`;
+    }
+}
+
+async function refreshJobHistory(el) {
+    const host = el.querySelector('#job-history-body');
+    if (!host) return;
+    try {
+        const jobsData = await getJobs(activeTenantId, null, 25);
+        host.innerHTML = buildJobHistory(jobsData.items || []);
+    } catch (_) {
+        // Ignore transient refresh failure
     }
 }
 
@@ -165,6 +181,107 @@ function buildPage(jobsData, labileData, sessionsData, tenantId) {
             </div>
 
             <div class="management-panel">
+                <h3>Windowed Micro-Sleep Consolidation (v3.0)</h3>
+                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">
+                    Run CML v3.0 Windowed Micro-Sleep consolidation across turn windows to extract N-ary
+                    hyperedge engrams, coref-resolved semantic facts, Proustian cues, chapter gists, and DMN self-profiles.
+                </p>
+                <div class="management-form">
+                    <div class="form-row">
+                        <label for="win-cons-tenant">Tenant</label>
+                        <select id="win-cons-tenant" class="select-sm">
+                            ${tenantOptions || '<option value="">No tenants found</option>'}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="win-cons-session">Session ID</label>
+                        <input type="text" id="win-cons-session" class="input-sm" placeholder="Optional (all sessions)">
+                    </div>
+                    <div class="form-row">
+                        <label for="win-cons-max">Max Episodes</label>
+                        <input type="number" id="win-cons-max" class="input-sm" value="500" min="1" max="5000">
+                    </div>
+                    <div class="form-row">
+                        <label>Use Internal LLM</label>
+                        <div class="toggle-wrapper">
+                            <div id="win-cons-llm-toggle" class="toggle-switch active" title="Use internal LLM for windowed extraction"></div>
+                            <span id="win-cons-llm-label" style="font-size:0.85rem;color:var(--text-secondary);cursor:pointer;">Yes</span>
+                        </div>
+                    </div>
+                    <button id="win-cons-trigger" class="btn btn-primary" ${!tenants.length ? 'disabled' : ''}>Run Windowed Consolidation</button>
+                </div>
+                <div id="win-cons-result" class="result-box hidden"></div>
+            </div>
+
+            <div class="management-panel">
+                <h3>Forward Preplay Simulation (v3.0)</h3>
+                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">
+                    Execute Hippocampal Forward Preplay / Counterfactual Simulation to test a proposed scenario
+                    against a tenant's stored constraints, facts, and episodic memories.
+                </p>
+                <div class="management-form">
+                    <div class="form-row">
+                        <label for="sim-tenant">Tenant</label>
+                        <select id="sim-tenant" class="select-sm">
+                            ${tenantOptions || '<option value="">No tenants found</option>'}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="sim-max">Max Results</label>
+                        <input type="number" id="sim-max" class="input-sm" value="12" min="1" max="50">
+                    </div>
+                    <div class="form-row">
+                        <label for="sim-scenario">Scenario / Proposed Action</label>
+                        <textarea id="sim-scenario" class="input-sm" rows="4" style="resize:vertical;min-height:96px;" placeholder="e.g. Recommend a steakhouse dinner for Friday night"></textarea>
+                    </div>
+                    <button id="sim-trigger" class="btn btn-primary" ${!tenants.length ? 'disabled' : ''}>Run Forward Preplay</button>
+                </div>
+                <div id="sim-result" class="result-box hidden"></div>
+            </div>
+
+            <div class="management-panel">
+                <h3>Dopamine RPE Feedback (v3.0)</h3>
+                <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">
+                    Apply Dopaminergic Reward Prediction Error (RPE) feedback to adjust synaptic weights and
+                    compile or reinforce Basal Ganglia procedural skill playbooks.
+                </p>
+                <div class="management-form">
+                    <div class="form-row">
+                        <label for="fb-tenant">Tenant</label>
+                        <select id="fb-tenant" class="select-sm">
+                            ${tenantOptions || '<option value="">No tenants found</option>'}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="fb-reward">Outcome Reward (-1 to 1)</label>
+                        <input type="number" id="fb-reward" class="input-sm" value="1.0" min="-1" max="1" step="0.1">
+                    </div>
+                    <div class="form-row">
+                        <label for="fb-expected">Expected Reward (-1 to 1)</label>
+                        <input type="number" id="fb-expected" class="input-sm" value="0.5" min="-1" max="1" step="0.1">
+                    </div>
+                    <div class="form-row">
+                        <label for="fb-query">Query / Trigger Pattern</label>
+                        <input type="text" id="fb-query" class="input-sm" placeholder="Optional query or skill trigger">
+                    </div>
+                    <div class="form-row">
+                        <label for="fb-memory-ids">Memory IDs</label>
+                        <input type="text" id="fb-memory-ids" class="input-sm" placeholder="Optional comma-separated UUIDs">
+                    </div>
+                    <div class="form-row">
+                        <label for="fb-correction">Correction Text</label>
+                        <input type="text" id="fb-correction" class="input-sm" placeholder="Optional correction on negative RPE">
+                    </div>
+                    <div class="form-row">
+                        <label for="fb-steps">Preferred Steps</label>
+                        <input type="text" id="fb-steps" class="input-sm" placeholder="Optional semicolon-separated steps">
+                    </div>
+                    <button id="fb-trigger" class="btn btn-primary" ${!tenants.length ? 'disabled' : ''}>Apply RPE Feedback</button>
+                </div>
+                <div id="fb-result" class="result-box hidden"></div>
+            </div>
+
+            <div class="management-panel">
                 <h3>Reconsolidation & Database</h3>
                 <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:16px;">
                     Release all labile sessions for a tenant, or rebuild the database from scratch when you need a clean environment.
@@ -196,7 +313,7 @@ function buildPage(jobsData, labileData, sessionsData, tenantId) {
 
         <div class="card" style="margin-top:24px;">
             <div class="card-title">Job History</div>
-            ${buildJobHistory(jobsData.items || [])}
+            <div id="job-history-body">${buildJobHistory(jobsData.items || [])}</div>
         </div>
     `;
 }
@@ -303,6 +420,17 @@ function buildJobHistory(items) {
 function attachListeners(el) {
     let dryRun = true;
     let compareExtractors = false;
+    let winUseLlm = true;
+
+    const winLlmToggle = el.querySelector('#win-cons-llm-toggle');
+    const winLlmLabel = el.querySelector('#win-cons-llm-label');
+    const toggleWinLlm = () => {
+        winUseLlm = !winUseLlm;
+        winLlmToggle?.classList.toggle('active', winUseLlm);
+        if (winLlmLabel) winLlmLabel.textContent = winUseLlm ? 'Yes' : 'No';
+    };
+    winLlmToggle?.addEventListener('click', toggleWinLlm);
+    winLlmLabel?.addEventListener('click', toggleWinLlm);
 
     const dryToggle = el.querySelector('#fgt-dry-toggle');
     const dryLabel = el.querySelector('#fgt-dry-label');
@@ -376,6 +504,7 @@ function attachListeners(el) {
             resultBox.textContent = prettyJson(result);
             resultBox.classList.remove('hidden');
             showToast('Consolidation completed');
+            await refreshJobHistory(el);
         } catch (err) {
             resultBox.textContent = `Error: ${err.message}`;
             resultBox.classList.remove('hidden');
@@ -418,6 +547,7 @@ function attachListeners(el) {
             resultBox.textContent = prettyJson(result);
             resultBox.classList.remove('hidden');
             showToast(`Forgetting completed${dryRun ? ' (dry run)' : ''}`);
+            await refreshJobHistory(el);
         } catch (err) {
             resultBox.textContent = `Error: ${err.message}`;
             resultBox.classList.remove('hidden');
@@ -442,6 +572,7 @@ function attachListeners(el) {
             resultBox.textContent = prettyJson(result);
             resultBox.classList.remove('hidden');
             showToast('Labile state released');
+            await refreshJobHistory(el);
         } catch (err) {
             resultBox.textContent = `Error: ${err.message}`;
             resultBox.classList.remove('hidden');
@@ -449,6 +580,102 @@ function attachListeners(el) {
         } finally {
             button.disabled = false;
             button.textContent = 'Release Labile State';
+        }
+    });
+
+    el.querySelector('#win-cons-trigger')?.addEventListener('click', async () => {
+        const tenant = el.querySelector('#win-cons-tenant')?.value || '';
+        if (!tenant) return;
+        const sessionId = el.querySelector('#win-cons-session')?.value?.trim() || null;
+        const maxEpisodes = parseInt(el.querySelector('#win-cons-max')?.value || '500', 10);
+        const button = el.querySelector('#win-cons-trigger');
+        const resultBox = el.querySelector('#win-cons-result');
+        button.disabled = true;
+        button.textContent = 'Running...';
+        resultBox.classList.add('hidden');
+        try {
+            const result = await triggerWindowedConsolidate({
+                tenantId: tenant,
+                sessionId,
+                maxEpisodes,
+                useLlm: winUseLlm,
+            });
+            resultBox.textContent = prettyJson(result);
+            resultBox.classList.remove('hidden');
+            showToast('Windowed consolidation completed');
+            await refreshJobHistory(el);
+        } catch (err) {
+            resultBox.textContent = `Error: ${err.message}`;
+            resultBox.classList.remove('hidden');
+            showToast(`Windowed consolidation failed: ${err.message}`, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Run Windowed Consolidation';
+        }
+    });
+
+    el.querySelector('#sim-trigger')?.addEventListener('click', async () => {
+        const tenant = el.querySelector('#sim-tenant')?.value || '';
+        const scenario = el.querySelector('#sim-scenario')?.value?.trim() || '';
+        if (!tenant || !scenario) return;
+        const maxResults = parseInt(el.querySelector('#sim-max')?.value || '12', 10);
+        const button = el.querySelector('#sim-trigger');
+        const resultBox = el.querySelector('#sim-result');
+        button.disabled = true;
+        button.textContent = 'Simulating...';
+        resultBox.classList.add('hidden');
+        try {
+            const result = await runPreplaySimulation({ tenantId: tenant, scenario, maxResults });
+            resultBox.textContent = prettyJson(result);
+            resultBox.classList.remove('hidden');
+            showToast('Forward preplay completed');
+        } catch (err) {
+            resultBox.textContent = `Error: ${err.message}`;
+            resultBox.classList.remove('hidden');
+            showToast(`Simulation failed: ${err.message}`, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Run Forward Preplay';
+        }
+    });
+
+    el.querySelector('#fb-trigger')?.addEventListener('click', async () => {
+        const tenant = el.querySelector('#fb-tenant')?.value || '';
+        if (!tenant) return;
+        const outcomeReward = parseFloat(el.querySelector('#fb-reward')?.value || '1.0');
+        const expectedReward = parseFloat(el.querySelector('#fb-expected')?.value || '0.5');
+        const query = el.querySelector('#fb-query')?.value?.trim() || '';
+        const memoryIds = splitTags(el.querySelector('#fb-memory-ids')?.value || '');
+        const correctionText = el.querySelector('#fb-correction')?.value?.trim() || null;
+        const preferredSteps = (el.querySelector('#fb-steps')?.value || '')
+            .split(';')
+            .map(s => s.trim())
+            .filter(Boolean);
+        const button = el.querySelector('#fb-trigger');
+        const resultBox = el.querySelector('#fb-result');
+        button.disabled = true;
+        button.textContent = 'Applying...';
+        resultBox.classList.add('hidden');
+        try {
+            const result = await submitFeedback({
+                tenantId: tenant,
+                outcomeReward,
+                expectedReward,
+                query,
+                memoryIds,
+                correctionText,
+                preferredSteps,
+            });
+            resultBox.textContent = prettyJson(result);
+            resultBox.classList.remove('hidden');
+            showToast('RPE feedback applied');
+        } catch (err) {
+            resultBox.textContent = `Error: ${err.message}`;
+            resultBox.classList.remove('hidden');
+            showToast(`Feedback failed: ${err.message}`, 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Apply RPE Feedback';
         }
     });
 

@@ -303,3 +303,49 @@ export function invalidateFact(factId) {
     return request('POST', `/facts/${factId}/invalidate`);
 }
 
+export function triggerWindowedConsolidate({ tenantId, sessionId = null, maxEpisodes = 500, useLlm = true }) {
+    return request('POST', '/consolidate_windowed', {
+        body: {
+            tenant_id: tenantId,
+            session_id: sessionId || null,
+            max_episodes: maxEpisodes,
+            use_llm: useLlm,
+        },
+    });
+}
+
+export function runPreplaySimulation({ tenantId, scenario, maxResults = 12, contextFilter = null }) {
+    return request('POST', '/simulate', {
+        body: {
+            tenant_id: tenantId,
+            scenario,
+            max_results: maxResults,
+            context_filter: contextFilter && contextFilter.length ? contextFilter : null,
+        },
+    });
+}
+
+export function submitFeedback({
+    tenantId,
+    outcomeReward,
+    expectedReward = 0.5,
+    query = '',
+    memoryIds = [],
+    correctionText = null,
+    preferredSteps = null,
+    sessionId = null,
+}) {
+    return request('POST', '/feedback', {
+        body: {
+            tenant_id: tenantId,
+            outcome_reward: outcomeReward,
+            expected_reward: expectedReward,
+            query,
+            memory_ids: memoryIds,
+            correction_text: correctionText || null,
+            preferred_steps: preferredSteps && preferredSteps.length ? preferredSteps : null,
+            session_id: sessionId || null,
+        },
+    });
+}
+

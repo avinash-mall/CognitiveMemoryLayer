@@ -160,3 +160,74 @@ async def test_dashboard_config_update_returns_503_when_env_write_fails(
             auth=ADMIN_AUTH,
             db=MagicMock(),
         )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_config_exposes_all_v3_flags_and_canonical_defaults() -> None:
+    from src.core.config import FeatureFlags, RetrievalSettings, get_settings
+
+    get_settings.cache_clear()
+    try:
+        payload = await config_routes.dashboard_config(auth=ADMIN_AUTH, db=MagicMock())
+    finally:
+        get_settings.cache_clear()
+
+    items = {item.key: item for section in payload.sections for item in section.items}
+    for flag_name, field_info in FeatureFlags.model_fields.items():
+        key = f"features.{flag_name}"
+        assert key in items, f"Missing feature flag {key} in dashboard config"
+        assert items[key].default_value == field_info.default
+
+    assert (
+        items["retrieval.max_episodes_default"].default_value
+        == RetrievalSettings.model_fields["max_episodes_default"].default
+    )
+    assert "retrieval.cross_encoder_model" in items
+    assert "retrieval.cross_encoder_weight" in items
+    assert "performance.gate_executor_workers" in items
+    assert "llm_internal.extra_body" in items
+
+
+@pytest.mark.asyncio
+async def test_dashboard_config_update_supports_v3_settings_and_validates_extra_body(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    env_path = tmp_path / ".env"
+    env_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(config_routes, "get_env_path", lambda: env_path)
+    monkeypatch.setattr(config_routes, "update_env", lambda updates: captured.update(updates))
+
+    await config_routes.dashboard_config_update(
+        body=ConfigUpdateRequest(
+            updates={
+                "features.sparse_bm25_enabled": True,
+                "features.windowed_consolidation_turn_size": 32,
+                "retrieval.cross_encoder_weight": 0.45,
+                "llm_internal.extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            }
+        ),
+        auth=ADMIN_AUTH,
+        db=MagicMock(),
+    )
+
+    assert captured["FEATURES__SPARSE_BM25_ENABLED"] is True
+    assert captured["FEATURES__WINDOWED_CONSOLIDATION_TURN_SIZE"] == 32
+    assert captured["RETRIEVAL__CROSS_ENCODER_WEIGHT"] == 0.45
+    assert captured["LLM_INTERNAL__EXTRA_BODY"] == (
+        '{"chat_template_kwargs": {"enable_thinking": false}}'
+    )
+
+    with pytest.raises(HTTPException, match="valid JSON"):
+        await config_routes.dashboard_config_update(
+            body=ConfigUpdateRequest(updates={"llm_internal.extra_body": "{not-json"}),
+            auth=ADMIN_AUTH,
+            db=MagicMock(),
+        )
+    with pytest.raises(HTTPException, match="between 4 and 80"):
+        await config_routes.dashboard_config_update(
+            body=ConfigUpdateRequest(updates={"features.windowed_consolidation_turn_size": 2}),
+            auth=ADMIN_AUTH,
+            db=MagicMock(),
+        )

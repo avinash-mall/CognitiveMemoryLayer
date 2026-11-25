@@ -24,18 +24,32 @@ export async function renderConfig() {
 }
 
 function buildConfig(data) {
+    const sections = data.sections || [];
+    const totalCount = sections.reduce((acc, s) => acc + (s.items || []).length, 0);
     return `
         <p class="page-desc">
-            Effective application configuration. Secret values are masked. Editable settings are persisted to <code>.env</code>.
-            Restart the server for most changes to take effect.
+            Effective CML v3.0 application configuration (${totalCount} settings across ${sections.length} sections).
+            Secret values are masked. Editable settings are persisted to <code>.env</code>; restart the server for most changes to take effect.
         </p>
 
-        ${(data.sections || []).map(section => `
-            <div class="card config-section" style="margin-bottom:16px;">
+        <div class="card" style="margin-bottom:16px;padding:12px 16px;">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1;">
+                    <input type="text" id="config-search" class="input-sm" placeholder="Filter settings by key, description, or section..." style="min-width:260px;flex:1;max-width:440px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;color:var(--text-secondary);cursor:pointer;">
+                        <input type="checkbox" id="config-env-only"> Modified (env) only
+                    </label>
+                </div>
+                <span id="config-visible-count" style="font-size:0.82rem;color:var(--text-muted);">${totalCount} / ${totalCount} shown</span>
+            </div>
+        </div>
+
+        ${sections.map(section => `
+            <div class="card config-section" data-section="${escapeHtml(section.name.toLowerCase())}" style="margin-bottom:16px;">
                 <div class="card-title">${escapeHtml(section.name)}</div>
                 <div class="config-items">
                     ${(section.items || []).map(item => `
-                        <div class="config-row" data-key="${escapeHtml(item.key)}" data-value-type="${getValueType(item)}" data-options="${item.options ? escapeHtml(JSON.stringify(item.options)) : ''}">
+                        <div class="config-row" data-key="${escapeHtml(item.key)}" data-source="${escapeHtml(item.source || 'default')}" data-search="${escapeHtml(`${section.name} ${item.key} ${item.description || ''} ${item.env_var || ''}`.toLowerCase())}" data-value-type="${getValueType(item)}" data-options="${item.options ? escapeHtml(JSON.stringify(item.options)) : ''}">
                             <div class="config-key">
                                 ${item.is_secret ? '<span class="config-lock" title="Secret - read only">&#128274;</span>' : ''}
                                 <span class="config-key-name">${escapeHtml(item.key)}</span>
@@ -71,9 +85,9 @@ function getValueType(item) {
 }
 
 function formatValue(v) {
-    if (v === null || v === undefined) return '(not set)';
+    if (v === null || v === undefined || v === '') return '(not set)';
     if (typeof v === 'boolean') return v ? 'true' : 'false';
-    if (Array.isArray(v)) return JSON.stringify(v);
+    if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
     return String(v);
 }
 
@@ -90,6 +104,40 @@ function findItemByKey(data, key) {
 }
 
 function attachListeners(el, data) {
+    const searchInput = el.querySelector('#config-search');
+    const envOnlyCb = el.querySelector('#config-env-only');
+    const countSpan = el.querySelector('#config-visible-count');
+    const allRows = Array.from(el.querySelectorAll('.config-row'));
+    const allSections = Array.from(el.querySelectorAll('.config-section'));
+
+    const applyFilter = () => {
+        const q = (searchInput?.value || '').trim().toLowerCase();
+        const envOnly = Boolean(envOnlyCb?.checked);
+        let visible = 0;
+
+        allSections.forEach(sec => {
+            let secVisible = 0;
+            sec.querySelectorAll('.config-row').forEach(row => {
+                const matchesSearch = !q || (row.dataset.search || '').includes(q);
+                const matchesSource = !envOnly || row.dataset.source !== 'default';
+                const show = matchesSearch && matchesSource;
+                row.style.display = show ? '' : 'none';
+                if (show) {
+                    secVisible += 1;
+                    visible += 1;
+                }
+            });
+            sec.style.display = secVisible > 0 ? '' : 'none';
+        });
+
+        if (countSpan) {
+            countSpan.textContent = `${visible} / ${allRows.length} shown`;
+        }
+    };
+
+    searchInput?.addEventListener('input', applyFilter);
+    envOnlyCb?.addEventListener('change', applyFilter);
+
     el.querySelectorAll('.config-edit-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const key = btn.dataset.key;
@@ -147,7 +195,10 @@ function attachListeners(el, data) {
                     if (keyLower.includes('percent') || keyLower.includes('weight') || keyLower.includes('threshold')) {
                         input.step = '0.01';
                         input.min = '0';
-                        input.max = keyLower.includes('percent') || keyLower.includes('weight') || keyLower.includes('threshold') ? '1' : '';
+                        input.max = '1';
+                    } else if (keyLower.includes('wait_ms')) {
+                        input.min = '0';
+                        input.step = 'any';
                     } else {
                         input.min = '0';
                         input.step = '1';

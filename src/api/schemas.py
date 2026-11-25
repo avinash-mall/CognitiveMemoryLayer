@@ -407,7 +407,39 @@ class DashboardQualityResponse(BaseModel):
     issues: list[DashboardQualityIssue] = Field(default_factory=list)
     invalidation_hotspots: list[dict[str, Any]] = Field(default_factory=list)
     graph_hygiene: dict[str, Any] = Field(default_factory=dict)
+    v3_hygiene: dict[str, Any] = Field(default_factory=dict)
     labile_sessions: int = 0
+
+
+class DashboardWindowConsolidateRequest(BaseModel):
+    """Admin request to trigger Windowed Micro-Sleep Consolidation for a tenant."""
+
+    tenant_id: str
+    session_id: str | None = None
+    max_episodes: int = Field(default=500, ge=1, le=5000)
+    use_llm: bool = True
+
+
+class DashboardSimulateRequest(BaseModel):
+    """Admin request to run Hippocampal Forward Preplay simulation for a tenant."""
+
+    tenant_id: str
+    scenario: str = Field(..., min_length=1)
+    max_results: int = Field(default=12, ge=1, le=50)
+    context_filter: list[str] | None = None
+
+
+class DashboardFeedbackRequest(BaseModel):
+    """Admin request to apply Dopaminergic RPE feedback for a tenant."""
+
+    tenant_id: str
+    outcome_reward: float = Field(..., ge=-1.0, le=1.0)
+    expected_reward: float = Field(default=0.5, ge=-1.0, le=1.0)
+    query: str = ""
+    memory_ids: list[str] = Field(default_factory=list)
+    correction_text: str | None = None
+    preferred_steps: list[str] | None = None
+    session_id: str | None = None
 
 
 class DashboardOpsMetric(BaseModel):
@@ -463,6 +495,7 @@ __all__ = [
     "DashboardFactDetail",
     "DashboardFactEvidenceItem",
     "DashboardFactEvidenceResponse",
+    "DashboardFeedbackRequest",
     "DashboardForgetRequest",
     "DashboardForgettingPreviewItem",
     "DashboardForgettingPreviewRequest",
@@ -489,8 +522,10 @@ __all__ = [
     "DashboardRetrievalRequest",
     "DashboardRetrievalResponse",
     "DashboardSessionsResponse",
+    "DashboardSimulateRequest",
     "DashboardTenantsResponse",
     "DashboardTimelineResponse",
+    "DashboardWindowConsolidateRequest",
     "DashboardWriteSimulationChunk",
     "DashboardWriteSimulationRequest",
     "DashboardWriteSimulationResponse",

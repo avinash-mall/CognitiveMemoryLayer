@@ -491,3 +491,74 @@ async def test_dashboard_database_reset_wraps_exceptions(
 
     with pytest.raises(HTTPException, match="Database reset failed."):
         await jobs_routes.dashboard_database_reset(auth=ADMIN_AUTH)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_consolidate_windowed_tracks_job_and_returns_stats() -> None:
+    db, session = make_db(pg_results=[ResultStub()])
+    orchestrator = SimpleNamespace(
+        consolidate_windowed=AsyncMock(
+            return_value={
+                "windows_processed": 3,
+                "hyperedges_created": 12,
+                "facts_created": 8,
+                "dmn_profiles_updated": 2,
+            }
+        )
+    )
+    body = jobs_routes.DashboardWindowConsolidateRequest(
+        tenant_id="tenant-a",
+        session_id="sess-1",
+        max_episodes=200,
+        use_llm=True,
+    )
+
+    result = await jobs_routes.dashboard_consolidate_windowed(
+        body=body,
+        request=_request(orchestrator=orchestrator, db=db),
+        auth=ADMIN_AUTH,
+    )
+
+    assert result["status"] == "completed"
+    assert result["hyperedges_created"] == 12
+    assert session.commits >= 2
+    orchestrator.consolidate_windowed.assert_awaited_once_with(
+        tenant_id="tenant-a",
+        session_id="sess-1",
+        max_episodes=200,
+        use_llm=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_dashboard_simulate_and_feedback_delegate_to_orchestrator() -> None:
+    orchestrator = SimpleNamespace(
+        simulate=AsyncMock(return_value={"safe": True, "risk_score": 0.1, "conflicts": []}),
+        feedback=AsyncMock(return_value={"rpe": 0.5, "memories_updated": 2, "skill_updated": True}),
+    )
+
+    sim_res = await jobs_routes.dashboard_simulate(
+        body=jobs_routes.DashboardSimulateRequest(
+            tenant_id="tenant-a",
+            scenario="Book an Italian dinner",
+            max_results=8,
+        ),
+        request=_request(orchestrator=orchestrator),
+        auth=ADMIN_AUTH,
+    )
+    assert sim_res["safe"] is True
+    assert sim_res["tenant_id"] == "tenant-a"
+
+    fb_res = await jobs_routes.dashboard_feedback(
+        body=jobs_routes.DashboardFeedbackRequest(
+            tenant_id="tenant-a",
+            outcome_reward=1.0,
+            expected_reward=0.5,
+            query="Book dinner",
+            memory_ids=["mem-1"],
+        ),
+        request=_request(orchestrator=orchestrator),
+        auth=ADMIN_AUTH,
+    )
+    assert fb_res["rpe"] == 0.5
+    assert fb_res["skill_updated"] is True
