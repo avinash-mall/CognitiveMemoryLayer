@@ -26,8 +26,8 @@ router = APIRouter()
 async def dashboard_facts(
     request: Request,
     auth: AuthContext = Depends(require_admin_permission),
-    tenant_id: str = Query(None),
-    category: str = Query(None),
+    tenant_id: str | None = Query(None),
+    category: str | None = Query(None),
     current_only: bool = Query(True),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -41,8 +41,6 @@ async def dashboard_facts(
             q = select(SemanticFactModel)
             if tenant_id:
                 q = q.where(SemanticFactModel.tenant_id == tenant_id)
-            elif auth.tenant_id:
-                q = q.where(SemanticFactModel.tenant_id == auth.tenant_id)
             if category:
                 q = q.where(SemanticFactModel.category == category)
             if current_only:

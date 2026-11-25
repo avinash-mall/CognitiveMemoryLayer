@@ -354,7 +354,7 @@ async def test_dashboard_export_memories_returns_json_attachment() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_facts_uses_auth_tenant_fallback_and_filters() -> None:
+async def test_dashboard_facts_omits_tenant_filter_for_all_tenants_and_applies_filters() -> None:
     fact = SimpleNamespace(
         id=uuid4(),
         tenant_id="tenant-a",
@@ -368,7 +368,7 @@ async def test_dashboard_facts_uses_auth_tenant_fallback_and_filters() -> None:
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
-    db, _ = make_db(pg_results=[ResultStub(scalar=1), ResultStub(scalar_rows=[fact])])
+    db, session = make_db(pg_results=[ResultStub(scalar=1), ResultStub(scalar_rows=[fact])])
 
     result = await fact_routes.dashboard_facts(
         request=_request_with_db(db),
@@ -383,6 +383,24 @@ async def test_dashboard_facts_uses_auth_tenant_fallback_and_filters() -> None:
     assert result.total == 1
     assert result.items[0].tenant_id == "tenant-a"
     assert result.items[0].category == "identity"
+    query_sql = str(session.execute_calls[1][0][0])
+    assert "semantic_facts.tenant_id =" not in query_sql
+    assert "semantic_facts.category =" in query_sql
+
+    db_filtered, session_filtered = make_db(
+        pg_results=[ResultStub(scalar=1), ResultStub(scalar_rows=[fact])]
+    )
+    filtered = await fact_routes.dashboard_facts(
+        request=_request_with_db(db_filtered),
+        auth=ADMIN_AUTH,
+        tenant_id="tenant-a",
+        category=None,
+        current_only=True,
+        limit=10,
+        offset=0,
+    )
+    assert filtered.total == 1
+    assert "semantic_facts.tenant_id =" in str(session_filtered.execute_calls[1][0][0])
 
 
 @pytest.mark.asyncio
