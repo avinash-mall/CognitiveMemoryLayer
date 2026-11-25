@@ -16,20 +16,31 @@ from ..forgetting.worker import ForgettingWorker
 from ..memory.conversation import ConversationMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.knowledge_base import KnowledgeBase
-from ..memory.neocortical.fact_store import SemanticFactStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..memory.scratch_pad import ScratchPad
 from ..memory.short_term import ShortTermMemory, ShortTermMemoryConfig
 from ..memory.tool_memory import ToolMemory
 from ..reconsolidation.service import ReconsolidationService
+from ..storage.base import MemoryStoreBase
+from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
 
 if TYPE_CHECKING:
+    from ..memory.neocortical.fact_store import SemanticFactStore
     from ..retrieval.memory_retriever import MemoryRetriever
-from ..storage.base import MemoryStoreBase
-from ..storage.connection import DatabaseManager
-from ..storage.neo4j import Neo4jGraphStore
-from ..storage.noop_stores import NoOpFactStore, NoOpGraphStore
-from ..storage.postgres import PostgresMemoryStore
+    from ..storage.connection import DatabaseManager
+    from ..storage.neo4j import Neo4jGraphStore
+    from ..storage.postgres import PostgresMemoryStore
+else:
+    try:
+        from ..memory.neocortical.fact_store import SemanticFactStore
+        from ..storage.connection import DatabaseManager
+        from ..storage.neo4j import Neo4jGraphStore
+        from ..storage.postgres import PostgresMemoryStore
+    except ImportError:
+        SemanticFactStore = None
+        DatabaseManager = Any
+        Neo4jGraphStore = None
+        PostgresMemoryStore = None
 from ..utils.embeddings import CachedEmbeddings, EmbeddingClient, get_embedding_client
 from ..utils.llm import LLMClient, get_internal_llm_client
 from ..utils.logging_config import get_logger

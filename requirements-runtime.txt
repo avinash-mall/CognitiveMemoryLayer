@@ -37,4 +37,4 @@ einops>=0.7.0
 # for the newest +cu128 wheel. (uv.lock resolves from pyproject.toml, not this file,
 # so it legitimately shows a plain version — don't "fix" the pin to match it.)
 --extra-index-url https://download.pytorch.org/whl/cu128
-torch==2.13.0
+torch==2.11.0+cu128

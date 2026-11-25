@@ -484,7 +484,7 @@ class PostgresMemoryStore(MemoryStoreBase):
                         q = q.where(
                             or_(
                                 MemoryRecordModel.valid_to.is_(None),
-                                MemoryRecordModel.valid_to >= now,
+                                cast("Any", MemoryRecordModel.valid_to) >= now,
                             )
                         )
 
