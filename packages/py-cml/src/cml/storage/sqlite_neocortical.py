@@ -132,16 +132,6 @@ class SQLiteGraphStore(GraphStoreBase):
                 ids.append(eid)
         return ids
 
-    async def get_neighbors(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        entity: str,
-        max_depth: int = 2,
-    ) -> list[dict[str, Any]]:
-        facts = await self.get_entity_facts(tenant_id, scope_id, entity)
-        return facts[:50]
-
     async def get_entity_facts(
         self,
         tenant_id: str,

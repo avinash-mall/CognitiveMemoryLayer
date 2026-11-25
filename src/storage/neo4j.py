@@ -38,13 +38,6 @@ def _sanitize_rel_type(predicate: str) -> str:
     return sanitized
 
 
-def _validate_max_depth(max_depth: int) -> int:
-    """Validate max_depth is a positive integer within safe bounds."""
-    if not isinstance(max_depth, int) or max_depth < 1:
-        return 1
-    return min(max_depth, 10)  # Cap at 10 to prevent runaway traversals
-
-
 class Neo4jGraphStore(GraphStoreBase):
     """
     Neo4j-based knowledge graph for semantic memory.
@@ -343,65 +336,6 @@ class Neo4jGraphStore(GraphStoreBase):
 
         return all_ids
 
-    async def get_neighbors(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        entity: str,
-        max_depth: int = 2,
-    ) -> list[dict[str, Any]]:
-        """Get neighboring nodes up to max_depth hops."""
-        max_depth = _validate_max_depth(max_depth)
-        fallback_query = f"""
-        MATCH path = (start:Entity {{
-            tenant_id: $tenant_id,
-            scope_id: $scope_id,
-            entity: $entity
-        }})-[*1..{max_depth}]-(neighbor:Entity)
-        WHERE neighbor.tenant_id = $tenant_id AND neighbor.scope_id = $scope_id
-        RETURN DISTINCT neighbor.entity AS entity,
-               neighbor.entity_type AS entity_type,
-               properties(neighbor) AS properties
-        LIMIT 100
-        """
-
-        async with self.driver.session() as session:
-            try:
-                apoc_query = """
-                MATCH (start:Entity {
-                    tenant_id: $tenant_id,
-                    scope_id: $scope_id,
-                    entity: $entity
-                })
-                CALL apoc.path.subgraphNodes(start, {
-                    maxLevel: $max_depth,
-                    relationshipFilter: null,
-                    labelFilter: '+Entity'
-                }) YIELD node
-                WHERE node.tenant_id = $tenant_id AND node.scope_id = $scope_id
-                RETURN node.entity AS entity,
-                       node.entity_type AS entity_type,
-                       properties(node) AS properties
-                """
-                result = await session.run(
-                    apoc_query,
-                    tenant_id=tenant_id,
-                    scope_id=scope_id,
-                    entity=entity,
-                    max_depth=max_depth,
-                )
-            except Neo4jClientError:
-                # APOC not available; fall back to plain Cypher traversal
-                logger.debug("APOC unavailable, falling back to Cypher traversal")
-                result = await session.run(
-                    fallback_query,
-                    tenant_id=tenant_id,
-                    scope_id=scope_id,
-                    entity=entity,
-                )
-            records = await result.data()
-            return list(records) if records else []
-
     async def personalized_pagerank(
         self,
         tenant_id: str,
@@ -646,85 +580,6 @@ class Neo4jGraphStore(GraphStoreBase):
             if name is not None:
                 grouped.setdefault(name, []).append(record)
         return grouped
-
-    async def search_by_pattern(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        subject: str | None = None,
-        predicate: str | None = None,
-        object: str | None = None,
-        limit: int = 50,
-    ) -> list[tuple[str, str, str, dict]]:
-        """Search for triples matching a pattern. None values are wildcards."""
-        target = object  # Avoid shadowing built-in 'object'
-        conditions = ["s.tenant_id = $tenant_id", "s.scope_id = $scope_id"]
-        params: dict[str, Any] = {"tenant_id": tenant_id, "scope_id": scope_id, "limit": limit}
-
-        if subject:
-            conditions.append("s.entity = $subject")
-            params["subject"] = subject
-        if target:
-            conditions.append("o.entity = $target")
-            params["target"] = target
-
-        rel_pattern = "[r]" if not predicate else f"[r:`{_sanitize_rel_type(predicate)}`]"
-        query = f"""
-        MATCH (s:Entity)-{rel_pattern}->(o:Entity)
-        WHERE {" AND ".join(conditions)}
-        RETURN s.entity AS subject,
-               type(r) AS predicate,
-               o.entity AS object,
-               properties(r) AS properties
-        LIMIT $limit
-        """
-
-        async with self.driver.session() as session:
-            result = await session.run(query, **params)
-            records = await result.data()
-            return [
-                (r["subject"], r["predicate"], r["object"], r.get("properties") or {})
-                for r in (records or [])
-            ]
-
-    async def delete_entity(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        entity: str,
-        cascade: bool = True,
-    ) -> int:
-        """Delete an entity node (and optionally its edges)."""
-        if cascade:
-            query = """
-            MATCH (n:Entity {
-                tenant_id: $tenant_id,
-                scope_id: $scope_id,
-                entity: $entity
-            })
-            DETACH DELETE n
-            RETURN count(n) AS deleted_count
-            """
-        else:
-            query = """
-            MATCH (n:Entity {
-                tenant_id: $tenant_id,
-                scope_id: $scope_id,
-                entity: $entity
-            })
-            DELETE n
-            RETURN count(n) AS deleted_count
-            """
-
-        async with self.driver.session() as session:
-            result = await session.run(
-                query,
-                tenant_id=tenant_id,
-                scope_id=scope_id,
-                entity=entity,
-            )
-            record = await result.single()
-            return record["deleted_count"] if record else 0
 
 
 async def initialize_graph_schema(store: Neo4jGraphStore) -> None:

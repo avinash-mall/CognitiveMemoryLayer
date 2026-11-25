@@ -12,14 +12,10 @@ import structlog
 
 from ...core.enums import MemorySource, MemoryStatus, MemoryType
 from ...core.schemas import (
-    EntityMention,
     MemoryRecord,
     MemoryRecordCreate,
     Provenance,
-    Relation,
 )
-from ...extraction.entity_extractor import EntityExtractor
-from ...extraction.relation_extractor import RelationExtractor
 from ...storage.base import MemoryStoreBase
 from ...utils.embeddings import EmbeddingClient
 from ..working.models import SemanticChunk
@@ -66,8 +62,6 @@ class HippocampalStore:
         self,
         vector_store: MemoryStoreBase,
         embedding_client: EmbeddingClient,
-        entity_extractor: EntityExtractor | None = None,
-        relation_extractor: RelationExtractor | None = None,
         write_gate: WriteGate | None = None,
         redactor: PIIRedactor | None = None,
         constraint_extractor: ConstraintExtractor | None = None,
@@ -77,8 +71,6 @@ class HippocampalStore:
 
         self.store = vector_store
         self.embeddings = embedding_client
-        self.entity_extractor = entity_extractor
-        self.relation_extractor = relation_extractor
         self.write_gate = write_gate or WriteGate()
         self.redactor = redactor or PIIRedactor()
         self.constraint_extractor = constraint_extractor or _ConstraintExtractor()
@@ -307,23 +299,6 @@ class HippocampalStore:
 
         _constraints_future = _ev_loop.run_in_executor(None, _run_constraints)
 
-        # ---- Phase 3: Batch extract entities/relations (LLM extractors only) ----
-        entities_batch: list[list[EntityMention]] = []
-        if self.entity_extractor and getattr(self.entity_extractor, "llm", None):
-            entities_batch = await self.entity_extractor.extract_batch(texts_to_embed)
-        else:
-            entities_batch = [[] for _ in texts_to_embed]
-
-        relations_batch: list[list[Relation]] = []
-        if self.relation_extractor and getattr(self.relation_extractor, "llm", None):
-            relation_items = [
-                (text, [e.normalized for e in entities])
-                for text, entities in zip(texts_to_embed, entities_batch, strict=True)
-            ]
-            relations_batch = await self.relation_extractor.extract_batch(relation_items)
-        else:
-            relations_batch = [[] for _ in texts_to_embed]
-
         # ---- Await Phase 3.5 results ----
         constraint_results_batch = await _constraints_future
         _t_p4 = _phase_time.perf_counter()
@@ -340,11 +315,11 @@ class HippocampalStore:
 
             # Use unified entities/relations for graph sync when unified path enabled
             if self._use_unified_write_path() and unified_res is not None:
-                entities = unified_res.entities if unified_res.entities else entities_batch[idx]
-                relations = unified_res.relations if unified_res.relations else relations_batch[idx]
+                entities = list(unified_res.entities)
+                relations = list(unified_res.relations)
             else:
-                entities = entities_batch[idx]
-                relations = relations_batch[idx]
+                entities = []
+                relations = []
             # text from surviving is already redacted (incl. LLM spans applied above)
 
             memory_type = memory_type_override

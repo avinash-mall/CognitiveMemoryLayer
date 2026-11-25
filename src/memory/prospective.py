@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -113,20 +112,3 @@ class ProspectiveMemoryEngine:
             f"{t.implication} (Relevant for: {t.condition_cue})"
             for t in cls.induce_triggers(text, max_count=max_count)
         ]
-
-    @staticmethod
-    def extract_parent_ids(results: list[dict[str, Any]]) -> list[str]:
-        """Find parent_id references on any retrieved prospective-index records."""
-        parent_ids: list[str] = []
-        seen: set[str] = set()
-        for item in results:
-            rec = item.get("record")
-            meta = getattr(rec, "metadata", None) if rec is not None else item.get("metadata")
-            if not isinstance(meta, dict):
-                continue
-            if meta.get("is_prospective_index") and meta.get("parent_id"):
-                pid = str(meta["parent_id"])
-                if pid not in seen:
-                    seen.add(pid)
-                    parent_ids.append(pid)
-        return parent_ids

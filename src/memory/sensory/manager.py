@@ -67,7 +67,3 @@ class SensoryBufferManager:
         buffer = self._buffers.get(self._get_key(tenant_id, scope_id))
         if buffer:
             await buffer.clear()
-
-    async def cleanup_inactive(self, inactive_seconds: float = 300) -> None:
-        """Remove expired buffers via the bounded state map's TTL."""
-        self._buffers.cleanup_expired()

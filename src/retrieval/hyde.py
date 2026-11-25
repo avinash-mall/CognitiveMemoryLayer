@@ -27,16 +27,6 @@ question — just describe what the relevant memory would contain.
 
 Hypothetical memory:"""
 
-_MULTI_QUERY_PROMPT = """Generate 3 different reformulations of this query
-that capture different aspects of what information might be needed from
-past conversations. Each reformulation should approach the question from
-a different angle.
-
-Query: "{query}"
-
-Return exactly 3 reformulations, one per line. No numbering or bullets.
-Just the reformulated queries, nothing else."""
-
 
 _COGNITIVE_CUE_PROMPT = """A person just made this remark in a conversation:
 "{query}"
@@ -165,28 +155,3 @@ class HyDEGenerator:
             logger.warning("hyde_generation_failed", error=str(exc))
 
         return None
-
-    async def generate_multi_query(self, query: str) -> list[str]:
-        """Generate multiple reformulations of the query.
-
-        Returns a list of 1-3 reformulated queries, or empty list on failure.
-        """
-        if not query or not query.strip():
-            return []
-
-        try:
-            response = await self._llm.complete(
-                _MULTI_QUERY_PROMPT.format(query=query.strip()),
-                temperature=0.7,
-                max_tokens=300,
-            )
-            lines = [
-                line.strip().lstrip("0123456789.-) ")
-                for line in response.strip().split("\n")
-                if line.strip() and len(line.strip()) > 10
-            ]
-            return lines[:3]
-        except Exception as exc:
-            logger.warning("multi_query_generation_failed", error=str(exc))
-
-        return []

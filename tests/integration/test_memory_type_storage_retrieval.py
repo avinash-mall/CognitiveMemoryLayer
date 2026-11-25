@@ -10,10 +10,6 @@ import pytest
 
 from src.core.enums import MemorySource, MemoryType
 from src.core.schemas import MemoryRecordCreate, Provenance
-from src.memory.conversation import ConversationMemory
-from src.memory.knowledge_base import KnowledgeBase
-from src.memory.scratch_pad import ScratchPad
-from src.memory.tool_memory import ToolMemory
 from src.storage.postgres import PostgresMemoryStore
 
 
@@ -83,85 +79,6 @@ async def test_storage_retrieval_by_memory_type_direct_upsert(
 
 
 @pytest.mark.asyncio
-async def test_scratch_pad_set_get(store, tenant_id):
-    """ScratchPad: set then get_by_key retrieves SCRATCH type."""
-    scratch = ScratchPad(store=store)
-    session_id = "s1"
-    await scratch.set(tenant_id, session_id, "counter", 42)
-    value = await scratch.get(tenant_id, session_id, "counter")
-    assert value == 42
-    key = f"{ScratchPad.SCRATCH_KEY_PREFIX}{session_id}:counter"
-    record = await store.get_by_key(tenant_id, key)
-    assert record is not None
-    assert record.type == MemoryType.SCRATCH
-    assert record.text == "42"
-
-
-@pytest.mark.asyncio
-async def test_conversation_memory_add_get_history(store, tenant_id):
-    """ConversationMemory: add_message stores MESSAGE; get_history retrieves by session."""
-    conv = ConversationMemory(store=store)
-    session_id = "s1"
-    await conv.add_message(tenant_id, session_id, "user", "Hello")
-    await conv.add_message(tenant_id, session_id, "assistant", "Hi there!")
-    history = await conv.get_history(tenant_id, session_id, limit=10)
-    assert len(history) >= 2
-    contents = [h.get("content", "") for h in history]
-    assert "Hello" in contents
-    assert "Hi there!" in contents
-    records = await store.scan(
-        tenant_id,
-        filters={
-            "type": MemoryType.MESSAGE.value,
-            "status": "active",
-            "source_session_id": session_id,
-        },
-        limit=10,
-    )
-    assert len(records) >= 2
-
-
-@pytest.mark.asyncio
-async def test_tool_memory_store_get_results(store, tenant_id):
-    """ToolMemory: store_result stores TOOL_RESULT; get_results retrieves by session."""
-    tool_mem = ToolMemory(store=store)
-    session_id = "s1"
-    await tool_mem.store_result(tenant_id, session_id, "search", {"q": "test"}, {"hits": 5})
-    results = await tool_mem.get_results(tenant_id, session_id, limit=10)
-    assert len(results) >= 1
-    records = await store.scan(
-        tenant_id,
-        filters={"type": MemoryType.TOOL_RESULT.value, "status": "active"},
-        limit=10,
-    )
-    assert len(records) >= 1
-    assert records[0].type == MemoryType.TOOL_RESULT
-
-
-@pytest.mark.asyncio
-async def test_knowledge_base_store_query(store, tenant_id):
-    """KnowledgeBase: store_fact stores KNOWLEDGE; query/scan retrieves by type or namespace."""
-    from src.core.config import get_embedding_dimensions
-    from src.utils.embeddings import MockEmbeddingClient
-
-    kb = KnowledgeBase(
-        store=store,
-        embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-    )
-    await kb.store_fact(
-        tenant_id, "general", "Python", "is_a", "language", source="test", confidence=0.9
-    )
-    records = await store.scan(
-        tenant_id,
-        filters={"type": MemoryType.KNOWLEDGE.value, "status": "active"},
-        limit=10,
-    )
-    assert len(records) >= 1
-    assert records[0].type == MemoryType.KNOWLEDGE
-    assert "Python" in records[0].text
-
-
-@pytest.mark.asyncio
 async def test_semantic_fact_via_neocortical_store_and_retrieve(pg_session_factory, tenant_id):
     """Semantic_fact: store via NeocorticalStore.store_fact; retrieve via get_fact."""
     from src.memory.neocortical.fact_store import SemanticFactStore
@@ -194,21 +111,12 @@ async def test_historical_timestamp_preservation(pg_session_factory, tenant_id):
     """MemoryOrchestrator: write preserving historic timestamp to Episodic and Semantic facts."""
     from datetime import UTC, datetime
 
+    from src.core.config import get_embedding_dimensions
     from src.memory.neocortical.schemas import FactCategory
     from src.memory.orchestrator import MemoryOrchestrator
     from src.storage.postgres import PostgresMemoryStore
     from src.utils.embeddings import MockEmbeddingClient
-
-    class MockLLMClient:
-        async def generate(self, *args, **kwargs):
-            from src.utils.llm import LLMResponse
-
-            return LLMResponse(content="", usage={})
-
-        async def generate_json(self, *args, **kwargs):
-            return {}
-
-    from src.core.config import get_embedding_dimensions
+    from src.utils.llm import MockLLMClient
 
     dims = get_embedding_dimensions()
     episodic_store = PostgresMemoryStore(pg_session_factory)

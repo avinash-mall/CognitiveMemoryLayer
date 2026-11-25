@@ -217,8 +217,6 @@ async def test_dashboard_write_simulate_returns_chunk_decisions(
             unified_extractor=None,
             write_gate=_WriteGate(),
             redactor=SimpleNamespace(redact=lambda *args, **kwargs: None),
-            entity_extractor=None,
-            relation_extractor=None,
             constraint_extractor=SimpleNamespace(extract=lambda _: []),
             _use_unified_write_path=lambda: False,
             _generate_key=lambda *_args: "pref:food",
@@ -465,7 +463,7 @@ async def test_dashboard_evaluation_summary_discovers_outputs(
     (evaluation_dir / "COMPARISON.md").write_text("Latest comparison", encoding="utf-8")
     (data_dir / "locomo10.json").write_text("[]", encoding="utf-8")
     (data_dir / "unified_input_samples_v2.json").write_text("[]", encoding="utf-8")
-    (scripts_dir / "run_full_eval.py").write_text("print('ok')", encoding="utf-8")
+    (scripts_dir / "run_locomo_openrouter_batch.py").write_text("print('ok')", encoding="utf-8")
 
     monkeypatch.setattr(insights_routes, "_project_root", lambda: tmp_path)
     monkeypatch.setattr(

@@ -4,52 +4,35 @@ import asyncio
 import inspect
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from ..core.enums import MemorySource, MemoryType
 from ..core.schemas import MemoryRecord, Provenance, RetrievedMemory
 from ..memory.hippocampal.store import HippocampalStore
 from ..memory.neocortical.store import NeocorticalStore
 from ..utils.logging_config import get_logger
-from ..utils.similarity import cosine_similarity
+from .graph_expansion import (
+    _CONTIGUITY_RELEVANCE_FACTOR,
+    GRAPH_RELEVANCE_CEILING,
+    GRAPH_RELEVANCE_FLOOR,
+    GraphExpansionMixin,
+    _neighbours_of,
+)
 from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
 from .query_types import QueryAnalysis
 
 logger = get_logger(__name__)
 
-# Band that graph hits are rank-normalised into. The ceiling sits below 1.0 on purpose:
-# an entity profile summarises a neighbourhood rather than answering a question, so it
-# should compete with strong episodes without automatically displacing them. The floor
-# keeps the weakest graph hit above the packet's episode_relevance_threshold default.
-GRAPH_RELEVANCE_FLOOR = 0.55
-GRAPH_RELEVANCE_CEILING = 0.85
-
-# Temporal contiguity expansion. One scan per seed, so the seed count is what bounds the
-# work; the window is wide enough to cover a conversational exchange without spilling into
-# the next session, and neighbours enter strictly below their seed so context can never
-# outrank the episode that actually matched the query.
-_CONTIGUITY_MAX_SEEDS = 3
-_CONTIGUITY_WINDOW_MINUTES = 30
-_CONTIGUITY_RELEVANCE_FACTOR = 0.7
-# The window can cover a whole session when every turn shares one timestamp, so the scan
-# must be able to return the session before neighbours are picked out of it in order.
-_CONTIGUITY_SESSION_SCAN_LIMIT = 200
-
-
-def _neighbours_of(seed: Any, rows: list[Any], k: int) -> list[Any]:
-    """The k rows either side of ``seed`` in encoding order, seed excluded.
-
-    Selecting the window in Python rather than in SQL is what makes this correct when a
-    session's rows are not separable by timestamp: the database cannot order them, but it
-    can hand over the session, and the ordering key lives in metadata.
-    """
-    ordered = HybridRetriever._encoding_order(rows)
-    position = next((i for i, r in enumerate(ordered) if r.id == seed.id), None)
-    if position is None:
-        return []
-    return ordered[max(0, position - k) : position] + ordered[position + 1 : position + 1 + k]
+__all__ = [
+    "GRAPH_RELEVANCE_CEILING",
+    "GRAPH_RELEVANCE_FLOOR",
+    "_CONTIGUITY_RELEVANCE_FACTOR",
+    "HybridRetriever",
+    "RetrievalResult",
+    "_neighbours_of",
+]
 
 
 @dataclass
@@ -63,7 +46,7 @@ class RetrievalResult:
     error: str | None = None
 
 
-class HybridRetriever:
+class HybridRetriever(GraphExpansionMixin):
     """Executes retrieval plans across multiple memory sources.
 
     Enforces per-step and total retrieval timeouts so that slow sources
@@ -596,399 +579,6 @@ class HybridRetriever:
             }
             for r in records
         ]
-
-    @staticmethod
-    def _derive_graph_seeds(
-        all_results: list[dict[str, Any]],
-        max_seeds: int = 10,
-    ) -> list[str]:
-        """Derive entity seeds from top constraint/fact retrieval results.
-
-        Looks at entity mentions, subjects, and scope values from constraint
-        and fact results so graph expansion can fire even when the original
-        query had no recognised entities.
-        when provided (e.g. "food", "finance") so domain-anchored graph
-        traversal can bridge semantic disconnect.
-        """
-        seeds: list[str] = []
-        seen: set[str] = set()
-
-        def _add(name: str) -> None:
-            normalised = name.strip().lower()
-            if normalised and normalised not in seen and len(normalised) > 1:
-                seen.add(normalised)
-                seeds.append(name.strip())
-
-        for item in all_results:
-            if len(seeds) >= max_seeds:
-                break
-            rec = item.get("record")
-            if rec is None:
-                continue
-
-            for ent in getattr(rec, "entities", None) or []:
-                name = getattr(ent, "normalized", None) or getattr(ent, "text", None) or str(ent)
-                _add(name)
-
-            meta = getattr(rec, "metadata", None)
-            if isinstance(meta, dict):
-                for c in meta.get("constraints", []):
-                    if isinstance(c, dict):
-                        for field_name in ("subject", "scope"):
-                            val = c.get(field_name)
-                            if isinstance(val, str):
-                                _add(val)
-                subj = meta.get("subject")
-                if isinstance(subj, str):
-                    _add(subj)
-
-        return seeds[:max_seeds]
-
-    @staticmethod
-    def _encoding_order(rows: list[Any]) -> list[Any]:
-        """Sort a session's records into the order they were encoded.
-
-        ``timestamp`` is the obvious key and is the wrong one wherever a whole session
-        shares a single stamp — in the LoCoMo corpus all 28 turns of a session carry the
-        identical timestamp, so ordering by it is arbitrary and "neighbours" would be a
-        random sample of the session. ``written_at`` is no better: concurrent ingestion
-        workers scramble it (turn order 0, 4, 3, 6, 7, 5 was observed).
-
-        So prefer an explicit ``turn_idx`` when the writer supplied one for every row,
-        and fall back to timestamp otherwise. Mixed populations take the fallback rather
-        than interleaving two incomparable keys.
-        """
-        indices = [(r.metadata or {}).get("turn_idx") for r in rows]
-        if indices and all(isinstance(i, int) for i in indices):
-            return sorted(rows, key=lambda r: (r.metadata or {})["turn_idx"])
-        return sorted(rows, key=lambda r: r.timestamp)
-
-    async def _expand_temporal_contiguity(
-        self,
-        tenant_id: str,
-        all_results: list[dict[str, Any]],
-    ) -> None:
-        """Pull the turns encoded around each top vector hit into the candidate set.
-
-        Human recall shows a temporal contiguity effect: retrieving one item preferentially
-        cues items encoded at nearby positions, and the effect survives many intervening
-        memories. In a conversation log "adjacent in encoding" is exact and free, so this is
-        an ordered timestamp lookup rather than new structure.
-
-        The failure it targets: a query often matches the turn that *asks* something while
-        the answer is in the turn after it, or matches a reply whose referent is the turn
-        before. Pure similarity retrieves the match and drops the answer.
-
-        Neighbours enter below their seed and below the packet's episode threshold default,
-        so they act as context that the reranker may promote — never as competitors that
-        displace a directly-matching episode. Mutates ``all_results`` in place.
-        """
-        from ..core.config import get_settings
-
-        settings = get_settings()
-        if not settings.features.temporal_contiguity_enabled:
-            return
-
-        k = settings.features.temporal_contiguity_neighbours
-        seeds = [
-            r
-            for r in all_results
-            if r.get("source") == "vector"
-            and getattr(r.get("record"), "source_session_id", None)
-            and getattr(r.get("record"), "timestamp", None)
-        ]
-        if not seeds:
-            return
-        seeds.sort(key=lambda r: r.get("relevance", 0.0), reverse=True)
-
-        existing_ids = {
-            str(getattr(x.get("record"), "id", "")) for x in all_results if x.get("record")
-        }
-        # One scan per seed, so bound the seeds rather than the total work per seed.
-        for seed in seeds[:_CONTIGUITY_MAX_SEEDS]:
-            record = seed["record"]
-            ts = record.timestamp
-            try:
-                window = timedelta(minutes=_CONTIGUITY_WINDOW_MINUTES)
-                rows = await self.hippocampal.store.scan(
-                    tenant_id,
-                    filters={
-                        "source_session_id": record.source_session_id,
-                        "status": "active",
-                        "since": ts - window,
-                        "until": ts + window,
-                    },
-                    limit=_CONTIGUITY_SESSION_SCAN_LIMIT,
-                )
-            except Exception as exc:
-                logger.warning("temporal_contiguity_failed", extra={"error": str(exc)})
-                return
-            for row in _neighbours_of(record, rows, k):
-                rid = str(getattr(row, "id", ""))
-                if not rid or rid in existing_ids:
-                    continue
-                existing_ids.add(rid)
-                all_results.append(
-                    {
-                        "type": row.type.value,
-                        "source": "contiguity",
-                        "text": row.text,
-                        "confidence": getattr(row, "confidence", 0.7),
-                        "relevance": seed.get("relevance", 0.5) * _CONTIGUITY_RELEVANCE_FACTOR,
-                        "timestamp": row.timestamp,
-                        "record": row,
-                    }
-                )
-
-    async def _resolve_prospective_parents(
-        self,
-        tenant_id: str,
-        all_results: list[dict[str, Any]],
-        query_embedding: list[float] | None = None,
-    ) -> None:
-        """BA10 Prospective Ecphory: resolve prospective implication hits to their parent episode."""
-        parent_scores: dict[str, float] = {}
-        for item in all_results:
-            rec = item.get("record")
-            meta = getattr(rec, "metadata", None) if rec is not None else None
-            if not isinstance(meta, dict) or not meta.get("is_prospective_index"):
-                continue
-            pid = meta.get("parent_id") or meta.get("prospective_source_id")
-            if pid:
-                rel = float(item.get("relevance", 0.5) or 0.5)
-                parent_scores[str(pid)] = max(parent_scores.get(str(pid), 0.0), rel)
-
-        if not parent_scores:
-            return
-
-        existing_ids = {
-            str(getattr(x.get("record"), "id", "")) for x in all_results if x.get("record")
-        }
-        to_fetch: list[UUID] = []
-        for pid_str in parent_scores:
-            if pid_str in existing_ids:
-                continue
-            try:
-                to_fetch.append(UUID(pid_str))
-            except (ValueError, TypeError, AttributeError):
-                continue
-
-        if not to_fetch:
-            return
-
-        get_batch = getattr(getattr(self.hippocampal, "store", None), "get_by_ids_batch", None)
-        if not callable(get_batch):
-            return
-        try:
-            maybe_coro = get_batch(to_fetch[:10])
-            if not inspect.isawaitable(maybe_coro):
-                return
-            parents = await maybe_coro
-            for parent in parents or []:
-                if getattr(parent, "tenant_id", None) != tenant_id:
-                    continue
-                pid_str = str(parent.id)
-                if pid_str in existing_ids:
-                    continue
-                existing_ids.add(pid_str)
-                cue_rel = parent_scores.get(pid_str, 0.6)
-                direct_rel = self._graph_relevance(parent, cue_rel, query_embedding)
-                all_results.append(
-                    {
-                        "type": parent.type.value,
-                        "source": "prospective_parent",
-                        "text": parent.text,
-                        "confidence": getattr(parent, "confidence", 0.8),
-                        "relevance": max(direct_rel, cue_rel * 0.92),
-                        "timestamp": parent.timestamp,
-                        "record": parent,
-                    }
-                )
-        except Exception as exc:
-            logger.debug("prospective_parent_resolution_failed", extra={"error": str(exc)})
-
-    async def _expand_second_hop_recollection(
-        self,
-        tenant_id: str,
-        plan: RetrievalPlan,
-        all_results: list[dict[str, Any]],
-        query_embedding: list[float] | None,
-        plan_start: float,
-        plan_budget: float,
-        timeouts_enabled: bool,
-    ) -> None:
-        """Feeling-of-Knowing Gated 2nd-Hop Cortical Recollection.
-
-        When first-pass results uncover bridge entities (either explicit EntityMentions
-        or Baddeley working_memory_focus entities) that were not in the initial graph
-        seeds, perform a bounded 2nd-hop graph lookup to bridge multi-hop chains.
-        """
-        from ..core.config import get_settings
-
-        settings = get_settings()
-        if not getattr(settings.features, "multi_hop_recollection_enabled", True):
-            return
-        if not all_results:
-            return
-        if timeouts_enabled and (plan_budget - (time.perf_counter() - plan_start)) < 0.15:
-            return
-
-        # Only run if a graph step was already part of the plan ( otherwise AUD-07 above
-        # already ran derived_seeds expansion).
-        initial_graph_steps = [s for s in plan.steps if s.source == RetrievalSource.GRAPH]
-        if not initial_graph_steps:
-            return
-
-        queried_seeds = {
-            s.strip().lower()
-            for step in initial_graph_steps
-            for s in (step.seeds or [])
-            if s and s.strip()
-        }
-        top_first_pass = sorted(
-            all_results, key=lambda r: float(r.get("relevance", 0.0) or 0.0), reverse=True
-        )[:4]
-
-        bridge_seeds: list[str] = []
-        for item in top_first_pass:
-            rec = item.get("record")
-            if rec is None:
-                continue
-            for ent in getattr(rec, "entities", None) or []:
-                name = getattr(ent, "normalized", None) or getattr(ent, "text", None) or str(ent)
-                norm = name.strip().lower()
-                if norm and len(norm) > 1 and norm not in queried_seeds:
-                    queried_seeds.add(norm)
-                    bridge_seeds.append(name.strip())
-            meta = getattr(rec, "metadata", None)
-            if isinstance(meta, dict):
-                for focus_ent in meta.get("working_memory_focus") or []:
-                    norm = str(focus_ent).strip().lower()
-                    if norm and len(norm) > 1 and norm not in queried_seeds:
-                        queried_seeds.add(norm)
-                        bridge_seeds.append(str(focus_ent).strip())
-
-        if not bridge_seeds:
-            return
-
-        hop2_step = RetrievalStep(
-            source=RetrievalSource.GRAPH,
-            seeds=bridge_seeds[:6],
-            top_k=6,
-            priority=1,
-            timeout_ms=200,
-        )
-        try:
-            hop2_items = await self._retrieve_graph(tenant_id, hop2_step, query_embedding)
-            if hop2_items:
-                all_results.extend(hop2_items)
-        except Exception as exc:
-            logger.debug("second_hop_recollection_failed", extra={"error": str(exc)})
-
-    async def _retrieve_graph(
-        self,
-        tenant_id: str,
-        step: RetrievalStep,
-        query_embedding: list[float] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Retrieve via knowledge graph PPR. Holistic: tenant-only."""
-        if not step.seeds:
-            return []
-        results = await self.neocortical.multi_hop_query(tenant_id, seed_entities=step.seeds)
-        if not results:
-            return []
-        # Graph scores are raw Neo4j co-occurrence counts on an unbounded scale — 315,
-        # 744 have both been observed — while every other prong emits cosine-like 0..1.
-        # Ranking is done on the raw value before the reranker's clamp ever runs, so
-        # unnormalised graph hits take every top-k slot and push real episodes below
-        # `episode_relevance_threshold`, which drops them from the packet entirely.
-        # That was invisible for as long as the graph stayed empty. Rank-normalise into
-        # the same band the other prongs use, preserving order among graph hits, which
-        # a flat clamp to 1.0 would destroy.
-        raw = [float(r.get("relevance_score", 0.5) or 0.0) for r in results]
-        hi = max(raw, default=0.0)
-        lo = min(raw, default=0.0)
-        span = hi - lo
-
-        # PPR ranks entities; entities are an *index*, not an answer. Returning the
-        # neighbourhood profile ("Entity: user\n - LOCATION: Seattle") is the documented
-        # Entity-Only failure mode — measured here as multi-hop 0.33 -> 0.23/0.27/0.26 on
-        # every populated-graph arm. Resolve each entity to the episodic records its
-        # relations cite instead, and let the grounded text answer the question. An
-        # episode reachable from several entities keeps the best score.
-        best: dict[str, float] = {}
-        for r, score in zip(results, raw, strict=True):
-            normalised = (
-                GRAPH_RELEVANCE_CEILING
-                if span <= 0
-                else GRAPH_RELEVANCE_FLOOR
-                + (score - lo) / span * (GRAPH_RELEVANCE_CEILING - GRAPH_RELEVANCE_FLOOR)
-            )
-            for rel in r.get("relations", []) or []:
-                props = rel.get("relation_properties") or {}
-                for rid in props.get("evidence_ids") or []:
-                    if normalised > best.get(str(rid), 0.0):
-                        best[str(rid)] = normalised
-        if not best:
-            return []
-
-        # Ten entities resolved to 309 distinct records on a real tenant — get_entity_facts_batch
-        # has no LIMIT, so one hub entity drags in hundreds of edges. Feeding all of them to the
-        # reranker swamps every other prong and costs a needless fetch. Keep the best-scoring
-        # `top_k`, which is also the first time this step's top_k has ever been read: the planner
-        # has always set 15 (multi-hop) / 10 (constraint) and multi_hop_query never accepted it.
-        ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)[: step.top_k]
-        ids: list[UUID] = []
-        for rid, _score in ranked:
-            try:
-                ids.append(UUID(rid))
-            except (ValueError, AttributeError, TypeError):
-                continue
-        records = await self.hippocampal.store.get_by_ids_batch(ids)
-
-        items = []
-        for record in records:
-            # get_by_ids_batch is a bare id lookup with no tenant predicate. Edge
-            # evidence comes from this tenant's own graph so this should never fire,
-            # but cross-tenant leakage is not a failure worth trusting transitively.
-            if record.tenant_id != tenant_id:
-                continue
-            items.append(
-                {
-                    "type": record.type.value,
-                    "source": "graph",
-                    "text": record.text,
-                    "relevance": self._graph_relevance(
-                        record, best.get(str(record.id), GRAPH_RELEVANCE_FLOOR), query_embedding
-                    ),
-                    "record": record,
-                }
-            )
-        return items
-
-    @staticmethod
-    def _graph_relevance(
-        record: Any,
-        graph_score: float,
-        query_embedding: list[float] | None,
-    ) -> float:
-        """Rank a graph-resolved episode by how well it answers *this* query.
-
-        The graph decides which records are candidates; it must not decide how they
-        rank. Scoring them by the traversal score put every graph hit in a constant
-        0.55-0.85 band irrespective of the question, which sits above the median vector
-        cosine (~0.62) — so graph candidates displaced better-matching vector hits and
-        every factual category fell (measured: overall 0.486 -> 0.429, single-hop
-        -0.097, temporal -0.098, multi-hop -0.090, while adversarial *rose* +0.074
-        because the packet got worse and the model refused more).
-
-        Cosine against the query is the same scale the vector prong emits, so the two
-        compete on merit. The traversal score is kept only as the fallback for a record
-        with no stored embedding, which would otherwise silently rank at zero.
-        """
-        if query_embedding and record.embedding:
-            return cosine_similarity(query_embedding, record.embedding)
-        return graph_score
 
     async def _retrieve_constraints(
         self,

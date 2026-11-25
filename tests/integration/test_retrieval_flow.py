@@ -38,8 +38,6 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )
@@ -67,13 +65,11 @@ async def test_retrieve_returns_packet_with_facts(pg_session_factory):
 
 
 @pytest.mark.asyncio
-async def test_retrieve_for_llm_returns_string(pg_session_factory):
+async def test_packet_builder_to_llm_context_returns_string(pg_session_factory):
     pg_store = PostgresMemoryStore(pg_session_factory)
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )
@@ -83,7 +79,8 @@ async def test_retrieve_for_llm_returns_string(pg_session_factory):
 
     tenant_id = f"t-{uuid4().hex[:8]}"
 
-    ctx = await retriever.retrieve_for_llm(tenant_id, "my preferences", max_tokens=500)
+    packet = await retriever.retrieve(tenant_id, "my preferences")
+    ctx = retriever.packet_builder.to_llm_context(packet, max_tokens=500)
     assert isinstance(ctx, str)
     assert "Retrieved Memory" in ctx or len(ctx) >= 0
 
@@ -95,8 +92,6 @@ async def test_retrieve_with_memory_types_filter_returns_only_allowed_types(pg_s
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )
@@ -146,8 +141,6 @@ async def test_retrieve_mixed_vector_and_facts_both_sources_contribute(pg_sessio
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )
@@ -206,8 +199,6 @@ async def test_retrieval_embedding_called_once(pg_session_factory):
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=embedding_client,
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )
@@ -233,8 +224,6 @@ async def test_retrieval_validity_filtering(pg_session_factory):
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )

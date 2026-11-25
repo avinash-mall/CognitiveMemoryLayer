@@ -232,10 +232,6 @@ class TestMemoryOrchestrator:
             "reconsolidation": MagicMock(),
             "consolidation": MagicMock(),
             "forgetting": MagicMock(),
-            "scratch_pad": MagicMock(),
-            "conversation": MagicMock(),
-            "tool_memory": MagicMock(),
-            "knowledge_base": MagicMock(),
         }
 
         # Setup async mocks
@@ -262,9 +258,6 @@ class TestMemoryOrchestrator:
                 facts=[],
             )
         )
-        deps["scratch_pad"].get = AsyncMock(return_value=None)
-        deps["conversation"].get_history = AsyncMock(return_value=[])
-        deps["tool_memory"].get_results = AsyncMock(return_value=[])
 
         return deps
 

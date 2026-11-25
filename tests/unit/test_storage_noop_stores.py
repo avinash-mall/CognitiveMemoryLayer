@@ -28,16 +28,6 @@ class TestNoOpGraphStore:
         )
         assert out == "noop-edge"
 
-    async def test_get_neighbors_returns_empty_list(self):
-        store = NoOpGraphStore()
-        out = await store.get_neighbors(
-            tenant_id="t1",
-            scope_id="s1",
-            entity="e1",
-            max_depth=2,
-        )
-        assert out == []
-
     async def test_personalized_pagerank_returns_empty_list(self):
         store = NoOpGraphStore()
         out = await store.personalized_pagerank(

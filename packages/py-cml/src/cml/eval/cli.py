@@ -233,25 +233,5 @@ def main(argv: list[str] | None = None) -> int:
     return 1
 
 
-def main_legacy_eval_locomo(argv: list[str] | None = None) -> int:
-    return _import_eval_module("locomo")(argv)
-
-
-def main_legacy_run_full(argv: list[str] | None = None) -> int:
-    return _import_eval_module("pipeline")(argv)
-
-
-def main_legacy_validate(argv: list[str] | None = None) -> int:
-    return _import_eval_module("validate")(argv)
-
-
-def main_legacy_report(argv: list[str] | None = None) -> int:
-    return _import_eval_module("report")(argv)
-
-
-def main_legacy_compare(argv: list[str] | None = None) -> int:
-    return _import_eval_module("compare")(argv)
-
-
 if __name__ == "__main__":
     raise SystemExit(main())

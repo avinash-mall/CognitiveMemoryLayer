@@ -56,8 +56,6 @@ async def test_constraint_surfaces_despite_semantic_disconnect(
     hippocampal = HippocampalStore(
         vector_store=pg_store,
         embedding_client=MockEmbeddingClient(dimensions=get_embedding_dimensions()),
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )

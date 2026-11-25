@@ -1,9 +1,8 @@
-"""Forgetting: decay, interference, and scheduled forgetting."""
+"""Forgetting: decay, interference, and active forgetting."""
 
-from .worker import ForgettingReport, ForgettingScheduler, ForgettingWorker
+from .worker import ForgettingReport, ForgettingWorker
 
 __all__ = [
     "ForgettingReport",
-    "ForgettingScheduler",
     "ForgettingWorker",
 ]

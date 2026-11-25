@@ -263,17 +263,6 @@ class GraphStoreBase(ABC):
         ...
 
     @abstractmethod
-    async def get_neighbors(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        entity: str,
-        max_depth: int = 2,
-    ) -> list[dict[str, Any]]:
-        """Get neighboring nodes up to max_depth."""
-        ...
-
-    @abstractmethod
     async def personalized_pagerank(
         self,
         tenant_id: str,

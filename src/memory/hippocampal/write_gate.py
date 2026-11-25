@@ -251,9 +251,6 @@ class WriteGate:
         ct = effective_chunk_type if effective_chunk_type is not None else chunk.chunk_type
         return mapping.get(ct, [MemoryType.EPISODIC_EVENT])
 
-    def add_known_fact(self, fact_key: str) -> None:
-        self._known_facts.add(fact_key)
-
     def compute_surprise_index(
         self,
         chunk: SemanticChunk,

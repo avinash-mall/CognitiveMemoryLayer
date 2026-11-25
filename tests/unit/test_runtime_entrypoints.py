@@ -4,22 +4,9 @@ import runpy
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import redis.asyncio as redis
 import structlog
 
-from src.storage.redis import get_redis_client
 from src.utils import logging_config
-
-
-def test_get_redis_client_uses_settings_url(monkeypatch) -> None:
-    sentinel = object()
-    monkeypatch.setattr(redis, "from_url", lambda url: (url, sentinel))
-    monkeypatch.setattr(
-        "src.storage.redis.get_settings",
-        lambda: SimpleNamespace(database=SimpleNamespace(redis_url="redis://cache:6379/1")),
-    )
-
-    assert get_redis_client() == ("redis://cache:6379/1", sentinel)
 
 
 def test_configure_logging_uses_json_renderer(monkeypatch) -> None:

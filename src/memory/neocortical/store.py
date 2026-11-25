@@ -238,22 +238,6 @@ class NeocorticalStore:
         """Get structured profile for tenant. Holistic: tenant-only."""
         return await self.facts.get_tenant_profile(tenant_id)
 
-    async def query_entity(
-        self,
-        tenant_id: str,
-        entity: str,
-    ) -> dict[str, Any]:
-        """Get all information about an entity (graph + facts). Holistic: tenant-only."""
-        graph_facts = await self.graph.get_entity_facts(tenant_id, tenant_id, entity)
-        fact_results = await self.facts.search_facts(tenant_id, entity, limit=20)
-        return {
-            "entity": entity,
-            "relations": graph_facts,
-            "facts": [
-                {"key": f.key, "value": f.value, "confidence": f.confidence} for f in fact_results
-            ],
-        }
-
     async def multi_hop_query(
         self,
         tenant_id: str,
@@ -310,19 +294,6 @@ class NeocorticalStore:
                 }
             )
         return results
-
-    async def find_schema_match(
-        self,
-        tenant_id: str,
-        candidate_fact: str,
-    ) -> SemanticFact | None:
-        """Find if a candidate fact matches existing schema/knowledge. Holistic: tenant-only."""
-        matches = await self.facts.search_facts(tenant_id, candidate_fact, limit=5)
-        if matches:
-            best = max(matches, key=lambda f: f.confidence)
-            if best.confidence > 0.5:
-                return best
-        return None
 
     async def text_search(
         self,

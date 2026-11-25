@@ -9,7 +9,6 @@ and Verbatim Episode IDs) with a fast in-memory sparse bipartite Personalized Pa
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -468,15 +467,3 @@ class CorticalHypergraphEngine:
         if updated:
             await self.upsert_engrams(tenant_id, updated)
         return len(updated)
-
-    def to_debug_json(self, engram: HyperedgeEngram) -> str:
-        return json.dumps(
-            {
-                "engram_key": engram.engram_key,
-                "actors": engram.actors,
-                "entities": engram.entities,
-                "summary": engram.event_summary,
-                "temporal_anchor": engram.temporal_anchor,
-                "prospective_cues": engram.prospective_cues,
-            }
-        )

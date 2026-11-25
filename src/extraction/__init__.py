@@ -1,7 +1,6 @@
-"""Extraction: entities, relations, facts, constraints from text."""
+"""Extraction: facts, constraints, and unified LLM extraction from text."""
 
 from .constraint_extractor import ConstraintExtractor, ConstraintObject
-from .entity_extractor import EntityExtractor
 from .fact_extractor import LLMFactExtractor
 from .unified_write_extractor import (
     PIISpan,
@@ -13,7 +12,6 @@ from .write_time_facts import ExtractedFact, WriteTimeFactExtractor
 __all__ = [
     "ConstraintExtractor",
     "ConstraintObject",
-    "EntityExtractor",
     "ExtractedFact",
     "LLMFactExtractor",
     "PIISpan",

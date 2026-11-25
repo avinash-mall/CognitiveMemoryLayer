@@ -50,11 +50,11 @@ Run `python scripts/update_readme_badges.py` from the repo root to refresh versi
 | `test_api_routes.py` | Health and memory API routes |
 | `test_api_request_logging_rate_limit.py` | Request logging and rate-limit middleware |
 | `test_dashboard_routes.py` | Dashboard API routes (mocked DB) |
-| `test_extraction_entity_relation_fact.py` | Entity, relation, and fact extraction |
+| `test_extraction_entity_relation_fact.py` | LLM fact extraction (`LLMFactExtractor`) |
 | `test_unified_write_extractor.py` | Unified extractor: typed entities, relations, exclusion rules, graph sync |
 | `test_orchestrator_seamless_provider.py` | Memory orchestrator and seamless provider |
-| `test_memory_modules_conversation_scratch_tool.py` | ConversationMemory, ScratchPad, ToolMemory, KnowledgeBase |
-| `test_chunker_chonkie_adapter.py` | Chonkie chunker adapter |
+| `test_chunker_semchunk.py` | Semchunk semantic chunker |
+| `test_whole_brain_v3.py` | Whole-Brain v3.0 subsystems (Windowed consolidation, Hypergraph PPR, Time Cells, Cross-Encoder, DMN, Preplay, RPE) |
 | `test_constraint_layer.py` | Constraint layer (extraction, retrieval, consolidation) |
 | `test_deep_research_improvements.py` | Stable keys, batch embeddings, retrieval timeouts, write-time facts, BoundedStateMap |
 | `test_consolidation_migrator_sampler.py` | Consolidation migrator and episode sampler |
@@ -64,7 +64,6 @@ Run `python scripts/update_readme_badges.py` from the repo root to refresh versi
 
 | File | Domain |
 |------|--------|
-| `test_storage_event_log_repository.py` | Event log repository (Postgres) |
 | `test_short_term_memory_flow.py` | Short-term memory ingest flow |
 | `test_hippocampal_encode_flow.py` | Hippocampal encode and retrieval |
 | `test_neocortical_store_flow.py` | Neocortical store operations |
@@ -80,7 +79,7 @@ Run `python scripts/update_readme_badges.py` from the repo root to refresh versi
 | `test_memory_type_storage_retrieval.py` | Memory types round-trip |
 | `test_workflow.py` | Live API write/read workflow |
 
-Key test areas: constraint layer, deep research improvements (stable keys, batch embeddings, write-time facts), **batch extraction** (`RelationExtractor.extract_batch` in `test_extraction_entity_relation_fact.py`; `UnifiedWritePathExtractor` in `test_unified_write_extractor.py`; orchestrator uses `get_internal_llm_client` in `test_orchestrator_seamless_provider.py`), evaluation (timestamp parsing, verbose diagnostics). Use `python scripts/verify_neo4j_graph.py` to run Neo4j diagnostics (relationship types, entity types, long/suspicious entities).
+Key test areas: Whole-Brain v3.0 subsystems, constraint layer, deep research improvements (stable keys, batch embeddings, write-time facts), unified write-path extraction (`UnifiedWritePathExtractor` in `test_unified_write_extractor.py`), and `cml.eval` harness coverage.
 
 ## Running subsets
 

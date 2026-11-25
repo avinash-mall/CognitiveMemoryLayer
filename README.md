@@ -11,7 +11,7 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1259-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Tests](https://img.shields.io/badge/Tests-1218-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
 [![Version](https://img.shields.io/badge/version-3.0.0-blue?style=for-the-badge)](#)
 
 <br/>

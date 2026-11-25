@@ -3,7 +3,6 @@
 import json
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -12,16 +11,6 @@ from ..core.config import get_settings
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class LLMResponse:
-    """Structured LLM response."""
-
-    content: str
-    model: str
-    tokens_used: int
-    finish_reason: str
 
 
 # Default base URLs per OpenAI-compatible provider (used when base_url not set in config)

@@ -3,6 +3,7 @@
 import json
 import traceback
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -197,69 +198,85 @@ async def process_turn(
         raise HTTPException(status_code=500, detail=_safe_500_detail(e))
 
 
+async def _execute_read_memory(
+    *,
+    tenant_id: str,
+    body: ReadMemoryRequest,
+    orchestrator: MemoryOrchestrator,
+    source_session_id: str | None = None,
+) -> ReadMemoryResponse:
+    """Shared implementation for tenant-wide and session-scoped memory reads."""
+    start = datetime.now(UTC)
+    memory_type_values = (
+        [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
+        if body.memory_types
+        else None
+    )
+    read_kwargs: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "query": body.query,
+        "max_results": body.max_results,
+        "context_filter": body.context_filter,
+        "memory_types": memory_type_values,
+        "since": body.since,
+        "until": body.until,
+        "user_timezone": body.user_timezone,
+    }
+    if source_session_id is not None:
+        read_kwargs["source_session_id"] = source_session_id
+    packet = await orchestrator.read(**read_kwargs)
+    elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
+
+    all_memories = [_to_memory_item(m) for m in packet.all_memories]
+
+    if body.response_format == "list":
+        facts = []
+        preferences = []
+        episodes = []
+        constraints = []
+    else:
+        facts = [_to_memory_item(m) for m in packet.facts]
+        preferences = [_to_memory_item(m) for m in packet.preferences]
+        episodes = [_to_memory_item(m) for m in packet.recent_episodes]
+        constraints = [_to_memory_item(m) for m in packet.constraints]
+
+    llm_context = None
+    if body.response_format == "llm_context":
+        from ..retrieval.packet_builder import MemoryPacketBuilder
+
+        builder = MemoryPacketBuilder()
+        llm_context = builder.to_llm_context(packet, max_tokens=3000)
+
+    return ReadMemoryResponse(
+        query=body.query,
+        memories=all_memories,
+        facts=facts,
+        preferences=preferences,
+        episodes=episodes,
+        constraints=constraints,
+        llm_context=llm_context,
+        retrieval_meta=packet.retrieval_meta,
+        sufficiency=packet.sufficiency,
+        open_questions=packet.open_questions,
+        warnings=packet.warnings,
+        total_count=len(all_memories),
+        elapsed_ms=elapsed_ms,
+    )
+
+
 @router.post("/memory/read", response_model=ReadMemoryResponse)
 async def read_memory(
     body: ReadMemoryRequest,
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """Retrieve memories relevant to a query. Supports filtering by context tags, memory types, and date range. Returns facts, preferences, episodes, and optional llm_context format. Internal LLM: 1-2 calls (QueryClassifier + optional Reranker) with default settings."""
+    """Retrieve memories relevant to a query. Supports filtering by context tags, memory types, and date range. Returns facts, preferences, episodes, and optional llm_context format."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
-    start = datetime.now(UTC)
     try:
-        memory_type_values = (
-            [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
-            if body.memory_types
-            else None
-        )
-        packet = await orchestrator.read(
+        return await _execute_read_memory(
             tenant_id=auth.tenant_id,
-            query=body.query,
-            max_results=body.max_results,
-            context_filter=body.context_filter,
-            memory_types=memory_type_values,
-            since=body.since,
-            until=body.until,
-            user_timezone=body.user_timezone,
-        )
-
-        elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
-
-        all_memories = [_to_memory_item(m) for m in packet.all_memories]
-
-        if body.response_format == "list":
-            # "list" format: flat list only, no categorized buckets
-            facts = []
-            preferences = []
-            episodes = []
-            constraints = []
-        else:
-            facts = [_to_memory_item(m) for m in packet.facts]
-            preferences = [_to_memory_item(m) for m in packet.preferences]
-            episodes = [_to_memory_item(m) for m in packet.recent_episodes]
-            constraints = [_to_memory_item(m) for m in packet.constraints]
-
-        llm_context = None
-        if body.response_format == "llm_context":
-            from ..retrieval.packet_builder import MemoryPacketBuilder
-
-            builder = MemoryPacketBuilder()
-            llm_context = builder.to_llm_context(packet, max_tokens=3000)
-
-        return ReadMemoryResponse(
-            query=body.query,
-            memories=all_memories,
-            facts=facts,
-            preferences=preferences,
-            episodes=episodes,
-            constraints=constraints,
-            llm_context=llm_context,
-            retrieval_meta=packet.retrieval_meta,
-            sufficiency=packet.sufficiency,
-            open_questions=packet.open_questions,
-            warnings=packet.warnings,
-            total_count=len(all_memories),
-            elapsed_ms=elapsed_ms,
+            body=body,
+            orchestrator=orchestrator,
         )
     except Exception as e:
         logger.exception("read_memory_failed", tenant_id=auth.tenant_id, error=str(e))
@@ -419,7 +436,6 @@ async def session_write(
 @router.post(
     "/session/{session_id}/read",
     response_model=ReadMemoryResponse,
-    deprecated=True,
 )
 async def session_read(
     session_id: str,
@@ -427,62 +443,14 @@ async def session_read(
     auth: AuthContext = Depends(get_auth_context),
     orchestrator: MemoryOrchestrator = Depends(get_orchestrator),
 ):
-    """[Deprecated] Use /memory/read instead. This endpoint is session-scoped by path `session_id`."""
+    """Retrieve memories scoped to path `session_id`."""
     MEMORY_READS.labels(tenant_id=auth.tenant_id).inc()
-    start = datetime.now(UTC)
     try:
-        memory_type_values = (
-            [mt.value if hasattr(mt, "value") else str(mt) for mt in body.memory_types]
-            if body.memory_types
-            else None
-        )
-        packet = await orchestrator.read(
+        return await _execute_read_memory(
             tenant_id=auth.tenant_id,
-            query=body.query,
-            max_results=body.max_results,
-            context_filter=body.context_filter,
-            memory_types=memory_type_values,
-            since=body.since,
-            until=body.until,
-            user_timezone=body.user_timezone,
+            body=body,
+            orchestrator=orchestrator,
             source_session_id=session_id,
-        )
-        elapsed_ms = (datetime.now(UTC) - start).total_seconds() * 1000
-
-        all_memories = [_to_memory_item(m) for m in packet.all_memories]
-
-        if body.response_format == "list":
-            facts = []
-            preferences = []
-            episodes = []
-            constraints = []
-        else:
-            facts = [_to_memory_item(m) for m in packet.facts]
-            preferences = [_to_memory_item(m) for m in packet.preferences]
-            episodes = [_to_memory_item(m) for m in packet.recent_episodes]
-            constraints = [_to_memory_item(m) for m in packet.constraints]
-
-        llm_context = None
-        if body.response_format == "llm_context":
-            from ..retrieval.packet_builder import MemoryPacketBuilder
-
-            builder = MemoryPacketBuilder()
-            llm_context = builder.to_llm_context(packet, max_tokens=3000)
-
-        return ReadMemoryResponse(
-            query=body.query,
-            memories=all_memories,
-            facts=facts,
-            preferences=preferences,
-            episodes=episodes,
-            constraints=constraints,
-            llm_context=llm_context,
-            retrieval_meta=packet.retrieval_meta,
-            sufficiency=packet.sufficiency,
-            open_questions=packet.open_questions,
-            warnings=packet.warnings,
-            total_count=len(all_memories),
-            elapsed_ms=elapsed_ms,
         )
     except Exception as e:
         logger.exception("session_read_failed", tenant_id=auth.tenant_id, error=str(e))

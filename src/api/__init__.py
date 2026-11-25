@@ -1,7 +1,7 @@
-"""API layer: FastAPI app, routes, auth, and dependencies."""
+"""API layer: FastAPI app, routes, and auth."""
 
 from .app import create_app
-from .dependencies import (
+from .auth import (
     AuthContext,
     get_auth_context,
     require_admin_permission,

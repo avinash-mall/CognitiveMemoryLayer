@@ -1,9 +1,7 @@
-"""Forgetting worker and scheduler."""
+"""Forgetting worker."""
 
-import asyncio
-import contextlib
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
 from ..core.enums import MemoryStatus
@@ -174,63 +172,3 @@ class ForgettingWorker:
             )
             resolved_ids.add(to_delete)
         return operations
-
-
-class ForgettingScheduler:
-    """Schedules and manages forgetting runs."""
-
-    def __init__(
-        self,
-        worker: ForgettingWorker,
-        interval_hours: float = 24.0,
-    ) -> None:
-        self.worker = worker
-        self.interval = timedelta(hours=interval_hours)
-        self._running = False
-        self._task: asyncio.Task | None = None
-        self._user_last_run: dict[str, datetime] = {}
-
-    async def start(self) -> None:
-        """Start the scheduler."""
-        self._running = True
-        self._task = asyncio.create_task(self._scheduler_loop())
-
-    async def stop(self) -> None:
-        """Stop the scheduler."""
-        self._running = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-
-    async def schedule_user(
-        self,
-        tenant_id: str,
-        user_id: str,
-        force: bool = False,
-    ) -> ForgettingReport | None:
-        """Schedule forgetting for a user; returns report if run."""
-        key = f"{tenant_id}:{user_id}"
-        now = datetime.now(UTC)
-        last_run = self._user_last_run.get(key)
-        if force or not last_run or (now - last_run) >= self.interval:
-            report = await self.worker.run_forgetting(tenant_id, user_id)
-            self._user_last_run[key] = now
-            return report
-        return None
-
-    async def _scheduler_loop(self) -> None:
-        """Background scheduler loop. DES-09: check first then sleep so first run is immediate."""
-        while self._running:
-            now = datetime.now(UTC)
-            for key, last_run in list(self._user_last_run.items()):
-                if (now - last_run) >= self.interval:
-                    try:
-                        parts = key.split(":", 1)
-                        if len(parts) == 2:
-                            tenant_id, user_id = parts
-                            await self.worker.run_forgetting(tenant_id, user_id)
-                            self._user_last_run[key] = now
-                    except Exception:
-                        logger.exception("forgetting_run_failed", extra={"key": key})
-            await asyncio.sleep(self.interval.total_seconds())

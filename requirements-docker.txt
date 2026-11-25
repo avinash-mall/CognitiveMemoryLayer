@@ -1,3 +1,0 @@
-# Backward-compatible aggregate list used by CI and local test setups.
--r requirements-runtime.txt
--r requirements-test.txt

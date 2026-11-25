@@ -118,11 +118,15 @@ Important tenancy rule:
 ### Memory endpoints
 
 - `POST /memory/write`
+- `POST /memory/write_batch`
 - `POST /memory/turn`
 - `POST /memory/read`
 - `POST /memory/read/stream` (SSE)
 - `POST /memory/update`
 - `POST /memory/forget`
+- `POST /memory/consolidate_windowed`
+- `POST /memory/feedback`
+- `POST /memory/simulate`
 - `GET /memory/stats`
 - `DELETE /memory/all` (admin only)
 
@@ -130,7 +134,7 @@ Important tenancy rule:
 
 - `POST /session/create`
 - `POST /session/{session_id}/write`
-- `POST /session/{session_id}/read` (deprecated)
+- `POST /session/{session_id}/read`
 - `GET /session/{session_id}/context`
 
 ### Admin endpoints
@@ -152,7 +156,6 @@ Dashboard API modules include:
 
 - overview, timeline, components, tenants, sessions, ratelimits, request-stats
 - memories list/detail/bulk-action/export
-- events list
 - graph stats/overview/explore/search/neo4j-config (with relationship edge labels and improved physics)
 - semantic facts list/invalidate (Facts Explorer page with category/tenant filters, current-only toggle, pagination)
 - config get/update

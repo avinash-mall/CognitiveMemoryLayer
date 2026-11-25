@@ -41,20 +41,22 @@
    python evaluation/locomo_plus/scripts/run_judge.py --model gpt-4o-mini
    ```
 
-3. **Run CML-backed evaluation** (ingest into CML, QA via CML read + LLM from .env, judge):
+3. **Run CML-backed evaluation** (ingest into CML, QA via CML read + LLM from `.env`, judge):
 
-   From project root:
+   From project root (install with `pip install -e ".[eval]"`):
 
-   ```powershell
-   $env:PYTHONPATH = "evaluation/locomo_plus"
-   python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json --out-dir evaluation/outputs --limit-samples 5
+   ```bash
+   cml-eval run-locomo \
+     --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
+     --out-dir evaluation/outputs \
+     --limit-samples 5
    ```
 
    CML server config (embedding model, rate limit, optional `LLM_INTERNAL__*`) is in the project root `.env`. See [evaluation/README](../../evaluation/README.md) for setup.
 
 ## Outputs
 
-- `evaluation/outputs/locomo_plus_predictions.json` – predictions from run_evaluate (non-CML)
-- `evaluation/outputs/locomo_plus_qa_cml_predictions.json` – predictions from eval_locomo_plus (CML-backed)
+- `evaluation/outputs/locomo_plus_predictions.json` – predictions from `run_evaluate` (non-CML)
+- `evaluation/outputs/locomo_plus_qa_cml_predictions.json` – predictions from `cml-eval run-locomo` (CML-backed)
 - `evaluation/outputs/locomo_plus_judged.json` – judged records (non-CML)
 - `evaluation/outputs/locomo_plus_qa_cml_judged.json` – CML-backed judged output

@@ -71,8 +71,6 @@ def _make_store_with_unified(session_factory):
     return HippocampalStore(
         vector_store=pg_store,
         embedding_client=embeddings,
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
         unified_extractor=unified,
@@ -133,8 +131,6 @@ def _make_store_with_llm_fields_mock(session_factory, confidence, context_tags, 
     return HippocampalStore(
         vector_store=pg_store,
         embedding_client=embeddings,
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
         unified_extractor=unified,
@@ -193,8 +189,6 @@ def _make_store_with_memory_type_mock(session_factory, memory_type: str):
     return HippocampalStore(
         vector_store=pg_store,
         embedding_client=embeddings,
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
         unified_extractor=unified,

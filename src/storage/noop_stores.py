@@ -41,15 +41,6 @@ class NoOpGraphStore(GraphStoreBase):
     ) -> list[str]:
         return []
 
-    async def get_neighbors(
-        self,
-        tenant_id: str,
-        scope_id: str,
-        entity: str,
-        max_depth: int = 2,
-    ) -> list[dict[str, Any]]:
-        return []
-
     async def personalized_pagerank(
         self,
         tenant_id: str,

@@ -1,4 +1,4 @@
-"""Unit tests for client developer experience (exceptions, logging, serialization, deprecation)."""
+"""Unit tests for client developer experience (exceptions, logging, serialization)."""
 
 import asyncio
 from datetime import datetime
@@ -11,7 +11,6 @@ from cml import AsyncCognitiveMemoryLayer, CognitiveMemoryLayer, configure_loggi
 from cml.config import CMLConfig
 from cml.exceptions import AuthenticationError, CMLError
 from cml.models import ReadResponse, StatsResponse, WriteResponse
-from cml.utils.deprecation import deprecated
 from cml.utils.serialization import CMLJSONEncoder, serialize_for_api
 
 # ---- Exceptions: suggestion and request_id ----
@@ -179,20 +178,6 @@ def test_session_context_manager_injects_session_id(cml_config: CMLConfig) -> No
     assert call_args[0] == "sess-123"
     assert call_args[1] == "Hello"
     assert call_kw["context_tags"] is None
-
-
-# ---- Deprecation ----
-
-
-@deprecated("new_func()", "2.0.0")
-def _deprecated_func() -> str:
-    return "ok"
-
-
-def test_deprecated_emits_warning() -> None:
-    with pytest.warns(DeprecationWarning, match="_deprecated_func is deprecated"):
-        result = _deprecated_func()
-    assert result == "ok"
 
 
 # ---- Thread safety: set_tenant with lock ----

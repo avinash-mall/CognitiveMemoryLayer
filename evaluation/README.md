@@ -6,11 +6,10 @@ This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 
 | Path | Description |
 |------|-------------|
-| `locomo_plus/` | Data pipeline (`locomo10.json`, `locomo_plus.json`, `unified_input_samples_v2.json`), task_eval, scripts. See [locomo_plus/README.md](locomo_plus/README.md). |
-| `scripts/eval_locomo_plus.py` | CML-backed driver: ingest unified samples into CML, run QA via CML read + LLM (provider from .env), score with LLM-as-judge (correct=1, partial=0.5, wrong=0). |
-| `scripts/generate_locomo_report.py` | Build performance table (LoCoMo factual + LoCoMo-Plus Cognitive + Gap). |
-| `scripts/run_full_eval.py` | Full pipeline: Docker down/up, API wait, eval, report table. Validates outputs after each step; on failure writes state for `--resume`. |
-| `scripts/validate_outputs.py` | Validates predictions, judged, and judge_summary JSON (structure and consistency). |
+| `locomo_plus/` | Data pipeline (`locomo10.json`, `locomo_plus.json`, `unified_input_samples_v2.json`), `task_eval`, baseline scripts. See [locomo_plus/README.md](locomo_plus/README.md). |
+| `cml-eval` CLI (`packages/py-cml/src/cml/eval/`) | Canonical CML-backed evaluation suite (`run-full`, `run-locomo`, `validate`, `report`, `compare`). Install via `pip install -e ".[eval]"`. |
+| `scripts/run_locomo_openrouter_batch.py` | End-to-end LoCoMo-Plus driver using OpenRouter's `/api/v1/batches` (`:batch`) API or local OpenAI-compatible server. |
+| `results/` | Committed benchmark summary JSON artifacts. |
 | `outputs/` | Created at run time; holds predictions, judged records, judge summary, and `run_full_eval_state.json` (failure state for resume). |
 
 ## Prerequisites
@@ -71,35 +70,35 @@ CML uses [semchunk](https://github.com/isaacus-dev/semchunk) with a Hugging Face
 | `LLM_EVAL__API_KEY` | — | API key (optional for Ollama; server may use `OPENAI_API_KEY`) |
 | `OPENAI_API_KEY` | — | Required for LLM-as-judge; also used for `LLM_EVAL__API_KEY` when not set |
 
-## Run full evaluation
+## Run full evaluation (`cml-eval`)
 
-From the **project root**:
+Install evaluation extras (`pip install -e ".[eval]"`) and run from the **project root**:
 
 ```bash
-python evaluation/scripts/run_full_eval.py
+cml-eval run-full --repo-root .
 ```
 
-This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) eval_locomo_plus (ingest, consolidation + reconsolidation, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json` with the failed step and message (and, for step 4, the last completed sample index). Use **`--resume`** to continue from the failed step (and from the next sample for step 4); **`--resume` implies `--skip-docker`** (no need to pass both). Progress bars for each phase display even in subprocess or non-TTY environments (IDE terminals, Windows).
+This runs: (1) Docker down -v, (2) Docker up (postgres, neo4j, redis, api), (3) API health wait, (4) `run-locomo` (ingest, consolidation + reconsolidation, QA, judge), (5) performance table. After steps 3, 4, and 5 the pipeline validates outputs; if validation fails, the run stops and writes `evaluation/outputs/run_full_eval_state.json` with the failed step and message. Use **`--resume`** to continue from the failed step (`--resume` implies `--skip-docker`).
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
 | `--skip-docker` | Skip steps 1–3 (use when API is already running) |
-| `--resume` | Resume from last failure; implies `--skip-docker`. Resumes evaluation from the next sample if step 4 failed during QA. |
+| `--resume` | Resume from last failure; implies `--skip-docker`. |
 | `--limit-samples N` | Run only first N samples (for quick testing) |
 
 Examples:
 
 ```bash
 # API already running, quick 50-sample test
-python evaluation/scripts/run_full_eval.py --skip-docker --limit-samples 50
+cml-eval run-full --skip-docker --limit-samples 50
 
 # Full run without Docker steps
-python evaluation/scripts/run_full_eval.py --skip-docker
+cml-eval run-full --skip-docker
 
 # Resume after a failure (skips Docker, continues from failed step/sample)
-python evaluation/scripts/run_full_eval.py --resume
+cml-eval run-full --resume
 ```
 
 ### Output table
@@ -118,21 +117,13 @@ Between **Phase A** (ingestion) and **Phase B** (QA), the script runs **consolid
 
 When you need finer control (e.g. skip ingestion, skip consolidation, score-only, verbose):
 
-**Windows (PowerShell):**
-
-```powershell
-$env:PYTHONPATH = "evaluation\locomo_plus"
-python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json --out-dir evaluation/outputs
-```
-
-**Unix:**
-
 ```bash
-export PYTHONPATH=evaluation/locomo_plus
-python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json --out-dir evaluation/outputs
+cml-eval run-locomo \
+  --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
+  --out-dir evaluation/outputs
 ```
 
-### eval_locomo_plus.py options
+### `cml-eval run-locomo` options
 
 | Argument | Description |
 |----------|-------------|
@@ -154,10 +145,11 @@ python evaluation/scripts/eval_locomo_plus.py --unified-file evaluation/locomo_p
 | `locomo_plus_qa_cml_judged.json` | Judged records (judge_label, judge_reason, judge_score) |
 | `locomo_plus_qa_cml_judge_summary.json` | Aggregate by category (for report table) |
 
-### Generate report table
+### Generate report & comparison tables
 
 ```bash
-python evaluation/scripts/generate_locomo_report.py --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+gpt-4o-mini"
+cml-eval report --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+qwen3.8-27b"
+cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+qwen3.8-27b"
 ```
 
 Use `--method` to match your QA model (same as `LLM_EVAL__MODEL` from .env (or fallback `LLM_INTERNAL__MODEL`), e.g. `CML+gpt-4o-mini` or `CML+[REDACTED]`).

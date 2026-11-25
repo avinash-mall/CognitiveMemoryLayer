@@ -6,7 +6,6 @@ The tiktoken encoder is lazily initialised and reused across calls.
 """
 
 import asyncio
-import contextlib
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -25,12 +24,6 @@ class BufferedToken:
     timestamp: float  # Unix timestamp for fast comparison
     turn_id: str | None = None
     role: str | None = None  # "user", "assistant", "system"
-
-    # Backward-compat: expose a .token property returning an empty string
-    # (callers should use SensoryBuffer.get_text instead).
-    @property
-    def token(self) -> str:  # pragma: no cover - compat shim
-        return ""
 
 
 @dataclass
@@ -80,8 +73,6 @@ class SensoryBuffer:
         self.config = config or SensoryBufferConfig()
         self._tokens: deque[BufferedToken] = deque()
         self._lock = asyncio.Lock()
-        self._cleanup_task: asyncio.Task | None = None
-        self._last_activity: float = time.time()
 
     async def ingest(
         self,
@@ -107,7 +98,6 @@ class SensoryBuffer:
                     )
                 )
             self._cleanup(now)
-            self._last_activity = now
 
         return len(token_ids)
 
@@ -185,16 +175,3 @@ class SensoryBuffer:
     @property
     def is_empty(self) -> bool:
         return len(self._tokens) == 0
-
-    @property
-    def last_activity(self) -> float:
-        """Unix timestamp of last ingest activity."""
-        return self._last_activity
-
-    async def stop_cleanup_loop(self) -> None:
-        """Stop background cleanup task."""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._cleanup_task
-            self._cleanup_task = None

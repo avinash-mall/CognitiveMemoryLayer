@@ -162,7 +162,3 @@ class WorkingMemoryState:
         keep_older = self.max_chunks - recent_keep
         self.chunks = older_chunks[:keep_older] + recent_chunks
         self.chunks.sort(key=lambda c: c.timestamp)
-
-    def get_high_salience_chunks(self, min_salience: float = 0.5) -> list[SemanticChunk]:
-        """Get chunks above salience threshold."""
-        return [c for c in self.chunks if c.salience >= min_salience]

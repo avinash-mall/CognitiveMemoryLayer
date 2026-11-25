@@ -8,7 +8,6 @@ so downstream prompts never hallucinate fake day-of-month numbers on month/year 
 
 from __future__ import annotations
 
-import calendar
 import re
 from datetime import datetime, timedelta
 from typing import Any
@@ -361,20 +360,3 @@ def extract_event_info(
         if ref.get("granularity") != "vague":
             return ref
     return None
-
-
-def extract_event_date(
-    text: str,
-    session_date: datetime,
-) -> datetime | None:
-    """Extract the most likely non-vague event date from text."""
-    info = extract_event_info(text, session_date)
-    if info is not None:
-        return info["resolved_date"]
-    return None
-
-
-def month_end_date(dt: datetime) -> datetime:
-    """Return the final calendar day of ``dt``'s month."""
-    _, last_day = calendar.monthrange(dt.year, dt.month)
-    return dt.replace(day=last_day)

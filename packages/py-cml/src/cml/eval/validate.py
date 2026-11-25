@@ -171,14 +171,12 @@ def validate_outputs(outputs_dir: Path) -> list[str]:
     pred_file = outputs_dir / "locomo_plus_qa_cml_predictions.json"
     judged_file = outputs_dir / "locomo_plus_qa_cml_judged.json"
     summary_file = outputs_dir / "locomo_plus_qa_cml_judge_summary.json"
-    state_legacy = outputs_dir / "full_eval_state.json"
     state_current = outputs_dir / "run_full_eval_state.json"
 
     errors: list[str] = []
     errors.extend(validate_predictions(pred_file))
     errors.extend(validate_judged(judged_file, pred_file))
     errors.extend(validate_summary(summary_file, judged_file))
-    errors.extend(validate_state_file(state_legacy))
     errors.extend(validate_state_file(state_current))
     return errors
 

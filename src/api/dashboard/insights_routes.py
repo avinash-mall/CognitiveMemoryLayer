@@ -870,10 +870,13 @@ async def dashboard_evaluation_summary(
         if comparison_path.is_file():
             latest_report = comparison_path.read_text(encoding="utf-8")
 
+        import importlib.util
+
         readiness = {
             "evaluation_dir_present": evaluation_dir.is_dir(),
             "outputs_dir_present": outputs_dir.is_dir(),
-            "scripts_present": (evaluation_dir / "scripts" / "run_full_eval.py").is_file(),
+            "scripts_present": importlib.util.find_spec("cml.eval") is not None
+            or (evaluation_dir / "scripts" / "run_locomo_openrouter_batch.py").is_file(),
             "locomo_data_present": (
                 evaluation_dir / "locomo_plus" / "data" / "locomo10.json"
             ).is_file(),

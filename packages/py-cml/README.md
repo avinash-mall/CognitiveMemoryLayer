@@ -17,7 +17,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![Python](https://img.shields.io/pypi/pyversions/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Tests](https://img.shields.io/badge/Tests-252-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
+[![Tests](https://img.shields.io/badge/Tests-251-brightgreen?logo=pytest)](https://github.com/avinash-mall/CognitiveMemoryLayer/tree/main/packages/py-cml/tests)
 [![Version](https://img.shields.io/badge/version-3.0.0-blue)](https://github.com/avinash-mall/CognitiveMemoryLayer)
 
 **What's new (3.0.0 — Whole-Brain Architecture):**

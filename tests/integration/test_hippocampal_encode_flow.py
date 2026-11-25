@@ -22,8 +22,6 @@ def _make_store(session_factory):
     return HippocampalStore(
         vector_store=pg_store,
         embedding_client=embeddings,
-        entity_extractor=None,
-        relation_extractor=None,
         write_gate=WriteGate(),
         redactor=PIIRedactor(),
     )

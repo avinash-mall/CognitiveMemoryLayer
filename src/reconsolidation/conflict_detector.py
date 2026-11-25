@@ -149,16 +149,6 @@ class ConflictDetector:
             reasoning="No conflict model available",
         )
 
-    async def detect_batch(
-        self,
-        memories: list[MemoryRecord],
-        new_statement: str,
-    ) -> list[ConflictResult]:
-        """Detect conflicts against multiple memories."""
-        import asyncio
-
-        return await asyncio.gather(*[self.detect(mem, new_statement) for mem in memories])
-
     async def _llm_detect(
         self,
         old_statement: str,

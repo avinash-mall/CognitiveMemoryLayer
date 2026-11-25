@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import requests
 
-from evaluation.scripts.eval_locomo_plus import _cml_write
+from cml.eval.locomo import _cml_write
 
 
 def _wait_for_memory(

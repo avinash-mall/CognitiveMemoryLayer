@@ -70,23 +70,6 @@ _ROUTING_QUESTIONS = {
     },
 }
 
-_REALITY_QUESTIONS = {
-    "premise_supported": {
-        "type": "noul",
-        "instructions": (
-            "Does the retrieved_context contain direct evidence supporting the factual "
-            "premise and person-action attribution assumed by the query?"
-        ),
-    },
-    "speaker_swap_or_ungrounded": {
-        "type": "noul",
-        "instructions": (
-            "Does the query ask about an event never mentioned in retrieved_context OR "
-            "attribute an action to the wrong person?"
-        ),
-    },
-}
-
 
 @dataclass(frozen=True)
 class QueryRoutingDecision:
@@ -98,17 +81,6 @@ class QueryRoutingDecision:
     recommended_max_episodes: int
     confidence: float = 1.0
     source: str = "heuristic"
-
-
-@dataclass(frozen=True)
-class LayaGroundingVerdict:
-    """System 1 calibrated CA1 reality-monitoring verdict."""
-
-    is_ungrounded: bool = False
-    premise_supported_prob: float = 1.0
-    speaker_swap_prob: float = 0.0
-    reason: str = ""
-    used_laya: bool = False
 
 
 class LayaSystem1Engine:
@@ -282,77 +254,3 @@ class LayaSystem1Engine:
             confidence=0.75,
             source="heuristic",
         )
-
-    @classmethod
-    def verify_reality_grounding(
-        cls,
-        query: str,
-        memories: list[Any],
-        *,
-        is_cognitive_cue: bool = False,
-    ) -> LayaGroundingVerdict:
-        """Run calibrated Laya System 1 CA1 verification on query vs retrieved memories.
-
-        Skips empathetic/conversational Cognitive cues so we never emit false-premise
-        warnings on open-ended personal statements.
-        """
-        if is_cognitive_cue or not query or not memories:
-            return LayaGroundingVerdict()
-
-        q = query.strip()
-        if len(q) < 12 or _COGNITIVE_DIALOGUE_RE.match(q):
-            return LayaGroundingVerdict()
-
-        agent = cls.get_agent()
-        if agent is None:
-            return LayaGroundingVerdict()
-
-        # Build compact context from top retrieved records (up to ~1800 chars)
-        snippets: list[str] = []
-        total_len = 0
-        for mem in memories[:8]:
-            rec = getattr(mem, "record", mem)
-            txt = str(getattr(rec, "text", "") or "").strip()
-            if not txt:
-                continue
-            if total_len + len(txt) > 1800:
-                txt = txt[: max(0, 1800 - total_len)]
-            if txt:
-                snippets.append(txt)
-                total_len += len(txt)
-            if total_len >= 1800:
-                break
-
-        if not snippets:
-            return LayaGroundingVerdict()
-
-        try:
-            res = agent.system_one(
-                {"query": q, "retrieved_context": "\n".join(snippets)},
-                _REALITY_QUESTIONS,
-            )
-            ans = res.get("answers", {})
-            sup_p = float(ans.get("premise_supported", {}).get("noul", 1.0))
-            swap_p = float(ans.get("speaker_swap_or_ungrounded", {}).get("noul", 0.0))
-
-            # High-precision calibrated threshold:
-            # - Strong unsupported premise (sup_p < 0.10) OR
-            # - Unsupported premise + strong speaker-swap/ungrounded signal
-            if sup_p < 0.10 or (sup_p < 0.22 and swap_p >= 0.55):
-                reason = f"premise_supported={sup_p:.2f}, speaker_swap_or_ungrounded={swap_p:.2f}"
-                return LayaGroundingVerdict(
-                    is_ungrounded=True,
-                    premise_supported_prob=sup_p,
-                    speaker_swap_prob=swap_p,
-                    reason=reason,
-                    used_laya=True,
-                )
-            return LayaGroundingVerdict(
-                is_ungrounded=False,
-                premise_supported_prob=sup_p,
-                speaker_swap_prob=swap_p,
-                used_laya=True,
-            )
-        except Exception as exc:
-            logger.debug("laya_reality_monitor_error", error=str(exc))
-            return LayaGroundingVerdict()
