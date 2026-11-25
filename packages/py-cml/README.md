@@ -11,7 +11,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 - Power agent loops with retrieved context and store observations in memory.
 - Add memory to RAG pipelines so retrieval is informed by prior interactions.
 - Personalize by user or session with namespaces and session-scoped context.
-- Run benchmarks with eval mode and temporal fidelity (historical timestamps). For bulk evaluation, the server supports `LLM_INTERNAL__*` and the eval script supports `--ingestion-workers`; see [configuration](docs/configuration.md).
+- Run benchmarks with eval mode and temporal fidelity (historical timestamps). For bulk evaluation, the server supports `LLM_INTERNAL__*` and `cml-eval` supports `--ingestion-workers`; see [configuration](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/configuration.md).
 - Run embedded without a server for development, demos, or single-machine apps.
 
 [![PyPI](https://img.shields.io/pypi/v/cognitive-memory-layer)](https://pypi.org/project/cognitive-memory-layer/)
@@ -23,7 +23,7 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 **What's new (3.0.0 — Whole-Brain Architecture):**
 - **Full Embedded Neocortical & Hypergraph Parity:** `EmbeddedCognitiveMemoryLayer` now includes `SQLiteFactStore`, `SQLiteGraphStore`, SQLite `FTS5` Dentate Gyrus sparse BM25 search, and `<5ms` Bipartite Cortical Hypergraph Personalized PageRank — retiring `NoOpGraphStore` and `NoOpFactStore`.
 - **Windowed Micro-Sleep Consolidation (`consolidate_windowed()`):** Extracts coref-resolved semantic facts, N-ary Hyperedge Engrams, Grounded Proustian Cue Pointers (`cue -> verbatim episode`), Conway Tier-2 Chapter Gists, and Tier-3 Persistent DMN Conceptual-Self Profiles in 18-turn windows.
-- **New Non-Declarative, Counterfactual & Multimodal APIs:** Added `feedback()` (Basal Ganglia Procedural Skill Playbooks + VTA Dopaminergic Reward Prediction Error synaptic updates), `simulate()` (Hippocampal Forward Preplay / Counterfactual Simulation), LC-NE & ACh Neuromodulatory Gain Control, Granularity-Aware Hippocampal Time Cells, GPU Cross-Encoder reranking, and `media=` Perirhinal Multimodal Sensory Engrams on `write()` across sync, async, and embedded clients. See [CHANGELOG](CHANGELOG.md).
+- **New Non-Declarative, Counterfactual & Multimodal APIs:** Added `feedback()` (Basal Ganglia Procedural Skill Playbooks + VTA Dopaminergic Reward Prediction Error synaptic updates), `simulate()` (Hippocampal Forward Preplay / Counterfactual Simulation), LC-NE & ACh Neuromodulatory Gain Control, Granularity-Aware Hippocampal Time Cells, GPU Cross-Encoder reranking, and `media=` Perirhinal Multimodal Sensory Engrams on `write()` across sync, async, and embedded clients. See [CHANGELOG](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md).
 
 **Previous (2.1.0):** Full Neuro-Cognitive & ActiveCML SDK parity (`ReadResponse.intrinsic_injection`, embedded `warnings`/`sufficiency`/`retrieval_meta`), default `768`-dim embeddings, and `[laya]` optional extra.
 
@@ -124,13 +124,38 @@ with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as
 
 `SessionScope.write()`/`AsyncSessionScope.write()` call `/session/{session_id}/write`, and `SessionScope.read()`/`AsyncSessionScope.read()` call `/session/{session_id}/read`, so session wrappers stay path-scoped on both write and read.
 
+**Whole-Brain v3.0 operations** — Windowed consolidation, Dopaminergic RPE + Procedural Skill learning, Hippocampal Forward Preplay simulation, and Perirhinal multimodal attachments work identically on sync, async, and embedded clients:
+
+```python
+with CognitiveMemoryLayer(api_key="sk-...", base_url="http://localhost:8000") as memory:
+    # Perirhinal multimodal sensory engram on write
+    memory.write(
+        "Met Alex at the robotics lab whiteboard.",
+        media=[{"url": "https://example.com/whiteboard.png", "caption": "Sprint 4 architecture diagram"}],
+    )
+
+    # Windowed Micro-Sleep Consolidation (Hyperedges, Proustian Cues, Conway Gists, DMN Profile)
+    summary = memory.consolidate_windowed(max_episodes=500)
+
+    # Hippocampal Forward Preplay / Counterfactual Simulation before acting
+    sim = memory.simulate("Book a shellfish tasting menu for Alex's birthday")
+    print(sim.compatible, sim.risk_score, sim.violated_constraints)
+
+    # VTA Dopaminergic RPE & Basal Ganglia Procedural Skill learning
+    fb = memory.feedback(
+        outcome_reward=1.0,
+        query="deploy production service",
+        preferred_steps=["Run alembic upgrade head", "Verify /api/v1/health", "Switch traffic"],
+    )
+```
+
 **More usage:** Timezone-aware retrieval with `read(..., user_timezone="America/New_York")` or `turn(..., user_timezone="America/New_York")`. Batch operations: `batch_write([{"content": "..."}, ...])` and `batch_read(["query1", "query2"])` for multiple writes or reads.
 
 ---
 
 ## Configuration
 
-**Client:** Environment variables (use `.env` or set directly): `CML_API_KEY`, `CML_BASE_URL`, `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, `CML_VERIFY_SSL`. Use `CMLConfig` for validated, reusable config. See [Configuration](docs/configuration.md).
+**Client:** Environment variables (use `.env` or set directly): `CML_API_KEY`, `CML_BASE_URL`, `CML_TENANT_ID`, `CML_TIMEOUT`, `CML_MAX_RETRIES`, `CML_ADMIN_API_KEY`, `CML_VERIFY_SSL`. Use `CMLConfig` for validated, reusable config. See [Configuration](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/configuration.md).
 
 **Constructor:**
 
@@ -144,7 +169,7 @@ memory = CognitiveMemoryLayer(
 
 Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(config=config)`.
 
-**Embedded:** Use `EmbeddedConfig` (or constructor args). Options: `storage_mode` (`lite` | `standard` | `full`; only `lite` is implemented), `tenant_id`, `database`, `embedding`, `llm`, `auto_consolidate`, `auto_forget`. Embedding and LLM are read from `.env` when not set: `EMBEDDING_INTERNAL__PROVIDER`, `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS` (default `768`), `EMBEDDING_INTERNAL__BASE_URL`, `LLM_INTERNAL__PROVIDER`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`, `LLM_INTERNAL__API_KEY`, `LLM_INTERNAL__EXTRA_BODY`. Lite mode uses SQLite and local embeddings; pass `db_path` for a persistent database. Full details in [Configuration](docs/configuration.md).
+**Embedded:** Use `EmbeddedConfig` (or constructor args). Options: `storage_mode` (`lite` | `standard` | `full`; only `lite` is implemented), `tenant_id`, `database`, `embedding`, `llm`, `auto_consolidate`, `auto_forget`. Embedding and LLM are read from `.env` when not set: `EMBEDDING_INTERNAL__PROVIDER`, `EMBEDDING_INTERNAL__MODEL`, `EMBEDDING_INTERNAL__DIMENSIONS` (default `768`), `EMBEDDING_INTERNAL__BASE_URL`, `LLM_INTERNAL__PROVIDER`, `LLM_INTERNAL__MODEL`, `LLM_INTERNAL__BASE_URL`, `LLM_INTERNAL__API_KEY`, `LLM_INTERNAL__EXTRA_BODY`. Lite mode uses SQLite + FTS5 + local embeddings; pass `db_path` for a persistent database. Full details in [Configuration](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/configuration.md).
 
 ---
 
@@ -153,13 +178,13 @@ Or pass a config object: `from cml import CMLConfig` then `CognitiveMemoryLayer(
 | Mode | Description |
 |------|-------------|
 | **Client** | Sync and async HTTP clients for a running CML server; context managers |
-| **Embedded** | In-process engine (lite mode: SQLite + local embeddings); no server. Embedded `read()` passes `memory_types`, `since`, and `until` to the orchestrator. |
+| **Embedded** | In-process Whole-Brain engine (SQLite + FTS5 + local embeddings + `SQLiteFactStore`/`SQLiteGraphStore`/Hypergraph PPR); no server. Embedded `read()` forwards `memory_types`, `since`, and `until` across all retrieval pathways. |
 
-**Memory API:** `write`, `read`, `read_stream`, `read_safe`, `turn`, `update`, `forget`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`, `remember` (alias for write), `search` (alias for read), `health`. Options: `user_timezone` on `read()`, `get_context()`, `search()`, and `turn()` for timezone-aware "today"/"yesterday"; `timestamp` on `write()`, `turn()`, and `remember()` for event time; `eval_mode` on `write()`/`remember()` for benchmark responses. Write supports `context_tags`, `session_id`, `memory_type`, `namespace`, `metadata`, `agent_id`. Read supports `memory_types`, `since`, `until`, `response_format` (`packet` | `list` | `llm_context`).
+**Memory API:** `write`, `read`, `read_stream`, `read_safe`, `turn`, `update`, `forget`, `consolidate_windowed`, `feedback`, `simulate`, `stats`, `get_context`, `create_session`, `get_session_context`, `delete_all`, `remember` (alias for write), `search` (alias for read), `health`. Options: `user_timezone` on `read()`, `get_context()`, `search()`, and `turn()` for timezone-aware "today"/"yesterday"; `timestamp` on `write()`, `turn()`, and `remember()` for event time; `eval_mode` on `write()`/`remember()` for benchmark responses; `media` on `write()` for Perirhinal multimodal attachments. Write supports `context_tags`, `session_id`, `memory_type`, `namespace`, `metadata`, `agent_id`, `media`. Read supports `memory_types`, `since`, `until`, `response_format` (`packet` | `list` | `llm_context`).
 
 **Response shape:** `ReadResponse` has `memories`, `facts`, `preferences`, `episodes`, `constraints`, `warnings`, `open_questions`, `sufficiency`, `retrieval_meta`, `intrinsic_injection` (convenience property for ActiveCML payloads), and `context` (formatted string for LLM injection).
 
-**Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata` and `memory_type`, and session-scoped context. Read filters and `user_timezone` are sent when the server supports them. The server can use LLM-based extraction (constraints, facts, salience, importance) when `FEATURES__USE_LLM_*` flags are enabled; see [Usage Documentation](../../docs/usage.md) § Configuration Reference.
+**Server compatibility:** The server supports `delete_all` (admin API key), read filters and `user_timezone`, response formats, write `metadata`, `memory_type`, and `media`, Whole-Brain v3.0 endpoints (`consolidate_windowed`, `feedback`, `simulate`), and session-scoped context. LLM-based extraction and consolidation are controlled by `FEATURES__USE_LLM_ENABLED`; see [Usage Documentation](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/docs/usage.md).
 
 **Session and namespace:** `memory.session(name=...)` (SessionScope) scopes writes/reads/turns to a session via session-scoped routes. `with_namespace(namespace)` returns a `NamespacedClient` (and async `AsyncNamespacedClient`) that injects namespace into write, update, and batch_write, and forwards `user_timezone`/`timestamp` on read/turn helpers.
 
@@ -179,27 +204,27 @@ helper = CMLOpenAIHelper(memory, OpenAI())
 response = helper.chat("What should I eat tonight?", session_id="s1")
 ```
 
-**Developer:** `read_safe` (returns empty on connection/timeout), `memory.session(name=...)`, `configure_logging("DEBUG")`, typed models (`py.typed`). Typed exceptions: `AuthenticationError`, `AuthorizationError`, `ValidationError`, `RateLimitError`, `NotFoundError`, `ServerError`, `CMLConnectionError`, `CMLTimeoutError`. See [API Reference](docs/api-reference.md).
+**Developer:** `read_safe` (returns empty on connection/timeout), `memory.session(name=...)`, `configure_logging("DEBUG")`, typed models (`py.typed`). Typed exceptions: `AuthenticationError`, `AuthorizationError`, `ValidationError`, `RateLimitError`, `NotFoundError`, `ServerError`, `CMLConnectionError`, `CMLTimeoutError`. See [API Reference](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/api-reference.md).
 
-**Temporal fidelity:** Optional `timestamp` in `write()`, `turn()`, and `remember()` enables historical data replay for benchmarks, migration, and testing. See [Temporal Fidelity](docs/temporal-fidelity.md).
+**Temporal fidelity:** Optional `timestamp` in `write()`, `turn()`, and `remember()` enables historical data replay for benchmarks, migration, and testing. See [Temporal Fidelity](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/temporal-fidelity.md).
 
-**Eval mode:** `eval_mode=True` in `write()` or `remember()` returns `eval_outcome` and `eval_reason` (stored/skipped and write-gate reason) for benchmark scripts. See [API Reference — Eval mode](docs/api-reference.md#eval-mode-write-gate).
+**Eval mode:** `eval_mode=True` in `write()` or `remember()` returns `eval_outcome` and `eval_reason` (stored/skipped and write-gate reason) for benchmark scripts. See [API Reference — Eval mode](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/api-reference.md#eval-mode-write-gate).
 
 ---
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
-- [API Reference](docs/api-reference.md)
-- [Configuration](docs/configuration.md)
-- [Examples](docs/examples.md)
-- [Temporal Fidelity](docs/temporal-fidelity.md)
-- [Evaluation Module](docs/evaluation.md) — `cml-eval` CLI and Python API
-- [Security policy](../../SECURITY.md)
+- [Getting Started](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/getting-started.md)
+- [API Reference](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/api-reference.md)
+- [Configuration](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/configuration.md)
+- [Examples](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/examples.md)
+- [Temporal Fidelity](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/temporal-fidelity.md)
+- [Evaluation Module](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/evaluation.md) — `cml-eval` CLI and Python API
+- [Security policy](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/SECURITY.md)
 
 [GitHub repository](https://github.com/avinash-mall/CognitiveMemoryLayer) — source, issues, server setup
 
-[CHANGELOG](CHANGELOG.md)
+[CHANGELOG](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/CHANGELOG.md)
 
 ---
 
@@ -224,13 +249,13 @@ pytest packages/py-cml/tests/embedded -v
 pytest packages/py-cml/tests/e2e -v
 ```
 
-Some integration, embedded, and e2e tests skip when the CML server or embedding model is unavailable. See the root [tests/README.md](../../tests/README.md) for skipped-test details.
+Some integration, embedded, and e2e tests skip when the CML server or embedding model is unavailable. See the root [tests/README.md](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/tests/README.md) for skipped-test details.
 
 ---
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+GPL-3.0-or-later. See [LICENSE](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/LICENSE).
 
 
 ---
@@ -262,4 +287,4 @@ cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.j
 from cml.eval import LocomoEvalConfig, run_locomo_plus
 ```
 
-See [Evaluation Module](docs/evaluation.md) for full CLI flags, Python API reference, and dataclass field documentation.
+See [Evaluation Module](https://github.com/avinash-mall/CognitiveMemoryLayer/blob/main/packages/py-cml/docs/evaluation.md) for full CLI flags, Python API reference, and dataclass field documentation.

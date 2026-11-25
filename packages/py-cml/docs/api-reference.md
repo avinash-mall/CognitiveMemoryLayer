@@ -22,19 +22,22 @@ Set `CML_API_KEY` in `.env` or pass it directly. Use `with CognitiveMemoryLayer(
 
 ### Methods
 
-- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False)** → `WriteResponse` — Store new memory. Server enforces content length 1–100,000 characters. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. When omitted and `FEATURES__USE_LLM_MEMORY_TYPE` is true (server default), the LLM classifies the type in the unified extraction call. Optional `timestamp` (datetime) for event time; defaults to now. When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason)—useful for benchmark scripts to aggregate gating statistics. Server-side: ~1 internal LLM call per chunk (default settings).
+- **write(content, \*, context_tags, session_id, memory_type, namespace, metadata, turn_id, agent_id, timestamp, eval_mode=False, media=None)** → `WriteResponse` — Store new memory. Server enforces content length 1–100,000 characters. Request `metadata` is merged into the stored record; optional `memory_type` overrides automatic classification. When omitted and `FEATURES__USE_LLM_ENABLED` is true (server default), the LLM classifies the type in the unified extraction call. Optional `timestamp` (datetime) for event time; defaults to now. Optional `media` accepts a list of Perirhinal multimodal sensory attachments (`url`/`path`/`base64`/`caption`). When **eval_mode=True**, the client sends `X-Eval-Mode: true` and the response includes `eval_outcome` ("stored"|"skipped") and `eval_reason` (write-gate reason). Server-side: ~1 internal LLM call per chunk (default settings).
 - **read(query, \*, max_results, context_filter, memory_types, since, until, response_format="packet", user_timezone)** → `ReadResponse` — Search for memories. Optional timezone string e.g. `"America/New_York"` for "today" filters.
 - **read_stream(query, \*, max_results, context_filter, memory_types, since, until, user_timezone)** → `Iterator[MemoryItem]` (Async: `AsyncIterator[MemoryItem]`) — Stream memories via Server-Sent Events (SSE). Useful for progressive UI rendering.
 - **read_safe(...)** → `ReadResponse` — Wraps `read()` but returns an empty response object instead of raising `ConnectionError` or `TimeoutError`. Use for non-critical injections.
 - **turn(user_message, \*, assistant_response, session_id, max_context_tokens=1500, timestamp, user_timezone=None)** → `TurnResponse` — Process a turn; retrieve context and optionally store exchange. Optional `timestamp` (datetime) for event time; defaults to now. Optional `user_timezone` for retrieval "today"/"yesterday" (e.g. `"America/New_York"`). Server-side: ~5–10 internal LLM calls (retrieve + 2 writes + reconsolidation). See [Configuration](configuration.md) for breakdown.
 - **update(memory_id, \*, text, confidence, importance, metadata, feedback)** → `UpdateResponse` — Update an existing memory.
 - **forget(\*, memory_ids, query, before, action="delete")** → `ForgetResponse` — Forget memories. At least one of memory_ids, query, before required.
+- **consolidate_windowed(\*, session_id=None, max_episodes=2000, use_llm=None)** → `WindowConsolidateResponse` — Run Windowed Micro-Sleep Consolidation (Hyperedge Engrams, Grounded Proustian Cue Pointers, Conway Tier-2 Chapter Gists, and Tier-3 Persistent DMN Self-Profiles).
+- **feedback(outcome_reward, \*, expected_reward=0.5, query=None, memory_ids=None, correction_text=None, preferred_steps=None, session_id=None)** → `FeedbackResponse` — Submit VTA Dopaminergic Reward Prediction Error (RPE) feedback to adjust synaptic weights, mark conflicting memories `labile`, and compile Basal Ganglia Procedural Skill playbooks.
+- **simulate(scenario, \*, max_results=12, context_filter=None)** → `SimulateResponse` — Execute Hippocampal Forward Preplay / Counterfactual Simulation against stored constraints, DMN self-profiles, and procedural pitfalls.
 - **stats()** → `StatsResponse` — Memory statistics.
 - **health()** → `HealthResponse` — Server health check.
 - **get_context(query, \*, max_results=10, context_filter, memory_types, since, until, user_timezone)** → `str` — Formatted LLM context string.
 - **create_session(\*, name, ttl_hours=24, metadata)** → `SessionResponse`
 - **get_session_context(session_id)** → `SessionContextResponse` — Session context is scoped to memories with that `session_id` when provided.
-- **session(\*, name, ttl_hours=24, metadata)** → context manager yielding `SessionScope`/`AsyncSessionScope` — session wrapper methods inject `session_id`; `SessionScope.write()` uses `/session/{session_id}/write` and `SessionScope.read()` uses `/session/{session_id}/read` for session-scoped behavior. (Server currently marks the session read route as deprecated but still supported.)
+- **session(\*, name, ttl_hours=24, metadata)** → context manager yielding `SessionScope`/`AsyncSessionScope` — session wrapper methods inject `session_id`; `SessionScope.write()` uses `/session/{session_id}/write` and `SessionScope.read()` uses `/session/{session_id}/read` for session-scoped behavior.
 - **delete_all(\*, confirm=False)** → `int` — Delete all memories; requires confirm=True. Requires admin API key. Server implements DELETE /api/v1/memory/all.
 - **remember(content, \*\*kwargs)** — Alias for write. Also accepts `timestamp` and `eval_mode` parameters.
 - **search(query, \*\*kwargs)** — Alias for read.
@@ -127,7 +130,7 @@ Same methods as sync client, all async. Use `async with AsyncCognitiveMemoryLaye
 
 ## EmbeddedCognitiveMemoryLayer
 
-Same API as async client. Use `async with EmbeddedCognitiveMemoryLayer()` or pass `db_path` for persistence. Only lite mode (SQLite + local embeddings) is implemented.
+Same API as async client (including `consolidate_windowed`, `feedback`, `simulate`, and `media=` on `write`). Use `async with EmbeddedCognitiveMemoryLayer()` or pass `db_path` for persistence. Backed by SQLite + `FTS5` BM25 + `SQLiteFactStore` + `SQLiteGraphStore` + Bipartite Cortical Hypergraph PPR.
 
 ## Models
 
@@ -135,9 +138,10 @@ Same API as async client. Use `async with EmbeddedCognitiveMemoryLayer()` or pas
 - **MemoryStatus** — ACTIVE, SILENT, COMPRESSED, ARCHIVED, DELETED
 - **MemoryItem** — id, text, type, confidence, relevance, timestamp, metadata
 - **WriteResponse** — success, memory_id, chunks_created, message; when eval_mode was used, optional eval_outcome ("stored"|"skipped") and eval_reason.
-- **ReadResponse** — context, memories; when format is "packet": categorized into `facts`, `preferences`, `episodes`, and `constraints` (list of `MemoryItem`, default empty). The `constraints` field contains cognitive constraints (goals, values, policies, states, causal rules) extracted and stored by the server when `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` is true.
+- **ReadResponse** — `context`, `memories`, `facts`, `preferences`, `episodes`, `constraints`, `warnings`, `open_questions`, `sufficiency`, `retrieval_meta`, and `intrinsic_injection` (ActiveCML convenience property).
+- **WindowConsolidateResponse, FeedbackResponse, SimulateResponse** — typed Whole-Brain v3.0 responses.
 - **DashboardFactItem / DashboardFactListResponse** — typed semantic fact responses used by `dashboard_facts()`.
-- **TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in cml.models.
+- **TurnResponse, UpdateResponse, ForgetResponse, StatsResponse, HealthResponse, SessionResponse, SessionContextResponse** — See docstrings in `cml.models`.
 
 ## Exceptions
 
