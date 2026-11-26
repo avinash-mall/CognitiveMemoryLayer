@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.1] — 2026-11-26
+
+### Added
+
+- **Embedded Client Parity (`py-cml` `3.0.1`)** — added `consolidate()`, `run_forgetting()`, `batch_write()`, and `batch_read()` to `EmbeddedCognitiveMemoryLayer`.
+
+### Fixed
+
+- **Forget Reliability (`src/memory/orchestrator.py`)** — normalized timezone-aware and naive datetimes with `naive_utc()` in `forget(before=...)`, routed `action="archive"` and `action="silence"` to set `archived`/`silent` statuses instead of `deleted`, and switched `forget(query=...)` to direct `vector_search(..., min_similarity=0.55)` so unrelated memories are never accidentally deleted.
+- **Retrieval Filter Enforcement (`src/retrieval/memory_retriever.py`)** — enforced explicit caller `memory_types`, `since`, and `until` filters across all merged retrieval pathways before reranking.
+- **`py-cml` SDK & Embedded Fixes (`packages/py-cml`)** — scoped `iter_memories()` to the client's `tenant_id` by default, unified client-side validation under `cml.ValidationError` (`CMLError` + `ValueError`), fixed `EmbeddedDatabaseConfig(database_url=...)` and `EmbeddedEmbeddingConfig(provider=..., dimensions=...)` precedence, translated `MemoryNotFoundError` to `cml.NotFoundError` in embedded `update()`, auto-discovered the monorepo root in editable installs, and avoided redundant local embedding model reloads on `initialize()`.
+
 ## [3.0.0] — 2026-11-25
 
 ### Added

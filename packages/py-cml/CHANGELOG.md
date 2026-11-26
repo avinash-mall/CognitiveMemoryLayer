@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] — 2026-11-26
+
+### Added
+
+- **Embedded Client Parity** (`EmbeddedCognitiveMemoryLayer`): added `consolidate()`, `run_forgetting()`, `batch_write()`, and `batch_read()` to match `AsyncCognitiveMemoryLayer`.
+
+### Fixed
+
+- **Tenant-Scoped `iter_memories()`** (`CognitiveMemoryLayer`, `AsyncCognitiveMemoryLayer`): scoped pagination to `self._config.tenant_id` by default, with an optional `tenant_id` override (pass `tenant_id=""` for all tenants).
+- **Client-Side Validation Error Hierarchy** (`cml.exceptions`, `cml._endpoints`): made `ValidationError` inherit from both `CMLError` and `ValueError`, and wrapped client-side Pydantic and helper validation errors in `cml.ValidationError`.
+- **Embedded Mode Reliability & Performance** (`cml._embedded_engine`, `cml.embedded`, `cml.embedded_config`):
+  - Auto-discovered the monorepo root in editable installs so embedded mode and examples run without setting `PYTHONPATH`.
+  - Enabled `ConfigDict(populate_by_name=True)` on `EmbeddedDatabaseConfig` so explicit `database_url=...` is no longer silently ignored in favor of the legacy `postgres_url` alias.
+  - Fixed `EmbeddedEmbeddingConfig.from_env` so explicit `provider` and `dimensions` are not overwritten by environment variables.
+  - Translated engine `MemoryNotFoundError` / `MemoryAccessDenied` to `cml.NotFoundError` in `EmbeddedCognitiveMemoryLayer.update()`.
+  - Reused the cached local embedding client across identical `EmbeddedCognitiveMemoryLayer` configs instead of reloading the model on every `initialize()`.
+- **Eval CLI Default Method Label** (`cml.eval.cli`, `cml.eval.compare`): changed `cml-eval compare`'s default `--method` from `"CML+gpt-oss:20b"` to `"CML"`.
+
 ## [3.0.0] — 2026-11-25
 
 ### Added
