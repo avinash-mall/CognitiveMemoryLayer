@@ -455,3 +455,34 @@ def test_embedded_database_config_accepts_database_url_and_alias() -> None:
 
     cfg_by_alias = EmbeddedDatabaseConfig(postgres_url="sqlite+aiosqlite:///legacy.db")
     assert cfg_by_alias.database_url == "sqlite+aiosqlite:///legacy.db"
+
+
+def test_embedded_embedding_config_respects_explicit_provider_and_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit provider/dimensions on EmbeddedEmbeddingConfig must not be overwritten by env."""
+    from cml.embedded_config import EmbeddedEmbeddingConfig
+
+    monkeypatch.setenv("EMBEDDING_INTERNAL__PROVIDER", "local")
+    monkeypatch.setenv("EMBEDDING_INTERNAL__DIMENSIONS", "768")
+
+    cfg = EmbeddedEmbeddingConfig(provider="mock", dimensions=384)
+    assert cfg.provider == "mock"
+    assert cfg.dimensions == 384
+
+
+@pytest.mark.asyncio
+async def test_embedded_update_translates_memory_not_found_to_cml_not_found() -> None:
+    """EmbeddedCognitiveMemoryLayer.update() translates engine MemoryNotFoundError to cml.NotFoundError."""
+    from cml.exceptions import NotFoundError
+    from src.core.exceptions import MemoryNotFoundError
+
+    client = EmbeddedCognitiveMemoryLayer(tenant_id="t1")
+    client._initialized = True
+    orch = MagicMock()
+    missing_id = uuid4()
+    orch.update = AsyncMock(side_effect=MemoryNotFoundError(missing_id))
+    client._orchestrator = orch
+
+    with pytest.raises(NotFoundError):
+        await client.update(missing_id, text="updated")

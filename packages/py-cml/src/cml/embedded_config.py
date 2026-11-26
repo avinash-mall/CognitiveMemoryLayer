@@ -66,7 +66,11 @@ class EmbeddedEmbeddingConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         prov = _env("EMBEDDING_INTERNAL__PROVIDER")
-        if prov and prov in ("openai", "local", "openai_compatible", "vllm", "ollama", "mock"):
+        if (
+            not data.get("provider")
+            and prov
+            and prov in ("openai", "local", "openai_compatible", "vllm", "ollama", "mock")
+        ):
             data = {**data, "provider": prov}
         if (not data.get("model") or data.get("model") == "") and _env("EMBEDDING_INTERNAL__MODEL"):
             data = {**data, "model": _env("EMBEDDING_INTERNAL__MODEL")}
@@ -77,7 +81,7 @@ class EmbeddedEmbeddingConfig(BaseModel):
         if data.get("base_url") is None and _env("EMBEDDING_INTERNAL__BASE_URL"):
             data = {**data, "base_url": _env("EMBEDDING_INTERNAL__BASE_URL")}
         dims = _env_int("EMBEDDING_INTERNAL__DIMENSIONS")
-        if dims > 0:
+        if "dimensions" not in data and dims > 0:
             data = {**data, "dimensions": dims}
         return data
 

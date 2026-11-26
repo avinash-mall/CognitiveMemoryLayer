@@ -85,3 +85,32 @@ async def test_forget_silence_sets_silent_status() -> None:
     assert res["affected_count"] == 1
     store.update.assert_awaited_once_with(mid, {"status": "silent"}, increment_version=False)
     store.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_forget_query_uses_vector_search_min_similarity() -> None:
+    """forget(query=...) uses direct vector_search with min_similarity instead of wiping unrelated memories."""
+    match_id = uuid4()
+    matched_rec = SimpleNamespace(id=match_id, tenant_id="t1", timestamp=datetime(2025, 1, 1))
+    other_tenant_rec = SimpleNamespace(
+        id=uuid4(), tenant_id="other", timestamp=datetime(2025, 1, 1)
+    )
+
+    store = MagicMock()
+    store.vector_search = AsyncMock(return_value=[matched_rec, other_tenant_rec])
+    store.delete = AsyncMock()
+    embeddings = MagicMock()
+    embeddings.embed = AsyncMock(return_value=SimpleNamespace(embedding=[0.1] * 8))
+
+    orch = MemoryOrchestrator.__new__(MemoryOrchestrator)
+    orch.hippocampal = SimpleNamespace(store=store, embeddings=embeddings)
+    orch.retriever = MagicMock()
+    orch.retriever.retrieve = AsyncMock()
+
+    res = await orch.forget(tenant_id="t1", query="obsolete fax machine", action="delete")
+
+    assert res["affected_count"] == 1
+    store.vector_search.assert_awaited_once()
+    assert store.vector_search.await_args.kwargs["min_similarity"] == 0.55
+    store.delete.assert_awaited_once_with(match_id, hard=True)
+    orch.retriever.retrieve.assert_not_awaited()

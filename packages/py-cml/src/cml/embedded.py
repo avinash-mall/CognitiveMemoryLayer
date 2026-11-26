@@ -11,7 +11,7 @@ from uuid import UUID
 from cml import _endpoints as ep
 from cml._embedded_engine import ensure_engine_available
 from cml.embedded_config import EmbeddedConfig
-from cml.exceptions import ValidationError
+from cml.exceptions import NotFoundError, ValidationError
 from cml.models import (
     ForgetResponse,
     MemoryItem,
@@ -28,6 +28,7 @@ from cml.utils.logging import logger
 
 CONSOLIDATION_INTERVAL_SEC = 24 * 3600  # 24 hours
 FORGETTING_INTERVAL_SEC = 24 * 3600  # 24 hours
+_LAST_EMBEDDING_KEY: tuple[tuple[str, str | None], ...] | None = None
 
 
 async def _consolidation_loop(orchestrator: Any, tenant_id: str) -> None:
@@ -221,6 +222,8 @@ class EmbeddedCognitiveMemoryLayer:
             "EMBEDDING_INTERNAL__API_KEY": self._config.embedding.api_key,
             "EMBEDDING_INTERNAL__BASE_URL": self._config.embedding.base_url,
         }
+        global _LAST_EMBEDDING_KEY
+        embedding_key = tuple(sorted(embedding_overrides.items()))
         try:
             for key, value in embedding_overrides.items():
                 if value in (None, ""):
@@ -229,7 +232,9 @@ class EmbeddedCognitiveMemoryLayer:
                     os.environ[key] = str(value)
             if hasattr(get_engine_settings, "cache_clear"):
                 get_engine_settings.cache_clear()
-            clear_embedding_client_cache()
+            if embedding_key != _LAST_EMBEDDING_KEY:
+                clear_embedding_client_cache()
+                _LAST_EMBEDDING_KEY = embedding_key
             from src.utils.embeddings import get_embedding_client
 
             embedding_client = get_embedding_client()
@@ -454,15 +459,20 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> UpdateResponse:
         """Update an existing memory."""
         self._ensure_initialized()
-        result = await self._orchestrator.update(
-            tenant_id=self._config.tenant_id,
-            memory_id=memory_id,
-            text=text,
-            confidence=confidence,
-            importance=importance,
-            metadata=metadata,
-            feedback=feedback,
-        )
+        from src.core.exceptions import MemoryAccessDenied, MemoryNotFoundError
+
+        try:
+            result = await self._orchestrator.update(
+                tenant_id=self._config.tenant_id,
+                memory_id=memory_id,
+                text=text,
+                confidence=confidence,
+                importance=importance,
+                metadata=metadata,
+                feedback=feedback,
+            )
+        except (MemoryNotFoundError, MemoryAccessDenied) as exc:
+            raise NotFoundError(str(exc)) from exc
         return UpdateResponse(
             success=True,
             memory_id=memory_id,

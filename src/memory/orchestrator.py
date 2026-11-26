@@ -653,15 +653,33 @@ class MemoryOrchestrator(WritePipelineMixin):
                 if owns(record):
                     target_ids.add(record.id)
 
-        # Collect IDs from query-based search (batch fetch)
+        # Collect IDs from query-based search using direct vector similarity so
+        # forget(query=...) only deletes genuine matches and never wipes unrelated
+        # memories promoted by retrieval RRF floors or constraint injection.
         if query:
-            packet = await self.retriever.retrieve(tenant_id, query=query, max_results=100)
-            ids_from_query = [mem.record.id for mem in packet.all_memories]
-            if ids_from_query:
-                records = await self.hippocampal.store.get_by_ids_batch(ids_from_query)
-                for record in records:
+            embeddings = getattr(self.hippocampal, "embeddings", None)
+            if embeddings is not None and hasattr(self.hippocampal.store, "vector_search"):
+                emb_result = await embeddings.embed(query)
+                matched = await self.hippocampal.store.vector_search(
+                    tenant_id,
+                    emb_result.embedding,
+                    top_k=100,
+                    filters={"status": MemoryStatus.ACTIVE.value},
+                    min_similarity=0.55,
+                )
+                for record in matched:
                     if owns(record):
                         target_ids.add(record.id)
+            else:
+                packet = await self.retriever.retrieve(tenant_id, query=query, max_results=100)
+                ids_from_query = [
+                    mem.record.id for mem in packet.all_memories if mem.relevance_score >= 0.85
+                ]
+                if ids_from_query:
+                    records = await self.hippocampal.store.get_by_ids_batch(ids_from_query)
+                    for record in records:
+                        if owns(record):
+                            target_ids.add(record.id)
 
         # Collect IDs by time filter (cursor-based pagination)
         if before:
