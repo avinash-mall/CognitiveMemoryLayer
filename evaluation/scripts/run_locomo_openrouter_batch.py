@@ -168,6 +168,7 @@ def _run_openrouter_sync(
     *,
     workers: int = 24,
     checkpoint_file: Path | None = None,
+    stats_out: dict | None = None,
     label: str = "sync",
     base_url: str = "https://openrouter.ai/api/v1",
 ) -> dict[str, str]:
@@ -195,8 +196,9 @@ def _run_openrouter_sync(
     done_count = len(all_outputs)
     total_prompt_tokens = 0
     total_completion_tokens = 0
+    total_cost_usd = 0.0
 
-    def _call_one(req_item: dict) -> tuple[str, str, int, int]:
+    def _call_one(req_item: dict) -> tuple[str, str, int, int, float]:
         cid = str(req_item["custom_id"])
         body = dict(req_item["body"])
         body["model"] = model
@@ -215,13 +217,19 @@ def _run_openrouter_sync(
                     str(content),
                     int(usage.get("prompt_tokens") or 0),
                     int(usage.get("completion_tokens") or 0),
+                    float(usage.get("cost") or 0.0),
                 )
             except urllib.error.HTTPError as exc:
                 err_body = exc.read().decode("utf-8", errors="replace")
                 last_err = RuntimeError(f"HTTP {exc.code}: {err_body[:300]}")
-                if exc.code in (429, 500, 502, 503, 504) or (
-                    exc.code == 402 and "in_flight_budget_exhausted" in err_body
-                ):
+                if exc.code == 402:
+                    cur_mt = int(body.get("max_tokens") or 200)
+                    if cur_mt > 80:
+                        body["max_tokens"] = max(80, cur_mt // 2)
+                    if "in_flight_budget_exhausted" in err_body or cur_mt > 80 or attempt < 4:
+                        time.sleep(min(25, 2.0 * (2**attempt)))
+                        continue
+                if exc.code in (429, 500, 502, 503, 504):
                     time.sleep(min(30, 2.0 * (2**attempt)))
                     continue
                 raise last_err from exc
@@ -233,30 +241,42 @@ def _run_openrouter_sync(
     def _save_ckpt() -> None:
         if checkpoint_file is not None:
             try:
-                checkpoint_file.write_text(
-                    json.dumps(all_outputs, ensure_ascii=False), encoding="utf-8"
-                )
+                tmp_path = checkpoint_file.with_suffix(checkpoint_file.suffix + ".tmp")
+                tmp_path.write_text(json.dumps(all_outputs, ensure_ascii=False), encoding="utf-8")
+                os.replace(tmp_path, checkpoint_file)
             except OSError:
                 pass
 
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futures = [ex.submit(_call_one, r) for r in pending]
-        for fut in as_completed(futures):
-            cid, content, pt, ct = fut.result()
-            with lock:
-                all_outputs[cid] = content
-                done_count += 1
-                total_prompt_tokens += pt
-                total_completion_tokens += ct
-                if done_count % 100 == 0 or done_count == total:
-                    print(
-                        f"[{label}] progress: {done_count}/{total} "
-                        f"(prompt_tok={total_prompt_tokens:,} comp_tok={total_completion_tokens:,})",
-                        flush=True,
-                    )
-                    _save_ckpt()
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = [ex.submit(_call_one, r) for r in pending]
+            for fut in as_completed(futures):
+                cid, content, pt, ct, cost = fut.result()
+                with lock:
+                    if content:
+                        all_outputs[cid] = content
+                    done_count += 1
+                    total_prompt_tokens += pt
+                    total_completion_tokens += ct
+                    total_cost_usd += cost
+                    if done_count % 25 == 0 or done_count == total:
+                        _save_ckpt()
+                    if done_count % 100 == 0 or done_count == total:
+                        print(
+                            f"[{label}] progress: {done_count}/{total} "
+                            f"(prompt_tok={total_prompt_tokens:,} comp_tok={total_completion_tokens:,} "
+                            f"cost=${total_cost_usd:.4f})",
+                            flush=True,
+                        )
+    finally:
+        _save_ckpt()
+        if stats_out is not None:
+            stats_out["prompt_tokens"] = stats_out.get("prompt_tokens", 0) + total_prompt_tokens
+            stats_out["completion_tokens"] = (
+                stats_out.get("completion_tokens", 0) + total_completion_tokens
+            )
+            stats_out["cost_usd"] = stats_out.get("cost_usd", 0.0) + total_cost_usd
 
-    _save_ckpt()
     return all_outputs
 
 
@@ -269,6 +289,7 @@ def _run_requests(
     chunk_size: int,
     sync_workers: int,
     checkpoint_file: Path | None,
+    stats_out: dict | None = None,
     label: str,
     base_url: str = "https://openrouter.ai/api/v1",
 ) -> dict[str, str]:
@@ -287,6 +308,7 @@ def _run_requests(
         requests_list,
         workers=sync_workers,
         checkpoint_file=checkpoint_file,
+        stats_out=stats_out,
         label=label,
         base_url=base_url,
     )
@@ -339,6 +361,23 @@ def main() -> None:
     )
     parser.add_argument("--chunk-size", type=int, default=350)
     parser.add_argument("--poll-interval", type=int, default=20)
+    parser.add_argument(
+        "--qa-max-tokens",
+        type=int,
+        default=512,
+        help="max_tokens for Phase B QA calls (lower reduces OpenRouter pre-auth hold)",
+    )
+    parser.add_argument(
+        "--judge-max-tokens",
+        type=int,
+        default=384,
+        help="max_tokens for Phase C Judge calls",
+    )
+    parser.add_argument(
+        "--reuse-contexts-from",
+        default="",
+        help="Optional path to existing predictions JSON to reuse retrieved_context by orig_index",
+    )
     args = parser.parse_args()
     judge_model = args.judge_model or args.model
 
@@ -468,25 +507,59 @@ def main() -> None:
         print("[Phase A] --ingest-only complete; exiting cleanly before Phase B.", flush=True)
         return
 
+    usage_file = out_dir / "usage_stats.json"
+    usage_stats: dict = {"qa": {}, "judge": {}}
+    if usage_file.exists():
+        try:
+            usage_stats = json.loads(usage_file.read_text(encoding="utf-8"))
+        except Exception:
+            usage_stats = {"qa": {}, "judge": {}}
+
     # Phase B: Fetch CML contexts locally & submit QA
     pred_file = out_dir / "locomo_plus_qa_cml_predictions.json"
+    loaded_complete_preds = False
+    records: list[dict] = []
     if pred_file.exists():
-        records = json.loads(pred_file.read_text(encoding="utf-8"))
-        print(f"[Phase B] Loaded {len(records)} existing predictions from {pred_file}", flush=True)
-    else:
-        print(
-            f"[Phase B] Reading CML contexts for {len(samples)} samples ({args.read_workers} workers)...",
-            flush=True,
-        )
+        existing_preds = json.loads(pred_file.read_text(encoding="utf-8"))
+        if len(existing_preds) == len(samples) and all(
+            not (r.get("prediction") or "").startswith("[Error:") for r in existing_preds
+        ):
+            records = existing_preds
+            loaded_complete_preds = True
+            print(
+                f"[Phase B] Loaded {len(records)} complete predictions from {pred_file}",
+                flush=True,
+            )
+
+    if not loaded_complete_preds:
+        reused_ctx_map: dict[int, str] = {}
+        if args.reuse_contexts_from:
+            src_path = Path(args.reuse_contexts_from)
+            src_rows = json.loads(src_path.read_text(encoding="utf-8"))
+            for row in src_rows:
+                if "orig_index" in row and "retrieved_context" in row:
+                    reused_ctx_map[int(row["orig_index"])] = str(row["retrieved_context"] or "")
+            print(
+                f"[Phase B] Reusing {len(reused_ctx_map)} retrieved contexts from {src_path}",
+                flush=True,
+            )
+        else:
+            print(
+                f"[Phase B] Reading CML contexts for {len(samples)} samples ({args.read_workers} workers)...",
+                flush=True,
+            )
 
         def _read_sample(pair_idx_and_item: tuple[int, tuple[int, dict]]) -> tuple[int, dict, dict]:
             i, (orig_idx, sample) = pair_idx_and_item
             tenant_id = f"{args.tenant_prefix}-{sample_to_conv.get(orig_idx, orig_idx)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
-            llm_context = _cml_read(
-                args.cml_url, args.cml_api_key, tenant_id, trigger, args.max_results
-            )
+            if orig_idx in reused_ctx_map:
+                llm_context = reused_ctx_map[orig_idx]
+            else:
+                llm_context = _cml_read(
+                    args.cml_url, args.cml_api_key, tenant_id, trigger, args.max_results
+                )
             effective_context = (
                 llm_context
                 if len(llm_context or "") > 30
@@ -498,11 +571,11 @@ def main() -> None:
                 prompt = effective_context + "\n\n" + QA_PROMPT.format(trigger)
             qa_body: dict = {
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 512,
+                "max_tokens": args.qa_max_tokens,
                 "temperature": 0,
             }
             qa_body.update(_extra_body_for_model(args.model))
-            req_obj = {"custom_id": f"qa-{i}", "body": qa_body}
+            req_obj = {"custom_id": f"qa-{orig_idx}", "body": qa_body}
             meta_obj = {
                 "orig_index": orig_idx,
                 "question_input": trigger,
@@ -515,36 +588,51 @@ def main() -> None:
             return i, req_obj, meta_obj
 
         indexed_results: dict[int, tuple[dict, dict]] = {}
-        read_done = 0
-        read_lock = threading.Lock()
-        with ThreadPoolExecutor(max_workers=max(1, args.read_workers)) as ex:
-            futs = [ex.submit(_read_sample, item) for item in enumerate(selected_pairs)]
-            for fut in as_completed(futs):
-                idx_i, req_obj, meta_obj = fut.result()
-                with read_lock:
-                    indexed_results[idx_i] = (req_obj, meta_obj)
-                    read_done += 1
-                    if read_done % 60 == 0 or read_done == len(samples):
-                        print(f"  CML read progress: {read_done}/{len(samples)}", flush=True)
+        if reused_ctx_map and len(reused_ctx_map) >= len(samples):
+            for item in enumerate(selected_pairs):
+                idx_i, req_obj, meta_obj = _read_sample(item)
+                indexed_results[idx_i] = (req_obj, meta_obj)
+        else:
+            read_done = 0
+            read_lock = threading.Lock()
+            with ThreadPoolExecutor(max_workers=max(1, args.read_workers)) as ex:
+                futs = [ex.submit(_read_sample, item) for item in enumerate(selected_pairs)]
+                for fut in as_completed(futs):
+                    idx_i, req_obj, meta_obj = fut.result()
+                    with read_lock:
+                        indexed_results[idx_i] = (req_obj, meta_obj)
+                        read_done += 1
+                        if read_done % 60 == 0 or read_done == len(samples):
+                            print(f"  CML read progress: {read_done}/{len(samples)}", flush=True)
 
         qa_requests = [indexed_results[i][0] for i in range(len(samples))]
         meta_rows = [indexed_results[i][1] for i in range(len(samples))]
 
-        qa_outputs = _run_requests(
-            api_key,
-            args.model,
-            qa_requests,
-            poll_interval=args.poll_interval,
-            chunk_size=args.chunk_size,
-            sync_workers=args.sync_workers,
-            checkpoint_file=out_dir / "qa_sync_checkpoint.json",
-            label="Phase B QA",
-            base_url=args.base_url,
-        )
+        qa_stats = dict(usage_stats.get("qa") or {})
+        try:
+            qa_outputs = _run_requests(
+                api_key,
+                args.model,
+                qa_requests,
+                poll_interval=args.poll_interval,
+                chunk_size=args.chunk_size,
+                sync_workers=args.sync_workers,
+                checkpoint_file=out_dir / "qa_sync_checkpoint.json",
+                stats_out=qa_stats,
+                label="Phase B QA",
+                base_url=args.base_url,
+            )
+        finally:
+            usage_stats["qa"] = qa_stats
+            usage_stats["total_cost_usd"] = float(qa_stats.get("cost_usd", 0.0)) + float(
+                (usage_stats.get("judge") or {}).get("cost_usd", 0.0)
+            )
+            usage_file.write_text(json.dumps(usage_stats, indent=2), encoding="utf-8")
 
         records = []
         for i, meta in enumerate(meta_rows):
-            raw_pred = qa_outputs.get(f"qa-{i}", "")
+            oidx = meta.get("orig_index", i)
+            raw_pred = qa_outputs.get(f"qa-{oidx}", qa_outputs.get(f"qa-{i}", ""))
             clean_pred = _extract_answer(raw_pred) if raw_pred else "[Error: empty response]"
             rec = dict(meta)
             rec["prediction"] = clean_pred
@@ -555,8 +643,7 @@ def main() -> None:
         print(f"[Phase B] Saved {len(records)} predictions to {pred_file}", flush=True)
 
     # Phase C: Submit LLM-as-Judge
-    judge_requests: list[dict] = []
-    valid_indices: list[int] = []
+    judge_requests_by_id: dict[str, dict] = {}
     for i, rec in enumerate(records):
         pred = rec.get("prediction", "")
         if pred.startswith("[Error:") or pred.startswith("[API Error:"):
@@ -569,34 +656,63 @@ def main() -> None:
         )
         judge_body: dict = {
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 384,
+            "max_tokens": args.judge_max_tokens,
             "temperature": 0,
         }
         judge_body.update(_extra_body_for_model(judge_model))
-        judge_requests.append(
-            {
-                "custom_id": f"judge-{i}",
-                "body": judge_body,
-            }
-        )
-        valid_indices.append(i)
+        oidx = rec.get("orig_index", i)
+        cid = f"judge-{oidx}"
+        judge_requests_by_id[cid] = {
+            "custom_id": cid,
+            "body": judge_body,
+        }
 
-    judge_outputs = _run_requests(
-        api_key,
-        judge_model,
-        judge_requests,
-        poll_interval=args.poll_interval,
-        chunk_size=args.chunk_size,
-        sync_workers=args.sync_workers,
-        checkpoint_file=out_dir / "judge_sync_checkpoint.json",
-        label="Phase C Judge",
-        base_url=args.base_url,
-    )
+    judge_ckpt = out_dir / "judge_sync_checkpoint.json"
+    judge_stats = dict(usage_stats.get("judge") or {})
+    judge_outputs: dict[str, str] = {}
+    for judge_pass in range(3):
+        req_batch = list(judge_requests_by_id.values())
+        try:
+            judge_outputs = _run_requests(
+                api_key,
+                judge_model,
+                req_batch,
+                poll_interval=args.poll_interval,
+                chunk_size=args.chunk_size,
+                sync_workers=args.sync_workers,
+                checkpoint_file=judge_ckpt,
+                stats_out=judge_stats,
+                label=f"Phase C Judge (pass {judge_pass + 1})",
+                base_url=args.base_url,
+            )
+        finally:
+            usage_stats["judge"] = judge_stats
+            usage_stats["total_cost_usd"] = float(
+                (usage_stats.get("qa") or {}).get("cost_usd", 0.0)
+            ) + float(judge_stats.get("cost_usd", 0.0))
+            usage_file.write_text(json.dumps(usage_stats, indent=2), encoding="utf-8")
+
+        failed_cids = [
+            cid
+            for cid in judge_requests_by_id
+            if _parse_judge_response(judge_outputs.get(cid, ""))[0] == "_parse_failed"
+        ]
+        if not failed_cids or judge_pass == 2 or judge_model.endswith(":batch"):
+            break
+        print(
+            f"[Phase C] Retrying {len(failed_cids)} unparseable judge responses (pass {judge_pass + 2})...",
+            flush=True,
+        )
+        for cid in failed_cids:
+            judge_outputs.pop(cid, None)
+        if judge_ckpt.exists():
+            judge_ckpt.write_text(json.dumps(judge_outputs, ensure_ascii=False), encoding="utf-8")
 
     judged: list[dict] = []
     for i, rec in enumerate(records):
         r = dict(rec)
-        raw = judge_outputs.get(f"judge-{i}")
+        oidx = rec.get("orig_index", i)
+        raw = judge_outputs.get(f"judge-{oidx}", judge_outputs.get(f"judge-{i}"))
         if raw is None:
             r["judge_label"] = "_parse_failed"
             r["judge_reason"] = "Skipped or missing batch response"
@@ -612,10 +728,11 @@ def main() -> None:
     summary_file = out_dir / "locomo_plus_qa_cml_judge_summary.json"
     judged_file.write_text(json.dumps(judged, ensure_ascii=False, indent=2), encoding="utf-8")
     summary = _compute_summary(judged)
+    summary["usage_stats"] = usage_stats
     summary_file.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\n" + "=" * 60, flush=True)
-    print(f"FULL BATCH EVAL SUMMARY ({args.model})", flush=True)
+    print(f"FULL BATCH EVAL SUMMARY ({args.model}, judge={judge_model})", flush=True)
     print("=" * 60, flush=True)
     print(json.dumps(summary, indent=2), flush=True)
 

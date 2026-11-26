@@ -8,7 +8,7 @@ This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus)
 |------|-------------|
 | `locomo_plus/` | Data pipeline (`locomo10.json`, `locomo_plus.json`, `unified_input_samples_v2.json`), `task_eval`, baseline scripts. See [locomo_plus/README.md](locomo_plus/README.md). |
 | `cml-eval` CLI (`packages/py-cml/src/cml/eval/`) | Canonical CML-backed evaluation suite (`run-full`, `run-locomo`, `validate`, `report`, `compare`). Install via `pip install -e ".[eval]"`. |
-| `scripts/run_locomo_openrouter_batch.py` | End-to-end LoCoMo-Plus driver using OpenRouter's `/api/v1/batches` (`:batch`) API or local OpenAI-compatible server. |
+| `scripts/run_locomo_openrouter_batch.py` | End-to-end LoCoMo-Plus driver supporting OpenRouter sync (`/v1/chat/completions`), `/api/v1/batches` (`:batch`), or local OpenAI-compatible servers, with lossless checkpointing, cost tracking (`usage_stats.json`), and context reuse. |
 | `results/` | Committed benchmark summary JSON artifacts. |
 | `outputs/` | Created at run time; holds predictions, judged records, judge summary, and `run_full_eval_state.json` (failure state for resume). |
 
@@ -148,11 +148,29 @@ cml-eval run-locomo \
 ### Generate report & comparison tables
 
 ```bash
-cml-eval report --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+qwen3.8-27b"
-cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json --method "CML+qwen3.8-27b"
+cml-eval report --summary evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json --method "CML v3.0 (GPT-4o)"
+cml-eval compare --summary evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json --method "CML v3.0 (GPT-4o)"
 ```
 
-Use `--method` to match your QA model (same as `LLM_EVAL__MODEL` from .env (or fallback `LLM_INTERNAL__MODEL`), e.g. `CML+gpt-4o-mini` or `CML+[REDACTED]`).
+Use `--method` to match your QA model (e.g. `CML v3.0 (GPT-4o)` or `CML+qwen3.8-27b`).
+
+## Run Official Table 1 Cloud Benchmark via OpenRouter (`gpt-4o` + `gemini-2.5-flash`)
+
+```bash
+python evaluation/scripts/run_locomo_openrouter_batch.py \
+  --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
+  --out-dir evaluation/outputs/cml_v3_gpt4o_gemini25flash_full_2387 \
+  --cml-url http://localhost:8000 \
+  --skip-ingestion \
+  --base-url https://openrouter.ai/api/v1 \
+  --model openai/gpt-4o \
+  --judge-model google/gemini-2.5-flash \
+  --sync-workers 10 \
+  --qa-max-tokens 200 \
+  --judge-max-tokens 160
+```
+
+Supports `--reuse-contexts-from <predictions.json>` for controlled multi-model comparisons on frozen retrieved memory packets, atomic 25-sample checkpointing (`qa_sync_checkpoint.json`, `judge_sync_checkpoint.json`), automatic judge parse retries, and exact USD billing capture (`usage_stats.json`).
 
 ## Level-2 Cognitive Memory
 
@@ -194,7 +212,9 @@ Outputs: `evaluation/outputs/locomo_plus_predictions.json`, `evaluation/outputs/
 
 See the full, unified 2,387-sample LoCoMo-Plus comparison table, refusal diagnostics, and methodology in [EVALUATION_REPORT.md](EVALUATION_REPORT.md).
 
-Committed summary artifact: [`results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json).
+Committed summary artifacts:
+- Official Table 1 protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge): [`results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json`](results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json)
+- 100%-local zero-API-cost run (`qwen3.8-27b` QA + Judge): [`results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json)
 
 ---
 

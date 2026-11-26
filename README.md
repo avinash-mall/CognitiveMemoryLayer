@@ -11,8 +11,8 @@
 
 [![Quick Start](https://img.shields.io/badge/Quick%20Start-5%20min-success?style=for-the-badge&logo=rocket)](#-quick-start)
 [![Docs](https://img.shields.io/badge/Docs-Full%20API-blue?style=for-the-badge&logo=gitbook)](./docs/usage.md)
-[![Tests](https://img.shields.io/badge/Tests-1218-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
-[![Version](https://img.shields.io/badge/version-3.0.0-blue?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/Tests-1237-brightgreen?style=for-the-badge&logo=pytest)](./tests/README.md)
+[![Version](https://img.shields.io/badge/version-3.0.1-blue?style=for-the-badge)](#)
 
 <br/>
 
@@ -68,7 +68,7 @@ The **Cognitive Memory Layer (CML v3.0)** bridges these gaps by translating **ei
 
 ## What's New in v3.0 &mdash; Whole-Brain Architecture
 
-CML v3.0 upgrades CML from a dual-store hippocampal/neocortical pipeline into a **Whole-Brain Cognitive Architecture**, lifting the 100%-local `qwen3.8-27b` LoCoMo-Plus benchmark from `59.06%` to **`68.40%` LoCoMo Factual Avg** (**#1 among all memory systems**, surpassing A-Mem `59.64%`, SeCom `57.53%`, Mem0 `57.24%`, and full-context GPT-4o `62.99%` / GPT-4.1 `62.21%` at `$0` API cost) and **`70.25%` Temporal** (`+20.09pp`):
+CML v3.0 upgrades CML from a dual-store hippocampal/neocortical pipeline into a **Whole-Brain Cognitive Architecture** &mdash; ranking **#1 among all memory systems on LoCoMo Factual Avg** under both the **official Table 1 `gpt-4o` + `gemini-2.5-flash` Judge protocol (`63.70%` Factual / `87.67%` Adversarial)** and **100%-local `qwen3.8-27b` (`68.40%` Factual / `70.25%` Temporal at `$0` API cost)**, surpassing A-Mem (`59.64%`), SeCom (`57.53%`), Mem0 (`57.24%`), and full-context GPT-4o (`62.99%`) / GPT-4.1 (`62.21%`):
 
 1. **Windowed Micro-Sleep Consolidation (`POST /memory/consolidate_windowed`):** CRC32 content-defined dialogue chunking + content-addressable SQLite extraction cache distills multi-turn episodes into coreference-resolved semantic facts, N-ary Cortical Hyperedges, Grounded Proustian Cue Pointers (`cue -> verbatim episode`), Conway Tier-2 Chapter Gists, and Tier-3 Persistent DMN Self-Profiles.
 2. **Dentate Gyrus Sparse Pattern Separation:** Functional PostgreSQL `tsvector` GIN index (`ts_rank_cd`) on the server and SQLite `FTS5` (`bm25()`) in embedded mode capture exact rare proper nouns, dates, SKU/ID tokens, and negations that dense embeddings smooth over.
@@ -629,15 +629,17 @@ Authentication uses the `X-API-Key` header (`tenant_id` is resolved from the API
 
 ## Evaluation Highlights
 
-Evaluated **from scratch on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors, `$0` API cost)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)).
+Evaluated **on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)) &mdash; under **both** the **official Table 1 cloud protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge)** and a **100%-local `$0`-API configuration (`qwen3.8-27b`)**:
 
-**CML v3.0 setup (2026-11-25, from scratch):** Fresh Postgres/Neo4j/Redis wipe, all 411 conversations (242,658 turns) ingested with local `nomic-embed-text-v2-moe` embeddings + Postgres `tsvector` GIN index, followed by CRC32 Content-Defined **Windowed Micro-Sleep Consolidation** (`consolidate_windowed`, `qwen3.8-27b`) extracting coreference-resolved semantic facts, N-ary Cortical Hyperedges, Grounded Proustian Cue Pointers (`cue -> verbatim episode`), Conway Tier-2 Chapter Gists, and Tier-3 Persistent DMN Self-Profiles; read-time **4-Pathway Ecphory** (Dense + Dentate Gyrus BM25 + `&lt;5ms` Bipartite Cortical Hypergraph PPR + Proustian Cues) + CUDA true-logit Cross-Encoder (`BAAI/bge-reranker-base`) + Granularity-Aware Hippocampal Time Cell Engine + ACC 2-hop recollection + CA1 speaker-swap monitoring, powered 100% locally by **`qwen3.8-27b`** (`llama-server` w/ `dflash2`, thinking disabled, `temperature=0`, `$0` API cost) for consolidation, read-time cues, QA, and LLM-as-Judge. Artifact: [`evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json).
+- **Official Table 1 Protocol (`2026-11-26`, `openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge via OpenRouter, `$11.04` API cost, `$0` local memory engine):** Reuses the 100%-local CML v3.0 consolidated store (`411` conversations, `56,567` semantic facts, `26,300` cortical hyperedges, `924` DMN profiles) and evaluates downstream `gpt-4o` QA (`4.04M` in / `48.3k` out) with official `gemini-2.5-flash` judging (`0.63M` in / `107.0k` out). Artifact: [`evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json).
+- **100% Local Zero-API-Cost (`2026-11-25`, `qwen3.8-27b` QA + Judge via `llama-server` w/ `dflash2`, `$0.00` API cost):** Full from-scratch wipe, local `nomic-embed-text-v2-moe` + Postgres `tsvector` GIN + `WindowedMicroSleepConsolidator` + 4-Pathway Ecphory + CUDA Cross-Encoder (`BAAI/bge-reranker-base`) + Hippocampal Time Cells + ACC 2-hop + CA1 monitoring. Artifact: [`evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json).
 
 ### Full LoCoMo-Plus Comparison (2,387 Samples)
 
 | System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **CML v3.0 (Whole-Brain)** <sup>[0]</sup> | Memory System | `qwen3.8-27b` (100% local, `$0` API) | 70.21% | 47.52% | **70.25%** | 44.27% | **82.06%** | **68.40%** | 39.40% | 29.00 |
+| **CML v3.0 (Whole-Brain, Official Judge)** <sup>[0a]</sup> | Memory System | `gpt-4o` (judge: `gemini-2.5-flash`) | 63.32% | 42.20% | **57.63%** | 39.06% | **87.67%** | **63.70%** | 33.92% | 29.78 |
+| **CML v3.0 (Whole-Brain, Local)** <sup>[0b]</sup> | Memory System | `qwen3.8-27b` (100% local, `$0` API) | 70.21% | 47.52% | **70.25%** | 44.27% | 82.06% | **68.40%** | 39.40% | 29.00 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | **93.30%** | &mdash; |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 66.60% | &mdash; |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.90% | &mdash; |
@@ -656,19 +658,19 @@ Evaluated **from scratch on the complete LoCoMo-Plus benchmark (2,387 samples, 0
 | Qwen3-14B <sup>[3]</sup> | Full Context | Full context | 65.96% | 46.45% | 53.89% | 59.38% | 60.45% | 59.65% | 40.56% | 19.09 |
 | GPT-5-nano <sup>[3]</sup> | Full Context | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
 
-<sup>[0]</sup> Full 2,387-sample run from scratch (`2,387/2,387` valid, `0` errors, `0` empty contexts, overall 6-category avg **63.53%**, `1,516.5 / 2,387`); judge: `qwen3.8-27b` (`temperature=0`, thinking disabled).  
+<sup>[0a]</sup> Official Table 1 protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge via OpenRouter, `temperature=0`, `2,387/2,387` valid, `0` errors, overall 6-category avg **58.69%**, `1,401.0 / 2,387`; unweighted 5-category factual macro mean **57.98%** vs. A-Mem `57.02%`, SeCom `54.80%`, Mem0 `52.88%`). Write/consolidation and retrieval remained 100% local (`$0`).  
+<sup>[0b]</sup> Full 2,387-sample 100%-local run from scratch (`2,387/2,387` valid, `0` errors, `0` empty contexts, overall 6-category avg **63.53%**, `1,516.5 / 2,387`); QA &amp; judge: `qwen3.8-27b` (`temperature=0`, thinking disabled, `$0` API cost).  
 <sup>[1]</sup> Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split using `gpt-4o`; factual category breakdown not published.  
 <sup>[2]</sup> Reported in the *Madeleine* paper (arXiv 2026) under the official LoCoMo-Plus protocol on the 401-sample Cognitive split; factual category breakdown not published.  
 <sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), 2,387 samples, judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive.
 
 ### Unbiased Analysis &amp; Trade-Offs
 
-- **#1 Memory System on LoCoMo Factual Avg (`68.40%`) &mdash; Beats Full-Context GPT-4o (`62.99%`) &amp; GPT-4.1 (`62.21%`) at `$0` API cost:** CML v3.0 surpasses **A-Mem (`59.64%`, `+8.76pp`)**, **SeCom (`57.53%`, `+10.87pp`)**, **Mem0 (`57.24%`, `+11.16pp`)**, **GPT-4o full-context (`62.99%`)**, and **Qwen2.5-14B full-context (`63.45%`)** while running 100% locally on a quantized 27B model (`~4.8k` median retrieved context chars).
-- **#1 Memory-System Temporal (`70.25%`) &amp; #1 Overall Adversarial (`82.06%`):** Granularity-Aware Hippocampal Time Cells (`April 2023`, `2022`, `2023-05-07`, skipping `vague` offsets) + `HippocampalTimeCellEngine` calendar deltas lift Temporal to **70.25%** (beating A-Mem `49.30%`, Mem0 `39.40%`, and full-context Gemini-2.5-Flash `66.04%`), while CA1 speaker-swap monitoring + true-logit CUDA Cross-Encoder discrimination reach **83.2%** adversarial refusal with only **9.6&ndash;11.2%** refusal on `single-hop`, `multi-hop`, and `temporal`.
-- **Multi-Hop (`47.52%`) &amp; Cognitive (`39.40%`, `158/401`) with Remaining Gaps:** Bipartite Cortical Hypergraph `&lt;5ms` PPR + Windowed Micro-Sleep consolidation bring local 27B `multi-hop` (`47.52%`) to parity with GPT-4o-backed Mem0 (`48.10%`) and `Cognitive` (`39.40%`) within `2.04pp` of Mem0 (`41.44%`). Remaining deficits in `common-sense` (`44.27%`) and `Cognitive` (`39.40%`) vs. `gpt-4o` systems reflect quantized local 27B (`IQ3_S`, non-thinking) implicit world-knowledge synthesis.
-- **Judge parity note:** Paper Table 1 baselines are judged by `gemini-2.5-flash`; this 100%-local run uses `qwen3.8-27b` (`temperature=0`) for self-consistent local judging.
+- **#1 Memory System on LoCoMo Factual Avg under Both Official (`63.70%`) and Local (`68.40%`) Protocols:** Under the exact Table 1 `gpt-4o` + `gemini-2.5-flash` protocol, CML v3.0 (`63.70%` weighted / `57.98%` macro) beats **A-Mem (`59.64%`, `+4.06pp`)**, **SeCom (`57.53%`, `+6.17pp`)**, **Mem0 (`57.24%`, `+6.46pp`)**, **RAG `text-embedding-large` (`45.32%`, `+18.38pp`)**, **full-context GPT-4o (`62.99%`)**, and **full-context GPT-4.1 (`62.21%`)** &mdash; even though CML's consolidation corpus was extracted 100% locally at `$0` rather than using `gpt-4o` for write-time indexing.
+- **#1 Overall Adversarial (`87.67%` on `gpt-4o` / `82.06%` local) &amp; #1 Memory-System Temporal (`57.63%` on `gpt-4o` / `70.25%` local):** CA1 speaker-swap monitoring + true-logit CUDA Cross-Encoder discrimination reach **87.67%** (`391/446`) adversarial robustness with `gpt-4o` (beating A-Mem `35.20%` by `+52.47pp` and 1M-context Gemini-2.5-Pro `73.03%` by `+14.64pp`), while Granularity-Aware Hippocampal Time Cells beat A-Mem (`49.30%`), SeCom (`42.30%`), Mem0 (`39.40%`), and full-context GPT-4o (`45.79%`) on Temporal reasoning.
+- **Controlled `gpt-4o` + `gemini-2.5-flash` vs. `qwen3.8-27b` Diagnosis:** Holding all 2,387 retrieved CML packets constant shows that `gpt-4o`'s stronger RLHF abstention (`36.5%` vs `21.9%` refusal on `common-sense`, `18.4%` vs `11.2%` on `temporal`), stricter independent `gemini-2.5-flash` partial-credit grading, and local quantized `qwen3.8-27b` (`IQ3_S`) write-time consolidation account for the gap on inferential categories (`common-sense` `39.06%`, `Cognitive` `33.92%`) vs. systems that index with `gpt-4o` at write time.
 
-### Reproducing the Full 2,387-Sample Local Run
+### Reproducing the Full 2,387-Sample Runs
 
 ```bash
 # 1. Build the official 2,387-sample unified dataset
@@ -677,7 +679,20 @@ cd evaluation/locomo_plus/data && python unified_input.py && cd ../../..
 # 2. Optional: rebalance local llama-server GPU VRAM on 16GB cards (RTX 5070 Ti / 4080)
 bash scripts/rebalance_local_gpu.sh
 
-# 3. Run ingest + Windowed Micro-Sleep Consolidation + QA + Judge against a local OpenAI-compatible LLM
+# 3a. Official Table 1 Cloud QA + Judge (OpenRouter: openai/gpt-4o + google/gemini-2.5-flash)
+python evaluation/scripts/run_locomo_openrouter_batch.py \
+  --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
+  --out-dir evaluation/outputs/cml_v3_gpt4o_gemini25flash_full_2387 \
+  --cml-url http://localhost:8000 \
+  --skip-ingestion \
+  --base-url https://openrouter.ai/api/v1 \
+  --model openai/gpt-4o \
+  --judge-model google/gemini-2.5-flash \
+  --sync-workers 10 \
+  --qa-max-tokens 200 \
+  --judge-max-tokens 160
+
+# 3b. 100%-Local From-Scratch Run ($0 API cost: qwen3.8-27b)
 python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
   --out-dir evaluation/outputs/cml_v3_qwen38_full_2387 \

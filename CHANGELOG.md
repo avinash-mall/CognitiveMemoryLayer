@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Official LoCoMo-Plus Table 1 Benchmark Verification (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge, 2,387 samples, `0` errors)** — verified CML v3.0 under the exact paper backbone and judge via OpenRouter (`evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json`), achieving **`63.70%` LoCoMo Factual Avg** (`57.98%` macro — #1 among all `gpt-4o` memory systems, ahead of A-Mem `59.64%`, SeCom `57.53%`, Mem0 `57.24%`, and full-context GPT-4o `62.99%` / GPT-4.1 `62.21%`), **`87.67%` Adversarial** (#1 overall), **`57.63%` Temporal** (#1 among `gpt-4o` memory systems), **`33.92%` Cognitive**, and **`58.69%` Overall** (`1,401.0 / 2,387`).
+- **OpenRouter Benchmark Runner Hardening (`evaluation/scripts/run_locomo_openrouter_batch.py`)** — added `--qa-max-tokens`, `--judge-max-tokens`, `--reuse-contexts-from`, `orig_index`-keyed atomic 25-request checkpointing (`try/finally`), dynamic `max_tokens` backoff on OpenRouter HTTP `402` pre-auth holds, automatic Phase C judge parse retry passes, and `usage_stats.json` token/USD spend tracking.
+
 ## [3.0.1] — 2026-11-26
 
 ### Added
