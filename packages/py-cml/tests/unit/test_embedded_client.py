@@ -444,3 +444,14 @@ async def test_embedded_consolidate_forgetting_and_batch_ops() -> None:
 
     reads = await client.batch_read(["q1", "q2"])
     assert len(reads) == 2
+
+
+def test_embedded_database_config_accepts_database_url_and_alias() -> None:
+    """EmbeddedDatabaseConfig accepts both database_url and legacy postgres_url alias."""
+    from cml.embedded_config import EmbeddedDatabaseConfig
+
+    cfg_by_name = EmbeddedDatabaseConfig(database_url="sqlite+aiosqlite:///custom.db")
+    assert cfg_by_name.database_url == "sqlite+aiosqlite:///custom.db"
+
+    cfg_by_alias = EmbeddedDatabaseConfig(postgres_url="sqlite+aiosqlite:///legacy.db")
+    assert cfg_by_alias.database_url == "sqlite+aiosqlite:///legacy.db"

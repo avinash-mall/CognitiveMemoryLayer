@@ -641,7 +641,6 @@ class MemoryOrchestrator(WritePipelineMixin):
         Collects all target IDs into a set first to avoid double-counting when
         multiple criteria overlap (MED-19).
         """
-        hard = action == "delete"
         target_ids: set[UUID] = set()
 
         def owns(record) -> bool:
@@ -685,9 +684,23 @@ class MemoryOrchestrator(WritePipelineMixin):
                         target_ids.add(r.id)
                 offset += len(records)
 
-        # Delete deduplicated set
-        for mid in target_ids:
-            await self.hippocampal.store.delete(mid, hard=hard)
+        # Apply forget action to deduplicated set
+        if action == "delete":
+            for mid in target_ids:
+                await self.hippocampal.store.delete(mid, hard=True)
+        elif action == "archive":
+            for mid in target_ids:
+                await self.hippocampal.store.update(
+                    mid, {"status": MemoryStatus.ARCHIVED.value}, increment_version=False
+                )
+        elif action == "silence":
+            for mid in target_ids:
+                await self.hippocampal.store.update(
+                    mid, {"status": MemoryStatus.SILENT.value}, increment_version=False
+                )
+        else:
+            for mid in target_ids:
+                await self.hippocampal.store.delete(mid, hard=False)
 
         return {"affected_count": len(target_ids)}
 

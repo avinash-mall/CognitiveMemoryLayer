@@ -437,6 +437,37 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
                 tenant_id, query, raw_results, source_session_id=source_session_id
             )
 
+        # Enforce explicit caller filters across all merged pathways
+        # (including facts, working-memory overlay, Conway parents, and PPR/BM25).
+        if memory_types:
+            allowed_types = {
+                str(mt.value if hasattr(mt, "value") else mt).lower() for mt in memory_types
+            }
+            raw_results = [
+                r
+                for r in raw_results
+                if str(
+                    r.record.type.value if hasattr(r.record.type, "value") else r.record.type
+                ).lower()
+                in allowed_types
+            ]
+        if since is not None or until is not None:
+            from ..storage.utils import naive_utc
+
+            since_utc = naive_utc(since)
+            until_utc = naive_utc(until)
+            filtered_time: list[RetrievedMemory] = []
+            for r in raw_results:
+                rec_ts = naive_utc(getattr(r.record, "timestamp", None))
+                if rec_ts is None:
+                    continue
+                if since_utc is not None and rec_ts < since_utc:
+                    continue
+                if until_utc is not None and rec_ts > until_utc:
+                    continue
+                filtered_time.append(r)
+            raw_results = filtered_time
+
         # Rerank a wider pool so Neocortical facts/constraints never starve Hippocampal episodes,
         # then enforce Complementary Learning Systems stratified slot reservation.
         wide_cap = max(max_results + 25, 45)

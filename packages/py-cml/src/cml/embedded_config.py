@@ -6,7 +6,7 @@ import json
 import os
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 try:
     from dotenv import load_dotenv
@@ -22,6 +22,8 @@ def _env(key: str, default: str = "") -> str:
 
 class EmbeddedDatabaseConfig(BaseModel):
     """Database configuration for embedded mode."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     database_url: str = Field(
         default="sqlite+aiosqlite:///cml_memory.db",

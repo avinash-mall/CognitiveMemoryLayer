@@ -50,6 +50,7 @@ async def test_forget_before_handles_naive_cutoff_against_aware_timestamps() -> 
     store = MagicMock()
     store.scan = AsyncMock(side_effect=[[old_rec], []])
     store.delete = AsyncMock()
+    store.update = AsyncMock()
 
     orch = MemoryOrchestrator.__new__(MemoryOrchestrator)
     orch.hippocampal = SimpleNamespace(store=store)
@@ -62,4 +63,25 @@ async def test_forget_before_handles_naive_cutoff_against_aware_timestamps() -> 
     )
 
     assert res["affected_count"] == 1
-    store.delete.assert_awaited_once_with(old_id, hard=False)
+    store.update.assert_awaited_once_with(old_id, {"status": "archived"}, increment_version=False)
+    store.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_forget_silence_sets_silent_status() -> None:
+    """forget(action='silence') marks memories silent rather than deleted."""
+    mid = uuid4()
+    rec = SimpleNamespace(id=mid, tenant_id="t1", timestamp=datetime(2025, 1, 1))
+    store = MagicMock()
+    store.get_by_ids_batch = AsyncMock(return_value=[rec])
+    store.update = AsyncMock()
+    store.delete = AsyncMock()
+
+    orch = MemoryOrchestrator.__new__(MemoryOrchestrator)
+    orch.hippocampal = SimpleNamespace(store=store)
+    orch.retriever = MagicMock()
+
+    res = await orch.forget(tenant_id="t1", memory_ids=[mid], action="silence")
+    assert res["affected_count"] == 1
+    store.update.assert_awaited_once_with(mid, {"status": "silent"}, increment_version=False)
+    store.delete.assert_not_awaited()
