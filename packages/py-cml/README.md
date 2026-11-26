@@ -35,10 +35,12 @@ The Cognitive Memory Layer (CML) gives LLMs a neuro-inspired memory system: epis
 pip install cognitive-memory-layer
 ```
 
-**Embedded mode** (run the full CML Whole-Brain engine in-process over a single SQLite file + FTS5, no server required — includes episodic vectors, sparse BM25, semantic facts, entity graph, cortical hypergraph PPR, DMN self-profiles, and procedural skills). Best for development, local agents, edge apps, or single-machine deployments.
+**Embedded mode** (run the full CML Whole-Brain engine in-process over a single SQLite file + FTS5, no server required — includes episodic vectors, sparse BM25, semantic facts, entity graph, cortical hypergraph PPR, DMN self-profiles, and procedural skills). Best for development, local agents, edge apps, or single-machine deployments. Embedded mode uses the in-repo CML engine and currently requires installing from a monorepo checkout:
 
 ```bash
-pip install cognitive-memory-layer[embedded]
+git clone https://github.com/avinash-mall/CognitiveMemoryLayer.git
+cd CognitiveMemoryLayer
+pip install -e ".[embedded]"
 ```
 
 From the monorepo, the server and SDK are built from the **repository root** (single `pyproject.toml`). Install in editable mode with optional extras:

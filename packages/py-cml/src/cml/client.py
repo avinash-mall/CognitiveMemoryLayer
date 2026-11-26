@@ -890,12 +890,18 @@ class CognitiveMemoryLayer:
     def iter_memories(
         self,
         *,
+        tenant_id: str | None = None,
         memory_types: list[MemoryType] | None = None,
         status: str | None = "active",
         batch_size: int = 100,
     ) -> Iterator[MemoryItem]:
-        """Iterate over all memories with automatic pagination (admin only)."""
+        """Iterate over memories with automatic pagination (admin only).
+
+        Defaults to the client's configured ``tenant_id``. Pass ``tenant_id=""``
+        to iterate across all tenants.
+        """
         ep.validate_iter_memory_types(memory_types)
+        effective_tenant_id = self._config.tenant_id if tenant_id is None else (tenant_id or None)
         page = 1
         while True:
             params = ep.build_iter_memories_params(
@@ -903,6 +909,7 @@ class CognitiveMemoryLayer:
                 batch_size=batch_size,
                 status=status,
                 memory_types=memory_types,
+                tenant_id=effective_tenant_id,
             )
             data = self._transport.request(
                 "GET", "/dashboard/memories", params=params, use_admin_key=True

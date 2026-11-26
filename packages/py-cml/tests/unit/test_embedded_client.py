@@ -390,3 +390,57 @@ async def test_embedded_initialize_forwards_extra_body_for_local_provider(
     assert captured["base_url"] == "http://127.0.0.1:8000/v1"
     assert captured["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_embedded_consolidate_forgetting_and_batch_ops() -> None:
+    """EmbeddedCognitiveMemoryLayer exposes consolidate, run_forgetting, batch_write, batch_read."""
+    from types import SimpleNamespace
+
+    client = EmbeddedCognitiveMemoryLayer(tenant_id="t1")
+    client._initialized = True
+    orch = MagicMock()
+    orch.consolidation = MagicMock()
+    orch.consolidation.consolidate = AsyncMock(
+        return_value=SimpleNamespace(
+            episodes_sampled=4,
+            clusters_formed=1,
+            clusters_skipped_no_recurrence=0,
+            gists_extracted=1,
+            details_recovered=0,
+        )
+    )
+    orch.forgetting = MagicMock()
+    orch.forgetting.run_forgetting = AsyncMock(
+        return_value=SimpleNamespace(
+            memories_scanned=5,
+            result=SimpleNamespace(operations_applied=2),
+        )
+    )
+    orch.write = AsyncMock(return_value={"memory_id": None, "chunks_created": 1, "message": "ok"})
+    orch.read = AsyncMock(
+        return_value=SimpleNamespace(
+            facts=[],
+            preferences=[],
+            recent_episodes=[],
+            procedures=[],
+            constraints=[],
+            all_memories=[],
+        )
+    )
+    client._orchestrator = orch
+
+    cons = await client.consolidate()
+    assert cons["status"] == "consolidation_completed"
+    assert cons["episodes_sampled"] == 4
+
+    forg = await client.run_forgetting(dry_run=True)
+    assert forg["status"] == "forgetting_completed"
+    assert forg["memories_scanned"] == 5
+    assert forg["dry_run"] is True
+
+    writes = await client.batch_write([{"content": "a"}, {"content": "b"}])
+    assert len(writes) == 2
+
+    reads = await client.batch_read(["q1", "q2"])
+    assert len(reads) == 2

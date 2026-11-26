@@ -130,7 +130,7 @@ def _add_compare_parser(subparsers: argparse._SubParsersAction) -> None:
         if default_out_dir is not None
         else None,
     )
-    parser.add_argument("--method", type=str, default="CML+gpt-oss:20b")
+    parser.add_argument("--method", type=str, default="CML")
 
 
 def build_parser() -> argparse.ArgumentParser:

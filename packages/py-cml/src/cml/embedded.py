@@ -8,8 +8,10 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
+from cml import _endpoints as ep
 from cml._embedded_engine import ensure_engine_available
 from cml.embedded_config import EmbeddedConfig
+from cml.exceptions import ValidationError
 from cml.models import (
     ForgetResponse,
     MemoryItem,
@@ -477,7 +479,7 @@ class EmbeddedCognitiveMemoryLayer:
     ) -> ForgetResponse:
         """Forget memories."""
         if not memory_ids and not query and before is None:
-            raise ValueError("At least one of memory_ids, query, or before must be provided")
+            raise ValidationError("At least one of memory_ids, query, or before must be provided")
         self._ensure_initialized()
         result = await self._orchestrator.forget(
             tenant_id=self._config.tenant_id,
@@ -562,8 +564,7 @@ class EmbeddedCognitiveMemoryLayer:
 
     async def delete_all(self, *, confirm: bool = False) -> int:
         """Delete all memories for the tenant."""
-        if not confirm:
-            raise ValueError("delete_all requires confirm=True to avoid accidental data loss")
+        ep.require_delete_all_confirmation(confirm)
         self._ensure_initialized()
         n: int = await self._orchestrator.delete_all(tenant_id=self._config.tenant_id)
         return n
@@ -662,3 +663,89 @@ class EmbeddedCognitiveMemoryLayer:
             context_filter=context_filter,
         )
         return SimulateResponse(**verdict)
+
+    async def consolidate(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Trigger episodic-to-semantic sleep-cycle consolidation in embedded mode."""
+        self._ensure_initialized()
+        tid = tenant_id or self._config.tenant_id
+        uid = user_id or tid
+        report = await self._orchestrator.consolidation.consolidate(
+            tenant_id=tid,
+            user_id=uid,
+        )
+        return {
+            "status": "consolidation_completed",
+            "tenant_id": tid,
+            "user_id": uid,
+            "episodes_sampled": report.episodes_sampled,
+            "clusters_formed": report.clusters_formed,
+            "clusters_skipped_no_recurrence": report.clusters_skipped_no_recurrence,
+            "gists_extracted": report.gists_extracted,
+            "details_recovered": report.details_recovered,
+        }
+
+    async def run_forgetting(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        dry_run: bool = True,
+        max_memories: int = 5000,
+    ) -> dict[str, Any]:
+        """Trigger active forgetting cycle in embedded mode."""
+        self._ensure_initialized()
+        tid = tenant_id or self._config.tenant_id
+        uid = user_id or tid
+        report = await self._orchestrator.forgetting.run_forgetting(
+            tenant_id=tid,
+            user_id=uid,
+            max_memories=max_memories,
+            dry_run=dry_run,
+        )
+        return {
+            "status": "forgetting_completed",
+            "tenant_id": tid,
+            "user_id": uid,
+            "dry_run": dry_run,
+            "memories_scanned": report.memories_scanned,
+            "operations_applied": report.result.operations_applied,
+        }
+
+    async def batch_write(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        session_id: str | None = None,
+        namespace: str | None = None,
+    ) -> list[WriteResponse]:
+        """Write multiple memories sequentially in embedded mode."""
+        ep.validate_batch_write_items(items)
+        return [
+            await self.write(
+                content=item["content"],
+                context_tags=item.get("context_tags"),
+                session_id=session_id or item.get("session_id"),
+                memory_type=item.get("memory_type"),
+                namespace=namespace or item.get("namespace"),
+                metadata=item.get("metadata"),
+                agent_id=item.get("agent_id"),
+            )
+            for item in items
+        ]
+
+    async def batch_read(
+        self,
+        queries: list[str],
+        *,
+        max_results: int = 10,
+        response_format: str = "packet",
+    ) -> list[ReadResponse]:
+        """Execute multiple read queries sequentially in embedded mode."""
+        return [
+            await self.read(q, max_results=max_results, format=response_format) for q in queries
+        ]

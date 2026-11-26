@@ -89,7 +89,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=Path("evaluation") / "outputs" / "locomo_plus_qa_cml_judge_summary.json",
     )
-    parser.add_argument("--method", type=str, default="CML+gpt-oss:20b")
+    parser.add_argument("--method", type=str, default="CML")
     return parser.parse_args(argv)
 
 

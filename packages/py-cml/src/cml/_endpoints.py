@@ -11,6 +11,10 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
+
+from cml.exceptions import ValidationError
 from cml.models import (
     CreateSessionRequest,
     FeedbackRequest,
@@ -23,6 +27,16 @@ from cml.models import (
     WindowConsolidateRequest,
     WriteRequest,
 )
+
+
+def _dump_request(
+    model_cls: type[BaseModel], /, *, by_alias: bool = False, **kwargs: Any
+) -> dict[str, Any]:
+    try:
+        model = model_cls(**kwargs)
+    except PydanticValidationError as exc:
+        raise ValidationError(str(exc)) from exc
+    return model.model_dump(exclude_none=True, by_alias=by_alias, mode="json")
 
 
 def eval_mode_headers(eval_mode: bool) -> dict[str, str] | None:
@@ -42,7 +56,8 @@ def build_write_body(
     timestamp: datetime | None = None,
     media: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return WriteRequest(
+    return _dump_request(
+        WriteRequest,
         content=content,
         context_tags=context_tags,
         session_id=session_id,
@@ -53,7 +68,7 @@ def build_write_body(
         agent_id=agent_id,
         timestamp=timestamp,
         media=media,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_read_body(
@@ -67,7 +82,9 @@ def build_read_body(
     response_format: Literal["packet", "list", "llm_context"] = "packet",
     user_timezone: str | None = None,
 ) -> dict[str, Any]:
-    return ReadRequest(
+    return _dump_request(
+        ReadRequest,
+        by_alias=True,
         query=query,
         max_results=max_results,
         context_filter=context_filter,
@@ -76,7 +93,7 @@ def build_read_body(
         until=until,
         format=response_format,
         user_timezone=user_timezone,
-    ).model_dump(exclude_none=True, by_alias=True, mode="json")
+    )
 
 
 def build_read_stream_body(
@@ -89,7 +106,9 @@ def build_read_stream_body(
     until: datetime | None = None,
     user_timezone: str | None = None,
 ) -> dict[str, Any]:
-    return ReadRequest(
+    return _dump_request(
+        ReadRequest,
+        by_alias=True,
         query=query,
         max_results=max_results,
         context_filter=context_filter,
@@ -97,7 +116,7 @@ def build_read_stream_body(
         since=since,
         until=until,
         user_timezone=user_timezone,
-    ).model_dump(exclude_none=True, by_alias=True, mode="json")
+    )
 
 
 def empty_read_response(query: str) -> ReadResponse:
@@ -113,14 +132,15 @@ def build_turn_body(
     timestamp: datetime | None = None,
     user_timezone: str | None = None,
 ) -> dict[str, Any]:
-    return TurnRequest(
+    return _dump_request(
+        TurnRequest,
         user_message=user_message,
         assistant_response=assistant_response,
         session_id=session_id,
         max_context_tokens=max_context_tokens,
         timestamp=timestamp,
         user_timezone=user_timezone,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_update_body(
@@ -132,14 +152,15 @@ def build_update_body(
     metadata: dict[str, Any] | None = None,
     feedback: str | None = None,
 ) -> dict[str, Any]:
-    return UpdateRequest(
+    return _dump_request(
+        UpdateRequest,
         memory_id=memory_id,
         text=text,
         confidence=confidence,
         importance=importance,
         metadata=metadata,
         feedback=feedback,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_forget_body(
@@ -150,13 +171,14 @@ def build_forget_body(
     action: Literal["delete", "archive", "silence"] = "delete",
 ) -> dict[str, Any]:
     if not memory_ids and not query and before is None:
-        raise ValueError("At least one of memory_ids, query, or before must be provided")
-    return ForgetRequest(
+        raise ValidationError("At least one of memory_ids, query, or before must be provided")
+    return _dump_request(
+        ForgetRequest,
         memory_ids=memory_ids,
         query=query,
         before=before,
         action=action,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_create_session_body(
@@ -165,21 +187,22 @@ def build_create_session_body(
     ttl_hours: int = 24,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return CreateSessionRequest(
+    return _dump_request(
+        CreateSessionRequest,
         name=name,
         ttl_hours=ttl_hours,
         metadata=metadata or {},
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def require_delete_all_confirmation(confirm: bool) -> None:
     if not confirm:
-        raise ValueError("delete_all requires confirm=True to avoid accidental data loss")
+        raise ValidationError("delete_all requires confirm=True to avoid accidental data loss")
 
 
 def require_reset_confirmation(confirm: bool) -> dict[str, bool]:
     if not confirm:
-        raise ValueError("You must pass confirm=True to reset the database.")
+        raise ValidationError("You must pass confirm=True to reset the database.")
     return {"confirm": True}
 
 
@@ -189,11 +212,12 @@ def build_consolidate_windowed_body(
     max_episodes: int = 2000,
     use_llm: bool | None = None,
 ) -> dict[str, Any]:
-    return WindowConsolidateRequest(
+    return _dump_request(
+        WindowConsolidateRequest,
         session_id=session_id,
         max_episodes=max_episodes,
         use_llm=use_llm,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_feedback_body(
@@ -206,7 +230,8 @@ def build_feedback_body(
     preferred_steps: list[str] | None = None,
     session_id: str | None = None,
 ) -> dict[str, Any]:
-    return FeedbackRequest(
+    return _dump_request(
+        FeedbackRequest,
         outcome_reward=outcome_reward,
         expected_reward=expected_reward,
         query=query,
@@ -214,7 +239,7 @@ def build_feedback_body(
         correction_text=correction_text,
         preferred_steps=preferred_steps,
         session_id=session_id,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_simulate_body(
@@ -223,11 +248,12 @@ def build_simulate_body(
     max_results: int = 12,
     context_filter: list[str] | None = None,
 ) -> dict[str, Any]:
-    return SimulateRequest(
+    return _dump_request(
+        SimulateRequest,
         scenario=scenario,
         max_results=max_results,
         context_filter=context_filter,
-    ).model_dump(exclude_none=True, mode="json")
+    )
 
 
 def build_tenant_user_payload(
@@ -259,7 +285,7 @@ def build_forgetting_payload(
 def validate_batch_write_items(items: list[dict[str, Any]]) -> None:
     for i, item in enumerate(items):
         if not isinstance(item, dict) or "content" not in item:
-            raise ValueError(
+            raise ValidationError(
                 f"Each item must be a dict with a 'content' key; item at index {i} is invalid"
             )
 
@@ -413,7 +439,7 @@ def build_jobs_params(
 
 def validate_iter_memory_types(memory_types: list[Any] | None) -> None:
     if memory_types and len(memory_types) > 1:
-        raise ValueError(
+        raise ValidationError(
             "iter_memories() supports at most one memory type; "
             f"got {len(memory_types)}. Pass a single type or None."
         )
@@ -425,8 +451,11 @@ def build_iter_memories_params(
     batch_size: int,
     status: str | None,
     memory_types: list[Any] | None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {"page": page, "per_page": batch_size}
+    if tenant_id:
+        params["tenant_id"] = tenant_id
     if status is not None:
         params["status"] = status
     if memory_types:

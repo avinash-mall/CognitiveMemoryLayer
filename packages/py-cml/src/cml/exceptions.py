@@ -61,8 +61,8 @@ class NotFoundError(CMLError):
     pass
 
 
-class ValidationError(CMLError):
-    """Raised when request validation fails (422)."""
+class ValidationError(CMLError, ValueError):
+    """Raised when request validation fails (client-side or HTTP 422)."""
 
     pass
 

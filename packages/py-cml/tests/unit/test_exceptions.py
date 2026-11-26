@@ -70,3 +70,17 @@ def test_connection_error_alias() -> None:
 def test_timeout_error_alias() -> None:
     """TimeoutError from cml.exceptions is alias for CMLTimeoutError."""
     assert TimeoutError is CMLTimeoutError
+
+
+def test_validation_error_is_cml_and_value_error() -> None:
+    """Client-side validation raises cml.ValidationError (also a ValueError and CMLError)."""
+    import pytest
+
+    from cml._endpoints import build_write_body
+
+    assert issubclass(ValidationError, CMLError)
+    assert issubclass(ValidationError, ValueError)
+    with pytest.raises(ValidationError) as exc_info:
+        build_write_body("")
+    assert isinstance(exc_info.value, CMLError)
+    assert isinstance(exc_info.value, ValueError)

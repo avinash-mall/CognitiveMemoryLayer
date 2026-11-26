@@ -666,6 +666,9 @@ class MemoryOrchestrator(WritePipelineMixin):
 
         # Collect IDs by time filter (cursor-based pagination)
         if before:
+            from src.storage.utils import naive_utc
+
+            before_utc = naive_utc(before)
             offset = 0
             while True:
                 records = await self.hippocampal.store.scan(
@@ -677,7 +680,8 @@ class MemoryOrchestrator(WritePipelineMixin):
                 if not records:
                     break
                 for r in records:
-                    if r.timestamp and r.timestamp < before:
+                    rec_ts = naive_utc(r.timestamp)
+                    if rec_ts is not None and before_utc is not None and rec_ts < before_utc:
                         target_ids.add(r.id)
                 offset += len(records)
 

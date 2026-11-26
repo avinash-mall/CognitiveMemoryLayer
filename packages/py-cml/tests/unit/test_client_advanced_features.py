@@ -406,7 +406,22 @@ def test_iter_memories_one_page(cml_config: CMLConfig) -> None:
     assert call[0] == ("GET", "/dashboard/memories")
     assert call[1]["params"]["per_page"] == 100
     assert call[1]["params"]["status"] == "active"
+    assert call[1]["params"]["tenant_id"] == config.tenant_id
     assert call[1]["use_admin_key"] is True
+
+
+def test_iter_memories_tenant_override_and_all_tenants(cml_config: CMLConfig) -> None:
+    """iter_memories() scopes to tenant_id override, or all tenants when tenant_id=''."""
+    client = CognitiveMemoryLayer(config=cml_config)
+    client._transport.request = MagicMock(  # type: ignore[method-assign]
+        return_value={"items": [], "total": 0, "page": 1, "per_page": 100, "total_pages": 1}
+    )
+
+    list(client.iter_memories(tenant_id="other-tenant"))
+    assert client._transport.request.call_args[1]["params"]["tenant_id"] == "other-tenant"
+
+    list(client.iter_memories(tenant_id=""))
+    assert "tenant_id" not in client._transport.request.call_args[1]["params"]
 
 
 def test_iter_memories_empty(cml_config: CMLConfig) -> None:
