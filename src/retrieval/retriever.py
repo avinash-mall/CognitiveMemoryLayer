@@ -272,15 +272,30 @@ class HybridRetriever(GraphExpansionMixin):
                             )
                             extra_constraints.extend(rows)
 
+                    from ..utils.similarity import cosine_similarity, jaccard, word_set
+
                     existing_ids = {
                         str(getattr(x.get("record"), "id", ""))
                         for x in all_results
                         if x.get("record") is not None
                     }
+                    q_words = word_set(plan.query) if plan.query else frozenset()
+                    scored_assoc: list[tuple[float, Any]] = []
                     for c in extra_constraints:
                         cid = str(getattr(c, "id", ""))
                         if cid and cid in existing_ids:
                             continue
+                        c_emb = getattr(c, "embedding", None)
+                        if query_embedding is not None and c_emb is not None:
+                            sim = float(cosine_similarity(query_embedding, c_emb))
+                        else:
+                            sim = float(jaccard(q_words, word_set(getattr(c, "text", ""))))
+                        if sim < 0.52:
+                            continue
+                        scored_assoc.append((sim, c))
+                    scored_assoc.sort(key=lambda item: item[0], reverse=True)
+                    for sim, c in scored_assoc[:4]:
+                        cid = str(getattr(c, "id", ""))
                         if cid:
                             existing_ids.add(cid)
                         all_results.append(
@@ -289,7 +304,7 @@ class HybridRetriever(GraphExpansionMixin):
                                 "source": "constraints_associative",
                                 "text": getattr(c, "text", ""),
                                 "confidence": getattr(c, "confidence", 0.7),
-                                "relevance": 0.8,
+                                "relevance": min(0.72, sim),
                                 "timestamp": getattr(c, "timestamp", None),
                                 "record": c,
                             }

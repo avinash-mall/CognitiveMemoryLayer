@@ -142,6 +142,7 @@ class HippocampalStore:
         memory_type_override: MemoryType | None = None,
         return_gate_results: bool = False,
         unified_results: list[UnifiedExtractionResult | None] | None = None,
+        skip_llm_extraction: bool = False,
     ):
         """Encode chunks using a 4-phase batched pipeline.
 
@@ -222,7 +223,8 @@ class HippocampalStore:
             surviving_unified.append(ur)
 
         if (
-            all(r is None for r in surviving_unified)
+            not skip_llm_extraction
+            and all(r is None for r in surviving_unified)
             and not all(
                 bool((chunk.metadata or {}).get("thalamic_triaged_system1"))
                 for _idx, chunk, _gr, _txt in surviving
@@ -450,6 +452,15 @@ class HippocampalStore:
             elif somatic_mod < 1.0:
                 decay_rate_val = round(max(0.002, 0.01 * somatic_mod), 5)
 
+            inferred_roles = {"assistant", "agent", "system"}
+            prov_source = (
+                MemorySource.AGENT_INFERRED
+                if (
+                    str(chunk.source_role or "").strip().lower() in inferred_roles
+                    or bool((merged_metadata or {}).get("inferred"))
+                )
+                else MemorySource.USER_EXPLICIT
+            )
             record_create = MemoryRecordCreate(
                 tenant_id=tenant_id,
                 context_tags=effective_ct,
@@ -468,7 +479,7 @@ class HippocampalStore:
                 importance=importance,
                 decay_rate=decay_rate_val,
                 provenance=Provenance(
-                    source=MemorySource.AGENT_INFERRED,
+                    source=prov_source,
                     evidence_refs=([chunk.source_turn_id] if chunk.source_turn_id else []),
                     model_version=embedding_result.model,
                 ),

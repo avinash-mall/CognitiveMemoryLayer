@@ -211,19 +211,19 @@ Key behavior:
 
 ## Read Pipeline (Current Execution Order)
 
-1. Query classification (`QueryClassifier`)
-   - LLM classification when `FEATURES__USE_LLM_ENABLED` and a client is configured
+1. Query classification (`QueryClassifier`) + System 1 routing (`LayaSystem1Engine`)
+   - LLM classification when `FEATURES__USE_LLM_ENABLED` (default `true`) and an `LLM_INTERNAL__*` OpenAI-compatible client is configured
    - regex intent/constraint heuristics otherwise (and always applied on top)
-2. Retrieval plan generation (`RetrievalPlanner`)
-3. Hybrid retrieval (`HybridRetriever`)
-   - facts, vector, graph, constraints, cache
-   - per-step and total timeout enforcement (when enabled)
-4. Reranking (`MemoryReranker`)
-   - relevance, recency, confidence, diversity
-   - constraint-specific scoring boosts
+2. Retrieval plan generation (`RetrievalPlanner`) with guaranteed dense vector coverage
+3. Stage-1 Multi-Angle Expansion & 4-Pathway Ecphory (`MemoryRetriever` + `RetrievalAugmentersMixin`)
+   - concurrent Dense `pgvector` + conjunction-boosted IDF `tsvector` BM25 + `<5ms` Cortical Hypergraph PPR + Grounded Proustian Cue Pointers
+   - multi-angle query expansion (`FEATURES__LLM_MULTI_ANGLE_EXPANSION_ENABLED`, default `true`), non-hub entity-bridge boosting, and `±2` post-merge conversational contiguity
+4. Wide Reranking (`MemoryReranker`) + Stage-2 Judged Delivery (`HyDEGenerator.evaluate_candidates_and_grounding`)
+   - CUDA true-logit Cross-Encoder + relevance/recency/confidence/diversity over wide candidate pool
+   - batched `LLM_INTERNAL` candidate selection (`FEATURES__LLM_JUDGED_DELIVERY_ENABLED`, default `true`), optional 2nd-hop bridge fetch, and CA1 evidence-grounding verdict (`supported` | `inferable` | `speaker_swap` | `unsupported_premise`)
 5. Packet build (`MemoryPacketBuilder`)
-   - constraint-first formatting
-   - conflict and supersession suppression
+   - CLS stratified slot allocation (prioritizing verbatim episodes and atomic facts while capping long chapter gists)
+   - CA1 speaker-attribution & presupposition warnings, deterministic Hippocampal Time Cell deltas, DMN self-profiles, and conflict/supersession suppression
 
 Temporal behavior:
 
@@ -246,13 +246,17 @@ Source of truth: `src/core/config.py`.
 
 ### Important feature flags
 
-- `FEATURES__USE_LLM_ENABLED` (master switch)
-- `FEATURES__CONSTRAINT_EXTRACTION_ENABLED`
-- `FEATURES__WRITE_TIME_FACTS_ENABLED`
-- `FEATURES__CACHED_EMBEDDINGS_ENABLED`
-- `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED`
-- `FEATURES__SKIP_IF_FOUND_CROSS_GROUP`
-- `FEATURES__HNSW_EF_SEARCH_TUNING`
+- `FEATURES__USE_LLM_ENABLED` (default `true` — master switch for `LLM_INTERNAL__*` across write, consolidation, and read; accepts any OpenAI-compatible external or local endpoint)
+- `FEATURES__BATCH_WRITE_SYSTEM1_FASTPATH` (default `true` — Hybrid CLS: fast-paths `/memory/write_batch` through System-1 GPU encoding at `>300 turns/s` so `WindowedMicroSleepConsolidator` handles multi-turn LLM extraction)
+- `FEATURES__HYDE_RETRIEVAL_ENABLED` (default `true`)
+- `FEATURES__LLM_MULTI_ANGLE_EXPANSION_ENABLED` (default `true` — Stage-1 multi-angle query expansion)
+- `FEATURES__LLM_JUDGED_DELIVERY_ENABLED` (default `true` — Stage-2 batched candidate evaluation, 2nd-hop bridge fetch, and CA1 grounding verdict)
+- `FEATURES__CONSTRAINT_EXTRACTION_ENABLED` (default `true`)
+- `FEATURES__WRITE_TIME_FACTS_ENABLED` (default `true`)
+- `FEATURES__CACHED_EMBEDDINGS_ENABLED` (default `true`)
+- `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` (default `true`)
+- `FEATURES__SKIP_IF_FOUND_CROSS_GROUP` (default `true`)
+- `FEATURES__HNSW_EF_SEARCH_TUNING` (default `true`)
 - All fine-grained `FEATURES__USE_LLM_*` flags
 
 Consolidation (all three default to a no-op; consolidation is otherwise manual-only via

@@ -129,7 +129,8 @@ class MemoryReranker:
                         if (
                             meta.get("_proustian_promoted")
                             or meta.get("_hyde_promoted")
-                            or mem.retrieval_source == "temporal_contiguity"
+                            or meta.get("_llm_selected")
+                            or mem.retrieval_source in ("temporal_contiguity", "contiguity")
                         ):
                             # Protect indirect cues & contiguity neighbours from literal-match drop
                             base_scores[idx_pos] = max(base_scores[idx_pos], blended)

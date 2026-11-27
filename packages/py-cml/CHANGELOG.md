@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **LoCoMo-Plus Ingestion, Speaker Mapping & Structured CoT Evaluation (`cml.eval.locomo`)**:
+  - Preserved `[Shared photo: <blip_caption>]` descriptions and wrapped multi-line turns in `_parse_input_prompt_into_turns()`.
+  - Stripped self-contaminating future `trigger_query` turns (`_strip_cognitive_trigger_turns()`), restored dynamic `session_k` boundaries from `turn_timestamps`, and mapped raw `A:`/`B:` speakers to conversation participants in `format_cognitive_trigger_and_prompt()`.
+  - Upgraded `QA_PROMPT`, `COGNITIVE_PROMPT`, and `_extract_answer()` for concise structured Chain-of-Thought + `Final Answer:` extraction, speaker-swap refusal alignment, and canonical relative-date resolution.
+- **Default OpenAI-Compatible `LLM_INTERNAL` Resolution (`cml.embedded`)**: automatically resolves `LLM_INTERNAL__API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `"dummy"` for custom `base_url` endpoints, and skips per-turn System-2 extraction during `batch_write()` when `FEATURES__BATCH_WRITE_SYSTEM1_FASTPATH=true`.
+
 ## [3.0.1] — 2026-11-26
 
 ### Added

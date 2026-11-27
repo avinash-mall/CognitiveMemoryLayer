@@ -137,9 +137,9 @@ def _cue_dialogue_to_evidence(cue_dialogue: str, locomo_item: dict) -> str:
     return "\n".join(f"{t['speaker']}: {t['text'].strip()}" for t in turns if t.get("text"))
 
 
-def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> tuple[str, list]:
+def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> tuple[str, list, str, str]:
     """Cognitive: input_prompt = stitched dialogue from build_conv.build_context.
-    Returns (prompt_str, dialogue_timestamps) for per-turn timestamp metadata."""
+    Preserves blip_caption photo descriptions and returns (prompt_str, dialogue_timestamps, speaker_a, speaker_b)."""
     from build_conv import build_context
 
     ctx = build_context(plus_item, locomo_item)
@@ -148,9 +148,17 @@ def _stitch_dialogue_for_plus(plus_item: dict, locomo_item: dict) -> tuple[str, 
     for turn in dialogue:
         speaker = turn.get("speaker", "?")
         text = (turn.get("text") or "").strip()
-        lines.append(f'{speaker} said, "{text}"')
+        if turn.get("blip_caption"):
+            lines.append(f'{speaker} said, "{text}" and shared {turn["blip_caption"]}.')
+        else:
+            lines.append(f'{speaker} said, "{text}"')
     dialogue_timestamps = ctx.get("dialogue_timestamps") or []
-    return "\n".join(lines), dialogue_timestamps
+    return (
+        "\n".join(lines),
+        dialogue_timestamps,
+        str(ctx.get("speaker_a") or "A"),
+        str(ctx.get("speaker_b") or "B"),
+    )
 
 
 def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_size=None) -> list:
@@ -164,8 +172,13 @@ def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_si
     out = []
     for i, plus in enumerate(plus_list):
         locomo_item = locomo_list[i % len(locomo_list)]
+        conv = locomo_item.get("conversation") or {}
+        speaker_a = str(conv.get("speaker_a") or "A")
+        speaker_b = str(conv.get("speaker_b") or "B")
         try:
-            input_prompt, dialogue_timestamps = _stitch_dialogue_for_plus(plus, locomo_item)
+            input_prompt, dialogue_timestamps, speaker_a, speaker_b = _stitch_dialogue_for_plus(
+                plus, locomo_item
+            )
         except Exception:
             input_prompt = ""
             dialogue_timestamps = []
@@ -180,6 +193,8 @@ def _process_locomo_plus(locomo_plus_path: str, locomo_path: str, plus_sample_si
             "category": CATEGORY_SIXTH,
             "time_gap": plus.get("time_gap", ""),
             "turn_timestamps": [t.isoformat() for t in dialogue_timestamps],
+            "speaker_a": speaker_a,
+            "speaker_b": speaker_b,
         }
         out.append(sample)
     return out

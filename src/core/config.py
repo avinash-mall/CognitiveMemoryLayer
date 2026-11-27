@@ -373,6 +373,22 @@ class FeatureFlags(PydanticBaseModel):
         le=80,
         description="Number of conversational turns processed per Windowed Micro-Sleep call.",
     )
+    batch_write_system1_fastpath: bool = Field(
+        default=True,
+        description="Hybrid CLS: keep bulk write_batch System-1 fast (~190 turns/s) and defer "
+        "multi-turn LLM extraction to WindowedMicroSleepConsolidator, while live single-turn "
+        "/memory/write uses LLM_INTERNAL directly.",
+    )
+    llm_multi_angle_expansion_enabled: bool = Field(
+        default=True,
+        description="Stage-1 LLM_INTERNAL multi-angle query reformulation, entity extraction, "
+        "and implicit-cue expansion across dense, BM25, and hypergraph pathways.",
+    )
+    llm_judged_delivery_enabled: bool = Field(
+        default=True,
+        description="Stage-2 batched LLM_INTERNAL candidate evaluation and reality-monitoring "
+        "verdict over the retrieved candidate pool (Kumiho-inspired judged delivery).",
+    )
 
 
 class RerankerSettings(PydanticBaseModel):

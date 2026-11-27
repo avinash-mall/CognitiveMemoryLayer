@@ -276,8 +276,24 @@ class EmbeddedCognitiveMemoryLayer:
 
         if llm_enabled:
             provider = str(self._config.llm.provider or "").lower()
-            has_key = bool(self._config.llm.api_key or os.environ.get("OPENAI_API_KEY", ""))
-            if provider in ("openai", "gemini", "claude", "anthropic") and not has_key:
+            has_key = bool(
+                self._config.llm.api_key
+                or os.environ.get("LLM_INTERNAL__API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or os.environ.get("OPENROUTER_API_KEY")
+            )
+            is_local_compat = bool(
+                self._config.llm.base_url
+                and any(
+                    h in self._config.llm.base_url
+                    for h in ("localhost", "127.0.0.1", "0.0.0.0", "host.")
+                )
+            )
+            if (
+                provider in ("openai", "gemini", "claude", "anthropic")
+                and not has_key
+                and not is_local_compat
+            ):
                 logger.warning(
                     "Embedded mode: use_llm_enabled=True with cloud provider '%s' "
                     "and no API key; falling back to llm_client=None.",
@@ -286,10 +302,17 @@ class EmbeddedCognitiveMemoryLayer:
             else:
                 from src.utils.llm import OpenAICompatibleClient
 
+                resolved_key = (
+                    self._config.llm.api_key
+                    or os.environ.get("LLM_INTERNAL__API_KEY")
+                    or os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("OPENROUTER_API_KEY")
+                    or "dummy"
+                )
                 llm_client = OpenAICompatibleClient(
                     model=self._config.llm.model,
                     base_url=self._config.llm.base_url,
-                    api_key=self._config.llm.api_key or "dummy",
+                    api_key=resolved_key,
                     extra_body=self._config.llm.extra_body,
                 )
 

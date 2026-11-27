@@ -1,6 +1,16 @@
 # Evaluation with CML
 
-This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus) benchmark setup and CML-backed evaluation scripts. Locomo-Plus unifies LoCoMo (five factual categories) with a sixth **Cognitive** category for long-context memory evaluation.
+This folder contains the [Locomo-Plus](https://github.com/xjtuleeyf/Locomo-Plus) benchmark setup and CML-backed evaluation scripts. Locomo-Plus unifies LoCoMo (five factual categories) with a sixth **Cognitive** category across **2,387 samples**:
+
+- **`single-hop` (841):** Direct recall of a single fact, event, or `[Shared photo: ...]` detail (**71.70%**).
+- **`multi-hop` (282):** Synthesizing scattered clues or multi-session lists/counts (**47.87%**).
+- **`temporal` (321):** Resolving relative dates (`"yesterday"`, `"last week"`), ordering, and durations (**60.59%** `gpt-4o` / **70.25%** local).
+- **`common-sense` (96):** Combining stored persona values, goals, and habits with world knowledge (**50.52%** / **58.85%** open).
+- **`adversarial` (446):** Rejecting false presuppositions and speaker-swap traps (**91.70%**, **#1 overall**).
+- **`Cognitive` / LoCoMo-Plus (401):** Implicit cue–trigger memory awareness across zero lexical overlap (**50.12%**, **#1 Table 1**).
+- **`Gap` (`LoCoMo Avg − Cognitive`):** Drop-off from factual (`69.99%`) to cognitive (`50.12%`) recall (**19.87** weighted / **14.35** macro; lower is better).
+
+See [EVALUATION_REPORT.md](EVALUATION_REPORT.md) for the full head-to-head breakdown.
 
 ## Layout
 
@@ -148,8 +158,8 @@ cml-eval run-locomo \
 ### Generate report & comparison tables
 
 ```bash
-cml-eval report --summary evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json --method "CML v3.0 (GPT-4o)"
-cml-eval compare --summary evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json --method "CML v3.0 (GPT-4o)"
+cml-eval report --summary evaluation/results/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json --method "CML v3.1 (GPT-4o)"
+cml-eval compare --summary evaluation/results/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json --method "CML v3.1 (GPT-4o)"
 ```
 
 Use `--method` to match your QA model (e.g. `CML v3.0 (GPT-4o)` or `CML+qwen3.8-27b`).

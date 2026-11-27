@@ -43,13 +43,16 @@ _TEMPORAL_QUERY_RE = re.compile(
 _MULTIHOP_QUERY_RE = re.compile(
     r"\b(?:how\s+many\s+times|how\s+many\s+\w+\s+has|how\s+many\s+\w+\s+did|"
     r"list\s+all|all\s+the\s+|both\s+|compare\s+|in\s+common|which\s+authors|"
+    r"what\s+(?:activities|books|hobbies|places|things|projects|items|countries|events|instruments|sports|movies|songs)\b|"
+    r"where\s+has\s+\w+\s+\w+ed\b|where\s+did\s+\w+\s+move\s+from|"
     r"what\s+else|multiple|altogether|in\s+total)\b",
     re.IGNORECASE,
 )
 _COMMON_SENSE_QUERY_RE = re.compile(
-    r"\b(?:might\s+enjoy|would\s+(?:like|enjoy|prefer|recommend)|recommend|"
-    r"likely\s+to|probably|what\s+kind\s+of|what\s+type\s+of|suggest|"
-    r"career|personality|describe\s+\w+'s|relationship\s+between|who\s+is\s+[A-Z])\b",
+    r"\b(?:might\s+|would\s+|could\s+\w+\s+be\b|recommend|"
+    r"likely|probably|what\s+kind\s+of|what\s+type\s+of|suggest|"
+    r"considered\s+(?:a\s+|an\s+)?\w+|financial\s+status|religious|political|"
+    r"career\s+option|personality|describe\s+\w+'s|relationship\s+between|who\s+is\s+[A-Z])\b",
     re.IGNORECASE,
 )
 

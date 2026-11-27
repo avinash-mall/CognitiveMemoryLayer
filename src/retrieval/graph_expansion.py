@@ -25,7 +25,7 @@ GRAPH_RELEVANCE_CEILING = 0.85
 # Temporal contiguity expansion parameters.
 _CONTIGUITY_MAX_SEEDS = 3
 _CONTIGUITY_WINDOW_MINUTES = 30
-_CONTIGUITY_RELEVANCE_FACTOR = 0.7
+_CONTIGUITY_RELEVANCE_FACTOR = 0.75
 _CONTIGUITY_SESSION_SCAN_LIMIT = 200
 
 
@@ -108,7 +108,7 @@ class GraphExpansionMixin:
         seeds = [
             r
             for r in all_results
-            if r.get("source") == "vector"
+            if r.get("source") in ("vector", "sparse_bm25", "hypergraph_ppr")
             and getattr(r.get("record"), "source_session_id", None)
             and getattr(r.get("record"), "timestamp", None)
         ]
@@ -119,24 +119,29 @@ class GraphExpansionMixin:
         existing_ids = {
             str(getattr(x.get("record"), "id", "")) for x in all_results if x.get("record")
         }
+        session_cache: dict[str, list[Any]] = {}
         for seed in seeds[:_CONTIGUITY_MAX_SEEDS]:
             record = seed["record"]
             ts = record.timestamp
-            try:
-                window = timedelta(minutes=_CONTIGUITY_WINDOW_MINUTES)
-                rows = await self.hippocampal.store.scan(
-                    tenant_id,
-                    filters={
-                        "source_session_id": record.source_session_id,
-                        "status": "active",
-                        "since": ts - window,
-                        "until": ts + window,
-                    },
-                    limit=_CONTIGUITY_SESSION_SCAN_LIMIT,
-                )
-            except Exception as exc:
-                logger.warning("temporal_contiguity_failed", extra={"error": str(exc)})
-                return
+            sess_key = f"{record.source_session_id}:{ts.isoformat()[:16]}"
+            rows = session_cache.get(sess_key)
+            if rows is None:
+                try:
+                    window = timedelta(minutes=_CONTIGUITY_WINDOW_MINUTES)
+                    rows = await self.hippocampal.store.scan(
+                        tenant_id,
+                        filters={
+                            "source_session_id": record.source_session_id,
+                            "status": "active",
+                            "since": ts - window,
+                            "until": ts + window,
+                        },
+                        limit=_CONTIGUITY_SESSION_SCAN_LIMIT,
+                    )
+                    session_cache[sess_key] = rows
+                except Exception as exc:
+                    logger.warning("temporal_contiguity_failed", extra={"error": str(exc)})
+                    return
             for row in _neighbours_of(record, rows, k):
                 rid = str(getattr(row, "id", ""))
                 if not rid or rid in existing_ids:
@@ -167,7 +172,11 @@ class GraphExpansionMixin:
             meta = getattr(rec, "metadata", None) if rec is not None else None
             if not isinstance(meta, dict) or not meta.get("is_prospective_index"):
                 continue
-            pid = meta.get("parent_id") or meta.get("prospective_source_id")
+            pid = (
+                meta.get("parent_id")
+                or meta.get("prospective_source_id")
+                or meta.get("parent_episode_id")
+            )
             if pid:
                 rel = float(item.get("relevance", 0.5) or 0.5)
                 parent_scores[str(pid)] = max(parent_scores.get(str(pid), 0.0), rel)

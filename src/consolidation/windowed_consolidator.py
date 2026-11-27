@@ -33,29 +33,52 @@ from ..utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_PROMPT_VERSION = "v3.0-conway-hypergraph-2"
+_PROMPT_VERSION = "v3.1-exhaustive-conway-hypergraph-1"
 
-_WINDOW_CONSOLIDATION_PROMPT = """Analyze this chronological dialogue window and extract structured memory representations.
-Resolve all pronouns ("I", "he", "she", "they", "that", "there") to exact speaker/entity names, and resolve relative dates ("yesterday", "last month", "last year", "two weeks ago") against each turn's [YYYY-MM-DD] spoken date using accurate granularity (e.g. "2022", "April 2023", or "2023-05-07").
-Keep output compact and high-signal: at most 5 facts, at most 3 hyperedges, at most 2 proustian_pointers, 1 chapter_gist, and at most 2 persona_deltas (max 3 short items per trait list).
+_SINGLETON_PREDICATES = frozenset(
+    {
+        "age",
+        "birth_year",
+        "birthday",
+        "gender",
+        "gender_identity",
+        "identity",
+        "marital_status",
+        "relationship_status",
+        "hometown",
+        "home_country",
+        "country_of_origin",
+        "current_city",
+        "occupation",
+        "job_title",
+        "career_goal",
+    }
+)
+
+_WINDOW_CONSOLIDATION_PROMPT = """Analyze this chronological dialogue window and extract COMPLETE, queryable memory representations.
+RULES:
+1. Resolve ALL pronouns ("I", "my", "he", "she", "they", "that", "there", "my home country", "this book") to exact speaker/entity names using surrounding turns AND any [Shared photo: ...] descriptions.
+2. Resolve relative dates ("yesterday", "last week", "last month", "last year", "5 years ago") against each turn's [YYYY-MM-DD] spoken date, preserving BOTH relative and resolved forms when helpful (e.g. "2022", "June 2023", "2023-05-07").
+3. COMPLETENESS IS CRITICAL: Extract EVERY distinct queryable fact in the window (up to 18 facts): exact book/movie/song/game titles, shared photo subjects/captions, hobbies, activities, trips/locations, family/pets, durations/counts, recommendations, career/education, reasons/motivations, and question-answer pairs across adjacent turns. Never generalize away proper nouns or numbers.
+4. Extract up to 6 N-ary hyperedges linking multi-entity events/states, and up to 6 proustian_pointers for ANY past mishap, scare, injury, allergy, regret, boundary, habit change, goal, or value — writing 3-5 short future search scenarios (3-10 words each, ZERO word overlap with the original turn) where that hidden past experience would matter later.
 
 Dialogue Window:
 {window_text}
 
-Return ONLY valid JSON matching this exact schema (no markdown fences, concise strings):
+Return ONLY valid JSON matching this exact schema (no markdown fences):
 {{
   "facts": [
-    {{"subject": "Name", "predicate": "concise_attribute_or_relation", "value": "exact resolved fact", "category": "identity|occupation|preference|relationship|goal|state|value|causal|attribute", "turn_indices": [0], "event_date_display": ""}}
+    {{"subject": "Name", "predicate": "specific_attribute_or_action", "value": "complete self-contained fact preserving exact names, titles, photo details, counts, and reasons", "category": "identity|occupation|preference|relationship|goal|state|value|causal|attribute", "turn_indices": [0], "event_date_display": ""}}
   ],
   "hyperedges": [
-    {{"actors": ["Name"], "entities": ["Item/Org/Topic"], "event_summary": "1-sentence coref-resolved event or state", "temporal_anchor": "resolved date/period or empty", "location": "place or empty", "causal_state": "why it happened or active constraint", "prospective_cues": ["concrete future remark or decision topic where this matters"], "turn_indices": [0, 1]}}
+    {{"actors": ["Name"], "entities": ["Exact Item/Title/Place/Topic"], "event_summary": "1-sentence coref-resolved event, Q&A outcome, or state", "temporal_anchor": "resolved date/period or empty", "location": "place or empty", "causal_state": "why it happened or active constraint", "prospective_cues": ["short future query/scenario where this matters"], "turn_indices": [0, 1]}}
   ],
   "proustian_pointers": [
-    {{"speaker": "Name", "turn_index": 0, "implicit_lesson_or_boundary": "hidden fear, allergy, habit, trauma, rule, value, or goal from that turn", "future_cue_scenarios": ["2-3 everyday remarks or situations with ZERO word overlap where this past experience explains their reaction"]}}
+    {{"speaker": "Name", "turn_index": 0, "implicit_lesson_or_boundary": "concrete cause + resulting habit, rule, fear, allergy, goal, or value from that turn", "future_cue_scenarios": ["4-5 short everyday remarks or situations with ZERO word overlap where this past experience explains their reaction or decision"]}}
   ],
   "chapter_gist": {{
-    "title": "Short chapter title",
-    "summary": "2-sentence narrative summary preserving specific names, counts, items, and dates",
+    "title": "Specific chapter title",
+    "summary": "2-3 sentence factual summary preserving ALL specific names, book/art titles, photo subjects, counts, places, and dates",
     "participants": ["Name"]
   }},
   "persona_deltas": [
@@ -174,8 +197,8 @@ class WindowedMicroSleepConsolidator:
         embedding_client: Any,
         llm_client: Any | None = None,
         dmn_store: PersistentDMNStore | None = None,
-        window_size: int = 24,
-        max_concurrency: int = 1,
+        window_size: int = 18,
+        max_concurrency: int = 6,
     ) -> None:
         self.episodic_store = episodic_store
         self.neocortical_store = neocortical_store
@@ -285,12 +308,13 @@ class WindowedMicroSleepConsolidator:
         for i, rec in enumerate(window):
             meta = dict(rec.metadata or {})
             spk = str(meta.get("speaker") or "Speaker").strip()
-            has_explicit_date = meta.get("date_str") not in (None, "") or "turn_idx" not in meta
-            said = (
-                rec.timestamp.strftime("%Y-%m-%d")
-                if (has_explicit_date and hasattr(rec.timestamp, "strftime"))
-                else "dialogue"
+            has_real_ts = hasattr(rec.timestamp, "strftime") and (
+                meta.get("date_str") not in (None, "")
+                or meta.get("has_session_timestamp")
+                or "turn_idx" not in meta
+                or getattr(rec.timestamp, "year", 1970) != datetime.now(UTC).year
             )
+            said = rec.timestamp.strftime("%Y-%m-%d") if has_real_ts else "dialogue"
             lines.append(f"[{i} | {said} | {spk}]: {(rec.text or '').strip()}")
 
         if self.llm_client is None:
@@ -307,18 +331,22 @@ class WindowedMicroSleepConsolidator:
             return cached
 
         prompt = _WINDOW_CONSOLIDATION_PROMPT.format(window_text=window_blob)
-        try:
-            raw = await self.llm_client.complete(
-                prompt,
-                temperature=0.0,
-                max_tokens=1800,
-            )
-            parsed = _extract_json_dict(raw)
-            if parsed is not None:
-                _CACHE_SINGLETON.put(cache_key, parsed)
-                return parsed
-        except Exception as exc:
-            logger.warning("window_llm_extract_fallback", extra={"error": str(exc)})
+        for attempt in range(2):
+            try:
+                raw = await self.llm_client.complete(
+                    prompt,
+                    temperature=0.0,
+                    max_tokens=4800,
+                )
+                parsed = _extract_json_dict(raw)
+                if parsed is not None:
+                    _CACHE_SINGLETON.put(cache_key, parsed)
+                    return parsed
+            except Exception as exc:
+                if attempt == 1:
+                    logger.warning("window_llm_extract_fallback", extra={"error": str(exc)})
+                else:
+                    await asyncio.sleep(1.5)
 
         return self._heuristic_window_extract(window)
 
@@ -430,7 +458,7 @@ class WindowedMicroSleepConsolidator:
                             meta["window_consolidated"] = True
                             episode_patches.append((rec.id, {"metadata": meta}))
 
-            # 2. Facts -> Neocortical FactStore
+            # 2. Facts -> Neocortical FactStore (preserve multi-valued attributes without collision)
             for fitem in payload.get("facts") or []:
                 if not isinstance(fitem, dict):
                     continue
@@ -447,8 +475,16 @@ class WindowedMicroSleepConsolidator:
                 ]
                 ev_ids = [str(win[i].id) for i in t_indices] or [str(win[0].id)]
                 ev_disp = str(fitem.get("event_date_display") or "").strip()
-                val_str = f"{val} ({ev_disp})" if ev_disp and ev_disp not in str(val) else str(val)
-                key = f"{subj.lower()}:{cat_raw}:{pred.lower().replace(' ', '_')[:60]}"
+                val_core = str(val).strip()
+                val_str = (
+                    f"{val_core} ({ev_disp})" if ev_disp and ev_disp not in val_core else val_core
+                )
+                pred_slug = re.sub(r"[^a-z0-9_]+", "_", pred.lower()).strip("_")[:48] or "fact"
+                if pred_slug in _SINGLETON_PREDICATES:
+                    key = f"{subj.lower()}:{cat_raw}:{pred_slug}"
+                else:
+                    val_hash = hashlib.md5(val_core.lower().encode()).hexdigest()[:6]
+                    key = f"{subj.lower()}:{cat_raw}:{pred_slug}_{val_hash}"
                 pending_facts.append((key[:190], val_str, ev_ids))
 
             # 3. Hyperedges -> CorticalHypergraphEngine
@@ -511,7 +547,7 @@ class WindowedMicroSleepConsolidator:
                     continue
                 cue_text = (
                     f"[Proustian Cue -> {spk or 'Speaker'}] {lesson}. "
-                    f"Triggered by: {'; '.join(scenarios[:3])}"
+                    f"Triggered by: {'; '.join(scenarios[:5])}"
                 ).strip()
                 ptr_key = (
                     f"proustian:{parent_ep.id}:{hashlib.md5(cue_text.encode()).hexdigest()[:10]}"

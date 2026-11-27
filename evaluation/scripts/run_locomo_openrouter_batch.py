@@ -37,11 +37,12 @@ from task_eval.llm_as_judge import (
 )
 
 from cml.eval.locomo import (
-    COGNITIVE_PROMPT,
     QA_PROMPT,
     _build_conversation_groups,
     _cml_read,
     _extract_answer,
+    _ingest_sample,
+    format_cognitive_trigger_and_prompt,
     phase_a_ingestion,
 )
 
@@ -416,21 +417,71 @@ def main() -> None:
         flush=True,
     )
 
+    needed_convs = sorted({sample_to_conv[oidx] for oidx, _ in selected_pairs})
     # Phase A: Ingest unique conversations into CML
     print(
-        f"[Phase A] Dedup: {len(all_samples)} samples -> {len(unique_convs)} unique conversations",
+        f"[Phase A] Dedup: {len(samples)} selected samples -> {len(needed_convs)} unique conversations "
+        f"(out of {len(unique_convs)} total)",
         flush=True,
     )
     if not args.skip_ingestion:
-        phase_a_ingestion(
-            samples=all_samples,
-            cml_url=args.cml_url,
-            cml_api_key=args.cml_api_key,
-            limit=None,
-            ingestion_workers=args.ingestion_workers,
-            checkpoint_file=out_dir / "locomo_ingestion_checkpoint.json",
-            tenant_prefix=args.tenant_prefix,
-        )
+        if args.stratified_per_cat > 0:
+            ing_ckpt = out_dir / "locomo_ingestion_checkpoint.json"
+            done_ing: set[int] = set()
+            if ing_ckpt.exists():
+                try:
+                    done_ing = set(
+                        json.loads(ing_ckpt.read_text(encoding="utf-8")).get(
+                            "completed_indices", []
+                        )
+                    )
+                except Exception:
+                    done_ing = set()
+            pending_ing = [cid for cid in needed_convs if cid not in done_ing]
+            if pending_ing:
+                print(
+                    f"[Phase A] Ingesting {len(pending_ing)} stratified conversations ({args.ingestion_workers} workers)...",
+                    flush=True,
+                )
+                ing_lock = threading.Lock()
+                with ThreadPoolExecutor(max_workers=max(1, args.ingestion_workers)) as ex:
+                    futs = {
+                        ex.submit(
+                            _ingest_sample,
+                            args.cml_url,
+                            args.cml_api_key,
+                            cid,
+                            all_samples[cid],
+                            0.0,
+                            None,
+                            args.tenant_prefix,
+                        ): cid
+                        for cid in pending_ing
+                    }
+                    for fut in as_completed(futs):
+                        cid_done = futs[fut]
+                        fut.result()
+                        with ing_lock:
+                            done_ing.update(unique_convs.get(cid_done, [cid_done]))
+                            ing_ckpt.write_text(
+                                json.dumps(
+                                    {
+                                        "completed_indices": sorted(done_ing),
+                                        "conversation_dedup": True,
+                                    }
+                                ),
+                                encoding="utf-8",
+                            )
+        else:
+            phase_a_ingestion(
+                samples=all_samples,
+                cml_url=args.cml_url,
+                cml_api_key=args.cml_api_key,
+                limit=None,
+                ingestion_workers=args.ingestion_workers,
+                checkpoint_file=out_dir / "locomo_ingestion_checkpoint.json",
+                tenant_prefix=args.tenant_prefix,
+            )
 
     # Phase A2: Windowed Micro-Sleep Consolidation (Hyperedges + Proustian Cues + Conway + DMN)
     if args.consolidate_windowed:
@@ -447,7 +498,8 @@ def main() -> None:
         conv_freq: dict[int, int] = {}
         for c_id in sample_to_conv.values():
             conv_freq[c_id] = conv_freq.get(c_id, 0) + 1
-        ordered_convs = sorted(unique_convs.keys(), key=lambda cid: -conv_freq.get(cid, 0))
+        target_convs = needed_convs if args.stratified_per_cat > 0 else list(unique_convs.keys())
+        ordered_convs = sorted(target_convs, key=lambda cid: -conv_freq.get(cid, 0))
         pending_convs = [cid for cid in ordered_convs if cid not in done_convs]
         print(
             f"[Phase A2] Windowed Micro-Sleep Consolidation: {len(pending_convs)}/{len(ordered_convs)} conversations pending...",
@@ -533,6 +585,7 @@ def main() -> None:
 
     if not loaded_complete_preds:
         reused_ctx_map: dict[int, str] = {}
+        read_ctx_ckpt = out_dir / "cml_read_contexts_checkpoint.json"
         if args.reuse_contexts_from:
             src_path = Path(args.reuse_contexts_from)
             src_rows = json.loads(src_path.read_text(encoding="utf-8"))
@@ -543,9 +596,21 @@ def main() -> None:
                 f"[Phase B] Reusing {len(reused_ctx_map)} retrieved contexts from {src_path}",
                 flush=True,
             )
-        else:
+        elif read_ctx_ckpt.exists():
+            try:
+                loaded_ctx = json.loads(read_ctx_ckpt.read_text(encoding="utf-8"))
+                if isinstance(loaded_ctx, dict):
+                    reused_ctx_map = {int(k): str(v) for k, v in loaded_ctx.items() if v}
+                    print(
+                        f"[Phase B] Resuming {len(reused_ctx_map)}/{len(samples)} cached CML contexts from {read_ctx_ckpt}",
+                        flush=True,
+                    )
+            except Exception:
+                reused_ctx_map = {}
+
+        if len(reused_ctx_map) < len(samples):
             print(
-                f"[Phase B] Reading CML contexts for {len(samples)} samples ({args.read_workers} workers)...",
+                f"[Phase B] Reading CML contexts for {len(samples) - len(reused_ctx_map)}/{len(samples)} samples ({args.read_workers} workers)...",
                 flush=True,
             )
 
@@ -554,11 +619,16 @@ def main() -> None:
             tenant_id = f"{args.tenant_prefix}-{sample_to_conv.get(orig_idx, orig_idx)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
+            read_query = (
+                format_cognitive_trigger_and_prompt(sample, "")[0]
+                if category == "Cognitive"
+                else trigger
+            )
             if orig_idx in reused_ctx_map:
                 llm_context = reused_ctx_map[orig_idx]
             else:
                 llm_context = _cml_read(
-                    args.cml_url, args.cml_api_key, tenant_id, trigger, args.max_results
+                    args.cml_url, args.cml_api_key, tenant_id, read_query, args.max_results
                 )
             effective_context = (
                 llm_context
@@ -566,7 +636,7 @@ def main() -> None:
                 else "(No relevant memories found for this query.)"
             )
             if category == "Cognitive":
-                prompt = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+                _, prompt = format_cognitive_trigger_and_prompt(sample, effective_context)
             else:
                 prompt = effective_context + "\n\n" + QA_PROMPT.format(trigger)
             qa_body: dict = {
@@ -601,8 +671,23 @@ def main() -> None:
                     idx_i, req_obj, meta_obj = fut.result()
                     with read_lock:
                         indexed_results[idx_i] = (req_obj, meta_obj)
+                        reused_ctx_map[int(meta_obj["orig_index"])] = str(
+                            meta_obj.get("retrieved_context") or ""
+                        )
                         read_done += 1
                         if read_done % 60 == 0 or read_done == len(samples):
+                            try:
+                                tmp_rc = read_ctx_ckpt.with_suffix(".json.tmp")
+                                tmp_rc.write_text(
+                                    json.dumps(
+                                        {str(k): v for k, v in reused_ctx_map.items()},
+                                        ensure_ascii=False,
+                                    ),
+                                    encoding="utf-8",
+                                )
+                                os.replace(tmp_rc, read_ctx_ckpt)
+                            except OSError:
+                                pass
                             print(f"  CML read progress: {read_done}/{len(samples)}", flush=True)
 
         qa_requests = [indexed_results[i][0] for i in range(len(samples))]

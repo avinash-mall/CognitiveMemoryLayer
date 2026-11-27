@@ -64,7 +64,17 @@ class RetrievalPlanner:
             QueryIntent.IDENTITY_LOOKUP,
             QueryIntent.TASK_STATUS,
         ):
-            steps.append(self._create_fact_lookup_step(analysis))
+            fact_step = self._create_fact_lookup_step(analysis)
+            steps.append(fact_step)
+            if fact_step.key is not None:
+                steps.append(
+                    RetrievalStep(
+                        source=RetrievalSource.FACTS,
+                        query=analysis.original_query,
+                        top_k=8,
+                        priority=1,
+                    )
+                )
             steps.append(
                 RetrievalStep(
                     source=RetrievalSource.CONSTRAINTS,
@@ -78,12 +88,12 @@ class RetrievalPlanner:
                 RetrievalStep(
                     source=RetrievalSource.VECTOR,
                     query=analysis.original_query,
-                    top_k=5,
+                    top_k=max(18, analysis.suggested_top_k),
                     priority=1,
-                    skip_if_found=True,
+                    skip_if_found=False,
                 )
             )
-            parallel_groups = [[0, 1], [2]]
+            parallel_groups = [list(range(len(steps)))]
 
         elif analysis.intent == QueryIntent.MULTI_HOP:
             if analysis.entities:
@@ -99,7 +109,7 @@ class RetrievalPlanner:
                 RetrievalStep(
                     source=RetrievalSource.VECTOR,
                     query=analysis.original_query,
-                    top_k=10,
+                    top_k=max(22, analysis.suggested_top_k),
                     priority=1,
                 )
             )
@@ -107,7 +117,7 @@ class RetrievalPlanner:
                 RetrievalStep(
                     source=RetrievalSource.FACTS,
                     query=analysis.original_query,
-                    top_k=5,
+                    top_k=8,
                     priority=0,
                 )
             )
@@ -224,7 +234,7 @@ class RetrievalPlanner:
                 RetrievalStep(
                     source=RetrievalSource.VECTOR,
                     query=analysis.original_query,
-                    top_k=analysis.suggested_top_k,
+                    top_k=max(18, analysis.suggested_top_k),
                     priority=2,
                 )
             )
@@ -232,7 +242,7 @@ class RetrievalPlanner:
                 RetrievalStep(
                     source=RetrievalSource.FACTS,
                     query=analysis.original_query,
-                    top_k=5,
+                    top_k=8,
                     priority=1,
                 )
             )

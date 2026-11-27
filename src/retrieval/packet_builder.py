@@ -23,8 +23,10 @@ class MemoryPacketBuilder:
         memories: list[RetrievedMemory],
         query: str,
         include_provenance: bool = True,
+        llm_grounding: dict | None = None,
     ) -> MemoryPacket:
         """Build a memory packet from retrieved memories."""
+        _ = include_provenance
         packet = MemoryPacket(query=query, ranked_memories=list(memories))
         for mem in memories:
             mem_type = mem.record.type
@@ -47,8 +49,9 @@ class MemoryPacketBuilder:
         if constraint_warnings:
             packet.warnings.extend(constraint_warnings)
 
-        # CA1 Comparator & Orbitofrontal Reality Monitoring: detect unverified
-        # query presuppositions / false premises when memories are present.
+        # CA1 Comparator & Orbitofrontal Reality Monitoring: use LLM_INTERNAL grounding
+        # verdict when available (eliminating regex presupposition false positives) combined
+        # with tightened Speaker-Attribution checking; fall back to CA1RealityMonitor when offline.
         try:
             from ..core.config import get_settings
 
@@ -56,9 +59,50 @@ class MemoryPacketBuilder:
                 from .reality_monitor import CA1RealityMonitor
 
                 verdict = CA1RealityMonitor.inspect(query, memories)
-                for w in verdict.warnings:
-                    if w not in packet.warnings:
-                        packet.warnings.append(w)
+                g_verdict = (
+                    str((llm_grounding or {}).get("grounding") or "").strip().lower()
+                    if llm_grounding
+                    else ""
+                )
+                swap_warnings = [w for w in verdict.warnings if "Speaker-Attribution Alert" in w]
+                if g_verdict:
+                    if g_verdict == "speaker_swap":
+                        if swap_warnings:
+                            for w in swap_warnings:
+                                if w not in packet.warnings:
+                                    packet.warnings.append(w)
+                        else:
+                            snote = str((llm_grounding or {}).get("swap_note") or "").strip()
+                            detail = f" ({snote})" if snote else ""
+                            w_msg = (
+                                f"Reality Monitoring (CA1 Speaker-Attribution Alert): Retrieved "
+                                f"memories attribute this event/item to a DIFFERENT speaker{detail}. "
+                                f"Do NOT substitute another person's details; if unrecorded for the "
+                                f'asked person, reply ONLY: "I don\'t have information about that from our previous conversations."'
+                            )
+                            packet.warnings.append(w_msg)
+                    elif g_verdict == "unsupported_premise":
+                        for w in swap_warnings:
+                            if w not in packet.warnings:
+                                packet.warnings.append(w)
+                        sel_cnt = int((llm_grounding or {}).get("selected_count") or 0)
+                        if not swap_warnings and sel_cnt == 0:
+                            w_unv = (
+                                "Reality Monitoring (CA1 Evidence-Grounding Alert): Retrieved "
+                                "memories do NOT confirm this specific premise, event, or item. "
+                                "Do NOT guess or fabricate details; if genuinely unmentioned in the "
+                                'context, reply ONLY: "I don\'t have information about that from our previous conversations."'
+                            )
+                            packet.warnings.append(w_unv)
+                    elif g_verdict == "inferable":
+                        for w in swap_warnings:
+                            if w not in packet.warnings:
+                                packet.warnings.append(w)
+                    # When g_verdict == "supported", suppress noisy regex Presupposition Notes!
+                else:
+                    for w in verdict.warnings:
+                        if w not in packet.warnings:
+                            packet.warnings.append(w)
         except Exception:
             pass
 
@@ -279,13 +323,28 @@ class MemoryPacketBuilder:
                 used += len(s)
                 remaining -= len(s)
 
-        # 2. Facts
+        # 2. Facts (prioritize crisp atomic facts; cap long Chapter Summaries so episodes keep budget)
         if packet.facts and remaining > 100:
             header = "## Known Facts\n"
             fact_lines: list[str] = []
-            for f in packet.facts[:8]:
+            atomic_f = [
+                f
+                for f in packet.facts
+                if not str(f.record.text or "").startswith("[Chapter Summary")
+            ]
+            chapter_f = [
+                f
+                for f in packet.facts
+                if str(f.record.text or "").startswith("[Chapter Summary")
+                and "] Session dialogue (" not in str(f.record.text or "")
+            ]
+            ordered_facts = atomic_f[:8] + chapter_f[:2]
+            for f in ordered_facts[:10]:
                 conf = f"[{f.record.confidence:.0%}]" if f.record.confidence < 1.0 else ""
-                line = f"- {f.record.text}{self._source_label(f)} {conf}\n"
+                ftxt = str(f.record.text or "")
+                if ftxt.startswith("[Chapter Summary") and len(ftxt) > 380:
+                    ftxt = ftxt[:377].rstrip() + "..."
+                line = f"- {ftxt}{self._source_label(f)} {conf}\n"
                 if len(header) + sum(len(x) for x in fact_lines) + len(line) <= remaining:
                     fact_lines.append(line)
                 else:
@@ -359,9 +418,19 @@ class MemoryPacketBuilder:
             for e in candidate_episodes
             if getattr(e, "relevance_score", 1.0) > effective_threshold
         ]
+
+        def _fmt_speaker_prefix(spk_val: str, raw_txt: str) -> str:
+            s_clean = (spk_val or "").strip()
+            if not s_clean:
+                return ""
+            t_low = (raw_txt or "").lstrip().lower()
+            s_low = s_clean.lower()
+            if t_low.startswith((f"{s_low}:", f"{s_low} said")):
+                return ""
+            return f"({s_clean}) "
+
         # On Cognitive empathy cues, protect verbatim episodes from synthetic prospective
-        # crowding and preserve HyDE-promoted cues first (never letting unrelated somatic
-        # distractors push HyDE-discovered cues out of the top slots).
+        # crowding and preserve LLM-selected / Proustian / HyDE-promoted cues first.
         if is_cognitive_cue and relevant_episodes:
             verbatim = [
                 e
@@ -373,6 +442,7 @@ class MemoryPacketBuilder:
             if verbatim:
                 verbatim.sort(
                     key=lambda e: (
+                        3 if (e.record.metadata or {}).get("_llm_selected") else 0,
                         2 if (e.record.metadata or {}).get("_proustian_promoted") else 0,
                         1 if (e.record.metadata or {}).get("_hyde_promoted") else 0,
                         getattr(e, "relevance_score", 0.0),
@@ -389,8 +459,7 @@ class MemoryPacketBuilder:
             cog_lines: list[str] = []
             for e in relevant_episodes[:3]:
                 meta = e.record.metadata or {}
-                speaker = meta.get("speaker", "")
-                speaker_prefix = f"({speaker}) " if speaker else ""
+                speaker_prefix = _fmt_speaker_prefix(meta.get("speaker", ""), e.record.text)
                 line = f"- {speaker_prefix}{e.record.text}\n"
                 if len(cog_header) + sum(len(x) for x in cog_lines) + len(line) <= remaining:
                     cog_lines.append(line)
@@ -418,13 +487,6 @@ class MemoryPacketBuilder:
             for e in selected_episodes:
                 # Include temporal metadata when available for temporal reasoning
                 meta = e.record.metadata or {}
-                # The turn date is always shown, and an event date is *added* rather
-                # than substituted. These answer different questions — when it was said
-                # versus when it happened — and an unlabelled bracket that silently
-                # means one or the other, line by line, is worse than either alone.
-                # event_date used to substitute, which was invisible while nothing
-                # produced event dates and cost 0.16 on the temporal category the moment
-                # something did.
                 said = (
                     e.record.timestamp.strftime("%Y-%m-%d")
                     if hasattr(e.record.timestamp, "strftime")
@@ -438,8 +500,7 @@ class MemoryPacketBuilder:
                     date_str = f" [{said}]"
                 else:
                     date_str = f" [{event_date}]" if event_date else ""
-                speaker = meta.get("speaker", "")
-                speaker_prefix = f"({speaker}) " if speaker else ""
+                speaker_prefix = _fmt_speaker_prefix(meta.get("speaker", ""), e.record.text)
                 line = (
                     f"- {speaker_prefix}{e.record.text}{self._source_label(e)}{date_str} "
                     f"(confidence: {e.record.confidence:.2f})\n"

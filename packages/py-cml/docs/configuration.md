@@ -79,8 +79,8 @@ For **EmbeddedCognitiveMemoryLayer**, use `EmbeddedConfig` (or pass constructor 
 |------|--------|
 | **storage_mode** | `lite` (default), `standard`, `full` — only `lite` is implemented (SQLite + local embeddings) |
 | **database** | `EmbeddedDatabaseConfig`: `database_url` (default SQLite), optional Neo4j/Redis |
-| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING_INTERNAL__MODEL` in .env), `dimensions` (set `EMBEDDING_INTERNAL__DIMENSIONS` in .env; default 384), `api_key`, `base_url` |
-| **llm** | `EmbeddedLLMConfig`: `provider`, `model` (set `LLM_INTERNAL__MODEL` in .env), `api_key`, `base_url` |
+| **embedding** | `EmbeddedEmbeddingConfig`: `provider`, `model` (set `EMBEDDING_INTERNAL__MODEL` in .env), `dimensions` (set `EMBEDDING_INTERNAL__DIMENSIONS` in .env; default 768), `api_key`, `base_url` |
+| **llm** | `EmbeddedLLMConfig`: `provider`, `model` (set `LLM_INTERNAL__MODEL` in .env), `api_key`, `base_url` (any OpenAI-compatible endpoint) |
 | **auto_consolidate** / **auto_forget** | Optional background tasks (default `False`) |
 
 **Lite mode** uses SQLite (in-memory or file via `db_path`) and local sentence-transformers embeddings. **Standard** and **full** modes require PostgreSQL, Neo4j, and Redis and are not yet implemented in the SDK.
@@ -102,16 +102,17 @@ Key server-side flags that affect SDK responses:
 | `FEATURES__WRITE_TIME_FACTS_ENABLED` | `true` | Populates `ReadResponse.facts` with write-time facts (LLM or rule-based per `USE_LLM_WRITE_TIME_FACTS`). |
 | `FEATURES__RETRIEVAL_TIMEOUTS_ENABLED` | `true` | Per-step and total retrieval timeouts; may affect result count if a step times out. |
 
-## LLM Internal (server-side)
+## LLM Internal (server-side & embedded, enabled by default)
 
-The CML server supports optional **`LLM_INTERNAL__*`** environment variables for internal tasks. When set, the server uses a separate (often smaller) model for UnifiedWritePathExtractor, Entity/Relation extractors, consolidation, reconsolidation, forgetting, and QueryClassifier.
+The CML server and embedded engine enable **`LLM_INTERNAL__*`** by default (`FEATURES__USE_LLM_ENABLED=true`) across unified write extraction, `consolidate_windowed()`, Stage-1 multi-angle query expansion (`FEATURES__LLM_MULTI_ANGLE_EXPANSION_ENABLED=true`), Stage-2 judged candidate delivery (`FEATURES__LLM_JUDGED_DELIVERY_ENABLED=true`), reconsolidation, and `QueryClassifier`. Point `LLM_INTERNAL__*` to **any OpenAI-compatible external or internal endpoint** (OpenAI, OpenRouter, vLLM, SGLang, Ollama, or local `llama-server`), while bulk `/memory/write_batch` automatically fast-paths through System-1 GPU encoding (`FEATURES__BATCH_WRITE_SYSTEM1_FASTPATH=true`).
 
 | Variable | Description |
 |----------|-------------|
-| `LLM_INTERNAL__PROVIDER` | Provider (e.g. `ollama`, `openai`) |
-| `LLM_INTERNAL__MODEL` | Model name (e.g. `llama3.2:3b`) |
-| `LLM_INTERNAL__BASE_URL` | Base URL for the internal LLM endpoint |
-| `LLM_INTERNAL__API_KEY` | API key (if required) |
+| `LLM_INTERNAL__PROVIDER` | Provider (`openai_compatible`, `openai`, `ollama`, `vllm`, `sglang`, `gemini`, `anthropic`) |
+| `LLM_INTERNAL__MODEL` | Model name (e.g. `gpt-4o-mini`, `google/gemini-2.5-flash`, `qwen3.8-27b`) |
+| `LLM_INTERNAL__BASE_URL` | Base URL for any OpenAI-compatible endpoint (e.g. `https://openrouter.ai/api/v1`, `http://localhost:8000/v1`) |
+| `LLM_INTERNAL__API_KEY` | API key (falls back to `OPENAI_API_KEY` / `OPENROUTER_API_KEY`, or `"dummy"` for local servers) |
+| `LLM_INTERNAL__EXTRA_BODY` | Optional JSON object merged into chat-completion requests (e.g. `{"reasoning":{"enabled":false}}`) |
 
 If not set, the server uses default `LLM_INTERNAL__*` settings from configuration. Useful for bulk ingestion (e.g. Locomo evaluation) where a smaller model speeds up internal tasks.
 

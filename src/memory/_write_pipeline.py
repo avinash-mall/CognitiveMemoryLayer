@@ -200,6 +200,7 @@ class WritePipelineMixin:
         memory_type_override: Any,
         eval_mode: bool,
         unified_results: list | None,
+        skip_llm_extraction: bool = False,
     ) -> tuple[list, list, list | None, list]:
         """Encode chunks and store in hippocampal vector store."""
         return await self.hippocampal.encode_batch(
@@ -213,6 +214,7 @@ class WritePipelineMixin:
             memory_type_override=memory_type_override,
             return_gate_results=eval_mode,
             unified_results=unified_results,
+            skip_llm_extraction=skip_llm_extraction,
         )
 
     async def _phase_write_time_facts(

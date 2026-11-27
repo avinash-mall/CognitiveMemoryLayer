@@ -92,8 +92,26 @@ class MemoryOrchestrator(WritePipelineMixin):
 
             cfg_llm = settings.llm_internal
             provider = (cfg_llm.provider or "").lower()
-            has_key = bool(cfg_llm.api_key or os.environ.get("OPENAI_API_KEY", ""))
-            if provider in ("openai", "gemini", "claude", "anthropic") and not has_key:
+            if provider == "openai" and not cfg_llm.base_url:
+                has_key = bool(cfg_llm.api_key or os.environ.get("OPENAI_API_KEY", ""))
+            else:
+                has_key = bool(
+                    cfg_llm.api_key
+                    or os.environ.get("LLM_INTERNAL__API_KEY")
+                    or os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("OPENROUTER_API_KEY")
+                )
+            is_local_compat = bool(
+                cfg_llm.base_url
+                and any(
+                    h in cfg_llm.base_url for h in ("localhost", "127.0.0.1", "0.0.0.0", "host.")
+                )
+            )
+            if (
+                provider in ("openai", "gemini", "claude", "anthropic")
+                and not has_key
+                and not is_local_compat
+            ):
                 logger.warning(
                     "internal_llm_missing_api_key_fallback",
                     extra={"provider": provider, "model": cfg_llm.model},
@@ -344,6 +362,7 @@ class MemoryOrchestrator(WritePipelineMixin):
         timestamp: datetime | None = None,
         eval_mode: bool = False,
         media: list[dict[str, Any]] | None = None,
+        skip_llm_extraction: bool = False,
     ) -> dict[str, Any]:
         """Write new information (plus optional multimodal media) to memory. Holistic: tenant-only."""
         import time as _time
@@ -410,13 +429,13 @@ class MemoryOrchestrator(WritePipelineMixin):
         # per chunk when unified_results is None, so eval mode substitutes N per-chunk
         # extract() calls for one extract_batch(). Deactivation stays skipped because it
         # is the one phase here that makes extra LLM calls (detect_supersession).
-        if not eval_mode:
+        if not eval_mode and not skip_llm_extraction:
             unified_results = await self._phase_unified_extraction(chunks_for_encoding, wpc)
         else:
             unified_results = None
         _t_unified = _time.perf_counter()
 
-        if not eval_mode:
+        if not eval_mode and not skip_llm_extraction:
             await self._phase_deactivate_constraints(
                 tenant_id, chunks_for_encoding, unified_results, wpc
             )
@@ -438,6 +457,7 @@ class MemoryOrchestrator(WritePipelineMixin):
             memory_type_override=_memory_type_override,
             eval_mode=eval_mode,
             unified_results=unified_results,
+            skip_llm_extraction=skip_llm_extraction,
         )
         _t_encode = _time.perf_counter()
 
@@ -515,6 +535,11 @@ class MemoryOrchestrator(WritePipelineMixin):
         total_chunks = 0
 
         valid_turns = [t for t in turns if t.get("content")]
+        from ..core.config import get_settings as _get_wb_settings
+
+        fast_batch = bool(
+            getattr(_get_wb_settings().features, "batch_write_system1_fastpath", True)
+        )
 
         # Process in concurrent micro-batches of 8 so embedding coalescing
         # can batch GPU calls while not overwhelming DB connections.
@@ -530,6 +555,7 @@ class MemoryOrchestrator(WritePipelineMixin):
                     turn_id=turn.get("turn_id"),
                     timestamp=turn.get("timestamp"),
                     eval_mode=eval_mode,
+                    skip_llm_extraction=fast_batch,
                 )
                 for turn in batch
             ]

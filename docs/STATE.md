@@ -21,10 +21,10 @@ Current snapshot of active work and load-bearing architecture invariants. Keep t
   - Removed 8 unwired/dead v1 modules (`scratch_pad.py`, `conversation.py`, `tool_memory.py`, `knowledge_base.py`, `entity_extractor.py`, `relation_extractor.py`, `storage/redis.py`, `api/dependencies.py`), `cml/utils/deprecation.py`, 6 legacy evaluation wrapper scripts (canonical CLI is `cml-eval`), obsolete `ProjectPlan/ActiveCML/`, `requirements-docker.txt`, `evaluation/requirements.txt`, and 20+ dead classes/methods.
   - Centralized shared SDK request/query-param builders in `packages/py-cml/src/cml/_endpoints.py` (~1,670 lines of duplicate sync/async client code eliminated) and extracted cohesive mixins (`src/memory/_write_pipeline.py`, `src/retrieval/augmenters.py`, `src/retrieval/explain.py`, `src/retrieval/graph_expansion.py`).
 - **Benchmark Baselines (Full 2,387-sample LoCoMo-Plus, `0` errors)**:
-  - **Official Table 1 Protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge via OpenRouter, `$11.04` API cost)**:
-    - **LoCoMo Factual Avg (`1,986` samples): `63.70%`** (`57.98%` macro; `single-hop 63.32%`, `multi-hop 42.20%`, `temporal 57.63%`, `common-sense 39.06%`, `adversarial 87.67%`) — **#1 among all `gpt-4o` memory systems** (`A-Mem 59.64%`, `SeCom 57.53%`, `Mem0 57.24%`) and ahead of full-context `GPT-4o` (`62.99%`) & `GPT-4.1` (`62.21%`).
-    - **`Cognitive` (`401` samples): `33.92%`** | **Overall (`2,387` samples): `58.69%`**
-    - Committed summary: `evaluation/results/locomo_plus_2026-11-26_cml_v3_gpt4o_gemini25flash_full_2387_summary.json`.
+  - **Official Table 1 Protocol — Hybrid CLS + 2-Stage `LLM_INTERNAL` (`2026-11-27`, `openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge via OpenRouter)**:
+    - **LoCoMo Factual Avg (`1,986` samples): `69.99%`** (`64.48%` macro; `single-hop 71.70%`, `multi-hop 47.87%`, `temporal 60.59%`, `common-sense 50.52%` [`58.85%` open], `adversarial 91.70%`) — **#1 among all `gpt-4o` memory systems** (`A-Mem 59.64%`, `SeCom 57.53%`, `Mem0 57.24%`) and ahead of full-context `GPT-4o` (`62.99%`), `GPT-4.1` (`62.21%`), and 1M-context `Gemini-2.5-Flash` (`69.25%`).
+    - **`Cognitive` (`401` samples): `50.12%`** (**#1 on Table 1**, ahead of `SeCom 42.63%`, `A-Mem 42.44%`, `Mem0 41.44%`, `GPT-4o 41.94%`, and 1M-context `Gemini-2.5-Pro 45.72%`) | **Gap: `19.87pp` (`14.35pp` macro)** | **Overall (`2,387` samples): `66.65%` (`1,591.0 / 2,387`)**.
+    - Committed summary: `evaluation/results/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json`.
   - **100%-Local Zero-API-Cost Run (`qwen3.8-27b` QA + Judge, `$0.00` API cost)**:
     - **LoCoMo Factual Avg (`1,986` samples): `68.40%`** (`single-hop 70.21%`, `multi-hop 47.52%`, `temporal 70.25%`, `common-sense 44.27%`, `adversarial 82.06%`)
     - **`Cognitive` (`401` samples): `39.40%`** | **Overall (`2,387` samples): `63.53%`**

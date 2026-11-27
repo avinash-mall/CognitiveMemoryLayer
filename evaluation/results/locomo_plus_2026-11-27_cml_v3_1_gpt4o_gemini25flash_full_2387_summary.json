@@ -1,0 +1,65 @@
+{
+  "total_score": 1591.0,
+  "total_samples": 2387,
+  "valid_samples": 2387,
+  "error_count": 0,
+  "max_possible": 2387,
+  "overall_avg": 0.6665,
+  "by_category": {
+    "Cognitive": {
+      "score": 201.0,
+      "count": 401,
+      "valid": 401,
+      "errors": 0,
+      "avg": 0.5012
+    },
+    "adversarial": {
+      "score": 409.0,
+      "count": 446,
+      "valid": 446,
+      "errors": 0,
+      "avg": 0.917
+    },
+    "common-sense": {
+      "score": 48.5,
+      "count": 96,
+      "valid": 96,
+      "errors": 0,
+      "avg": 0.5052
+    },
+    "multi-hop": {
+      "score": 135.0,
+      "count": 282,
+      "valid": 282,
+      "errors": 0,
+      "avg": 0.4787
+    },
+    "single-hop": {
+      "score": 603.0,
+      "count": 841,
+      "valid": 841,
+      "errors": 0,
+      "avg": 0.717
+    },
+    "temporal": {
+      "score": 194.5,
+      "count": 321,
+      "valid": 321,
+      "errors": 0,
+      "avg": 0.6059
+    }
+  },
+  "usage_stats": {
+    "qa": {
+      "prompt_tokens": 2819713,
+      "completion_tokens": 100249,
+      "cost_usd": 8.051772499999997
+    },
+    "judge": {
+      "prompt_tokens": 522193,
+      "completion_tokens": 80832,
+      "cost_usd": 0.35873790000000155
+    },
+    "total_cost_usd": 8.410510399999998
+  }
+}

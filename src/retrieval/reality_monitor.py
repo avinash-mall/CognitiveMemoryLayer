@@ -133,8 +133,37 @@ _STOPWORDS = _QUESTION_STARTERS | frozenset(
 
 _PROPER_NOUN_RE = re.compile(r"\b[A-Z][a-zA-Z0-9]{2,}\b")
 _ACRONYM_RE = re.compile(r"^[A-Z0-9]{2,}$")
+_CALENDAR_WORDS = frozenset(
+    {
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "spring",
+        "summer",
+        "autumn",
+        "fall",
+        "winter",
+    }
+)
 _HYPOTHETICAL_RE = re.compile(
-    r"(?:^\s*(?:would|could|might|should|is\s+it\s+likely|do\s+you\s+think)\b|\blikely\b)",
+    r"(?:^\s*(?:would|could|might|should|is\s+it\s+likely|do\s+you\s+think)\b|"
+    r"\b(?:likely|probably|might\s+\w+|considered\s+(?:a\s+|an\s+)?\w+|financial\s+status|personality\s+traits)\b)",
     re.IGNORECASE,
 )
 _COGNITIVE_CUE_RE = re.compile(r"^\s*(?:[AB]|Speaker\s*[AB]|User|Assistant)\s*:", re.IGNORECASE)
@@ -169,8 +198,19 @@ class CA1RealityMonitor:
         if _COGNITIVE_CUE_RE.match(query) and not query.strip().endswith("?"):
             return verdict
 
-        corpus_texts = [str(getattr(getattr(m, "record", m), "text", "") or "") for m in memories]
-        combined_lower = " \n ".join(corpus_texts).lower()
+        corpus_parts: list[str] = []
+        for m in memories:
+            rec = getattr(m, "record", m)
+            txt = str(getattr(rec, "text", "") or "")
+            meta = getattr(rec, "metadata", None) or {}
+            ts = getattr(rec, "timestamp", None)
+            ts_str = (
+                ts.strftime("%Y-%m-%d %B %Y") if ts is not None and hasattr(ts, "strftime") else ""
+            )
+            ev_disp = str(meta.get("event_date_display") or meta.get("event_date") or "")
+            spk_meta = str(meta.get("speaker") or "")
+            corpus_parts.append(f"{txt} {ts_str} {ev_disp} {spk_meta}")
+        combined_lower = " \n ".join(corpus_parts).lower()
         corpus_words = set(_WORD_RE.findall(combined_lower))
         if not corpus_words:
             return verdict
@@ -178,7 +218,7 @@ class CA1RealityMonitor:
         is_hypothetical = bool(_HYPOTHETICAL_RE.search(query))
 
         # 1. Extract specific presupposed anchors from the query:
-        #    - non-initial capitalized proper nouns (excluding acronyms like LGBTQ/PhD)
+        #    - non-initial capitalized proper nouns (excluding acronyms & calendar month/season words)
         #    - 4-digit years (e.g., 2022, 2024)
         #    - quoted phrases
         proper_candidates: list[str] = []
@@ -186,7 +226,7 @@ class CA1RealityMonitor:
         for match in _PROPER_NOUN_RE.finditer(query):
             word = match.group(0)
             w_low = word.lower()
-            if w_low in _STOPWORDS or _ACRONYM_RE.match(word):
+            if w_low in _STOPWORDS or w_low in _CALENDAR_WORDS or _ACRONYM_RE.match(word):
                 continue
             # If it's the very first word of the query, only treat it as a proper anchor
             # if it isn't a common verb/noun starter

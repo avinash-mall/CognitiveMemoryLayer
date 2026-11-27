@@ -39,6 +39,7 @@ class LLMClient(ABC):
         prompt: str,
         schema: dict | None = None,
         temperature: float = 0.0,
+        max_tokens: int = 2000,
     ) -> dict[str, Any]:
         """Return parsed JSON from completion."""
         ...
@@ -140,9 +141,19 @@ class OpenAICompatibleClient(LLMClient):
             if base_url is not None:
                 self._api_key = "dummy"
             elif provider == "openai":
-                self._api_key = cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
+                self._api_key = (
+                    cfg.api_key
+                    or os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("OPENROUTER_API_KEY")
+                    or ""
+                )
             else:
-                self._api_key = cfg.api_key or os.environ.get("OPENAI_API_KEY") or "dummy"
+                self._api_key = (
+                    cfg.api_key
+                    or os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("OPENROUTER_API_KEY")
+                    or "dummy"
+                )
         self.extra_body = extra_body if extra_body is not None else cfg.extra_body
         self.client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key)
 
@@ -235,6 +246,7 @@ class MockLLMClient(LLMClient):
         prompt: str,
         schema: dict | None = None,
         temperature: float = 0.0,
+        max_tokens: int = 2000,
     ) -> dict[str, Any]:
         if self.fixed_json is not None:
             return self.fixed_json
@@ -290,6 +302,7 @@ def _gemini_client(api_key: str, model: str) -> LLMClient:
             prompt: str,
             schema: dict | None = None,
             temperature: float = 0.0,
+            max_tokens: int = 2000,
         ) -> dict[str, Any]:
             return await _complete_json_via_complete(self, prompt, temperature)
 
@@ -335,6 +348,7 @@ def _claude_client(api_key: str, model: str) -> LLMClient:
             prompt: str,
             schema: dict | None = None,
             temperature: float = 0.0,
+            max_tokens: int = 2000,
         ) -> dict[str, Any]:
             return await _complete_json_via_complete(self, prompt, temperature)
 
@@ -364,7 +378,11 @@ def _build_llm_client_from_config(
             url = _OPENAI_COMPATIBLE_DEFAULT_BASE
         else:
             url = _OLLAMA_DEFAULT_BASE
-        key = api_key if provider == "openai" else (api_key or "dummy")
+        key = (
+            (api_key or ("dummy" if base_url is not None else ""))
+            if provider == "openai"
+            else (api_key or "dummy")
+        )
         return OpenAICompatibleClient(base_url=url, model=model, api_key=key, extra_body=extra_body)
 
     if provider == "gemini":
@@ -387,12 +405,17 @@ def _build_llm_client_from_config(
 
 
 def get_internal_llm_client() -> LLMClient:
-    """Factory for LLM client used by internal tasks. Reads LLM_INTERNAL__* only."""
+    """Factory for LLM client used by internal tasks. Reads LLM_INTERNAL__* (and OpenAI-compatible env keys)."""
     import os
 
     settings = get_settings()
     cfg = settings.llm_internal
-    api_key = cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
+    api_key = (
+        cfg.api_key
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("OPENROUTER_API_KEY")
+        or ""
+    )
     return _build_llm_client_from_config(
         provider=cfg.provider,
         model=cfg.model,
@@ -412,11 +435,20 @@ def get_eval_llm_client() -> LLMClient:
     cfg = settings.llm_internal
     provider = ev.provider if ev.provider is not None else cfg.provider
     model = ev.model if ev.model is not None else cfg.model
-    base_url = ev.base_url if ev.base_url is not None else cfg.base_url
+    base_url = (
+        ev.base_url
+        if ev.base_url is not None
+        else (cfg.base_url or os.environ.get("OPENAI_BASE_URL") or None)
+    )
     api_key = (
         ev.api_key
         if ev.api_key is not None
-        else cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
+        else (
+            cfg.api_key
+            or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
+            or ""
+        )
     )
     return _build_llm_client_from_config(
         provider=provider,

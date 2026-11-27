@@ -119,42 +119,95 @@ QA_READ_DELAY_SEC = 0.05
 # Balanced: encourage conciseness without over-refusing when context is sparse.
 # NOTE: The memory store redacts PII (names → [FIRSTNAME_REDACTED], etc.).
 # The prompt instructs the model to match redacted placeholders to question entities.
-QA_PROMPT = """Based on the above context from past conversations, answer the question below.
+QA_PROMPT = """Based on the retrieved conversation memories above, answer the question below.
 
 IMPORTANT RULES:
-1. Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the question.
-2. If the context contains timestamps or dates, reason about time carefully and ALWAYS
-   convert relative times ("yesterday", "last week", "next month", "last year") into
-   explicit calendar dates, months, or years using the [YYYY-MM-DD] timestamp shown.
-   Calculate durations by counting between dates.
-3. Answer with a short phrase or 1-2 sentences. Use exact words from the context when possible.
-4. ALWAYS attempt to answer from the context. Even if the context is incomplete, extract
-   whatever relevant information is available and provide your best answer.
-5. For common-sense or hypothetical questions ("Would...", "Likely..."), ALWAYS reason from
-   the context plus world knowledge — do NOT refuse just because the exact conclusion isn't
-   stated verbatim.
-6. For multi-hop questions, connect information across multiple parts of the context.
-   Look for indirect references and combine facts to derive the answer.
-7. Check speaker attribution (treating nicknames like Mel=Melanie as the same person): ONLY
-   if the question asks about a concrete event/item/plan of Person A, and the context clearly
-   shows only a DIFFERENT person (Person B) did it with no evidence for Person A, reply ONLY:
-   "I don't have information about that from our previous conversations." Do NOT substitute
-   Person B's details as Person A's answer.
+1. CONCISE, EXACT SCOPE: Answer directly and concisely in a short phrase or 1 concise sentence using the exact names/titles/terms from the memories (treat nicknames like Mel = Melanie, Cal = Calvin as the same person). Do NOT pad with extra visual background adjectives from `[Shared photo: ...]` captions unless the question specifically asks to describe the photo.
+2. MULTI-HOP & LISTS: Synthesize ALL relevant memories across sessions and link indirect clues (e.g. home country, breakup + single parent -> single). Include every item matching the exact asked scope, without padding unrelated general hobbies.
+3. DATES & RELATIVE TIME: For "When..." or date/time questions, output ONLY the concise date, period, or duration phrase computed from the spoken `[YYYY-MM-DD]` timestamp:
+   - `"yesterday"` / exact day -> `D Month YYYY` (e.g. `7 May 2023`, `10 July 2023`)
+   - `"last year"` / specific year or month -> `YYYY` or `Month YYYY` (e.g. `2022`, `June 2023`)
+   - `"last week"` -> `The week before D Month YYYY` (using the spoken date of that turn, e.g. `The week before 9 June 2023`)
+   - `"last Friday/Saturday/Sunday"` -> `The Friday/Saturday/Sunday before D Month YYYY` (e.g. `The Sunday before 25 May 2023`)
+4. COMMON-SENSE & INFERENCE ("Would...", "Likely...", "Could...", "What might...", "considered..."): ALWAYS answer with `"Likely yes, because..."`, `"Likely no, since..."`, or `"<choice>, because..."` using the person's goals, career plans, habits, and values plus world knowledge — NEVER say it was not mentioned!
+5. SPEAKER-SWAP & UNMENTIONED REFUSAL (factual questions only, NEVER for Rule 4 questions): Verify WHO actually did/owned/said the asked thing! If a factual question asks about a specific past event, pet, object, or action of Person A that was ONLY true of Person B (speaker-swap), OR has zero supporting mention in the memories, do NOT answer with Person B's details or say "No, Person B did it" — reply ONLY: `This information was not mentioned in the conversation.`
 
-Question: {}
+Format your response as:
+Reasoning: <1-3 brief lines checking speaker attribution, multi-hop clues, or date math>
+Final Answer: <concise answer, date phrase, or exact refusal>
 
-Short answer:"""
+Question: {}"""
 
-COGNITIVE_PROMPT = """Based on the above context from past conversations, continue the
-conversation naturally. Respond to the following as you would in a real dialogue.
-IMPORTANT: Check the "Relevant Past Experiences & Implicit Constraints" section closely — if a
-past event, scare, habit, allergy, boundary, or decision explains the speaker's remark,
-explicitly weave that concrete past detail into your response while matching the speaker's exact name.
-Names may appear as [FIRSTNAME_REDACTED] — treat them as the people in the conversation.
+COGNITIVE_PROMPT = """Based on the retrieved past conversation memories above, continue the dialogue naturally.
+This is a memory-aware dialogue setting: check "Relevant Past Experiences & Implicit Constraints", "Known Facts", and "Recent Events" closely to find the specific earlier experience, mishap, scare, injury, allergy, habit, goal, or boundary that implicitly explains or connects to the speaker's remark below, and explicitly reference or connect to that concrete past detail in your reply using the speakers' real names.
 
 {}
 
-Respond (short):"""
+Format your response as:
+Reasoning: <1-2 lines identifying the specific past memory/event that explains or connects to this remark>
+Final Answer: <natural 1-3 sentence conversational reply explicitly connecting to that concrete past experience>"""
+
+
+def infer_sample_speakers(sample: dict) -> tuple[str, str]:
+    """Return (speaker_a, speaker_b) for a LoCoMo / LoCoMo-Plus sample."""
+    sa = str(sample.get("speaker_a") or "").strip()
+    sb = str(sample.get("speaker_b") or "").strip()
+    if sa and sb and sa != "A" and sb != "B":
+        return sa, sb
+    seen: list[str] = []
+    for line in str(sample.get("input_prompt") or "").splitlines():
+        m = re.match(r'^([A-Z][a-zA-Z0-9_-]{1,25})\s+said,\s*"', line.strip())
+        if m:
+            spk = m.group(1).strip()
+            if spk not in seen:
+                seen.append(spk)
+            if len(seen) >= 2:
+                return seen[0], seen[1]
+    return sa or "A", sb or "B"
+
+
+def format_cognitive_trigger_and_prompt(sample: dict, effective_context: str) -> tuple[str, str]:
+    """Map raw A:/B: in Cognitive trigger_query to real conversation speaker names and build prompt.
+
+    Returns ``(mapped_read_query, full_user_prompt)``.
+    """
+    raw_trigger = str(sample.get("trigger") or "").strip()
+    speaker_a, speaker_b = infer_sample_speakers(sample)
+    mapped_lines: list[str] = []
+    last_speaker = speaker_a
+    for raw_ln in raw_trigger.splitlines():
+        ln = raw_ln.strip()
+        if not ln:
+            continue
+        if ln.startswith("A:"):
+            last_speaker = speaker_a
+            mapped_lines.append(f"{speaker_a}: {ln[2:].strip()}")
+        elif ln.startswith("B:"):
+            last_speaker = speaker_b
+            mapped_lines.append(f"{speaker_b}: {ln[2:].strip()}")
+        else:
+            mapped_lines.append(ln)
+    mapped_trigger = "\n".join(mapped_lines) if mapped_lines else raw_trigger
+    responder = speaker_b if last_speaker == speaker_a else speaker_a
+    if responder in ("A", "B"):
+        prompt = effective_context + "\n\n" + COGNITIVE_PROMPT.format(mapped_trigger)
+        return mapped_trigger, prompt
+
+    cog_body = (
+        f"Based on the retrieved past conversation memories above between {speaker_a} and {speaker_b}, "
+        f"continue the dialogue naturally as {responder} replying to {last_speaker}.\n"
+        f'This is a memory-aware dialogue setting: check "Relevant Past Experiences & Implicit Constraints" '
+        f'and "Recent Events" closely to find the specific earlier incident, mishap, scare, injury, diagnosis, '
+        f"allergy, habit change, or personal rule of {last_speaker} that implicitly explains their remark below. "
+        f"In your reply, explicitly recall BOTH that concrete past cause/incident AND the change/habit {last_speaker} "
+        f"adopted from it (do NOT invent unmentioned past events).\n\n"
+        f"{mapped_trigger}\n\n"
+        f"Format your response as:\n"
+        f"Reasoning: <1-2 lines naming the exact past incident and habit/rule of {last_speaker} from the memories>\n"
+        f"Final Answer: <natural 1-3 sentence conversational reply directly addressing {last_speaker} (do not prefix with '{responder}:') that explicitly connects to that specific past incident and habit/rule>"
+    )
+    return mapped_trigger, effective_context + "\n\n" + cog_body
+
 
 # Answer markers used by reasoning models (ordered by specificity)
 _ANSWER_MARKERS = [
@@ -181,6 +234,17 @@ def _extract_answer(raw: str) -> str:
     text = raw.strip()
     if not text:
         return text
+
+    # Priority 0: Explicit structured "Final Answer:" marker (always extract regardless of length ratio)
+    m_final = re.search(
+        r"(?:^|\n)\s*(?:\*\*|#+\s*)?Final\s+Answer\s*(?:\*\*)?\s*:\s*(.+)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if m_final:
+        extracted_final = m_final.group(1).strip()
+        if extracted_final:
+            return extracted_final
 
     # Handle <think>...</think> blocks (may be nested or repeated)
     if "<think>" in text:
@@ -391,7 +455,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _parse_input_prompt_into_turns(input_prompt: str) -> list[tuple[str, str, str | None]]:
     """
     Parse input_prompt into (session_id, content, timestamp) tuples for CML ingestion.
-    Format: DATE: ...\\nCONVERSATION:\\nSpeaker said, "text"\\n  or  Speaker said, "text" and shared X.\\n
+    Preserves multi-line quoted turns (e.g. embedded [shares a photo ...]) AND preserves
+    `and shared <blip_caption>` image descriptions as `[Shared photo: ...]`.
     Returns list of (session_id, content, date_str).
     """
     turns: list[tuple[str, str, str | None]] = []
@@ -399,25 +464,96 @@ def _parse_input_prompt_into_turns(input_prompt: str) -> list[tuple[str, str, st
     current_date: str | None = None
     session_counter = 1
 
-    for line in input_prompt.split("\n"):
-        line = line.strip()
-        if not line:
+    # First, join multi-line turns where a `Speaker said, "` line wraps onto a continuation line
+    merged_lines: list[str] = []
+    pending_turn = ""
+    _new_line_boundary_re = re.compile(
+        r'^(?:DATE:|CONVERSATION:|Question:|Below is a conversation|[A-Z][a-zA-Z0-9_.\'\s-]{0,30}\s+said,\s*")'
+    )
+    for raw_line in input_prompt.split("\n"):
+        stripped = raw_line.strip()
+        if not stripped:
             continue
+        if pending_turn:
+            if _new_line_boundary_re.match(stripped):
+                merged_lines.append(pending_turn)
+                pending_turn = ""
+            else:
+                pending_turn = f"{pending_turn} {stripped}"
+                if stripped.endswith('"') or '" and shared ' in pending_turn:
+                    merged_lines.append(pending_turn)
+                    pending_turn = ""
+                continue
+        if re.match(r'^.+?\s+said,\s*"', stripped) and not (
+            re.search(r'"(?:\s+and shared .+)?\.?\s*$', stripped) and stripped.count('"') >= 2
+        ):
+            pending_turn = stripped
+        else:
+            merged_lines.append(stripped)
+    if pending_turn:
+        merged_lines.append(pending_turn)
+
+    for line in merged_lines:
         if line.startswith("DATE:"):
             current_date = line[5:].strip()
             current_session = f"session_{session_counter}"
             session_counter += 1
             continue
-        if line == "CONVERSATION:":
+        if line == "CONVERSATION:" or line.startswith("Below is a conversation"):
             continue
         if line.startswith("Question:"):
             break
-        m = re.match(r'^(.+?) said, "(.+?)"(?:\s+and shared .+)?\.?\s*$', line)
+        m = re.match(r'^(.+?) said, "(.*)"(?:\s+and shared (.+?))?\.?\s*$', line)
         if m:
-            speaker, text = m.group(1).strip(), m.group(2).strip()
-            content = f"{speaker}: {text}"
+            speaker = m.group(1).strip()
+            text = m.group(2).strip()
+            shared_caption = (m.group(3) or "").strip().rstrip(".")
+            if shared_caption:
+                content = (
+                    f"{speaker}: {text} [Shared photo: {shared_caption}]"
+                    if text
+                    else f"{speaker}: [Shared photo: {shared_caption}]"
+                )
+            else:
+                content = f"{speaker}: {text}"
             turns.append((current_session, content, current_date))
     return turns
+
+
+def _strip_cognitive_trigger_turns(
+    sample: dict,
+    turns: list[tuple[str, str, str | None]],
+    turn_timestamps: list[Any],
+) -> tuple[list[tuple[str, str, str | None]], list[Any]]:
+    """Remove trailing future trigger_query turn(s) from Cognitive samples before ingestion
+    so the future trigger remark never self-contaminates memory retrieval or consolidation."""
+    if sample.get("category") != "Cognitive" or not turns:
+        return turns, turn_timestamps
+    raw_trigger = str(sample.get("trigger") or "").strip()
+    if not raw_trigger:
+        return turns, turn_timestamps
+    trig_bodies = [
+        re.sub(r"^[AB]:\s*", "", ln.strip())
+        for ln in raw_trigger.splitlines()
+        if ln.strip() and re.match(r"^[AB]:", ln.strip())
+    ]
+    if not trig_bodies:
+        trig_bodies = [raw_trigger]
+    k = len(trig_bodies)
+    if k <= len(turns):
+        tail = turns[-k:]
+        if all(
+            tb[:28].lower() in t_content.lower()
+            for tb, (_, t_content, _) in zip(trig_bodies, tail, strict=False)
+        ):
+            trimmed_turns = turns[:-k]
+            trimmed_ts = (
+                turn_timestamps[:-k]
+                if len(turn_timestamps) >= len(turns)
+                else turn_timestamps[: len(trimmed_turns)]
+            )
+            return trimmed_turns, trimmed_ts
+    return turns, turn_timestamps
 
 
 def _cml_write(
@@ -786,7 +922,13 @@ def _ingest_sample(
     tenant_id = f"{tenant_prefix}-{sample_idx}"
     input_prompt = sample.get("input_prompt", "")
     turns = _parse_input_prompt_into_turns(input_prompt)
-    turn_timestamps = sample.get("turn_timestamps") or []
+    turn_timestamps = list(sample.get("turn_timestamps") or [])
+    turns, turn_timestamps = _strip_cognitive_trigger_turns(sample, turns, turn_timestamps)
+
+    # Restore distinct session boundaries for stitched Cognitive conversations using turn_timestamps
+    has_explicit_sessions = any(s_id != "session_1" for s_id, _, _ in turns)
+    dyn_session_idx = 1
+    prev_ts_key: str | None = None
 
     # Build all turn payloads
     turn_payloads: list[dict] = []
@@ -802,15 +944,28 @@ def _ingest_sample(
         if ts_iso is None:
             parsed_ts = _parse_date_str(date_str)
             ts_iso = parsed_ts.isoformat() if parsed_ts else None
+
+        eff_session_id = session_id
+        eff_date_str = date_str or ""
+        if not has_explicit_sessions and ts_iso:
+            ts_key = ts_iso[:16]
+            if prev_ts_key is not None and ts_key != prev_ts_key:
+                dyn_session_idx += 1
+            prev_ts_key = ts_key
+            eff_session_id = f"session_{dyn_session_idx}"
+            if not eff_date_str:
+                eff_date_str = ts_iso[:10]
+
         payload: dict = {
             "content": content,
-            "session_id": session_id,
+            "session_id": eff_session_id,
             "metadata": {
                 "locomo_plus_idx": sample_idx,
                 "turn_idx": j,
                 "speaker": speaker,
-                "date_str": date_str or "",
-                "session_idx": int(session_id.split("_")[-1]) if "_" in session_id else 1,
+                "date_str": eff_date_str,
+                "has_session_timestamp": bool(ts_iso),
+                "session_idx": int(eff_session_id.split("_")[-1]) if "_" in eff_session_id else 1,
             },
             "turn_id": f"turn_{j}",
         }
@@ -1169,8 +1324,13 @@ def phase_b_qa(
             tenant_id = f"{tenant_prefix}-{sample_to_conv.get(i, i)}"
             trigger = (sample.get("trigger") or "").strip()
             category = sample.get("category", "")
+            read_query = (
+                format_cognitive_trigger_and_prompt(sample, "")[0]
+                if category == "Cognitive"
+                else trigger
+            )
             read_result = _cml_read(
-                cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+                cml_url, cml_api_key, tenant_id, read_query, max_results, return_full=verbose
             )
             if verbose:
                 assert isinstance(read_result, tuple)
@@ -1190,7 +1350,7 @@ def phase_b_qa(
                 else "(No relevant memories found for this query.)"
             )
             if category == "Cognitive":
-                user_content = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+                _, user_content = format_cognitive_trigger_and_prompt(sample, effective_context)
             else:
                 user_content = effective_context + "\n\n" + QA_PROMPT.format(trigger)
             user_contents.append(user_content)
@@ -1243,9 +1403,14 @@ def phase_b_qa(
             else:
                 question_input = trigger
             ctx_len = 0
+            read_query = (
+                format_cognitive_trigger_and_prompt(sample, "")[0]
+                if category == "Cognitive"
+                else trigger
+            )
             try:
                 read_result = _cml_read(
-                    cml_url, cml_api_key, tenant_id, trigger, max_results, return_full=verbose
+                    cml_url, cml_api_key, tenant_id, read_query, max_results, return_full=verbose
                 )
                 if verbose:
                     assert isinstance(read_result, tuple), "return_full=True yields tuple"
@@ -1268,7 +1433,7 @@ def phase_b_qa(
                     llm_context if ctx_len > 30 else "(No relevant memories found for this query.)"
                 )
                 if category == "Cognitive":
-                    user_content = effective_context + "\n\n" + COGNITIVE_PROMPT.format(trigger)
+                    _, user_content = format_cognitive_trigger_and_prompt(sample, effective_context)
                 else:
                     user_content = effective_context + "\n\n" + QA_PROMPT.format(trigger)
 

@@ -836,6 +836,7 @@ async def dashboard_config(
             name="Features — Core & LLM",
             items=[
                 _feature_item(feat, "use_llm_enabled"),
+                _feature_item(feat, "batch_write_system1_fastpath"),
                 _feature_item(feat, "write_time_facts_enabled"),
                 _feature_item(feat, "constraint_extraction_enabled"),
                 _feature_item(feat, "cached_embeddings_enabled"),
@@ -856,6 +857,8 @@ async def dashboard_config(
                 _feature_item(feat, "temporal_contiguity_enabled"),
                 _feature_item(feat, "temporal_contiguity_neighbours"),
                 _feature_item(feat, "hyde_retrieval_enabled"),
+                _feature_item(feat, "llm_multi_angle_expansion_enabled"),
+                _feature_item(feat, "llm_judged_delivery_enabled"),
                 _feature_item(feat, "temporal_resolution_enabled"),
                 _feature_item(feat, "adaptive_episode_budget_enabled"),
                 _feature_item(feat, "pii_redaction_enabled"),

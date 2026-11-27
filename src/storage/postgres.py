@@ -439,13 +439,18 @@ class PostgresMemoryStore(MemoryStoreBase):
         tsquery_str = " | ".join(unique_tokens)
 
         try:
+            import math
+
             from sqlalchemy import func
 
             async with self.session_factory() as session:
                 ts_vec = func.to_tsvector("english", func.coalesce(MemoryRecordModel.text, ""))
                 ts_q = func.to_tsquery("english", tsquery_str)
-                # Normalization 32 divides rank by (rank + 1) -> bounded in [0, 1)
-                rank_expr = func.ts_rank_cd(ts_vec, ts_q, 32).label("lex_rank")
+                and_q = func.plainto_tsquery("english", " ".join(unique_tokens[:6]))
+                # Boost multi-term conjunction matches over single hub-speaker token matches
+                rank_expr = (
+                    func.ts_rank_cd(ts_vec, ts_q, 32) + 4.0 * func.ts_rank_cd(ts_vec, and_q, 32)
+                ).label("lex_rank")
 
                 base = and_(
                     MemoryRecordModel.tenant_id == tenant_id,
@@ -488,18 +493,38 @@ class PostgresMemoryStore(MemoryStoreBase):
                             )
                         )
 
-                q = q.order_by(rank_expr.desc()).limit(top_k)
+                fetch_k = max(top_k * 4, 80)
+                q = q.order_by(rank_expr.desc()).limit(fetch_k)
                 res = await session.execute(q)
-                out: list[tuple[MemoryRecord, float]] = []
+                raw_rows: list[tuple[MemoryRecord, float]] = []
                 for row in res:
                     model, raw_rank = row[0], float(row[1] or 0.0)
                     rec = self._to_schema(model)
                     if rec is not None:
-                        # Calibrate Postgres ts_rank_cd(32) into [0.48, 0.94] band
-                        calibrated = min(0.94, 0.48 + 0.75 * raw_rank)
-                        rec.metadata["_lexical_score"] = calibrated
-                        out.append((rec, calibrated))
-                return out
+                        raw_rows.append((rec, raw_rank))
+
+                if not raw_rows:
+                    return []
+
+                # IDF re-scoring across fetched pool so hub speaker names ("Caroline") never outrank rare terms ("researching")
+                n_docs = len(raw_rows)
+                stems = [t[:5] if len(t) > 5 else t for t in unique_tokens]
+                doc_texts = [(r.text or "").lower() for r, _ in raw_rows]
+                df = {st: sum(1 for dt in doc_texts if st in dt) for st in stems}
+                idf = {st: math.log(1.0 + (n_docs + 1.0) / (df[st] + 0.5)) for st in stems}
+                total_idf = max(sum(idf.values()), 1e-6)
+
+                rescored: list[tuple[float, MemoryRecord]] = []
+                for (rec, raw_rank), dt in zip(raw_rows, doc_texts, strict=False):
+                    matched_idf = sum(w for st, w in idf.items() if st in dt)
+                    idf_cov = matched_idf / total_idf
+                    combined = 0.65 * idf_cov + 0.35 * min(1.0, raw_rank)
+                    calibrated = min(0.94, 0.48 + 0.46 * combined)
+                    rec.metadata["_lexical_score"] = round(calibrated, 4)
+                    rescored.append((calibrated, rec))
+
+                rescored.sort(key=lambda item: item[0], reverse=True)
+                return [(rec, sc) for sc, rec in rescored[:top_k]]
         except Exception as exc:
             _logger.debug("postgres_sparse_lexical_fallback", error=str(exc))
             return await super().sparse_lexical_search(

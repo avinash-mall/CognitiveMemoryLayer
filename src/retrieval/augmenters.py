@@ -55,24 +55,53 @@ class RetrievalAugmentersMixin:
         query: str,
         plan: Any,
         context_filter: list[str] | None,
+        *,
+        run_bm25: bool = False,
+        run_ppr: bool = False,
+        ppr_damping: float = 0.82,
+        memory_types: list[str] | None = None,
+        source_session_id: str | None = None,
     ) -> list[list[Any]]:
-        """Run HyDE: generate hypothetical memory cues and retrieve with them."""
+        """Run Stage-1 multi-angle query reformulation / HyDE across dense, BM25, and PPR."""
+        import asyncio
+
         if not self._hyde_generator:
             return []
         try:
             is_cognitive = False
+            routing_intent = "single_hop"
             try:
                 from ..core.laya_system1 import LayaSystem1Engine
 
-                is_cognitive = LayaSystem1Engine.classify_query_routing(query).is_cognitive_cue
+                rdec = LayaSystem1Engine.classify_query_routing(query)
+                is_cognitive = rdec.is_cognitive_cue
+                routing_intent = rdec.intent
             except Exception:
                 is_cognitive = False
 
-            if is_cognitive and hasattr(self._hyde_generator, "generate_cognitive_cues"):
-                hypos = await self._hyde_generator.generate_cognitive_cues(query)
-            else:
-                hypo = await self._hyde_generator.generate_hypothetical_memory(query)
-                hypos = [hypo] if hypo else []
+            use_multi_angle = False
+            try:
+                from ..core.config import get_settings
+
+                use_multi_angle = bool(
+                    getattr(get_settings().features, "llm_multi_angle_expansion_enabled", True)
+                )
+            except Exception:
+                use_multi_angle = True
+
+            hypos: list[str] = []
+            if use_multi_angle and hasattr(self._hyde_generator, "expand_multi_angle_queries"):
+                hypos = await self._hyde_generator.expand_multi_angle_queries(
+                    query,
+                    is_cognitive=is_cognitive,
+                    routing_intent=routing_intent,
+                )
+            if not hypos:
+                if is_cognitive and hasattr(self._hyde_generator, "generate_cognitive_cues"):
+                    hypos = await self._hyde_generator.generate_cognitive_cues(query)
+                else:
+                    hypo = await self._hyde_generator.generate_hypothetical_memory(query)
+                    hypos = [hypo] if hypo else []
 
             if not hypos:
                 return []
@@ -84,20 +113,138 @@ class RetrievalAugmentersMixin:
             else:
                 embeddings = [(await emb_client.embed(h)).embedding for h in hypos]
 
-            result_lists: list[list[Any]] = []
-            for emb in embeddings:
-                res = await self.retriever.retrieve(
-                    tenant_id,
-                    plan,
-                    context_filter=context_filter,
-                    query_embedding=emb,
+            from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
+
+            base_tf = None
+            base_mt: list[str] = []
+            for s in getattr(plan, "steps", None) or []:
+                if getattr(s, "source", None) == RetrievalSource.VECTOR:
+                    base_tf = getattr(s, "time_filter", None)
+                    base_mt = list(getattr(s, "memory_types", None) or [])
+                    break
+
+            dense_coros: list[Any] = []
+            bm25_coros: list[Any] = []
+            for h_text, emb in zip(hypos, embeddings, strict=False):
+                vec_step = RetrievalStep(
+                    source=RetrievalSource.VECTOR,
+                    query=h_text,
+                    top_k=18,
+                    priority=1,
+                    timeout_ms=5000,
+                    time_filter=dict(base_tf) if isinstance(base_tf, dict) else None,
+                    memory_types=list(base_mt),
                 )
-                if res:
-                    result_lists.append(res)
+                vec_plan = RetrievalPlan(
+                    query=h_text,
+                    analysis=plan.analysis,
+                    steps=[vec_step],
+                    parallel_steps=[[0]],
+                    total_timeout_ms=max(
+                        8000, int(getattr(plan, "total_timeout_ms", 5000) or 5000)
+                    ),
+                    max_results=18,
+                )
+                dense_coros.append(
+                    self.retriever.retrieve(
+                        tenant_id,
+                        vec_plan,
+                        context_filter=context_filter,
+                        query_embedding=emb,
+                    )
+                )
+                if run_bm25:
+                    bm25_coros.append(
+                        self._sparse_bm25_augment(
+                            tenant_id,
+                            h_text,
+                            top_k=12,
+                            context_filter=context_filter,
+                            memory_types=memory_types,
+                            source_session_id=source_session_id,
+                            keep_proustian=is_cognitive,
+                        )
+                    )
+
+            _ = (run_ppr, ppr_damping)
+            all_gathered = await asyncio.gather(*(dense_coros + bm25_coros), return_exceptions=True)
+            n_dense = len(dense_coros)
+            dense_outs = all_gathered[:n_dense]
+            bm25_outs = all_gathered[n_dense:]
+
+            def _union_by_best_score(lists: list[Any]) -> list[RetrievedMemory]:
+                best: dict[str, RetrievedMemory] = {}
+                for lst in lists:
+                    if isinstance(lst, BaseException) or not lst:
+                        continue
+                    for m in lst:
+                        mid = str(m.record.id)
+                        prev = best.get(mid)
+                        if prev is None or m.relevance_score > prev.relevance_score:
+                            best[mid] = m
+                return sorted(best.values(), key=lambda x: x.relevance_score, reverse=True)[:28]
+
+            result_lists: list[list[Any]] = []
+            u_dense = _union_by_best_score(list(dense_outs))
+            if u_dense:
+                result_lists.append(u_dense)
+            u_bm25 = _union_by_best_score(list(bm25_outs))
+            if u_bm25:
+                result_lists.append(u_bm25)
             return result_lists
         except Exception as exc:
             _logger.debug("hyde_augment_failed", error=str(exc))
             return []
+
+    @staticmethod
+    def _apply_entity_bridge_boost(
+        candidates: list[RetrievedMemory],
+        angle_lists: list[list[RetrievedMemory]],
+        query: str,
+    ) -> None:
+        """Non-hub Entity-Bridge Join (Kumiho-inspired): boost memories sharing discriminative
+        entities across >=2 distinct retrieval angles while ignoring ubiquitous speaker hubs."""
+        if len(angle_lists) < 2 or not candidates:
+            return
+        q_low = (query or "").lower()
+        # Count entity frequency across candidate pool to filter out conversation-wide speaker hubs
+        doc_freq: dict[str, int] = {}
+        total_docs = max(1, len(candidates))
+        for m in candidates:
+            txt = str(getattr(m.record, "text", "") or "")
+            ents = {
+                tok.lower()
+                for tok in re.findall(r"\b[A-Z][a-zA-Z0-9]{2,}\b", txt)
+                if tok.lower() not in _PERSONA_STOPWORDS
+            }
+            for e in ents:
+                doc_freq[e] = doc_freq.get(e, 0) + 1
+
+        hub_cutoff = max(6, int(total_docs * 0.38))
+        angle_entity_hits: dict[str, set[int]] = {}
+        for a_idx, rlist in enumerate(angle_lists):
+            for m in rlist[:8]:
+                txt = str(getattr(m.record, "text", "") or "")
+                for tok in re.findall(r"\b[A-Z][a-zA-Z0-9]{2,}\b", txt):
+                    e_low = tok.lower()
+                    if e_low in _PERSONA_STOPWORDS or e_low in q_low:
+                        continue
+                    if doc_freq.get(e_low, 0) > hub_cutoff:
+                        continue
+                    angle_entity_hits.setdefault(e_low, set()).add(a_idx)
+
+        bridge_entities = {e for e, idxs in angle_entity_hits.items() if len(idxs) >= 2}
+        if not bridge_entities:
+            return
+
+        for m in candidates:
+            t_low = str(getattr(m.record, "text", "") or "").lower()
+            matched_bridges = [b for b in bridge_entities if b in t_low]
+            if matched_bridges:
+                m.relevance_score = min(0.96, m.relevance_score + 0.08)
+                meta = dict(m.record.metadata or {})
+                meta["_bridge_entities"] = matched_bridges[:4]
+                m.record.metadata = meta
 
     async def _persona_profile_augment(
         self,
@@ -172,6 +319,7 @@ class RetrievalAugmentersMixin:
         since: Any | None = None,
         until: Any | None = None,
         source_session_id: str | None = None,
+        keep_proustian: bool = False,
     ) -> list[RetrievedMemory]:
         """Dentate Gyrus sparse lexical search (Postgres tsvector GIN / SQLite FTS5)."""
         store = getattr(self.retriever.hippocampal, "store", None)
@@ -196,7 +344,7 @@ class RetrievalAugmentersMixin:
             )
             out_bm25: list[RetrievedMemory] = []
             for rec, score in hits:
-                if (rec.metadata or {}).get("proustian_cue_pointer"):
+                if not keep_proustian and (rec.metadata or {}).get("proustian_cue_pointer"):
                     continue
                 out_bm25.append(
                     RetrievedMemory(
@@ -278,20 +426,22 @@ class RetrievalAugmentersMixin:
         if not candidates:
             return candidates
 
-        min_ptr_rel = 0.52 if is_cognitive_cue else 0.72
-        parent_scores: dict[str, float] = {}
+        min_ptr_rel = 0.42 if is_cognitive_cue else 0.72
+        ptr_hits: list[tuple[float, str]] = []
         cleaned_candidates: list[RetrievedMemory] = []
         for m in candidates:
             meta = m.record.metadata or {}
             if meta.get("proustian_cue_pointer"):
                 if meta.get("parent_episode_id") and m.relevance_score >= min_ptr_rel:
-                    pid = str(meta["parent_episode_id"])
-                    if len(parent_scores) < 5 or pid in parent_scores:
-                        parent_scores[pid] = max(
-                            parent_scores.get(pid, 0.0), min(0.92, m.relevance_score + 0.08)
-                        )
+                    ptr_hits.append((float(m.relevance_score), str(meta["parent_episode_id"])))
                 continue
             cleaned_candidates.append(m)
+
+        ptr_hits.sort(key=lambda item: item[0], reverse=True)
+        parent_scores: dict[str, float] = {}
+        for rel, pid in ptr_hits:
+            if len(parent_scores) < 8 or pid in parent_scores:
+                parent_scores[pid] = max(parent_scores.get(pid, 0.0), min(0.94, rel + 0.08))
 
         if not parent_scores or store is None:
             return cleaned_candidates
@@ -337,3 +487,94 @@ class RetrievalAugmentersMixin:
         except Exception as exc:
             _logger.debug("proustian_parent_resolve_failed", error=str(exc))
             return cleaned_candidates
+
+    async def _expand_post_merge_contiguity(
+        self,
+        tenant_id: str,
+        memories: list[RetrievedMemory],
+        *,
+        k: int = 1,
+        max_seeds: int = 8,
+    ) -> list[RetrievedMemory]:
+        """Expand ±k immediate conversational turns around top merged hits (including HyDE/BM25/PPR/Proustian)."""
+        from datetime import timedelta
+
+        from .graph_expansion import _neighbours_of
+
+        store = getattr(getattr(self.retriever, "hippocampal", None), "store", None)
+        scan_fn = getattr(store, "scan", None) if store is not None else None
+        if not callable(scan_fn) or not memories:
+            return memories
+
+        seeds: list[RetrievedMemory] = []
+        for m in memories:
+            rec = m.record
+            rmeta = rec.metadata or {}
+            if rmeta.get("proustian_cue_pointer") or rmeta.get("conway_tier") == "chapter_gist":
+                continue
+            if str(rec.text or "").startswith(("[Chapter Summary", "[Prospective", "[Proustian")):
+                continue
+            if not getattr(rec, "source_session_id", None) or not getattr(rec, "timestamp", None):
+                continue
+            if "turn_idx" not in rmeta and m.retrieval_source in ("facts", "constraints"):
+                continue
+            seeds.append(m)
+            if len(seeds) >= max_seeds:
+                break
+
+        if not seeds:
+            return memories
+
+        existing_ids = {str(m.record.id) for m in memories}
+        session_cache: dict[str, list[Any]] = {}
+        added: list[RetrievedMemory] = []
+        window = timedelta(minutes=30)
+
+        for seed_mem in seeds:
+            rec = seed_mem.record
+            ts = rec.timestamp
+            sess_key = f"{rec.source_session_id}:{ts.isoformat()[:16]}"
+            rows = session_cache.get(sess_key)
+            if rows is None:
+                try:
+                    maybe_coro = scan_fn(
+                        tenant_id,
+                        filters={
+                            "source_session_id": rec.source_session_id,
+                            "status": "active",
+                            "since": ts - window,
+                            "until": ts + window,
+                        },
+                        limit=200,
+                    )
+                    if not hasattr(maybe_coro, "__await__"):
+                        return memories
+                    rows = await maybe_coro
+                    session_cache[sess_key] = rows or []
+                except Exception as exc:
+                    _logger.debug("post_merge_contiguity_failed", error=str(exc))
+                    return memories
+            for nb in _neighbours_of(rec, rows, k):
+                nb_id = str(getattr(nb, "id", ""))
+                if not nb_id or nb_id in existing_ids:
+                    continue
+                if str(getattr(nb, "text", "") or "").startswith(
+                    ("[Chapter Summary", "[Prospective", "[Proustian")
+                ):
+                    continue
+                existing_ids.add(nb_id)
+                nb_meta = dict(getattr(nb, "metadata", None) or {})
+                if (rec.metadata or {}).get("_proustian_promoted") or (rec.metadata or {}).get(
+                    "_hyde_promoted"
+                ):
+                    nb_meta["_hyde_promoted"] = True
+                nb.metadata = nb_meta
+                added.append(
+                    RetrievedMemory(
+                        record=nb,
+                        relevance_score=round(seed_mem.relevance_score * 0.88, 4),
+                        retrieval_source="contiguity",
+                    )
+                )
+
+        return memories + added

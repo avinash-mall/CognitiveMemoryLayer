@@ -103,11 +103,15 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
         self.dmn_store = dmn_store
         self.procedural_engine = procedural_engine
 
-        # --- Improvement Report: HyDE ---
+        # --- Stage 1 & 2 LLM_INTERNAL Retrieval Helper (Multi-angle HyDE + Judged Delivery) ---
         self._hyde_generator = None
         settings = get_settings()
 
-        if llm_client and settings.features.hyde_retrieval_enabled:
+        if llm_client and (
+            settings.features.hyde_retrieval_enabled
+            or getattr(settings.features, "llm_multi_angle_expansion_enabled", True)
+            or getattr(settings.features, "llm_judged_delivery_enabled", True)
+        ):
             from .hyde import HyDEGenerator
 
             self._hyde_generator = HyDEGenerator(llm_client)
@@ -284,6 +288,7 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
                     since=since,
                     until=until,
                     source_session_id=source_session_id,
+                    keep_proustian=is_cognitive_cue,
                 )
             )
         if run_ppr:
@@ -313,11 +318,26 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
                 extra_result_lists.append(ppr_hits)
 
         hyde_hit_ids: set[str] = set()
-        if settings.features.hyde_retrieval_enabled and self._hyde_generator:
-            hyde_result_lists = await self._hyde_augment(tenant_id, query, plan, context_filter)
+        angle_lists: list[list[RetrievedMemory]] = [raw_results]
+        if self._hyde_generator and (
+            settings.features.hyde_retrieval_enabled
+            or getattr(settings.features, "llm_multi_angle_expansion_enabled", True)
+        ):
+            hyde_result_lists = await self._hyde_augment(
+                tenant_id,
+                query,
+                plan,
+                context_filter,
+                run_bm25=run_bm25,
+                run_ppr=run_ppr,
+                ppr_damping=ppr_damping,
+                memory_types=memory_types,
+                source_session_id=source_session_id,
+            )
             for rl in hyde_result_lists:
                 if rl:
                     extra_result_lists.append(rl)
+                    angle_lists.append(rl)
                     for r in rl:
                         hyde_hit_ids.add(str(r.record.id))
 
@@ -328,10 +348,16 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
             )
             if persona_hits:
                 extra_result_lists.append(persona_hits)
+                angle_lists.append(persona_hits)
 
-        # ACC Feeling-of-Knowing Iterative Recollection (up to 2 hops on multi-hop gaps)
+        # ACC Feeling-of-Knowing Iterative Recollection (fallback when Stage-2 judged delivery is off)
+        judged_delivery_on = bool(
+            getattr(settings.features, "llm_judged_delivery_enabled", True)
+            and self._hyde_generator is not None
+        )
         if (
-            not is_cognitive_cue
+            not judged_delivery_on
+            and not is_cognitive_cue
             and getattr(settings.features, "multi_hop_recollection_enabled", True)
             and self._hyde_generator is not None
             and (raw_results or extra_result_lists)
@@ -419,11 +445,26 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
                     mem.record.metadata = meta
                     deduped_results.append(mem)
             raw_results = deduped_results
+            if len(angle_lists) >= 2:
+                self._apply_entity_bridge_boost(raw_results, angle_lists, query)
 
         # Resolve Grounded Proustian Cue Pointers -> verbatim parent episodes
         if getattr(settings.features, "conway_hierarchy_enabled", True) and raw_results:
             raw_results = await self._resolve_proustian_and_conway_parents(
                 raw_results, is_cognitive_cue=is_cognitive_cue
+            )
+
+        # Post-merge ±2 conversational pair contiguity across all prongs (HyDE/BM25/PPR/Proustian)
+        if (
+            getattr(settings.features, "temporal_contiguity_enabled", True)
+            and raw_results
+            and not memory_types
+        ):
+            raw_results = await self._expand_post_merge_contiguity(
+                tenant_id,
+                raw_results,
+                k=2,
+                max_seeds=8 if is_cognitive_cue else 6,
             )
 
         raw_results = drop_graph_results(
@@ -469,19 +510,176 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
             raw_results = filtered_time
 
         # Rerank a wider pool so Neocortical facts/constraints never starve Hippocampal episodes,
-        # then enforce Complementary Learning Systems stratified slot reservation.
+        # then run Stage-2 LLM_INTERNAL Judged Delivery + Reality Monitoring before slot capping.
         wide_cap = max(max_results + 25, 45)
         wide_reranked = await self.reranker.rerank(
             raw_results, query, max_results=wide_cap, ce_temperature=ce_temperature
         )
+
+        def _is_chapter_gist_mem(m: RetrievedMemory) -> bool:
+            rmeta = m.record.metadata or {}
+            txt = str(m.record.text or "")
+            return bool(
+                rmeta.get("conway_tier") == "chapter_gist" or txt.startswith("[Chapter Summary")
+            )
+
+        def _is_raw_dialogue_dump_gist(m: RetrievedMemory) -> bool:
+            txt = str(m.record.text or "")
+            return txt.startswith("[Chapter Summary") and "] Session dialogue (" in txt
+
+        llm_grounding_info: dict[str, Any] = {}
+        if (
+            judged_delivery_on
+            and self._hyde_generator is not None
+            and hasattr(self._hyde_generator, "evaluate_candidates_and_grounding")
+            and len(wide_reranked) >= 2
+        ):
+            try:
+                eval_pool: list[tuple[int, RetrievedMemory]] = []
+                eval_gist_count = 0
+                for idx_w, m in enumerate(wide_reranked):
+                    if (m.record.metadata or {}).get("proustian_cue_pointer"):
+                        continue
+                    if _is_raw_dialogue_dump_gist(m):
+                        continue
+                    if _is_chapter_gist_mem(m):
+                        if eval_gist_count >= 2:
+                            continue
+                        eval_gist_count += 1
+                    eval_pool.append((idx_w, m))
+                    if len(eval_pool) >= 36:
+                        break
+                cand_lines: list[str] = []
+                for _, m in eval_pool:
+                    rmeta = m.record.metadata or {}
+                    said = (
+                        m.record.timestamp.strftime("%Y-%m-%d")
+                        if hasattr(m.record.timestamp, "strftime")
+                        else ""
+                    )
+                    ev_d = str(rmeta.get("event_date_display") or rmeta.get("event_date") or "")[
+                        :16
+                    ]
+                    d_hdr = (
+                        f"[{said}, refers to {ev_d}] "
+                        if (said and ev_d and ev_d != said)
+                        else (f"[{said}] " if said else "")
+                    )
+                    spk = str(rmeta.get("speaker") or "").strip()
+                    txt = str(m.record.text or "").strip()
+                    s_hdr = f"{spk}: " if spk and not txt.startswith(f"{spk}:") else ""
+                    cand_lines.append(f"{d_hdr}{s_hdr}{txt}")
+
+                jd_res = await self._hyde_generator.evaluate_candidates_and_grounding(
+                    query,
+                    cand_lines,
+                    is_cognitive=is_cognitive_cue,
+                    routing_intent=routing_intent,
+                )
+                if jd_res:
+                    llm_grounding_info = {
+                        "grounding": jd_res.get("grounding", ""),
+                        "swap_note": jd_res.get("swap_note", ""),
+                        "selected_count": len(jd_res.get("selected_indices") or []),
+                    }
+                    sel_local = jd_res.get("selected_indices") or []
+                    chosen_orig_indices = [
+                        eval_pool[c][0] for c in sel_local if 0 <= c < len(eval_pool)
+                    ]
+                    chosen_orig_set = set(chosen_orig_indices)
+                    promoted_sel: list[RetrievedMemory] = []
+                    for rank_i, orig_i in enumerate(chosen_orig_indices):
+                        m = wide_reranked[orig_i]
+                        m.relevance_score = max(m.relevance_score, 0.99 - 0.008 * rank_i)
+                        m_meta = dict(m.record.metadata or {})
+                        m_meta["_llm_selected"] = True
+                        if is_cognitive_cue:
+                            m_meta["_hyde_promoted"] = True
+                        m.record.metadata = m_meta
+                        promoted_sel.append(m)
+
+                    # Optional targeted 2nd-hop bridge fetch when Stage-2 spots an unresolved reference
+                    bridge_q = str(jd_res.get("bridge_query") or "").strip()
+                    bridge_added: list[RetrievedMemory] = []
+                    if bridge_q and not source_session_id:
+                        try:
+                            from .planner import RetrievalPlan, RetrievalSource, RetrievalStep
+
+                            b_emb = await self.retriever.hippocampal.embeddings.embed(bridge_q)
+                            b_plan = RetrievalPlan(
+                                query=bridge_q,
+                                analysis=plan.analysis,
+                                steps=[
+                                    RetrievalStep(
+                                        source=RetrievalSource.VECTOR,
+                                        query=bridge_q,
+                                        top_k=12,
+                                        priority=1,
+                                        timeout_ms=5000,
+                                    )
+                                ],
+                                parallel_steps=[[0]],
+                                total_timeout_ms=8000,
+                                max_results=12,
+                            )
+                            b_dense = await self.retriever.retrieve(
+                                tenant_id,
+                                b_plan,
+                                context_filter=context_filter,
+                                query_embedding=b_emb.embedding,
+                            )
+                            b_lex = (
+                                await self._sparse_bm25_augment(
+                                    tenant_id,
+                                    bridge_q,
+                                    top_k=8,
+                                    context_filter=context_filter,
+                                    memory_types=memory_types,
+                                )
+                                if run_bm25
+                                else []
+                            )
+                            existing_w_ids = {str(x.record.id) for x in wide_reranked}
+                            for bm in b_dense[:4] + b_lex[:3]:
+                                bid = str(bm.record.id)
+                                if bid not in existing_w_ids and not _is_chapter_gist_mem(bm):
+                                    existing_w_ids.add(bid)
+                                    bm.relevance_score = max(bm.relevance_score, 0.91)
+                                    bmeta = dict(bm.record.metadata or {})
+                                    bmeta["_llm_selected"] = True
+                                    bm.record.metadata = bmeta
+                                    bridge_added.append(bm)
+                                    if len(bridge_added) >= 3:
+                                        break
+                        except Exception as exc_b:
+                            _logger.debug("judged_bridge_hop_failed", error=str(exc_b))
+
+                    rest_wide = [
+                        m for idx_w, m in enumerate(wide_reranked) if idx_w not in chosen_orig_set
+                    ]
+                    wide_reranked = promoted_sel + bridge_added + rest_wide
+                    if (
+                        promoted_sel
+                        and getattr(settings.features, "temporal_contiguity_enabled", True)
+                        and not memory_types
+                    ):
+                        wide_reranked = await self._expand_post_merge_contiguity(
+                            tenant_id,
+                            wide_reranked,
+                            k=2,
+                            max_seeds=min(4, len(promoted_sel)),
+                        )
+            except Exception as exc_jd:
+                _logger.debug("judged_delivery_stage_failed", error=str(exc_jd))
+
         if len(wide_reranked) <= max_results:
-            reranked = wide_reranked
+            reranked = [m for m in wide_reranked if not _is_raw_dialogue_dump_gist(m)]
         else:
             from ..core.enums import MemoryType
 
             def _is_pure_episode(m: RetrievedMemory) -> bool:
                 meta = m.record.metadata or {}
-                if meta.get("proustian_cue_pointer") or meta.get("conway_tier") == "chapter_gist":
+                if meta.get("proustian_cue_pointer") or _is_chapter_gist_mem(m):
                     return False
                 if m.retrieval_source in ("facts", "constraints"):
                     return False
@@ -496,6 +694,7 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
                     # turns are genuine hippocampal dialogue episodes and must never be capped out.
                     return bool(
                         is_cognitive_cue
+                        or meta.get("_llm_selected")
                         or meta.get("_proustian_promoted")
                         or meta.get("_hyde_promoted")
                         or m.relevance_score >= 0.72
@@ -506,26 +705,40 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
             constraints_pool = [
                 m
                 for m in wide_reranked
-                if m.record.type == MemoryType.CONSTRAINT and m.relevance_score >= 0.55
+                if m.record.type == MemoryType.CONSTRAINT
+                and not _is_pure_episode(m)
+                and m.relevance_score >= 0.60
             ]
-            facts_pool = [
+            atomic_facts_pool = [
                 m
                 for m in wide_reranked
                 if not _is_pure_episode(m)
                 and m.record.type != MemoryType.CONSTRAINT
+                and not _is_chapter_gist_mem(m)
                 and m.relevance_score >= 0.58
             ]
-            c_cap = 4 if is_cognitive_cue else 2
-            f_cap = 3
-            chosen_aux = constraints_pool[:c_cap] + facts_pool[:f_cap]
+            chapter_gists_pool = [
+                m
+                for m in wide_reranked
+                if _is_chapter_gist_mem(m)
+                and not _is_raw_dialogue_dump_gist(m)
+                and m.relevance_score >= 0.62
+            ]
+            c_cap = 2 if is_cognitive_cue else 1
+            f_cap = 2 if is_cognitive_cue else 4
+            g_cap = 0 if is_cognitive_cue else 1
+            chosen_aux = (
+                constraints_pool[:c_cap] + atomic_facts_pool[:f_cap] + chapter_gists_pool[:g_cap]
+            )
             ep_cap = max(1, max_results - len(chosen_aux))
             chosen_eps = pure_eps[:ep_cap]
             keep_ids = {id(m) for m in (chosen_eps + chosen_aux)}
             reranked = [m for m in wide_reranked if id(m) in keep_ids][:max_results]
 
-        # Round 2 Cognitive Cue Selection: explicitly identify 1-3 verbatim episodes with hidden link
+        # Round 2 Cognitive Cue Selection fallback (only when Stage-2 judged delivery did not run)
         if (
-            is_cognitive_cue
+            not llm_grounding_info
+            and is_cognitive_cue
             and self._hyde_generator is not None
             and hasattr(self._hyde_generator, "select_cognitive_cues")
             and len(reranked) > 3
@@ -567,6 +780,10 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
             if retrieval_meta is None:
                 retrieval_meta = {}
             retrieval_meta["neuromodulation"] = neuro_dict
+        if llm_grounding_info:
+            if retrieval_meta is None:
+                retrieval_meta = {}
+            retrieval_meta["llm_grounding"] = llm_grounding_info
 
         # Attach Conway Tier-3 Persistent DMN Self-Profiles & Procedural Skill Playbooks
         dmn_lines: list[str] = []
@@ -600,7 +817,12 @@ class MemoryRetriever(RetrievalAugmentersMixin, RetrievalExplainMixin):
 
         sufficiency = assess_sufficiency(reranked)
         if return_packet:
-            packet = self.packet_builder.build(reranked, query)
+            if llm_grounding_info:
+                packet = self.packet_builder.build(
+                    reranked, query, llm_grounding=llm_grounding_info
+                )
+            else:
+                packet = self.packet_builder.build(reranked, query)
             if getattr(settings.features, "preplay_simulation_enabled", True) and (
                 is_cognitive_cue or proc_lines
             ):
