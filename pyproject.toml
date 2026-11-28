@@ -121,7 +121,25 @@ packages = ["packages/py-cml/src/cml", "packages/py-cml/src/cml_contracts"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = [".git.corrupt"]
+exclude = [
+    ".git.corrupt",
+    "evaluation/longmemeval_v2/data",
+    "evaluation/longmemeval_v2/evaluation",
+    "evaluation/longmemeval_v2/leaderboard",
+    "evaluation/longmemeval_v2/memory_modules/agentrunbook_c.py",
+    "evaluation/longmemeval_v2/memory_modules/agentrunbook_c_v2.py",
+    "evaluation/longmemeval_v2/memory_modules/agentrunbook_online_learning.py",
+    "evaluation/longmemeval_v2/memory_modules/agentrunbook_r.py",
+    "evaluation/longmemeval_v2/memory_modules/assets",
+    "evaluation/longmemeval_v2/memory_modules/codex.py",
+    "evaluation/longmemeval_v2/memory_modules/memory.py",
+    "evaluation/longmemeval_v2/memory_modules/no_retrieval.py",
+    "evaluation/longmemeval_v2/memory_modules/oai_agents_sdk.py",
+    "evaluation/longmemeval_v2/memory_modules/rag.py",
+    "evaluation/longmemeval_v2/memory_modules/support.py",
+    "evaluation/longmemeval_v2/memory_modules/trajectory_store.py",
+    "evaluation/longmemeval_v2/tests",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH", "RUF"]

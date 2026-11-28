@@ -1,0 +1,35 @@
+{
+  "memory_type": "cml",
+  "memory_params": {
+    "trajectory_pool_root": null,
+    "cml_params": {
+      "base_url": "http://127.0.0.1:8000",
+      "api_key": null,
+      "api_key_env": "CML_API_KEY",
+      "tenant_prefix": "lme2v2",
+      "batch_size": 64,
+      "timeout_seconds": 180.0
+    },
+    "controller_params": {
+      "model": "qwen3.8-27b",
+      "base_url": "http://127.0.0.1:8023/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "api_key_file": null,
+      "max_tokens": 256,
+      "timeout_seconds": 120.0
+    },
+    "retrieval_params": {
+      "enable_query_expansion": false,
+      "enable_vision_query": true,
+      "max_surface_queries": 2,
+      "cml_top_k_per_query": 28,
+      "max_workflows": 3,
+      "max_state_slices": 4,
+      "per_query_slice_cap": 2,
+      "slice_radius": 1,
+      "max_images": 0,
+      "center_axtree_max_chars": 10500,
+      "neighbor_axtree_max_chars": 900
+    }
+  }
+}

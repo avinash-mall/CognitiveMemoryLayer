@@ -7,7 +7,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 LOCOMO_PLUS = SCRIPT_DIR.parent
 DATA_FILE = LOCOMO_PLUS / "data" / "unified_input_samples_v2.json"
-OUT_DIR = LOCOMO_PLUS.parent / "outputs"
+OUT_DIR = LOCOMO_PLUS.parent / "outputs" / "locomo_plus"
 OUT_FILE = OUT_DIR / "locomo_plus_predictions.json"
 
 sys.path.insert(0, str(LOCOMO_PLUS))

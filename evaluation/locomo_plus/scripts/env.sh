@@ -5,7 +5,7 @@ LOCOMO_PLUS_DIR="$(dirname "$SCRIPT_DIR")"
 EVAL_ROOT="$(dirname "$LOCOMO_PLUS_DIR")"
 
 DATA_FILE_PATH="${LOCOMO_PLUS_DIR}/data/unified_input_samples_v2.json"
-OUT_DIR="${EVAL_ROOT}/outputs"
+OUT_DIR="${EVAL_ROOT}/outputs/locomo_plus"
 QA_OUTPUT_FILE=locomo_plus_predictions.json
 
 # Load env.local.sh for API keys (do not commit)

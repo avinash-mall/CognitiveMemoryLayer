@@ -1,3 +1,7 @@
-# Eval outputs and logs (eval_locomo_plus, run_full_eval)
+# Eval outputs, caches, and logs
 outputs/
+longmemeval_v2/data/longmemeval-v2/
+longmemeval_v2/runs/
+longmemeval_v2/leaderboard/submissions/
+**/.cml_cache/
 *.log

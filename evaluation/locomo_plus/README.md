@@ -48,7 +48,7 @@
    ```bash
    cml-eval run-locomo \
      --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-     --out-dir evaluation/outputs \
+     --out-dir evaluation/outputs/locomo_plus \
      --limit-samples 5
    ```
 
@@ -56,7 +56,7 @@
 
 ## Outputs
 
-- `evaluation/outputs/locomo_plus_predictions.json` – predictions from `run_evaluate` (non-CML)
-- `evaluation/outputs/locomo_plus_qa_cml_predictions.json` – predictions from `cml-eval run-locomo` (CML-backed)
-- `evaluation/outputs/locomo_plus_judged.json` – judged records (non-CML)
-- `evaluation/outputs/locomo_plus_qa_cml_judged.json` – CML-backed judged output
+- `evaluation/outputs/locomo_plus/locomo_plus_predictions.json` – predictions from `run_evaluate` (non-CML)
+- `evaluation/outputs/locomo_plus/locomo_plus_qa_cml_predictions.json` – predictions from `cml-eval run-locomo` (CML-backed)
+- `evaluation/outputs/locomo_plus/locomo_plus_judged.json` – judged records (non-CML)
+- `evaluation/outputs/locomo_plus/locomo_plus_qa_cml_judged.json` – CML-backed judged output

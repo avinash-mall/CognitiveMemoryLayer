@@ -82,17 +82,38 @@ All neuro-inspired and intrinsic-memory subsystems are independently toggleable 
 | `FEATURES__LAYA_SYSTEM1_ENABLED` | `false` | Enables Convai **Laya** (`convaiinnovations/laya`, ~20ms GPU) for calibrated System 1 query routing and CA1 grounding verification (`src/core/laya_system1.py`). Requires `pip install laya` with `transformers==5.12.1` when paired with `nomic-embed-text-v2-moe`. |
 | `FEATURES__THALAMIC_TRIAGE_ENABLED` | `false` | Surprise-gated System 1/System 2 write triage (`FEATURES__THALAMIC_SURPRISE_THRESHOLD=0.45`) |
 
-## OpenRouter Evaluation (Sync or Batch)
+## Evaluation Runners (`LoCoMo-Plus` & `LongMemEval-V2`)
 
-Build the full 2,387-sample dataset (`cd evaluation/locomo_plus/data && python unified_input.py`) and run against either standard OpenRouter models (e.g. `openai/gpt-4o-mini`) or `:batch` models (e.g. `z-ai/glm-5.3-flash:batch`):
+Runtime evaluation outputs and committed summary JSONs are organized by benchmark under `evaluation/outputs/{locomo_plus,longmemeval_v2}` and `evaluation/results/{locomo_plus,longmemeval_v2}`.
+
+### LoCoMo-Plus (OpenRouter Sync/Batch or Local)
+
+Build the full 2,387-sample dataset (`cd evaluation/locomo_plus/data && python unified_input.py`) and run against either standard OpenRouter models (e.g. `openai/gpt-4o`) or `:batch` models (e.g. `z-ai/glm-5.3-flash:batch`):
 
 ```bash
 OPENROUTER_API_KEY=... python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/gpt4o_gemini25flash_full_2387 \
+  --out-dir evaluation/outputs/locomo_plus/gpt4o_gemini25flash_full_2387 \
   --cml-url http://localhost:8000 \
   --model openai/gpt-4o \
   --judge-model google/gemini-2.5-flash
+```
+
+### LongMemEval-V2 (100% Local Multimodal Agent Benchmark)
+
+Prepare the `xiaowu0162/longmemeval-v2` dataset under `evaluation/longmemeval_v2/data/longmemeval-v2`, pre-ingest trajectories on GPU, and run all `451` (`web` + `enterprise`) questions against a local OpenAI-compatible LLM/VLM server:
+
+```bash
+python evaluation/scripts/run_longmemeval_v2_local.py --tier small --preingest-only
+python evaluation/scripts/run_longmemeval_v2_local.py \
+  --tier small \
+  --methods cml \
+  --local-base-url http://127.0.0.1:8023/v1 \
+  --local-model qwen3.8-27b \
+  --cml-url http://127.0.0.1:8000 \
+  --memory-context-max-tokens 16500 \
+  --skip-existing \
+  --resume
 ```
 
 ## API Base And Auth

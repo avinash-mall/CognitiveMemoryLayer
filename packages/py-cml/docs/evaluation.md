@@ -29,20 +29,20 @@ cml-eval run-full --repo-root .
 | `--resume` | off | Resume from last failure (implies `--skip-docker`) |
 | `--score-only` | off | Run only Phase C (judge) + performance table on existing predictions |
 
-State is saved to `evaluation/outputs/run_full_eval_state.json` for resume support.
+State is saved to `evaluation/outputs/locomo_plus/run_full_eval_state.json` for resume support.
 
 ### `run-locomo` — Locomo-Plus CML-backed evaluation
 
 ```bash
 cml-eval run-locomo \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs
+  --out-dir evaluation/outputs/locomo_plus
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--unified-file` | auto-detected | Path to `unified_input_samples_v2.json` |
-| `--out-dir` | `evaluation/outputs` | Output directory |
+| `--out-dir` | `evaluation/outputs/locomo_plus` | Output directory |
 | `--cml-url` | `CML_BASE_URL` env or `http://localhost:8000` | CML server URL |
 | `--cml-api-key` | `CML_API_KEY` env or `test-key` | API key for CML |
 | `--max-results` | 25 | Max memory results per read query |
@@ -59,7 +59,7 @@ cml-eval run-locomo \
 ### `validate` — Validate evaluation output artifacts
 
 ```bash
-cml-eval validate --outputs-dir evaluation/outputs
+cml-eval validate --outputs-dir evaluation/outputs/locomo_plus
 ```
 
 Checks predictions, judged results, and summary JSON for structural correctness, cross-file consistency (lengths, scores, question matching), and valid judge labels/scores.
@@ -68,7 +68,7 @@ Checks predictions, judged results, and summary JSON for structural correctness,
 
 ```bash
 cml-eval report \
-  --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json \
+  --summary evaluation/outputs/locomo_plus/locomo_plus_qa_cml_judge_summary.json \
   --method "CML+gpt-4o-mini"
 ```
 
@@ -82,7 +82,7 @@ cml-eval report \
 
 ```bash
 cml-eval compare \
-  --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json \
+  --summary evaluation/outputs/locomo_plus/locomo_plus_qa_cml_judge_summary.json \
   --method "CML+gpt-4o-mini"
 ```
 
@@ -113,7 +113,7 @@ Run the full Locomo-Plus evaluation pipeline (ingest, QA, judge) and return pred
 records = run_locomo_plus(
     LocomoEvalConfig(
         unified_file=Path("evaluation/locomo_plus/data/unified_input_samples_v2.json"),
-        out_dir=Path("evaluation/outputs"),
+        out_dir=Path("evaluation/outputs/locomo_plus"),
         cml_url="http://localhost:8000",
         cml_api_key="test-key",
         limit_samples=10,         # quick test with 10 samples
@@ -135,7 +135,7 @@ rc = run_full_eval(FullEvalConfig(repo_root=Path("."), skip_docker=True))
 Validate evaluation output artifacts. Returns a list of error strings (empty on success).
 
 ```python
-errors = validate_outputs(Path("evaluation/outputs"))
+errors = validate_outputs(Path("evaluation/outputs/locomo_plus"))
 if errors:
     for e in errors:
         print(f"  - {e}")

@@ -33,7 +33,7 @@ class _Paths:
 
 
 def _resolve_paths(repo_root: Path) -> _Paths:
-    out_dir = repo_root / "evaluation" / "outputs"
+    out_dir = repo_root / "evaluation" / "outputs" / "locomo_plus"
     return _Paths(
         repo_root=repo_root,
         compose_file=repo_root / "docker" / "docker-compose.yml",

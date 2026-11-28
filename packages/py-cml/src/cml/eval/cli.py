@@ -58,7 +58,7 @@ def _default_out_dir() -> Path | None:
     root = _default_repo_root()
     if root is None:
         return None
-    return root / "evaluation" / "outputs"
+    return root / "evaluation" / "outputs" / "locomo_plus"
 
 
 def _add_run_full_parser(subparsers: argparse._SubParsersAction) -> None:

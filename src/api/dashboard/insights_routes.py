@@ -1101,10 +1101,15 @@ async def dashboard_evaluation_summary(
         comparison_path = evaluation_dir / "COMPARISON.md"
 
         # Discover artifacts across both evaluation/results and evaluation/outputs
+        # (including organized benchmark subdirectories such as locomo_plus/ and longmemeval_v2/)
         artifact_paths: list[Path] = []
         for scan_dir in (results_dir, outputs_dir):
             if scan_dir.is_dir():
-                artifact_paths.extend(p for p in scan_dir.iterdir() if p.is_file())
+                for child in scan_dir.iterdir():
+                    if child.is_file():
+                        artifact_paths.append(child)
+                    elif child.is_dir():
+                        artifact_paths.extend(p for p in child.iterdir() if p.is_file())
         artifact_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
         artifacts = [
@@ -1176,12 +1181,14 @@ async def dashboard_evaluation_summary(
             getattr(llm_internal, "model", None) if llm_internal else None
         )
 
+        lme_v2_data_dir = evaluation_dir / "longmemeval_v2" / "data" / "longmemeval-v2"
         readiness = {
             "evaluation_dir_present": evaluation_dir.is_dir(),
             "results_dir_present": results_dir.is_dir(),
             "outputs_dir_present": outputs_dir.is_dir(),
             "scripts_present": importlib.util.find_spec("cml.eval") is not None
             or (evaluation_dir / "scripts" / "run_locomo_openrouter_batch.py").is_file()
+            or (evaluation_dir / "scripts" / "run_longmemeval_v2_local.py").is_file()
             or (evaluation_dir / "locomo_plus" / "scripts" / "run_evaluate.py").is_file(),
             "locomo_data_present": (
                 evaluation_dir / "locomo_plus" / "data" / "locomo10.json"
@@ -1190,6 +1197,8 @@ async def dashboard_evaluation_summary(
                 evaluation_dir / "locomo_plus" / "data" / "locomo_plus.json"
             ).is_file(),
             "unified_samples_present": unified_samples.is_file(),
+            "longmemeval_v2_present": (evaluation_dir / "longmemeval_v2" / "evaluation" / "run_eval.py").is_file(),
+            "longmemeval_v2_data_present": (lme_v2_data_dir / "questions.jsonl").is_file(),
             "latest_summary_present": latest_summary is not None,
             "latest_summary_file": latest_summary_name,
             "eval_report_present": latest_report is not None,

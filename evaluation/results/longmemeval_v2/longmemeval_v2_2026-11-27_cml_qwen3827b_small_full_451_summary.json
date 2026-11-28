@@ -1,0 +1,310 @@
+{
+  "benchmark": "LongMemEval-V2",
+  "tier": "small",
+  "method": "cml",
+  "model": "qwen3.8-27b",
+  "api_cost_usd": 0.0,
+  "total_score": 215.0,
+  "total_samples": 451,
+  "valid_samples": 451,
+  "error_count": 0,
+  "max_possible": 451,
+  "overall_avg": 0.4767,
+  "overall_non_abstention": 0.5697,
+  "overall_abstention": 0.2422,
+  "memory_query_latency": {
+    "avg_seconds": 19.654318113331716,
+    "max_seconds": 52.87101901404094,
+    "total_seconds": 8864.097469112603
+  },
+  "memory_context_tokens": {
+    "avg_original_tokens": 18436.585365853658,
+    "avg_final_tokens": 14271.133037694013,
+    "num_truncated_sequences": 338
+  },
+  "reader_tokens": {
+    "prompt_tokens": 6562408,
+    "completion_tokens": 432447,
+    "total_tokens": 6994855,
+    "avg_prompt_tokens": 14550.793791574279,
+    "avg_completion_tokens": 958.8625277161863,
+    "avg_total_tokens": 15509.656319290465
+  },
+  "by_category": {
+    "static": {
+      "score": 71.0,
+      "count": 134,
+      "valid": 134,
+      "errors": 0,
+      "avg": 0.5299,
+      "pct_unknown": 0.194
+    },
+    "dynamic": {
+      "score": 41.0,
+      "count": 86,
+      "valid": 86,
+      "errors": 0,
+      "avg": 0.4767,
+      "pct_unknown": 0.1744
+    },
+    "procedure": {
+      "score": 57.0,
+      "count": 74,
+      "valid": 74,
+      "errors": 0,
+      "avg": 0.7703,
+      "pct_unknown": 0.0
+    },
+    "gotchas": {
+      "score": 15.0,
+      "count": 29,
+      "valid": 29,
+      "errors": 0,
+      "avg": 0.5172,
+      "pct_unknown": 0.0
+    },
+    "static-abs": {
+      "score": 14.0,
+      "count": 55,
+      "valid": 55,
+      "errors": 0,
+      "avg": 0.2545,
+      "pct_unknown": 0.3818
+    },
+    "dynamic-abs": {
+      "score": 9.0,
+      "count": 41,
+      "valid": 41,
+      "errors": 0,
+      "avg": 0.2195,
+      "pct_unknown": 0.439
+    },
+    "procedure-abs": {
+      "score": 8.0,
+      "count": 32,
+      "valid": 32,
+      "errors": 0,
+      "avg": 0.25,
+      "pct_unknown": 0.0938
+    }
+  },
+  "combined_abstention_by_category": {
+    "static": {
+      "count": 189,
+      "pct_correct": 0.4497354497354497,
+      "pct_answered_wrong": 0.30158730158730157,
+      "pct_unknown": 0.24867724867724866
+    },
+    "dynamic": {
+      "count": 127,
+      "pct_correct": 0.3937007874015748,
+      "pct_answered_wrong": 0.3464566929133858,
+      "pct_unknown": 0.25984251968503935
+    },
+    "procedure": {
+      "count": 106,
+      "pct_correct": 0.6132075471698113,
+      "pct_answered_wrong": 0.3584905660377358,
+      "pct_unknown": 0.02830188679245283
+    }
+  },
+  "domains": {
+    "web": {
+      "overall": {
+        "overall_full_set": 0.49166666666666664,
+        "overall_non_abstention_only": 0.5952380952380952,
+        "overall_abstention_only": 0.25,
+        "count_all_questions": 240,
+        "count_non_abstention": 168,
+        "count_abstention": 72
+      },
+      "non_abstention_by_category": {
+        "static": {
+          "count": 60,
+          "pct_correct": 0.48333333333333334,
+          "pct_answered_wrong": 0.3333333333333333,
+          "pct_unknown": 0.18333333333333332
+        },
+        "dynamic": {
+          "count": 51,
+          "pct_correct": 0.45098039215686275,
+          "pct_answered_wrong": 0.43137254901960786,
+          "pct_unknown": 0.11764705882352941
+        },
+        "procedure": {
+          "count": 42,
+          "pct_correct": 0.9047619047619048,
+          "pct_answered_wrong": 0.09523809523809523,
+          "pct_unknown": 0.0
+        },
+        "gotchas": {
+          "count": 15,
+          "pct_correct": 0.6666666666666666,
+          "pct_answered_wrong": 0.3333333333333333,
+          "pct_unknown": 0.0
+        }
+      },
+      "abstention_by_category": {
+        "static-abs": {
+          "count": 31,
+          "pct_correct": 0.3225806451612903,
+          "pct_answered_wrong": 0.25806451612903225,
+          "pct_unknown": 0.41935483870967744
+        },
+        "dynamic-abs": {
+          "count": 21,
+          "pct_correct": 0.23809523809523808,
+          "pct_answered_wrong": 0.3333333333333333,
+          "pct_unknown": 0.42857142857142855
+        },
+        "procedure-abs": {
+          "count": 20,
+          "pct_correct": 0.15,
+          "pct_answered_wrong": 0.8,
+          "pct_unknown": 0.05
+        }
+      },
+      "memory_query": {
+        "avg_seconds": 13.168327796094916,
+        "p50_seconds": 12.6855954650091,
+        "p95_seconds": 27.62320150702726,
+        "max_seconds": 35.89311128295958,
+        "total_seconds": 3160.3986710627796
+      },
+      "memory_context": {
+        "avg_original_tokens": 16932.270833333332,
+        "avg_final_tokens": 13987.775,
+        "num_truncated_sequences": 136
+      },
+      "tokens": {
+        "prompt_tokens": 3426586,
+        "completion_tokens": 221080,
+        "total_tokens": 3647666,
+        "avg_prompt_tokens": 14277.441666666668,
+        "avg_completion_tokens": 921.1666666666666,
+        "avg_total_tokens": 15198.608333333334
+      }
+    },
+    "enterprise": {
+      "overall": {
+        "overall_full_set": 0.4597156398104265,
+        "overall_non_abstention_only": 0.5419354838709678,
+        "overall_abstention_only": 0.23214285714285715,
+        "count_all_questions": 211,
+        "count_non_abstention": 155,
+        "count_abstention": 56
+      },
+      "non_abstention_by_category": {
+        "static": {
+          "count": 74,
+          "pct_correct": 0.5675675675675675,
+          "pct_answered_wrong": 0.22972972972972974,
+          "pct_unknown": 0.20270270270270271
+        },
+        "dynamic": {
+          "count": 35,
+          "pct_correct": 0.5142857142857142,
+          "pct_answered_wrong": 0.22857142857142856,
+          "pct_unknown": 0.2571428571428571
+        },
+        "procedure": {
+          "count": 32,
+          "pct_correct": 0.59375,
+          "pct_answered_wrong": 0.40625,
+          "pct_unknown": 0.0
+        },
+        "gotchas": {
+          "count": 14,
+          "pct_correct": 0.35714285714285715,
+          "pct_answered_wrong": 0.6428571428571429,
+          "pct_unknown": 0.0
+        }
+      },
+      "abstention_by_category": {
+        "static-abs": {
+          "count": 24,
+          "pct_correct": 0.16666666666666666,
+          "pct_answered_wrong": 0.5,
+          "pct_unknown": 0.3333333333333333
+        },
+        "dynamic-abs": {
+          "count": 20,
+          "pct_correct": 0.2,
+          "pct_answered_wrong": 0.35,
+          "pct_unknown": 0.45
+        },
+        "procedure-abs": {
+          "count": 12,
+          "pct_correct": 0.4166666666666667,
+          "pct_answered_wrong": 0.4166666666666667,
+          "pct_unknown": 0.16666666666666666
+        }
+      },
+      "memory_query": {
+        "avg_seconds": 27.031747858056036,
+        "p50_seconds": 25.745237575029023,
+        "p95_seconds": 46.34366523101926,
+        "max_seconds": 52.87101901404094,
+        "total_seconds": 5703.698798049823
+      },
+      "memory_context": {
+        "avg_original_tokens": 20147.65402843602,
+        "avg_final_tokens": 14593.436018957345,
+        "num_truncated_sequences": 202
+      },
+      "tokens": {
+        "prompt_tokens": 3135822,
+        "completion_tokens": 211367,
+        "total_tokens": 3347189,
+        "avg_prompt_tokens": 14861.715639810427,
+        "avg_completion_tokens": 1001.739336492891,
+        "avg_total_tokens": 15863.454976303317
+      }
+    }
+  },
+  "lafs": {
+    "tier": "small",
+    "t_min_seconds": 1.0,
+    "t_max_seconds": 200.0,
+    "floor_accuracy": 0.0,
+    "accuracy_unit": "percentage_points",
+    "reference_lafs": 55.76484693638005,
+    "submission_lafs": 55.76484693638005,
+    "lafs_gain": 0.0,
+    "reference_frontier": [
+      {
+        "name": "RAG: query -> slice + notes",
+        "accuracy": 51.0,
+        "latency_seconds": 0.2
+      },
+      {
+        "name": "AgentRunbook-R",
+        "accuracy": 58.6,
+        "latency_seconds": 26.9
+      },
+      {
+        "name": "AgentRunbook-C",
+        "accuracy": 74.9,
+        "latency_seconds": 108.3
+      }
+    ],
+    "submission_frontier": [
+      {
+        "name": "RAG: query -> slice + notes",
+        "accuracy": 51.0,
+        "latency_seconds": 0.2
+      },
+      {
+        "name": "AgentRunbook-R",
+        "accuracy": 58.6,
+        "latency_seconds": 26.9
+      },
+      {
+        "name": "AgentRunbook-C",
+        "accuracy": 74.9,
+        "latency_seconds": 108.3
+      }
+    ]
+  },
+  "generated_at_utc": "2026-11-27T21:12:31.616463+00:00"
+}

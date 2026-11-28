@@ -74,6 +74,10 @@ pnpm-debug.log*
 
 # Evaluation (outputs, logs; large generated files)
 evaluation/locomo_plus/data/unified_input_samples_v2.json
+evaluation/longmemeval_v2/data/longmemeval-v2/
+evaluation/longmemeval_v2/runs/
+evaluation/longmemeval_v2/leaderboard/submissions/
+evaluation/**/.cml_cache/
 evaluation/outputs*/
 evaluation/**/*.log
 

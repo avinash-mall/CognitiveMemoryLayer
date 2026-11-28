@@ -279,9 +279,9 @@ Running `cml-eval` without the extra produces a clear error message with install
 ```bash
 cml-eval run-full --repo-root .              # Full pipeline (Docker + ingest + QA + judge)
 cml-eval run-locomo --limit-samples 10       # Quick test with 10 samples
-cml-eval validate --outputs-dir evaluation/outputs
-cml-eval report --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json
-cml-eval compare --summary evaluation/outputs/locomo_plus_qa_cml_judge_summary.json
+cml-eval validate --outputs-dir evaluation/outputs/locomo_plus
+cml-eval report --summary evaluation/outputs/locomo_plus/locomo_plus_qa_cml_judge_summary.json
+cml-eval compare --summary evaluation/outputs/locomo_plus/locomo_plus_qa_cml_judge_summary.json
 ```
 
 **Python API** — typed dataclass configs for programmatic use:

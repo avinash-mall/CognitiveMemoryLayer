@@ -6,7 +6,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 LOCOMO_PLUS = SCRIPT_DIR.parent
-OUT_DIR = LOCOMO_PLUS.parent / "outputs"
+OUT_DIR = LOCOMO_PLUS.parent / "outputs" / "locomo_plus"
 INPUT_FILE = OUT_DIR / "locomo_plus_predictions.json"
 OUT_FILE = OUT_DIR / "locomo_plus_judged.json"
 

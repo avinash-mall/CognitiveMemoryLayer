@@ -533,6 +533,52 @@ async def test_dashboard_evaluation_summary_discovers_results_dir_and_eval_repor
 
 
 @pytest.mark.asyncio
+async def test_dashboard_evaluation_summary_discovers_benchmark_subdirectories(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    evaluation_dir = tmp_path / "evaluation"
+    locomo_results = evaluation_dir / "results" / "locomo_plus"
+    lme_results = evaluation_dir / "results" / "longmemeval_v2"
+    lme_eval = evaluation_dir / "longmemeval_v2" / "evaluation"
+    lme_data = evaluation_dir / "longmemeval_v2" / "data" / "longmemeval-v2"
+    locomo_results.mkdir(parents=True)
+    lme_results.mkdir(parents=True)
+    lme_eval.mkdir(parents=True)
+    lme_data.mkdir(parents=True)
+
+    (lme_eval / "run_eval.py").write_text("print('ok')", encoding="utf-8")
+    (lme_data / "questions.jsonl").write_text("", encoding="utf-8")
+    (locomo_results / "locomo_plus_summary.json").write_text(
+        json.dumps({"overall_avg": 0.6665, "total_samples": 2387, "valid_samples": 2387}),
+        encoding="utf-8",
+    )
+    (lme_results / "longmemeval_v2_summary.json").write_text(
+        json.dumps({"overall_avg": 0.72, "total_samples": 451, "valid_samples": 451}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(insights_routes, "_project_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        insights_routes,
+        "get_settings",
+        lambda: SimpleNamespace(
+            llm_eval=SimpleNamespace(provider="openai_compatible", model="qwen3.8-27b")
+        ),
+    )
+
+    result = await insights_routes.dashboard_evaluation_summary(auth=ADMIN_AUTH)
+
+    assert result.readiness["longmemeval_v2_present"] is True
+    assert result.readiness["longmemeval_v2_data_present"] is True
+    assert len(result.comparisons) == 2
+    assert {c["name"] for c in result.comparisons} == {
+        "locomo_plus_summary.json",
+        "longmemeval_v2_summary.json",
+    }
+
+
+@pytest.mark.asyncio
 async def test_dashboard_quality_overview_includes_v3_hygiene_metrics() -> None:
     db, _ = make_db(
         pg_results=[

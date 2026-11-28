@@ -635,7 +635,20 @@ Authentication uses the `X-API-Key` header (`tenant_id` is resolved from the API
 
 ## Evaluation Highlights
 
-Evaluated **on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)) &mdash; under **both** the **official Table 1 cloud protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge)** and a **100%-local `$0`-API configuration (`qwen3.8-27b`)**:
+CML is evaluated end-to-end across **two complementary long-horizon agent memory benchmarks** (`0` errors across all runs):
+
+| Benchmark | Scale &amp; Domain | Runtime / Backbone | Headline Accuracy | Standout Category Scores | API Cost | Summary Artifact |
+| :--- | :--- | :--- | :---: | :--- | :---: | :--- |
+| **LoCoMo-Plus** *(Table 1 Cloud)* | `2,387` samples (multi-session chat, `6` categories) | `openai/gpt-4o` QA + `gemini-2.5-flash` Judge | **66.65%** Overall (`69.99%` Factual) | **91.70%** Adversarial (**#1**), **50.12%** Cognitive (**#1**), **71.70%** Single-hop | Cloud | [`locomo_plus_..._v3_1_...json`](evaluation/results/locomo_plus/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json) |
+| **LoCoMo-Plus** *(100% Local)* | `2,387` samples (multi-session chat, `6` categories) | Local `qwen3.8-27b` (`IQ3_S` + `dflash2`) QA + Judge | **63.53%** Overall (`68.40%` Factual) | **82.06%** Adversarial, **70.25%** Temporal, **70.21%** Single-hop | **\$0.00** | [`locomo_plus_..._qwen38_...json`](evaluation/results/locomo_plus/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json) |
+| **LongMemEval-V2** *(100% Local `small`)* | `451` Qs (multimodal Web + ServiceNow trajectories) | Local `qwen3.8-27b` (`IQ3_S` + `dflash2`) Reader + Judge | **47.67%** Full-Set (**56.97%** Non-Abst) | **61.32%** Workflow (`77.03%` non-abs, `90.48%` Web), **51.72%** Gotchas (`66.67%` Web) | **\$0.00** | [`longmemeval_v2_..._451_summary.json`](evaluation/results/longmemeval_v2/longmemeval_v2_2026-11-27_cml_qwen3827b_small_full_451_summary.json) |
+
+Expand either collapsible benchmark section below for category definitions, full head-to-head comparison tables, trade-off analysis, and reproduction commands (or see [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) for the complete diagnostics report).
+
+<details>
+<summary><strong>LoCoMo-Plus Benchmark &mdash; Conversational Factual &amp; Implicit Cognitive Memory (2,387 Samples)</strong></summary>
+
+Evaluated **on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &mdash; 1,986 original LoCoMo factual questions across 5 categories plus 401 **Cognitive** cue&ndash;trigger constraint instances (Li et al., 2026, [arXiv:2602.10715](https://arxiv.org/abs/2602.10715)) &mdash; under **both** the **official Table 1 cloud protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge)** and a **100%-local `\$0`-API configuration (`qwen3.8-27b`)**:
 
 ### What Each Benchmark Category Measures &amp; How CML Solves It
 
@@ -655,16 +668,16 @@ Evaluated **on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &m
 - **Surpasses Full-Context Frontier LLMs Using `~800`-Token Memory Packets:** Beats **Full-Context `GPT-4o` (`62.99%` Factual / `41.94%` Cognitive)** by **`+7.00pp` / `+8.18pp`**, **Full-Context `GPT-4.1` (`62.21%` / `43.58%`)** by **`+7.78pp` / `+6.54pp`**, **1M-Context `Gemini-2.5-Flash` (`69.25%` / `44.58%`)** on both Factual and Cognitive, and **1M-Context `Gemini-2.5-Pro` (`45.72%` Cognitive)** by **`+4.40pp`** on Cognitive memory.
 - **#1 Adversarial Robustness (`91.70%`, `409/446`) &amp; #1 `gpt-4o` Memory-System Temporal (`60.59%`, `70.25%` local):** Outperforms A-Mem (`35.20%`), SeCom (`31.80%`), and Mem0 (`30.50%`) by **`+56.5pp` to `+61.2pp`** on adversarial traps and by **`+11.3pp` to `+21.2pp`** on temporal reasoning.
 - **Committed Summary Artifacts:**
-  - Official Hybrid CLS + 2-Stage `LLM_INTERNAL` (`2026-11-27`, `66.65%` Overall, `1,591.0 / 2,387`): [`evaluation/results/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json)
-  - 100%-Local Zero-API-Cost (`2026-11-25`, `qwen3.8-27b`, `$0.00` API cost, `63.53%` Overall): [`evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json)
+  - Official Hybrid CLS + 2-Stage `LLM_INTERNAL` (`2026-11-27`, `66.65%` Overall, `1,591.0 / 2,387`): [`evaluation/results/locomo_plus/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json`](evaluation/results/locomo_plus/locomo_plus_2026-11-27_cml_v3_1_gpt4o_gemini25flash_full_2387_summary.json)
+  - 100%-Local Zero-API-Cost (`2026-11-25`, `qwen3.8-27b`, `\$0.00` API cost, `63.53%` Overall): [`evaluation/results/locomo_plus/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json`](evaluation/results/locomo_plus/locomo_plus_2026-11-25_cml_v3_qwen38_full_2387_summary.json)
 
 ### Full LoCoMo-Plus Comparison (2,387 Samples)
 
 | System / Method | Category | Backbone / QA Model | Single-hop (841) | Multi-hop (282) | Temporal (321) | Common-sense (96) | Adversarial (446) | **LoCoMo Factual Avg (1,986)** | **Cognitive (401)** | **Gap** &darr; |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **CML v3.1 (Hybrid CLS + 2-Stage `LLM_INTERNAL`)** <sup>[0a]</sup> | Memory System | `gpt-4o` (judge: `gemini-2.5-flash`) | 71.70% | 47.87% | **60.59%** | 50.52% *(58.85%&dagger;)* | **91.70%** | **69.99%** | **50.12%** | 19.87 *(14.35&Dagger;)* |
-| **CML v3.0 (Whole-Brain, Local `$0` API)** <sup>[0b]</sup> | Memory System | `qwen3.8-27b` (100% local, `$0` API) | 70.21% | 47.52% | **70.25%** | 44.27% | 82.06% | **68.40%** | 39.40% | 29.00 |
-| **CML v3.0 (`$0` Local Store + `gpt-4o` QA)** <sup>[0c]</sup> | Memory System | `gpt-4o` (judge: `gemini-2.5-flash`) | 63.32% | 42.20% | 57.63% | 39.06% | 87.67% | 63.70% | 33.92% | 29.78 |
+| **CML v3.0 (Whole-Brain, Local `\$0` API)** <sup>[0b]</sup> | Memory System | `qwen3.8-27b` (100% local, `\$0` API) | 70.21% | 47.52% | **70.25%** | 44.27% | 82.06% | **68.40%** | 39.40% | 29.00 |
+| **CML v3.0 (`\$0` Local Store + `gpt-4o` QA)** <sup>[0c]</sup> | Memory System | `gpt-4o` (judge: `gemini-2.5-flash`) | 63.32% | 42.20% | 57.63% | 39.06% | 87.67% | 63.70% | 33.92% | 29.78 |
 | **Kumiho Cognitive Memory** <sup>[1]</sup> | Memory System | `gpt-4o` (graph-native, 401 split only) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 93.30%* | &mdash; |
 | **Madeleine + HyperMem** <sup>[2]</sup> | Memory System | Involuntary recall + HyperMem (401 only) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 66.60%* | &mdash; |
 | **HyperMem** <sup>[2]</sup> | Memory System | HyperMem baseline (401 split only) | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | &mdash; | 52.90%* | &mdash; |
@@ -684,8 +697,8 @@ Evaluated **on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &m
 | GPT-5-nano <sup>[3]</sup> | Full Context | Full context | 75.00% | 54.08% | 50.16% | 73.96% | 17.53% | 54.96% | 40.12% | 14.84 |
 
 <sup>[0a]</sup> Official Table 1 protocol (`openai/gpt-4o` QA + `google/gemini-2.5-flash` Judge via OpenRouter, `temperature=0`, `2,387/2,387` valid, `0` errors, overall 6-category avg **66.65%**, `1,591.0 / 2,387`; `LLM_INTERNAL`: `gemini-2.5-flash` Windowed Micro-Sleep Consolidation + `gemini-2.5-flash-lite` 2-stage read; &dagger;`58.85%` Common-sense and `9.96` macro Gap under the open-inferential QA prompt; &Dagger;unweighted 5-category macro mean **64.48%**, macro Gap **14.35pp**).  
-<sup>[0b]</sup> Full 2,387-sample 100%-local run from scratch (`2,387/2,387` valid, `0` errors, overall 6-category avg **63.53%**, `1,516.5 / 2,387`); QA &amp; judge: `qwen3.8-27b` (`temperature=0`, thinking disabled, `$0` API cost).  
-<sup>[0c]</sup> Prior `$0`-consolidation baseline reusing local `qwen3.8-27b` (`IQ3_S`) consolidated store with `FEATURES__USE_LLM_ENABLED=false` at read time (`58.69%` overall, `1,401.0 / 2,387`).  
+<sup>[0b]</sup> Full 2,387-sample 100%-local run from scratch (`2,387/2,387` valid, `0` errors, overall 6-category avg **63.53%**, `1,516.5 / 2,387`); QA &amp; judge: `qwen3.8-27b` (`temperature=0`, thinking disabled, `\$0` API cost).  
+<sup>[0c]</sup> Prior `\$0`-consolidation baseline reusing local `qwen3.8-27b` (`IQ3_S`) consolidated store with `FEATURES__USE_LLM_ENABLED=false` at read time (`58.69%` overall, `1,401.0 / 2,387`).  
 <sup>[1]</sup> *Self-reported by [Kumiho](https://kumiho.io) on the 401-sample Cognitive split only; 1,986-sample factual categories not evaluated/published.  
 <sup>[2]</sup> *Reported in *Madeleine* (arXiv 2026) on the 401-sample Cognitive split only; 1,986-sample factual categories not evaluated/published.  
 <sup>[3]</sup> Table 1 of the LoCoMo-Plus paper ([arXiv:2602.10715](https://arxiv.org/abs/2602.10715), all 2,387 samples, judge: `gemini-2.5-flash`). **LoCoMo Factual Avg** is the sample-weighted mean across the 5 factual categories (1,986 items); **Gap** = LoCoMo Factual Avg &minus; Cognitive.
@@ -696,19 +709,16 @@ Evaluated **on the complete LoCoMo-Plus benchmark (2,387 samples, 0 errors)** &m
 - **Why Competing Systems Show Artificial ~15pp Gaps vs. CML's High-Floor Balance:** A-Mem (`35.20%`), SeCom (`31.80%`), and Mem0 (`30.50%`) collapse on the 446 `Adversarial` traps, artificially depressing their `LoCoMo Factual Avg` (`57.24–59.64%`) so `Factual - Cognitive` looks narrow (`14.9–17.2`). CML simultaneously achieves **`91.70%` Adversarial**, **`69.99%` Factual Avg**, AND **`50.12%` Cognitive** (`14.35pp` macro Gap / `19.87pp` weighted Gap).
 - **Remaining Headroom on `Single-hop` / `Multi-hop`:** Packet evidence recall is already **`89.2%`** on `single-hop` and **`83.3%`** on `multi-hop`; remaining deductions are primarily `partial` (`0.5`) grades (`148` in `single-hop`, `134` in `multi-hop`) where `gemini-2.5-flash` penalizes minor phrasing differences against short reference strings.
 
-### Reproducing the Full 2,387-Sample Runs
+### Reproducing LoCoMo-Plus (2,387 Samples)
 
 ```bash
 # 1. Build the official 2,387-sample unified dataset
 cd evaluation/locomo_plus/data && python unified_input.py && cd ../../..
 
-# 2. Optional: rebalance local llama-server GPU VRAM on 16GB cards (RTX 5070 Ti / 4080)
-bash scripts/rebalance_local_gpu.sh
-
-# 3a. Official Table 1 Cloud QA + Judge (OpenRouter: openai/gpt-4o + google/gemini-2.5-flash)
+# 2a. Official Table 1 Cloud QA + Judge (OpenRouter: openai/gpt-4o + google/gemini-2.5-flash)
 python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/cml_v3_gpt4o_gemini25flash_full_2387 \
+  --out-dir evaluation/outputs/locomo_plus/cml_v3_gpt4o_gemini25flash_full_2387 \
   --cml-url http://localhost:8000 \
   --skip-ingestion \
   --base-url https://openrouter.ai/api/v1 \
@@ -718,10 +728,10 @@ python evaluation/scripts/run_locomo_openrouter_batch.py \
   --qa-max-tokens 200 \
   --judge-max-tokens 160
 
-# 3b. 100%-Local From-Scratch Run ($0 API cost: qwen3.8-27b)
+# 2b. 100%-Local From-Scratch Run ($0 API cost: qwen3.8-27b)
 python evaluation/scripts/run_locomo_openrouter_batch.py \
   --unified-file evaluation/locomo_plus/data/unified_input_samples_v2.json \
-  --out-dir evaluation/outputs/cml_v3_qwen38_full_2387 \
+  --out-dir evaluation/outputs/locomo_plus/cml_v3_qwen38_full_2387 \
   --cml-url http://localhost:8001 \
   --consolidate-windowed \
   --base-url http://127.0.0.1:8000/v1 \
@@ -730,7 +740,86 @@ python evaluation/scripts/run_locomo_openrouter_batch.py \
   --sync-workers 2
 ```
 
-Full diagnostics &amp; methodology: [evaluation/EVALUATION_REPORT.md](evaluation/EVALUATION_REPORT.md) &#8226; CLI harness: `cml-eval run-full --repo-root .`
+CLI harness: `cml-eval run-full --repo-root .`
+
+</details>
+
+<details>
+<summary><strong>LongMemEval-V2 Benchmark &mdash; Multimodal Web &amp; Enterprise Agent Memory (451 Questions)</strong></summary>
+
+Evaluated across **all 451 questions (`0` errors)** of **LongMemEval-V2** (`LME-V2-Small`: `240` **Web** across customized Magento storefront, Magento Admin CMS, and Reddit/Postmill + `211` **Enterprise** ServiceNow/WorkArena, including `29` multimodal `question_image` screenshots, `100` trajectories / `~25M` tokens per haystack; Wu et al., 2026, [arXiv:2605.12493](https://arxiv.org/pdf/2605.12493.pdf)) using native `CMLMemory` (`evaluation/longmemeval_v2/memory_modules/cml_memory.py`) and a **100%-local `\$0`-API configuration (`qwen3.8-27b` IQ3_S + DFlash 2 on a single 16 GB RTX 5070 Ti)**:
+
+### What Each Ability Measures &amp; How CML Solves It
+
+| Ability Pillar (`451`) | What It Evaluates | CML Score (`qwen3.8-27b` Local) | Key CML Mechanism Driving Performance |
+| :--- | :--- | :---: | :--- |
+| **Workflow / Procedure (`106` = `74` + `32` `-abs`)** | Recalling exact multi-step UI navigation paths, filter recipes, and shortcuts &mdash; or flagging unsupported workflows (`procedure-abs`). | **61.32%** *(**77.03%** non-abs, **90.48%** Web)* | Synthesized trajectory workflow playbooks + annotated agent thought-action sequences. |
+| **Gotchas (`29`)** | Identifying recurring local traps, broken UI affordances, and deployment-specific failure modes (`outcome=FAILURE`). | **51.72%** *(**66.67%** Web)* | Explicit `[FAILED TRAJECTORY / ENVIRONMENT GOTCHA]` callouts + multimodal `question_image` landmark extraction. |
+| **Static (`189` = `134` + `55` `-abs`)** | Remembering UI landmarks, mandatory form fields, catalog options, and ServiceNow layouts (`56.76%` Enterprise non-abs). | **44.97%** *(**52.99%** non-abs)* | `2,200`-char sliding-window AXTree indexing (`250`-char overlap) + lossless `StaticText`-echo deduplication (`10.5K` chars). |
+| **Dynamic (`127` = `86` + `41` `-abs`)** | Tracking how actions mutate UI state, ticket statuses, banners, and filtered views over time (`51.43%` Enterprise non-abs). | **39.37%** *(**47.67%** non-abs)* | Cross-trajectory state mutation retrieval over Dense `pgvector` + PostgreSQL `tsvector` BM25 + Hypergraph PPR. |
+| **Premise Awareness (`128` `-abs`)** | Detecting assumptions that are valid in standard software but false in the customized deployment (`static-abs`, `dynamic-abs`, `procedure-abs`). | **24.22%** *(32.8% `UNKNOWN`)* | Strict haystack query-privacy scoping (`7/7` `test_query_privacy.py` checks) + UI-surface query decomposition. |
+
+### Headline Achievements
+
+- **#1 Non-Coding-Agent Memory System on BOTH `Workflow / Procedure` (`61.32%` full / `77.03%` non-abs / `90.48%` Web) AND `Gotchas` (`51.72%` full / `66.67%` Web):** Running 100% locally at **`\$0.00` API cost**, CML outperforms **RAG + notes (`52.80%` Workflow / `41.40%` Gotchas)** by **`+8.52pp` / `+10.32pp`**, **AgentRunbook-R (`52.80%` / `31.00%`)** by **`+8.52pp` / `+20.72pp`** (at faster `19.65s` vs. `26.90s` query latency), and **Perpetual Recall V3 (`56.60%` / `37.93%`)** by **`+4.72pp` / `+13.79pp`**.
+- **Beats Cloud `GPT-5.4-mini` (`xhigh`) Coding Agents on Key Experience Pillars at `5.5–9x` Lower Latency:** Surpasses **Cloud `Codex` (`57.50%` Workflow, `177.2s`)** by **`+3.82pp`** on `Workflow / Procedure` and **Cloud `AgentRunbook-C` (`48.30%` Gotchas, `108.3s`)** by **`+3.42pp`** on `Gotchas`.
+- **Single-16GB-GPU Zero-VRAM Co-Location:** Zero-VRAM hybrid retrieval (`CUDA_VISIBLE_DEVICES=""` on CML query server, `~1.1s` `pgvector` + `tsvector` BM25 + PPR) runs alongside exclusive-GPU `qwen3.8-27b` (`51.72%` accuracy on the `29` visual `question_image` items).
+- **Committed Summary Artifact:**
+  - 100%-Local Zero-API-Cost (`2026-11-27`, `451 / 451` valid, `0` errors, `56.97%` Non-Abstention, `47.67%` Full-Set): [`evaluation/results/longmemeval_v2/longmemeval_v2_2026-11-27_cml_qwen3827b_small_full_451_summary.json`](evaluation/results/longmemeval_v2/longmemeval_v2_2026-11-27_cml_qwen3827b_small_full_451_summary.json)
+
+### Full LongMemEval-V2 Comparison (`LME-V2-Small`, 451 Questions)
+
+| System / Method | Family | Controller / Reader / Judge | Static (189) | Dynamic (127) | **Workflow / Proc. (106)** | **Gotchas (29)** | **Overall (451)** | Latency &darr; | API Cost |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **CML (`CMLMemory`, Local `\$0` API)** <sup>[0]</sup> | **Neuro Memory** | **Local `qwen3.8-27b` (`IQ3_S`) Reader + Judge** | 44.97% *(52.99%&dagger;)* | 39.37% *(47.67%&dagger;)* | **61.32%** *(**77.03%&dagger;**)* | **51.72%** *(**66.67%&Dagger;**)* | **47.67%** *(**56.97%&dagger;**)* | **19.65s** *(13.17s&Dagger;)* | **\$0.00** |
+| **Perpetual Recall V3** *(Equinox Labs)* <sup>[L]</sup> | Hybrid Retrieval | `Qwen3.5-9B` + Cloud Judge (`gpt-5.2`) | 58.20% | 46.46% | 56.60% | 37.93% | 53.22% | 1.96s | Cloud |
+| **AgentRunbook-R** *(Reference)* <sup>[P,L]</sup> | RAG (3-Pool Active) | `Qwen3.5-9B` + `Qwen3-Embed-8B` + `gpt-5.2` | **66.10%** | **58.30%** | 52.80% | 31.00% | **58.60%** | 26.90s | Cloud |
+| **RAG: `query -> slice + notes`** *(Ref)* <sup>[P,L]</sup> | RAG Baseline | `Qwen3.5-9B` + `Qwen3-Embed-8B` + `gpt-5.2` | 52.40% | 49.60% | 52.80% | 41.40% | 51.00% | **0.20s** | Cloud |
+| **RAG: `query -> slice`** <sup>[P,L]</sup> | RAG Baseline | `Qwen3.5-9B` + `Qwen3-Embed-8B` + `gpt-5.2` | 47.10% | 42.50% | 41.50% | 20.70% | 42.80% | **0.10s** | Cloud |
+| **OPS-Agentic-Memory-v1** *(Alibaba)* <sup>[L]</sup> | Coding Agent | Frontier Coding Agent + `gpt-5.2` Judge | **87.83%** | **81.10%** | **76.42%** | **58.62%** | **81.37%** | 153.64s | Cloud |
+| **AgentRunbook-C v2 Online (`xhigh`)** <sup>[L]</sup> | Coding Agent | `gpt-5.4-mini` (`xhigh`) + `Qwen3.5-9B` + `gpt-5.2` | &mdash; | &mdash; | &mdash; | &mdash; | 75.61% | 130.54s | Cloud |
+| **AgentRunbook-C v2 Online (`low`)** <sup>[L]</sup> | Coding Agent | `gpt-5.4-mini` (`low`) + `Qwen3.5-9B` + `gpt-5.2` | &mdash; | &mdash; | &mdash; | &mdash; | 65.41% | 26.11s | Cloud |
+| **AgentRunbook-C** *(Reference)* <sup>[P,L]</sup> | Coding Agent | `gpt-5.4-mini` (`xhigh`) + `Qwen3.5-9B` + `gpt-5.2` | 82.00% | 72.40% | 72.60% | 48.30% | 74.90% | 108.30s | Cloud |
+| **Codex** *(Reference)* <sup>[P,L]</sup> | Coding Agent | `gpt-5.4-mini` (`xhigh`) + `Qwen3.5-9B` + `gpt-5.2` | 80.40% | 67.00% | 57.50% | 58.60% | 69.90% | 177.20s | Cloud |
+| Kimi-K2.5 *(No Memory)* <sup>[P]</sup> | Frontier LLM Only | `Kimi-K2.5` parametric weights only | 18.30% | 19.70% | 11.50% | 17.10% | 14.10% | 0s | Cloud |
+| Claude Opus 4.6 *(No Memory)* <sup>[P]</sup> | Frontier LLM Only | `Claude Opus 4.6` parametric weights only | 9.60% | 12.10% | 13.40% | 37.90% | 11.80% | 0s | Cloud |
+| Gemini-3.1-Pro-Preview *(No Memory)* <sup>[P]</sup> | Frontier LLM Only | `Gemini-3.1-Pro` parametric weights only | 10.40% | 9.60% | 14.70% | 24.10% | 11.00% | 0s | Cloud |
+| GPT-5.2 *(No Memory)* <sup>[P]</sup> | Frontier LLM Only | `GPT-5.2` parametric weights only | 0.00% | 0.00% | 3.20% | 21.00% | 4.70% | 0s | Cloud |
+| No Retrieval *(Baseline)* <sup>[P,L]</sup> | Reader Only | `Qwen3.5-9B` (thinking enabled) | 0.00% | 0.80% | 9.40% | 13.80% | 1.30% | 0s | &mdash; |
+
+<sup>[0]</sup> Full 451-question 100%-local run (`qwen3.8-27b` IQ3_S + DFlash 2 Reader + Judge, `0` errors, `\$0.00` API cost). &dagger;Non-abstention accuracy (`323` Qs): **`56.97%` Overall**, **`77.03%` Procedure** (`90.48%` Web), **`52.99%` Static** (`56.76%` Enterprise), **`47.67%` Dynamic** (`51.43%` Enterprise). &Dagger;Web domain (`240` Qs): **`49.17%` Full-Set**, **`59.52%` Non-Abstention**, **`66.67%` Gotchas**, **`13.17s` Query Latency**.  
+<sup>[P]</sup> Tables 3 &amp; 9 of Wu et al. (2026), *LongMemEval-V2* ([arXiv:2605.12493](https://arxiv.org/pdf/2605.12493.pdf)). <sup>[L]</sup> Official [LongMemEval-V2 Public Leaderboard](https://xiaowu0162.github.io/longmemeval-v2/#leaderboard) (`Static`, `Dynamic`, and `Workflow/Proc.` fold each category's `-abs` premise items into its pillar: `189 + 127 + 106 + 29 = 451`).
+
+### Unbiased Analysis &amp; Trade-Offs
+
+- **Procedural &amp; Failure-Gotcha Strength (`77.03%` non-abs `procedure`, `90.48%` Web; `51.72%` `gotchas`, `66.67%` Web):** Indexing trajectory-level workflow playbooks with explicit `outcome=FAILURE` gotcha callouts preserves end-to-end action causality that flat state-slice RAG (`20.70%` Gotchas) and compressed note pools (`31.00%` Gotchas in `AgentRunbook-R`) lose.
+- **Full-Set (`47.67%`) vs. Non-Abstention (`56.97%`) on 3-Bit Quantized Local Models:** LongMemEval-V2's strict `-abs` judge grades generic `\boxed{UNKNOWN}` as **`0`** (`32.8%` of CML's `-abs` answers) unless the response pinpoints the exact flawed sub-premise (`24.22%` pass rate). Under 3-bit `IQ3_S` quantization, `qwen3.8-27b` conservatively outputs `UNKNOWN` when a queried control is absent from retrieved AXTrees rather than asserting global absence across the deployment.
+- **Bounded Indexed Retrieval (`13–27s`) vs. Coding-Agent File Sandboxes (`108–177s`):** Coding-agent methods (`AgentRunbook-C`, `OPS-Agentic-Memory-v1`) reach higher `Static`/`Dynamic` accuracy by running cloud `gpt-5.4-mini` (`xhigh`) bash/grep loops over raw JSON files for `2–3 minutes` per query, whereas CML retrieves in a single bounded pass at `\$0.00` API cost.
+
+### Reproducing LongMemEval-V2 (451 Questions)
+
+```bash
+# 1. Download, symlink screenshots, and validate dataset (xiaowu0162/longmemeval-v2)
+cd evaluation/longmemeval_v2
+python data/download_data.py --data-root data/longmemeval-v2
+python data/prepare_data.py --data-root data/longmemeval-v2 --mode symlink
+python data/validate_data.py --data-root data/longmemeval-v2 --tier small
+cd ../..
+
+# 2. Pre-ingest trajectories on GPU, then run all 451 questions (Web + Enterprise) locally
+python evaluation/scripts/run_longmemeval_v2_local.py --tier small --preingest-only
+python evaluation/scripts/run_longmemeval_v2_local.py \
+  --tier small \
+  --methods cml \
+  --local-base-url http://127.0.0.1:8023/v1 \
+  --local-model qwen3.8-27b \
+  --cml-url http://127.0.0.1:8000 \
+  --memory-context-max-tokens 16500 \
+  --skip-existing \
+  --resume
+```
+
+</details>
 
 ---
 
@@ -785,7 +874,7 @@ See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the 10-phase roadmap in
 |---|----------|-------------|
 | **API** | [Usage &amp; API Reference](docs/usage.md) | Full REST API, configuration, dashboard, runtime modes |
 | **SDK** | [Python SDK (`py-cml` 3.0.0)](packages/py-cml/README.md) | Sync, async, and zero-server SQLite embedded Whole-Brain SDK |
-| **Eval** | [Evaluation Report](evaluation/EVALUATION_REPORT.md) | Full 2,387-sample LoCoMo-Plus diagnostics, comparison &amp; methodology |
+| **Eval** | [Evaluation Report](evaluation/EVALUATION_REPORT.md) | Full LoCoMo-Plus (2,387) &amp; LongMemEval-V2 (451) diagnostics, comparisons &amp; methodology |
 | **SDK Eval** | [Eval Module](packages/py-cml/docs/evaluation.md) | `cml-eval` CLI, Python API, typed configs |
 | **Dev** | [Contributing](CONTRIBUTING.md) | Setup, code standards, PR process |
 | **Changelog** | [Release History](CHANGELOG.md) | Full version history (`3.0.0` Whole-Brain release) |
@@ -825,6 +914,7 @@ See [ProjectPlan/ActiveCML/](ProjectPlan/ActiveCML/) for the 10-phase roadmap in
 10. HawkinsDB (2024). ["HawkinsDB: A Thousand Brains Theory inspired Database."](https://github.com/harishsg993010/HawkinsDB) GitHub.
 11. Wu, T., et al. (2024). ["From Human Memory to AI Memory: A Survey."](https://arxiv.org/abs/2404.15965) *arXiv:2404.15965*.
 14. Li, Y., et al. (2026). ["Locomo-Plus: Beyond-Factual Cognitive Memory Evaluation Framework for LLM Agents."](https://arxiv.org/abs/2602.10715) *arXiv:2602.10715*.
+23. Wu, D., et al. (2026). ["LongMemEval-V2: Evaluating Long-Term Agent Memory Toward Experienced Colleagues."](https://arxiv.org/pdf/2605.12493.pdf) *arXiv:2605.12493*.
 
 </details>
 

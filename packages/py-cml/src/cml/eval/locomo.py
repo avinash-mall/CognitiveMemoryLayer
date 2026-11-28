@@ -385,7 +385,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--unified-file", type=str, required=True, help="Path to unified_input_samples_v2.json"
     )
-    p.add_argument("--out-dir", type=str, default="evaluation/outputs")
+    p.add_argument("--out-dir", type=str, default="evaluation/outputs/locomo_plus")
     p.add_argument(
         "--cml-url", type=str, default=os.environ.get("CML_BASE_URL", "http://localhost:8000")
     )

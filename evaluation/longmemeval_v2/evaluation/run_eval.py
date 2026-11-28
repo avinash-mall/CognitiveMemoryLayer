@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from data.public_data import (  # noqa: E402
+    materialize_runtime_haystack,
+    materialize_runtime_questions,
+    write_json,
+)
+
+
+METHODS = {
+    "no_retrieval",
+    "rag_query_to_slice",
+    "rag_query_to_slice_notes",
+    "agentrunbook_r",
+    "codex",
+    "agentrunbook_c",
+    "agentrunbook_c_v2",
+    "cml",
+    "cml_fast",
+}
+
+OPENAI_SDK_TIMEOUT_SECONDS_BY_REASONING_EFFORT = {
+    "low": 200.0,
+    "medium": 800.0,
+    "xhigh": 1200.0,
+}
+
+
+def env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean-like value, got {raw!r}")
+
+
+def parse_question_ids(raw_values: list[str] | None) -> list[str] | None:
+    if not raw_values:
+        return None
+    out: list[str] = []
+    for raw in raw_values:
+        for item in raw.split(","):
+            stripped = item.strip()
+            if stripped:
+                out.append(stripped)
+    return out or None
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run LongMemEval-V2 evaluation.")
+    parser.add_argument("--data-root", required=True, help="Path to the downloaded LongMemEval-V2 dataset")
+    parser.add_argument("--domain", choices=["web", "enterprise"], required=True)
+    parser.add_argument("--tier", choices=["small", "medium"], default="small")
+    parser.add_argument("--method", choices=sorted(METHODS), required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--limit", type=int, default=None, help="Run only the first N selected questions")
+    parser.add_argument("--question-ids", nargs="*", default=None, help="Optional question ids, space or comma separated")
+
+    parser.add_argument("--reader-model", default=os.getenv("READER_MODEL", "Qwen/Qwen3.5-9B"))
+    parser.add_argument("--reader-base-url", default=os.getenv("READER_BASE_URL", "http://localhost:8023/v1"))
+    parser.add_argument("--reader-api-key-env", default="OPENAI_API_KEY")
+    parser.add_argument("--reader-temperature", type=float, default=float(os.getenv("READER_TEMPERATURE", "0.6")))
+    parser.add_argument("--reader-top-p", type=float, default=float(os.getenv("READER_TOP_P", "0.95")))
+    parser.add_argument("--reader-top-k", type=int, default=int(os.getenv("READER_TOP_K", "20")))
+    parser.add_argument("--reader-max-concurrent-requests", type=int, default=16)
+    parser.add_argument("--max-completion-tokens", type=int, default=20000)
+    parser.add_argument("--memory-context-max-tokens", type=int, default=200000)
+    parser.add_argument("--reader-enable-thinking", action=argparse.BooleanOptionalAction, default=True)
+
+    parser.add_argument("--controller-model", default=os.getenv("LME_CONTROLLER_MODEL", "Qwen/Qwen3.5-9B"))
+    parser.add_argument("--controller-base-url", default=os.getenv("LME_CONTROLLER_BASE_URL", "http://localhost:8023/v1"))
+    parser.add_argument("--controller-api-key-env", default="OPENAI_API_KEY")
+    parser.add_argument("--controller-temperature", type=float, default=float(os.getenv("LME_CONTROLLER_TEMPERATURE", "0.6")))
+    parser.add_argument("--controller-top-p", type=float, default=float(os.getenv("LME_CONTROLLER_TOP_P", "0.95")))
+    parser.add_argument("--controller-top-k", type=int, default=int(os.getenv("LME_CONTROLLER_TOP_K", "20")))
+    parser.add_argument("--controller-disable-thinking", action=argparse.BooleanOptionalAction, default=False)
+
+    parser.add_argument("--embedding-model", default=os.getenv("LME_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B"))
+    parser.add_argument("--embedding-base-url", default=os.getenv("LME_EMBEDDING_BASE_URL", "http://localhost:8114/v1"))
+    parser.add_argument("--embedding-api-key-env", default="OPENAI_API_KEY")
+
+    parser.add_argument("--codex-binary", default=os.getenv("CODEX_BINARY", "codex"))
+    parser.add_argument("--codex-model", default=os.getenv("CODEX_MODEL", "gpt-5.4-mini"))
+    parser.add_argument("--codex-reasoning-effort", default=os.getenv("CODEX_REASONING_EFFORT", "xhigh"))
+    parser.add_argument("--codex-timeout-seconds", type=float, default=float(os.getenv("CODEX_TIMEOUT_SECONDS", "1800")))
+    parser.add_argument("--codex-max-retries", type=int, default=int(os.getenv("CODEX_MAX_RETRIES", "3")))
+    parser.add_argument("--openai-sdk-model", default=os.getenv("OPENAI_SDK_MODEL", "gpt-5.4-mini"))
+    parser.add_argument(
+        "--openai-sdk-reasoning-effort",
+        choices=tuple(OPENAI_SDK_TIMEOUT_SECONDS_BY_REASONING_EFFORT),
+        default=os.getenv("OPENAI_SDK_REASONING_EFFORT", "medium"),
+        help="OpenAI Agents SDK reasoning effort. Query timeout is fixed by tier: low=200, medium=800, xhigh=1200.",
+    )
+    parser.add_argument("--openai-sdk-max-retries", type=int, default=int(os.getenv("OPENAI_SDK_MAX_RETRIES", os.getenv("CODEX_MAX_RETRIES", "3"))))
+    parser.add_argument("--openai-sdk-api-key-env", default=os.getenv("OPENAI_SDK_API_KEY_ENV", "OPENAI_API_KEY"))
+    parser.add_argument("--openai-sdk-max-turns", type=int, default=int(os.getenv("OPENAI_SDK_MAX_TURNS", "30")))
+    parser.add_argument("--openai-sdk-tool-timeout-seconds", type=float, default=float(os.getenv("OPENAI_SDK_TOOL_TIMEOUT_SECONDS", "30")))
+    parser.add_argument("--openai-sdk-max-tool-output-chars", type=int, default=int(os.getenv("OPENAI_SDK_MAX_TOOL_OUTPUT_CHARS", "1048576")))
+    parser.add_argument(
+        "--enable-online-learning",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("OPENAI_SDK_ONLINE_LEARNING", False),
+        help="Enable online learned retrieval strategy for agentrunbook_c_v2.",
+    )
+    parser.add_argument(
+        "--openai-sdk-online-learning",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        dest="enable_online_learning",
+        help=argparse.SUPPRESS,
+    )
+
+    parser.add_argument("--evaluator-model", default=os.getenv("EVALUATOR_MODEL", "gpt-5.2"))
+    parser.add_argument("--evaluator-base-url", default=os.getenv("EVALUATOR_BASE_URL"))
+    parser.add_argument("--evaluator-api-key-env", default=os.getenv("EVALUATOR_API_KEY_ENV", "OPENAI_API_KEY"))
+    parser.add_argument("--evaluator-reasoning-effort", choices=["low", "medium", "high"], default=os.getenv("EVALUATOR_REASONING_EFFORT", "medium"))
+    parser.add_argument("--evaluator-max-completion-tokens", type=int, default=4096)
+    parser.add_argument("--evaluator-temperature", type=float, default=None)
+    parser.add_argument("--reader-reasoning-effort", choices=["low", "medium", "high"], default=os.getenv("READER_REASONING_EFFORT"))
+
+    parser.add_argument("--cml-base-url", default=os.getenv("CML_BASE_URL", "http://127.0.0.1:8000"))
+    parser.add_argument("--cml-api-key-env", default=os.getenv("CML_API_KEY_ENV", "CML_API_KEY"))
+    parser.add_argument("--cml-tenant-prefix", default=os.getenv("CML_TENANT_PREFIX", "lme2v2"))
+    parser.add_argument("--trajectory-pool-root", default=os.getenv("TRAJECTORY_POOL_ROOT"))
+    parser.add_argument("--resume", action="store_true")
+
+    parser.add_argument("--prompt-build-max-workers", type=int, default=1)
+    parser.add_argument("--shuffle-questions-seed", type=int, default=None)
+    args = parser.parse_args()
+    if args.openai_sdk_reasoning_effort not in OPENAI_SDK_TIMEOUT_SECONDS_BY_REASONING_EFFORT:
+        parser.error(
+            "--openai-sdk-reasoning-effort must be one of "
+            f"{', '.join(OPENAI_SDK_TIMEOUT_SECONDS_BY_REASONING_EFFORT)}"
+        )
+    return args
+
+
+def controller_params(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "model": args.controller_model,
+        "base_url": args.controller_base_url,
+        "api_key_env": args.controller_api_key_env,
+        "api_key_file": None,
+        "max_completion_tokens": 8192,
+        "timeout_seconds": 600.0,
+        "max_retries": 3,
+        "disable_thinking": args.controller_disable_thinking,
+        "temperature": args.controller_temperature,
+        "top_p": args.controller_top_p,
+        "top_k": args.controller_top_k,
+    }
+
+
+def embedding_params(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "model": args.embedding_model,
+        "base_url": args.embedding_base_url,
+        "api_key_env": args.embedding_api_key_env,
+        "api_key_file": None,
+        "max_input_tokens": 4096,
+        "query_instruction": "Given a question about past agent trajectories, retrieve relevant memory entries that help answer it.",
+    }
+
+
+def openai_sdk_query_params(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "model": args.openai_sdk_model,
+        "reasoning_effort": args.openai_sdk_reasoning_effort,
+        "timeout_seconds": openai_sdk_timeout_seconds(args),
+        "max_retries": args.openai_sdk_max_retries,
+        "max_turns": args.openai_sdk_max_turns,
+        "api_key_env": args.openai_sdk_api_key_env,
+        "tool_timeout_seconds": args.openai_sdk_tool_timeout_seconds,
+        "max_tool_output_chars": args.openai_sdk_max_tool_output_chars,
+    }
+
+
+def openai_sdk_timeout_seconds(args: argparse.Namespace) -> float:
+    reasoning_effort = str(args.openai_sdk_reasoning_effort).lower()
+    return OPENAI_SDK_TIMEOUT_SECONDS_BY_REASONING_EFFORT[reasoning_effort]
+
+
+def build_memory_config(args: argparse.Namespace, data_root: Path) -> dict[str, object]:
+    if args.method in {"cml", "cml_fast"}:
+        return {
+            "memory_type": "cml",
+            "memory_params": {
+                "trajectory_pool_root": args.trajectory_pool_root,
+                "cml_params": {
+                    "base_url": args.cml_base_url,
+                    "api_key": None,
+                    "api_key_env": args.cml_api_key_env,
+                    "tenant_prefix": args.cml_tenant_prefix,
+                    "batch_size": 64,
+                    "timeout_seconds": 180.0,
+                },
+                "controller_params": {
+                    "model": args.controller_model,
+                    "base_url": args.controller_base_url,
+                    "api_key_env": args.controller_api_key_env,
+                    "api_key_file": None,
+                    "max_tokens": 256,
+                    "timeout_seconds": 120.0,
+                },
+                "retrieval_params": {
+                    "enable_query_expansion": args.method == "cml",
+                    "enable_vision_query": True,
+                    "max_surface_queries": 2,
+                    "cml_top_k_per_query": 28,
+                    "max_workflows": 3,
+                    "max_state_slices": 4,
+                    "per_query_slice_cap": 2,
+                    "slice_radius": 1,
+                    "max_images": 0,
+                    "center_axtree_max_chars": 10500,
+                    "neighbor_axtree_max_chars": 900,
+                },
+            },
+        }
+    if args.method == "no_retrieval":
+        return {"memory_type": "no_retrieval", "memory_params": {}}
+    if args.method in {"rag_query_to_slice", "rag_query_to_slice_notes"}:
+        return {
+            "memory_type": "rag",
+            "memory_params": {
+                "trajectory_pool_root": None,
+                "controller_params": controller_params(args),
+                "embedding_params": embedding_params(args),
+                "index_params": {"raw_state_slice_radius": 1},
+                "retrieval_params": {
+                    "enable_notes": args.method == "rag_query_to_slice_notes",
+                    "raw_state_search_top_k": 6,
+                    "note_search_top_k_per_type": 3,
+                },
+            },
+        }
+    if args.method == "agentrunbook_r":
+        return {
+            "memory_type": "agentrunbook_r",
+            "memory_params": {
+                "trajectory_pool_root": None,
+                "controller_params": controller_params(args),
+                "embedding_params": embedding_params(args),
+                "index_params": {"raw_state_slice_radius": 1},
+                "query_params": {
+                    "max_raw_state_queries": 5,
+                    "query_generation_disable_thinking": args.controller_disable_thinking,
+                },
+                "retrieval_params": {
+                    "raw_state_search_top_k_per_query": 6,
+                    "event_search_top_k": 6,
+                    "note_search_top_k_per_type": 3,
+                    "raw_state_result_merge_budget": 6,
+                    "raw_state_result_merge_per_query_cap": 2,
+                    "rerank_candidate_limit": 8,
+                    "enable_rerank": False,
+                },
+            },
+        }
+    codex_params = {
+        "binary": args.codex_binary,
+        "model": args.codex_model,
+        "reasoning_effort": args.codex_reasoning_effort,
+        "timeout_seconds": args.codex_timeout_seconds,
+        "max_retries": args.codex_max_retries,
+        "extra_config": [],
+        "extra_args": [],
+    }
+    if args.method == "codex":
+        return {
+            "memory_type": "codex",
+            "memory_params": {
+                "evidence_mode": "both",
+                "trajectory_pool_root": None,
+                "codex_params": codex_params,
+            },
+        }
+    if args.method == "agentrunbook_c_v2":
+        memory_params: dict[str, object] = {
+            "evidence_mode": "both",
+            "trajectory_pool_root": None,
+            "query_openai_sdk_params": openai_sdk_query_params(args),
+        }
+        if args.enable_online_learning:
+            memory_params["online_learning_params"] = {
+                "enabled": True,
+                "strategy_memory_dir": None,
+                "consolidation_codex_binary": args.codex_binary,
+                "timeout_seconds": args.codex_timeout_seconds,
+            }
+        return {
+            "memory_type": "agentrunbook_c_v2",
+            "memory_params": memory_params,
+        }
+    return {
+        "memory_type": "agentrunbook_c",
+        "memory_params": {
+            "evidence_mode": "both",
+            "trajectory_pool_root": None,
+            "query_codex_params": codex_params,
+        },
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    if args.enable_online_learning and args.method != "agentrunbook_c_v2":
+        raise SystemExit("--enable-online-learning is only supported with --method agentrunbook_c_v2")
+    if args.enable_online_learning and args.prompt_build_max_workers != 1:
+        raise SystemExit("--enable-online-learning requires --prompt-build-max-workers 1 for sequential online learning")
+    data_root = Path(args.data_root).expanduser().resolve()
+    output_dir = Path(args.output_dir).expanduser().resolve()
+    runtime_dir = output_dir / "runtime_inputs"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    selected_questions = materialize_runtime_questions(
+        data_root=data_root,
+        domain=args.domain,
+        question_ids=parse_question_ids(args.question_ids),
+        limit=args.limit,
+        output_path=runtime_dir / "questions.json",
+    )
+    materialize_runtime_haystack(
+        data_root=data_root,
+        tier=args.tier,
+        selected_questions=selected_questions,
+        output_path=runtime_dir / "haystack.json",
+    )
+    memory_config = build_memory_config(args, data_root)
+    memory_config_path = runtime_dir / "memory_config.json"
+    write_json(memory_config_path, memory_config)
+
+    harness_argv = [
+        "evaluation.harness",
+        "--domain",
+        args.domain,
+        "--questions-path",
+        str(runtime_dir / "questions.json"),
+        "--haystack-path",
+        str(runtime_dir / "haystack.json"),
+        "--trajectories-path",
+        str(data_root / "trajectories.jsonl"),
+        "--memory-config-path",
+        str(memory_config_path),
+        "--output-dir",
+        str(output_dir),
+        "--model",
+        args.reader_model,
+        "--base-url",
+        args.reader_base_url,
+        "--api-key-env",
+        args.reader_api_key_env,
+        "--temperature",
+        str(args.reader_temperature),
+        "--top-p",
+        str(args.reader_top_p),
+        "--top-k",
+        str(args.reader_top_k),
+        "--max-completion-tokens",
+        str(args.max_completion_tokens),
+        "--memory-context-max-tokens",
+        str(args.memory_context_max_tokens),
+        "--reader-max-concurrent-requests",
+        str(args.reader_max_concurrent_requests),
+        "--prompt-build-max-workers",
+        str(args.prompt_build_max_workers),
+        "--evaluator-model",
+        args.evaluator_model,
+        "--evaluator-api-key-env",
+        args.evaluator_api_key_env,
+        "--evaluator-reasoning-effort",
+        args.evaluator_reasoning_effort,
+        "--evaluator-max-completion-tokens",
+        str(args.evaluator_max_completion_tokens),
+    ]
+    if not args.reader_enable_thinking:
+        harness_argv.append("--reader-disable-thinking")
+    if args.reader_reasoning_effort is not None:
+        harness_argv.extend(["--reasoning-effort", args.reader_reasoning_effort])
+    if args.evaluator_base_url:
+        harness_argv.extend(["--evaluator-base-url", args.evaluator_base_url])
+    if args.evaluator_temperature is not None:
+        harness_argv.extend(["--evaluator-temperature", str(args.evaluator_temperature)])
+    if args.resume:
+        harness_argv.append("--resume")
+    if args.shuffle_questions_seed is not None:
+        harness_argv.extend(["--shuffle-questions-seed", str(args.shuffle_questions_seed)])
+    print(json.dumps({"runtime_dir": str(runtime_dir), "method": args.method}, indent=2))
+    old_argv = sys.argv
+    try:
+        sys.argv = harness_argv
+        from evaluation.harness import main as harness_main
+
+        harness_main()
+    finally:
+        sys.argv = old_argv
+
+
+if __name__ == "__main__":
+    main()
