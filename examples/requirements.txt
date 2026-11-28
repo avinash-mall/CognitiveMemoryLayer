@@ -17,9 +17,9 @@ openai>=1.0
 anthropic>=0.18.0
 
 # LangChain integration
-langchain>=0.3.0,<0.4.0
-langchain-core>=0.3.0,<0.4.0
-langchain-openai>=0.3.0,<0.4.0
+langchain>=1.5.2,<1.6.0
+langchain-core>=1.8.5,<1.9.0
+langchain-openai>=1.8.5,<1.9.0
 
 # UI/Interactive examples
 streamlit>=1.41.0
